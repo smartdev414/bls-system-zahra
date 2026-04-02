@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   ChevronLeft, Plus, Layers, FileText, PlayCircle,
   FlaskConical, Loader2, ChevronDown, ChevronUp,
-  Globe, Lock, Edit3, Trash2, Save, Pencil,
+  Globe, Lock, Edit3, Trash2, Save, Pencil, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,7 +20,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
-import { useFetch, usePostCallback, usePutCallback, useDeleteCallback } from "@/hooks/use-fetch"
+import { useFetch, usePostCallback, usePutCallback, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
+import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -87,8 +88,7 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
   const [lessonType, setLessonType] = useState<"VIDEO" | "TEXT" | "QUIZ">("VIDEO")
   const [lessonDesc, setLessonDesc] = useState("")
   const [lessonFree, setLessonFree] = useState(false)
-  const [assetUrl, setAssetUrl] = useState("")
-  const [assetFileName, setAssetFileName] = useState("")
+  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
 
   // Collapsed sections
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -135,7 +135,7 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
       errorMessage: "Could not add lesson",
       onSuccess: () => {
         setLessonDialogOpen(false)
-        setLessonTitle(""); setLessonDesc(""); setAssetUrl(""); setAssetFileName("")
+        setLessonTitle(""); setLessonDesc(""); setUploadedFile(null)
         refetch()
       },
     }
@@ -172,8 +172,15 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
   }
 
   function handleAddLesson() {
-    const assets = assetUrl && assetFileName
-      ? [{ type: lessonType === "VIDEO" ? "VIDEO" : "DOCUMENT", title: lessonTitle, fileUrl: assetUrl, fileName: assetFileName }]
+    const assets = uploadedFile
+      ? [{
+          type: uploadedFile.assetType as "VIDEO" | "PDF" | "IMAGE" | "DOCUMENT" | "AUDIO" | "SUBTITLE",
+          title: lessonTitle,
+          fileUrl: uploadedFile.fileUrl,
+          fileName: uploadedFile.fileName,
+          fileSize: uploadedFile.fileSize,
+          mimeType: uploadedFile.mimeType,
+        }]
       : []
     createLesson({ sectionId: selectedSectionId, title: lessonTitle, type: lessonType, description: lessonDesc, isFree: lessonFree, assets })
   }
@@ -314,12 +321,26 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Thumbnail URL (optional)</Label>
-              <Input
-                value={editThumbnail}
-                onChange={(e) => setEditThumbnail(e.target.value)}
-                placeholder="https://..."
-              />
+              <Label>Thumbnail (optional)</Label>
+              {editThumbnail ? (
+                <div className="relative rounded-xl overflow-hidden aspect-video bg-muted">
+                  <img src={editThumbnail} alt="thumbnail" className="w-full h-full object-cover" />
+                  <Button
+                    type="button" size="icon" variant="destructive"
+                    className="absolute top-2 right-2 size-7"
+                    onClick={() => setEditThumbnail("")}
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <FileUpload
+                  accept="image/jpeg,image/png,image/webp"
+                  label="Upload thumbnail"
+                  uploaded={null}
+                  onUploaded={(f) => setEditThumbnail(f.fileUrl)}
+                />
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -330,7 +351,7 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
                 title: editTitle.trim(),
                 description: editDescription.trim(),
                 level: editLevel,
-                thumbnailUrl: editThumbnail.trim() || null,
+                thumbnailUrl: editThumbnail || null,
               })}
             >
               <Save className="size-4 mr-1.5" />
@@ -417,20 +438,22 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
               </div>
             </div>
 
-            {/* File URL (simple URL entry — in production this would be an upload component) */}
             {lessonType !== "QUIZ" && (
               <>
                 <Separator />
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Add File</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5 col-span-2">
-                    <Label>File URL</Label>
-                    <Input placeholder="https://..." value={assetUrl} onChange={(e) => setAssetUrl(e.target.value)} />
-                  </div>
-                  <div className="flex flex-col gap-1.5 col-span-2">
-                    <Label>File Name</Label>
-                    <Input placeholder="lesson-video.mp4" value={assetFileName} onChange={(e) => setAssetFileName(e.target.value)} />
-                  </div>
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">File</p>
+                  <FileUpload
+                    accept={
+                      lessonType === "VIDEO"
+                        ? "video/mp4,video/webm,video/quicktime"
+                        : "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,audio/*"
+                    }
+                    label={lessonType === "VIDEO" ? "Upload video" : "Upload file"}
+                    uploaded={uploadedFile}
+                    onUploaded={setUploadedFile}
+                    onRemove={() => setUploadedFile(null)}
+                  />
                 </div>
               </>
             )}
@@ -468,6 +491,18 @@ function SectionBlock({
   onAddLesson: () => void
   onMutated: () => void
 }) {
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState(section.title)
+
+  const { execute: renameSection, loading: renamingLoading } = usePatchCallback<
+    { section: SectionItem },
+    { title: string }
+  >(`/api/tutor/courses/${courseId}/sections/${section.id}`, {
+    successMessage: "Section renamed",
+    errorMessage: "Could not rename section",
+    onSuccess: () => { setRenaming(false); onMutated() },
+  })
+
   const { execute: deleteSection, loading: deleting } = useDeleteCallback(
     `/api/tutor/courses/${courseId}/sections/${section.id}`,
     {
@@ -481,37 +516,73 @@ function SectionBlock({
     <Card className="shadow-sm overflow-hidden">
       {/* Section header */}
       <div className="flex items-center bg-muted/30 hover:bg-muted/50 transition-colors">
-        <button
-          className="flex-1 flex items-center gap-3 px-5 py-3.5 text-left"
-          onClick={onToggle}
-        >
-          <span className="text-xs font-bold text-muted-foreground">Section {section.order}</span>
-          <span className="font-semibold text-sm">{section.title}</span>
-          <Badge variant="outline" className="text-[10px]">{section.lessons.length} lessons</Badge>
-          {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronUp className="size-4 text-muted-foreground" />}
-        </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 mr-2 text-destructive hover:text-destructive shrink-0"
-          disabled={deleting || section.lessons.length > 0}
-          title={section.lessons.length > 0 ? "Remove lessons first" : "Delete section"}
-          onClick={() => deleteSection()}
-        >
-          {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-        </Button>
+        {renaming ? (
+          <div className="flex-1 flex items-center gap-2 px-5 py-2">
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="h-8 text-sm"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && renameValue.trim()) renameSection({ title: renameValue })
+                if (e.key === "Escape") { setRenaming(false); setRenameValue(section.title) }
+              }}
+            />
+            <Button
+              size="icon" variant="ghost" className="size-8 text-emerald-600 shrink-0"
+              disabled={renamingLoading || !renameValue.trim()}
+              onClick={() => renameSection({ title: renameValue })}
+            >
+              {renamingLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Edit3 className="size-3.5" />}
+            </Button>
+            <Button
+              size="icon" variant="ghost" className="size-8 shrink-0"
+              onClick={() => { setRenaming(false); setRenameValue(section.title) }}
+            >
+              <ChevronUp className="size-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <>
+            <button
+              className="flex-1 flex items-center gap-3 px-5 py-3.5 text-left"
+              onClick={onToggle}
+            >
+              <span className="text-xs font-bold text-muted-foreground">Section {section.order}</span>
+              <span className="font-semibold text-sm">{section.title}</span>
+              <Badge variant="outline" className="text-[10px]">{section.lessons.length} lessons</Badge>
+              {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronUp className="size-4 text-muted-foreground" />}
+            </button>
+            <div className="flex items-center gap-0.5 pr-2">
+              <Button
+                variant="ghost" size="icon" className="size-7"
+                onClick={() => { setRenameValue(section.title); setRenaming(true) }}
+                title="Rename"
+              >
+                <Pencil className="size-3" />
+              </Button>
+              <Button
+                variant="ghost" size="icon"
+                className="size-7 text-destructive hover:text-destructive"
+                disabled={deleting || section.lessons.length > 0}
+                title={section.lessons.length > 0 ? "Remove lessons first" : "Delete section"}
+                onClick={() => deleteSection()}
+              >
+                {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3" />}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
 
-      {!isCollapsed && (
+      {!isCollapsed && !renaming && (
         <>
           {section.lessons.map((lesson) => (
             <LessonRow key={lesson.id} lesson={lesson} onMutated={onMutated} />
           ))}
           <div className="px-5 py-3 border-t">
             <Button
-              variant="ghost"
-              size="sm"
-              className="text-primary hover:text-primary"
+              variant="ghost" size="sm" className="text-primary hover:text-primary"
               onClick={onAddLesson}
             >
               <Plus className="size-4 mr-1.5" /> Add Lesson

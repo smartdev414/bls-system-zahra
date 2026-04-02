@@ -164,7 +164,7 @@ export default function AdminDashboard() {
               { label: "All Users", desc: "View & manage accounts", href: "/admin/users", icon: Users },
               { label: "All Courses", desc: "Review & publish", href: "/admin/courses", icon: BookOpen },
               { label: "Tutors", desc: "Verify tutor profiles", href: "/admin/users?role=TUTOR", icon: UserCheck },
-              { label: "Live Sessions", desc: "Monitor activity", href: "/admin/courses", icon: Radio },
+              { label: "Live Sessions", desc: "Monitor activity", href: "/admin/sessions", icon: Radio },
             ].map(({ label, desc, href, icon: Icon }) => (
               <Link
                 key={label}

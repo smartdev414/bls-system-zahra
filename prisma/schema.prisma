@@ -83,6 +83,23 @@ model Category {
   courses Course[]
 }
 
+model Sign {
+  id          String      @id @default(cuid())
+  word        String      @unique
+  category    String
+  level       CourseLevel @default(BEGINNER)
+  description String
+  videoUrl    String?
+  imageUrl    String?
+  handshape   String
+  usage       String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([category])
+  @@index([level])
+}
+
 model Course {
   id           String       @id @default(cuid())
   tutorId      String
