@@ -11,7 +11,8 @@
       "Bash(npm install:*)",
       "Bash(npx shadcn@latest add select dialog textarea --yes)",
       "Bash(grep -oP '`[^`]*`|\"/[^\"]*\"')",
-      "Bash(grep -oP 'href=\\\\{?[`\"].*?[`\"]\\\\}?')"
+      "Bash(grep -oP 'href=\\\\{?[`\"].*?[`\"]\\\\}?')",
+      "Bash(npx shadcn@latest add dropdown-menu --yes)"
     ]
   }
 }

@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
-  LayoutDashboard, Settings, LogOut, ChevronDown, Bell,
+  LayoutDashboard, Settings, LogOut, ChevronDown, Bell, ShieldCheck,
 } from "lucide-react"
 import { Logo } from "@/components/layout/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -32,10 +32,18 @@ type NavItem = {
 
 const studentNav: NavItem[] = [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
+  { label: "Courses", href: "/student/courses", icon: BookOpen },
   { label: "Lessons", href: "/student/lessons", icon: BookOpen },
   { label: "Dictionary", href: "/student/dictionary", icon: Library },
   { label: "Tests", href: "/student/tests", icon: FlaskConical },
   { label: "Classroom", href: "/student/classroom", icon: Video },
+]
+
+const adminNav: NavItem[] = [
+  { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { label: "Users", href: "/admin/users", icon: Users },
+  { label: "Courses", href: "/admin/courses", icon: BookOpen },
+  { label: "Settings", href: "/admin/settings", icon: Settings },
 ]
 
 const tutorNav: NavItem[] = [
@@ -59,7 +67,7 @@ export function Header({ role, user }: HeaderProps) {
   const pathname = usePathname()
   const router = useRouter()
 
-  const navItems = role === "TUTOR" ? tutorNav : studentNav
+  const navItems = role === "TUTOR" ? tutorNav : role === "ADMIN" ? adminNav : studentNav
 
   const { execute: signOut, loading: signingOut } = useDeleteCallback("/api/auth/logout", {
     successMessage: "Signed out successfully",
@@ -145,12 +153,22 @@ export function Header({ role, user }: HeaderProps) {
 
               <DropdownMenuSeparator />
 
-              <DropdownMenuItem asChild>
-                <Link href={`/${role.toLowerCase()}/profile`} className="cursor-pointer">
-                  <Users className="size-4 mr-2" />
-                  Profile
-                </Link>
-              </DropdownMenuItem>
+              {role !== "ADMIN" && (
+                <DropdownMenuItem asChild>
+                  <Link href={`/${role.toLowerCase()}/profile`} className="cursor-pointer">
+                    <Users className="size-4 mr-2" />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {role === "ADMIN" && (
+                <DropdownMenuItem asChild>
+                  <Link href="/admin" className="cursor-pointer">
+                    <ShieldCheck className="size-4 mr-2" />
+                    Admin Panel
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem asChild>
                 <Link href={`/${role.toLowerCase()}/settings`} className="cursor-pointer">
                   <Settings className="size-4 mr-2" />

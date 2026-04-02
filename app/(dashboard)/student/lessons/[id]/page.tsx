@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useRef, useState } from "react"
+import { use, useCallback, useRef, useState } from "react"
 import Link from "next/link"
 import {
   CheckCircle2, ChevronLeft, ChevronRight, PlayCircle,
@@ -98,6 +98,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isCompleted, setIsCompleted] = useState(false)
   const completedRef = useRef(false)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { data, loading, refetch } = useFetch<LessonData>(`/api/student/lessons/${id}`, {
     errorMessage: "Could not load lesson",
@@ -109,7 +110,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
 
   const { execute: saveProgress, loading: saving } = usePatchCallback<
     { progress: object },
-    { enrollmentId: string; isCompleted: boolean; watchedSecs?: number }
+    { enrollmentId: string; isCompleted?: boolean; watchedSecs?: number }
   >(`/api/student/lessons/${id}/progress`, {
     successMessage: (d) => {
       const p = (d as { progress: { isCompleted: boolean } }).progress
@@ -128,6 +129,23 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
     completedRef.current = newState
     await saveProgress({ enrollmentId: data.enrollmentId, isCompleted: newState })
   }
+
+  // Debounced video progress auto-save (every 10 s of playback)
+  const handleTimeUpdate = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      if (!data?.enrollmentId) return
+      const video = e.currentTarget
+      if (saveTimerRef.current) return // already scheduled
+      saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = null
+        saveProgress({
+          enrollmentId: data.enrollmentId!,
+          watchedSecs: Math.floor(video.currentTime),
+        })
+      }, 10_000)
+    },
+    [data?.enrollmentId, saveProgress]
+  )
 
   if (loading) {
     return (
@@ -248,7 +266,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 src={videoAsset.fileUrl}
                 controls
                 className="w-full h-full"
-                poster={undefined}
+                onTimeUpdate={handleTimeUpdate}
               />
             </div>
           ) : lesson.type === "TEXT" ? (
