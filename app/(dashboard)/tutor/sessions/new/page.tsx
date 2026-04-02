@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DatePicker } from "@/components/ui/date-picker"
+import { TimePicker } from "@/components/ui/time-picker"
 import { usePostCallback, useFetch } from "@/hooks/use-fetch"
 
 type SessionBody = {
@@ -28,7 +30,7 @@ export default function NewSessionPage() {
   const router = useRouter()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [date, setDate] = useState("")
+  const [date, setDate] = useState<Date | undefined>(undefined)
   const [time, setTime] = useState("")
   const [durationMins, setDurationMins] = useState(60)
   const [maxStudents, setMaxStudents] = useState("")
@@ -47,16 +49,22 @@ export default function NewSessionPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const scheduledAt = new Date(`${date}T${time}`).toISOString()
+    if (!date || !time) return
+    const [hours, minutes] = time.split(":")
+    const scheduledAt = new Date(date)
+    scheduledAt.setHours(parseInt(hours), parseInt(minutes), 0, 0)
     createSession({
       title,
       description,
-      scheduledAt,
+      scheduledAt: scheduledAt.toISOString(),
       durationMins,
       maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
       courseId: courseId || undefined,
     })
   }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
@@ -103,25 +111,17 @@ export default function NewSessionPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="date">Date <span className="text-destructive">*</span></Label>
-                <Input
-                  id="date"
-                  type="date"
+                <Label>Date <span className="text-destructive">*</span></Label>
+                <DatePicker
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  min={new Date().toISOString().split("T")[0]}
+                  onChange={setDate}
+                  placeholder="Pick a date"
+                  disabled={(d) => d < today}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="time">Time <span className="text-destructive">*</span></Label>
-                <Input
-                  id="time"
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  required
-                />
+                <Label>Time <span className="text-destructive">*</span></Label>
+                <TimePicker value={time} onChange={setTime} />
               </div>
             </div>
 
@@ -151,7 +151,6 @@ export default function NewSessionPage() {
               </div>
             </div>
 
-            {/* Link to course (optional) */}
             {coursesData?.courses.length ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="courseId">Link to Course (optional)</Label>

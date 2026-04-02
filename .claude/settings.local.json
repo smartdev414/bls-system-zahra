@@ -18,7 +18,8 @@
       "Bash(npx prisma:*)",
       "Bash(node:*)",
       "Bash(python3:*)",
-      "mcp__plugin_figma_figma__get_screenshot"
+      "mcp__plugin_figma_figma__get_screenshot",
+      "Bash(npx shadcn@latest add calendar popover --yes)"
     ]
   }
 }
