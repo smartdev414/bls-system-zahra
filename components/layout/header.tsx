@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
-  LayoutDashboard, Settings, LogOut, ChevronDown, Bell, ShieldCheck, Tag, FolderOpen,
+  LayoutDashboard, Settings, LogOut, ChevronDown, Bell, ShieldCheck, Tag, FolderOpen, MessageSquare,
 } from "lucide-react"
 import { Logo } from "@/components/layout/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -38,6 +38,7 @@ const studentNav: NavItem[] = [
   { label: "Dictionary", href: "/student/dictionary", icon: Library },
   { label: "Tests", href: "/student/tests", icon: FlaskConical },
   { label: "Classroom", href: "/student/classroom", icon: Video },
+  { label: "Messages", href: "/student/messages", icon: MessageSquare },
 ]
 
 const adminNav: NavItem[] = [
@@ -46,7 +47,6 @@ const adminNav: NavItem[] = [
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
   { label: "Categories", href: "/admin/categories", icon: Tag },
   { label: "Dictionary", href: "/admin/signs", icon: Library },
-  { label: "Settings", href: "/admin/settings", icon: Settings },
 ]
 
 const tutorNav: NavItem[] = [
@@ -54,7 +54,7 @@ const tutorNav: NavItem[] = [
   { label: "My Courses", href: "/tutor/courses", icon: BookOpen },
   { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
   { label: "Students", href: "/tutor/students", icon: Users },
-  { label: "Settings", href: "/tutor/settings", icon: Settings },
+  { label: "Messages", href: "/tutor/messages", icon: MessageSquare },
 ]
 
 type HeaderProps = {
