@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import {
   BookOpen, Search, Star, Users, Layers, CheckCircle2,
-  Loader2, Filter, ArrowRight,
+  Loader2, Filter, ArrowRight, LogOut,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { useFetch, usePostCallback } from "@/hooks/use-fetch"
+import { useFetch, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -177,6 +177,15 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
     onSuccess: () => { setReviewOpen(false); setComment(""); setRating(5); onMutated() },
   })
 
+  const { execute: unenroll, loading: unenrolling } = useDeleteCallback(
+    `/api/student/courses/${course.id}/enroll`,
+    {
+      successMessage: "Unenrolled successfully",
+      errorMessage: "Could not unenrol",
+      onSuccess: () => onMutated(),
+    }
+  )
+
   return (
     <>
       <Card className="shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-shadow">
@@ -230,6 +239,16 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
               </Button>
               <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)} title="Rate course">
                 <Star className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={unenrolling}
+                onClick={() => unenroll()}
+                title="Unenrol"
+                className="text-muted-foreground hover:text-destructive"
+              >
+                {unenrolling ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
               </Button>
             </div>
           ) : (

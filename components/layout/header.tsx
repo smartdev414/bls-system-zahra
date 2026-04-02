@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
-  LayoutDashboard, Settings, LogOut, ChevronDown, Bell, ShieldCheck,
+  LayoutDashboard, Settings, LogOut, ChevronDown, Bell, ShieldCheck, Tag,
 } from "lucide-react"
 import { Logo } from "@/components/layout/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -43,6 +43,7 @@ const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
+  { label: "Categories", href: "/admin/categories", icon: Tag },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ]
 
