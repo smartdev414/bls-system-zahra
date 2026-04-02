@@ -8,7 +8,10 @@
       "Bash(npx tsc:*)",
       "Bash(npx shadcn@latest add radio-group tabs --yes)",
       "Bash(find E:/2026-projects/BSL/bsl-system -name \"*.tmp.*\" -delete)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest add select dialog textarea --yes)",
+      "Bash(grep -oP '`[^`]*`|\"/[^\"]*\"')",
+      "Bash(grep -oP 'href=\\\\{?[`\"].*?[`\"]\\\\}?')"
     ]
   }
 }
