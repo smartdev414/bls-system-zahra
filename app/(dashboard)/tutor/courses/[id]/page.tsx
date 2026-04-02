@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   ChevronLeft, Plus, Layers, FileText, PlayCircle,
   FlaskConical, Loader2, ChevronDown, ChevronUp,
-  Globe, Lock, Edit3, Trash2, Save,
+  Globe, Lock, Edit3, Trash2, Save, Pencil,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -92,6 +92,22 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
 
   // Collapsed sections
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+
+  // Course info edit dialog
+  const [editCourseOpen, setEditCourseOpen] = useState(false)
+  const [editTitle, setEditTitle] = useState("")
+  const [editDescription, setEditDescription] = useState("")
+  const [editLevel, setEditLevel] = useState<"BEGINNER" | "INTERMEDIATE" | "ADVANCED">("BEGINNER")
+  const [editThumbnail, setEditThumbnail] = useState("")
+
+  const { execute: updateCourseInfo, loading: updatingInfo } = usePutCallback<
+    { course: CourseDetail },
+    { title?: string; description?: string; level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"; thumbnailUrl?: string | null }
+  >(`/api/tutor/courses/${id}`, {
+    successMessage: "Course updated",
+    errorMessage: "Could not update course",
+    onSuccess: () => { setEditCourseOpen(false); refetch() },
+  })
 
   const { execute: createSection, loading: creatingSection } = usePostCallback<{ section: SectionItem }, { title: string }>(
     `/api/tutor/courses/${id}/sections`,
@@ -193,6 +209,19 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
           <Button
             variant="outline"
             size="sm"
+            onClick={() => {
+              setEditTitle(course.title)
+              setEditDescription(course.description)
+              setEditLevel(course.level)
+              setEditThumbnail(course.thumbnailUrl ?? "")
+              setEditCourseOpen(true)
+            }}
+          >
+            <Pencil className="size-4 mr-1.5" /> Edit Info
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             disabled={updating}
             onClick={() => updateCourseStatus({ status: isPublished ? "DRAFT" : "PUBLISHED" })}
           >
@@ -238,49 +267,78 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
           </Card>
         ) : (
           <div className="flex flex-col gap-3">
-            {course.sections.map((section) => {
-              const isCollapsed = collapsed[section.id]
-              return (
-                <Card key={section.id} className="shadow-sm overflow-hidden">
-                  {/* Section header */}
-                  <button
-                    className="w-full flex items-center justify-between px-5 py-3.5 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
-                    onClick={() => setCollapsed((prev) => ({ ...prev, [section.id]: !prev[section.id] }))}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-bold text-muted-foreground">Section {section.order}</span>
-                      <span className="font-semibold text-sm">{section.title}</span>
-                      <Badge variant="outline" className="text-[10px]">{section.lessons.length} lessons</Badge>
-                    </div>
-                    {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronUp className="size-4 text-muted-foreground" />}
-                  </button>
-
-                  {!isCollapsed && (
-                    <>
-                      {/* Lesson list */}
-                      {section.lessons.map((lesson) => (
-                        <LessonRow key={lesson.id} lesson={lesson} onMutated={refetch} />
-                      ))}
-
-                      {/* Add lesson button */}
-                      <div className="px-5 py-3 border-t">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-primary hover:text-primary"
-                          onClick={() => openLessonDialog(section.id)}
-                        >
-                          <Plus className="size-4 mr-1.5" /> Add Lesson
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </Card>
-              )
-            })}
+            {course.sections.map((section) => (
+              <SectionBlock
+                key={section.id}
+                courseId={id}
+                section={section}
+                isCollapsed={!!collapsed[section.id]}
+                onToggle={() => setCollapsed((prev) => ({ ...prev, [section.id]: !prev[section.id] }))}
+                onAddLesson={() => openLessonDialog(section.id)}
+                onMutated={refetch}
+              />
+            ))}
           </div>
         )}
       </div>
+
+      {/* Edit Course Info Dialog */}
+      <Dialog open={editCourseOpen} onOpenChange={setEditCourseOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Course Info</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Title</Label>
+              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Course title" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Description</Label>
+              <Textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Describe what students will learn"
+                rows={4}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Level</Label>
+              <Select value={editLevel} onValueChange={(v) => setEditLevel(v as typeof editLevel)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BEGINNER">Beginner</SelectItem>
+                  <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
+                  <SelectItem value="ADVANCED">Advanced</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Thumbnail URL (optional)</Label>
+              <Input
+                value={editThumbnail}
+                onChange={(e) => setEditThumbnail(e.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditCourseOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!editTitle.trim() || updatingInfo}
+              onClick={() => updateCourseInfo({
+                title: editTitle.trim(),
+                description: editDescription.trim(),
+                level: editLevel,
+                thumbnailUrl: editThumbnail.trim() || null,
+              })}
+            >
+              <Save className="size-4 mr-1.5" />
+              {updatingInfo ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Section Dialog */}
       <Dialog open={sectionDialogOpen} onOpenChange={setSectionDialogOpen}>
@@ -390,6 +448,78 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// ─── Section block — owns its own delete hook ────────────────────────────────
+
+function SectionBlock({
+  courseId,
+  section,
+  isCollapsed,
+  onToggle,
+  onAddLesson,
+  onMutated,
+}: {
+  courseId: string
+  section: SectionItem
+  isCollapsed: boolean
+  onToggle: () => void
+  onAddLesson: () => void
+  onMutated: () => void
+}) {
+  const { execute: deleteSection, loading: deleting } = useDeleteCallback(
+    `/api/tutor/courses/${courseId}/sections/${section.id}`,
+    {
+      successMessage: "Section deleted",
+      errorMessage: "Could not delete section",
+      onSuccess: () => onMutated(),
+    }
+  )
+
+  return (
+    <Card className="shadow-sm overflow-hidden">
+      {/* Section header */}
+      <div className="flex items-center bg-muted/30 hover:bg-muted/50 transition-colors">
+        <button
+          className="flex-1 flex items-center gap-3 px-5 py-3.5 text-left"
+          onClick={onToggle}
+        >
+          <span className="text-xs font-bold text-muted-foreground">Section {section.order}</span>
+          <span className="font-semibold text-sm">{section.title}</span>
+          <Badge variant="outline" className="text-[10px]">{section.lessons.length} lessons</Badge>
+          {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronUp className="size-4 text-muted-foreground" />}
+        </button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 mr-2 text-destructive hover:text-destructive shrink-0"
+          disabled={deleting || section.lessons.length > 0}
+          title={section.lessons.length > 0 ? "Remove lessons first" : "Delete section"}
+          onClick={() => deleteSection()}
+        >
+          {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+        </Button>
+      </div>
+
+      {!isCollapsed && (
+        <>
+          {section.lessons.map((lesson) => (
+            <LessonRow key={lesson.id} lesson={lesson} onMutated={onMutated} />
+          ))}
+          <div className="px-5 py-3 border-t">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-primary hover:text-primary"
+              onClick={onAddLesson}
+            >
+              <Plus className="size-4 mr-1.5" /> Add Lesson
+            </Button>
+          </div>
+        </>
+      )}
+    </Card>
   )
 }
 

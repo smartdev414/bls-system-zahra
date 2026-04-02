@@ -3,7 +3,7 @@
 import Link from "next/link"
 import {
   BookOpen, Library, FlaskConical, Video, Settings,
-  Lock, Calendar, ArrowRight, Clock, Loader2,
+  FolderOpen, Calendar, ArrowRight, Clock, Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -35,7 +35,7 @@ type DashboardData = {
 
 const modules = [
   { label: "Lessons", desc: "Continue learning", href: "/student/lessons", icon: BookOpen, vip: false },
-  { label: "Resources", desc: "VIP Content", href: "/student/resources", icon: Lock, vip: true },
+  { label: "Resources", desc: "Course materials", href: "/student/resources", icon: FolderOpen, vip: false },
   { label: "Dictionary", desc: "Search signs", href: "/student/dictionary", icon: Library, vip: false },
   { label: "Tests", desc: "Practice exams", href: "/student/tests", icon: FlaskConical, vip: false },
   { label: "Classroom", desc: "Live sessions", href: "/student/classroom", icon: Video, vip: false },
@@ -139,11 +139,6 @@ export default function StudentDashboardPage() {
                   href={href}
                   className="relative flex flex-col items-center gap-2 rounded-xl border p-5 text-center transition-all hover:border-primary hover:bg-primary/5 group"
                 >
-                  {vip && (
-                    <span className="absolute top-2 right-2">
-                      <Lock className="size-3 text-muted-foreground" />
-                    </span>
-                  )}
                   <div className={`rounded-full p-3 ${vip ? "bg-muted" : "bg-primary/10"}`}>
                     <Icon className={`size-5 ${vip ? "text-muted-foreground" : "text-primary"}`} />
                   </div>

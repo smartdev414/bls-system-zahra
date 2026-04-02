@@ -12,7 +12,9 @@
       "Bash(npx shadcn@latest add select dialog textarea --yes)",
       "Bash(grep -oP '`[^`]*`|\"/[^\"]*\"')",
       "Bash(grep -oP 'href=\\\\{?[`\"].*?[`\"]\\\\}?')",
-      "Bash(npx shadcn@latest add dropdown-menu --yes)"
+      "Bash(npx shadcn@latest add dropdown-menu --yes)",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(git -C E:/2026-projects/BSL/bsl-system status --short)"
     ]
   }
 }
