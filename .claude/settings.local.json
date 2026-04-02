@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_figma_figma__get_metadata",
+      "mcp__plugin_figma_figma__get_design_context",
+      "Bash(npx shadcn@latest add input label card checkbox avatar dropdown-menu badge separator progress --yes)",
+      "Bash(npx shadcn@latest add sonner --yes)",
+      "Bash(npx tsc:*)",
+      "Bash(npx shadcn@latest add radio-group tabs --yes)",
+      "Bash(find E:/2026-projects/BSL/bsl-system -name \"*.tmp.*\" -delete)"
+    ]
+  }
+}
