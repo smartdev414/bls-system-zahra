@@ -226,7 +226,7 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
           </DialogDescription>
         </DialogHeader>
 
-        <form id="schedule-form" onSubmit={handleSubmit} className="flex flex-col gap-4 py-1">
+        <form id="schedule-form" onSubmit={handleSubmit} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault() }} className="flex flex-col gap-4 py-1">
           {/* Title */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="s-title">Title <span className="text-destructive">*</span></Label>
