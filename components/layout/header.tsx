@@ -157,7 +157,7 @@ export function Header({ role, user }: HeaderProps) {
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden sm:flex flex-col items-start">
-                  <span className="text-sm font-medium max-w-[120px] truncate leading-tight">
+                  <span className="text-sm font-medium max-w-30 truncate leading-tight">
                     {user.name}
                   </span>
                   <Badge variant="secondary" className="text-[10px] h-3.5 px-1 leading-none capitalize mt-0.5">

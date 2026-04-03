@@ -20,8 +20,6 @@ import {
   HandMetal,
 } from "lucide-react"
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const CHAT_TOPIC  = "cls-chat"
 const HAND_TOPIC  = "cls-hand"
 const enc = new TextEncoder()
@@ -206,7 +204,7 @@ function ParticipantsPanel({
                 <>
                   <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
                   {/* Name overlay */}
-                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-0.5">
+                  <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 pb-0.5">
                     <p className="text-[10px] text-white truncate font-medium">
                       {isLocal ? "You" : displayName}
                       {isTutor && <span className="ml-1 text-amber-400">• Tutor</span>}
@@ -363,7 +361,7 @@ function MessageBubble({ msg, isOwn }: { msg: ChatMsg; isOwn: boolean }) {
       )}
       <div
         className={cn(
-          "px-3 py-2 text-sm leading-snug break-words",
+          "px-3 py-2 text-sm leading-snug wrap-break-word",
           isOwn
             ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm"
             : "bg-zinc-800 text-zinc-100 rounded-2xl rounded-bl-sm"
@@ -375,8 +373,6 @@ function MessageBubble({ msg, isOwn }: { msg: ChatMsg; isOwn: boolean }) {
     </div>
   )
 }
-
-// ─── Chat panel ───────────────────────────────────────────────────────────────
 
 function ChatPanel({
   messages,
@@ -508,7 +504,7 @@ function ChatPanel({
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-700 select-none">
             <MessageSquare className="size-8 opacity-30" />
-            <p className="text-xs text-center opacity-70 max-w-[12rem]">
+            <p className="text-xs text-center opacity-70 max-w-48">
               Chat is how everyone communicates here. Say hello! 👋
             </p>
           </div>
@@ -521,7 +517,7 @@ function ChatPanel({
 
       {/* Scroll-to-bottom pill */}
       {!atBottom && (
-        <div className="absolute bottom-[9.5rem] left-1/2 -translate-x-1/2 z-10 right-panel-anchor">
+        <div className="absolute bottom-38 left-1/2 -translate-x-1/2 z-10 right-panel-anchor">
           <button
             onClick={scrollToBottom}
             className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg hover:bg-primary/90 transition-colors"
