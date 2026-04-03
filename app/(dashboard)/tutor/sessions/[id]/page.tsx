@@ -1,23 +1,18 @@
 "use client"
 
-import { use, useState } from "react"
+import { use } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft, Radio, CheckCircle2, XCircle, Clock,
-  Users, Calendar, Loader2, BookOpen, Trash2, Video, AlertCircle,
+  Users, Calendar, Loader2, BookOpen, Trash2, MonitorPlay,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
-import { useFetch, usePatchCallback, useDeleteCallback, usePostCallback } from "@/hooks/use-fetch"
-import {
-  LiveKitRoom,
-  VideoConference,
-} from "@livekit/components-react"
-import "@livekit/components-styles"
+import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,7 +40,6 @@ type SessionDetail = {
 }
 
 type SessionData = { session: SessionDetail }
-type TokenData = { token: string; wsUrl: string; roomName: string }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -69,7 +63,6 @@ function formatDuration(startIso: string, endIso: string) {
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
-  const [roomData, setRoomData] = useState<TokenData | null>(null)
 
   const { data, loading, refetch } = useFetch<SessionData>(`/api/tutor/sessions/${id}`, {
     errorMessage: "Could not load session",
@@ -83,15 +76,6 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     errorMessage: "Could not update session",
     onSuccess: () => refetch(),
   })
-
-  const { execute: getToken, loading: joiningRoom, error: tokenError } = usePostCallback<TokenData, Record<string, never>>(
-    `/api/sessions/${id}/token`,
-    {
-      successMessage: false,
-      errorMessage: false,
-      onSuccess: (data) => setRoomData(data),
-    }
-  )
 
   const { execute: deleteSession, loading: deleting } = useDeleteCallback(
     `/api/tutor/sessions/${id}`,
@@ -150,30 +134,22 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             <div className="flex flex-col gap-2 shrink-0">
               {canStart && (
                 <Button
-                  onClick={() => {
-                    patch({ status: "LIVE" })
-                    getToken({})
-                  }}
-                  disabled={patching || joiningRoom}
+                  asChild
                   className="bg-emerald-600 hover:bg-emerald-700"
                 >
-                  <Radio className="size-4 mr-1.5" /> Start &amp; Join
+                  <Link href={`/tutor/sessions/${session.id}/live`}>
+                    <MonitorPlay className="size-4 mr-1.5" /> Open Classroom
+                  </Link>
                 </Button>
               )}
-              {isLive && !roomData && (
+              {isLive && (
                 <Button
-                  onClick={() => getToken({})}
-                  disabled={joiningRoom}
+                  asChild
                   className="bg-emerald-600 hover:bg-emerald-700"
                 >
-                  {joiningRoom
-                    ? <><Loader2 className="size-4 animate-spin mr-1.5" /> Connecting…</>
-                    : <><Video className="size-4 mr-1.5" /> Join Room</>}
-                </Button>
-              )}
-              {isLive && roomData && (
-                <Button variant="outline" onClick={() => setRoomData(null)}>
-                  Leave Room
+                  <Link href={`/tutor/sessions/${session.id}/live`}>
+                    <MonitorPlay className="size-4 mr-1.5" /> Open Classroom
+                  </Link>
                 </Button>
               )}
               {isLive && (
@@ -245,37 +221,6 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           )}
         </CardContent>
       </Card>
-
-      {/* LiveKit room (shown when joined) */}
-      {tokenError && (
-        <Card className="shadow-sm border-destructive/30">
-          <CardContent className="p-4 flex items-center gap-3 text-destructive text-sm">
-            <AlertCircle className="size-4 shrink-0" />
-            {tokenError.message}
-          </CardContent>
-        </Card>
-      )}
-      {roomData && (
-        <Card className="shadow-sm overflow-hidden border-emerald-300 ring-1 ring-emerald-200">
-          <div className="bg-emerald-500 text-white px-5 py-2 flex items-center gap-2">
-            <Radio className="size-3.5 animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-wide">You are live</span>
-          </div>
-          <div className="h-[60vh]">
-            <LiveKitRoom
-              token={roomData.token}
-              serverUrl={roomData.wsUrl}
-              connect={true}
-              video={true}
-              audio={true}
-              onDisconnected={() => setRoomData(null)}
-              className="h-full"
-            >
-              <VideoConference />
-            </LiveKitRoom>
-          </div>
-        </Card>
-      )}
 
       {/* Attendees */}
       <Card className="shadow-sm">

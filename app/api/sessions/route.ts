@@ -11,10 +11,12 @@ export async function GET() {
 
     const sessions = await prisma.liveSession.findMany({
       where: {
-        status: { in: ["SCHEDULED", "LIVE"] },
-        scheduledAt: { gte: new Date(now.getTime() - 30 * 60 * 1000) }, // include sessions started up to 30 mins ago
+        OR: [
+          { status: { in: ["SCHEDULED", "LIVE"] } },
+          { status: "COMPLETED" },
+        ],
       },
-      orderBy: { scheduledAt: "asc" },
+      orderBy: { scheduledAt: "desc" },
       include: {
         tutor: { select: { id: true, name: true, avatarUrl: true } },
         course: { select: { id: true, title: true } },
@@ -35,6 +37,7 @@ export async function GET() {
         tutor: s.tutor,
         course: s.course,
         attendeeCount: s._count.attendances,
+        recordingUrl: s.recordingUrl ?? null,
       })),
     })
   } catch (err) {

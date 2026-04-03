@@ -39,12 +39,13 @@ export async function POST(
       identity: session.sub,
       name: session.name,
       ttl: 60 * 60, // 1 hour
+      metadata: isTutor ? "tutor" : "student",
     })
 
     at.addGrant({
       roomJoin: true,
       room: liveSession.roomName,
-      canPublish: isTutor,
+      canPublish: true,        // everyone can publish their own mic/camera
       canSubscribe: true,
       canPublishData: true,
     })

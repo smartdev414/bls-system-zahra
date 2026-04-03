@@ -5,7 +5,9 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, Bell, ShieldCheck, Tag, FolderOpen, MessageSquare,
+  Sun, Moon,
 } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -66,6 +68,21 @@ type HeaderProps = {
   }
 }
 
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme()
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+      aria-label="Toggle theme"
+    >
+      <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+    </Button>
+  )
+}
+
 export function Header({ role, user }: HeaderProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -94,7 +111,10 @@ export function Header({ role, user }: HeaderProps) {
 
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map(({ label, href, icon: Icon }) => {
-              const isActive = pathname === href || pathname.startsWith(href + "/")
+              // Only use startsWith for paths deeper than the role root (e.g. /student/courses)
+              // otherwise /student would always match /student/courses, /student/classroom, etc.
+              const hasSubPaths = href.split("/").filter(Boolean).length > 1
+              const isActive = pathname === href || (hasSubPaths && pathname.startsWith(href + "/"))
               return (
                 <Link
                   key={href}
@@ -120,6 +140,9 @@ export function Header({ role, user }: HeaderProps) {
           <Badge variant="secondary" className="hidden sm:inline-flex capitalize text-xs">
             {role.toLowerCase()}
           </Badge>
+
+          {/* Theme toggle */}
+          <ThemeToggle />
 
           {/* Notifications */}
           <Button variant="ghost" size="icon" className="relative">

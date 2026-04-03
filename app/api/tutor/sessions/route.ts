@@ -34,6 +34,7 @@ export async function GET() {
         attendeeCount: s._count.attendances,
         startedAt: s.startedAt?.toISOString() ?? null,
         endedAt: s.endedAt?.toISOString() ?? null,
+        recordingUrl: s.recordingUrl ?? null,
       })),
     })
   } catch (err) {
