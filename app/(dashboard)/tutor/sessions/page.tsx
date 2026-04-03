@@ -1,13 +1,13 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect, useRef } from "react"
 import Link from "next/link"
 import {
   Video, CalendarPlus, Clock, Users,
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
-  Calendar, Trash2,
+  Calendar, Globe, Lock, X, Search, UserPlus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,13 +16,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DatePicker } from "@/components/ui/date-picker"
 import { TimePicker } from "@/components/ui/time-picker"
-import { Separator } from "@/components/ui/separator"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, DialogClose, DialogTrigger,
 } from "@/components/ui/dialog"
-import { useFetch, usePatchCallback, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
+import { useFetch, usePatchCallback, usePostCallback } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -122,9 +120,11 @@ function buildMonthGrid(year: number, month: number): Date[][] {
 // ─── Schedule Session Dialog ──────────────────────────────────────────────────
 
 type CoursesData = { courses: Array<{ id: string; title: string }> }
+type StudentResult = { id: string; name: string; email: string; avatarUrl: string | null }
 type SessionBody = {
   title: string; description: string; scheduledAt: string
   durationMins: number; maxStudents: number | undefined; courseId: string | undefined
+  visibility: "PUBLIC" | "INVITE_ONLY"; invitedStudentIds: string[]
 }
 
 function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
@@ -136,8 +136,39 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
   const [durationMins, setDurationMins] = useState(60)
   const [maxStudents, setMaxStudents] = useState("")
   const [courseId, setCourseId] = useState("")
+  const [visibility, setVisibility] = useState<"PUBLIC" | "INVITE_ONLY">("PUBLIC")
+  const [invitedStudents, setInvitedStudents] = useState<StudentResult[]>([])
+  const [studentSearch, setStudentSearch] = useState("")
+  const [searchResults, setSearchResults] = useState<StudentResult[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
 
   const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
+
+  // Debounced student search
+  useEffect(() => {
+    if (!studentSearch.trim()) { setSearchResults([]); setShowDropdown(false); return }
+    const t = setTimeout(async () => {
+      setSearchLoading(true)
+      try {
+        const res = await fetch(`/api/tutor/students/search?q=${encodeURIComponent(studentSearch)}`)
+        const data = await res.json() as { students: StudentResult[] }
+        setSearchResults(data.students.filter(s => !invitedStudents.some(i => i.id === s.id)))
+        setShowDropdown(true)
+      } finally { setSearchLoading(false) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [studentSearch, invitedStudents])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowDropdown(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
 
   const { execute: create, loading } = usePostCallback<{ session: { id: string } }, SessionBody>(
     "/api/tutor/sessions",
@@ -155,6 +186,7 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
   function resetForm() {
     setTitle(""); setDescription(""); setDate(undefined); setTime("")
     setDurationMins(60); setMaxStudents(""); setCourseId("")
+    setVisibility("PUBLIC"); setInvitedStudents([]); setStudentSearch(""); setSearchResults([])
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -168,6 +200,8 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
       durationMins,
       maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
       courseId: courseId || undefined,
+      visibility,
+      invitedStudentIds: invitedStudents.map(s => s.id),
     })
   }
 
@@ -182,7 +216,7 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarPlus className="size-4 text-primary" /> Schedule Live Session
@@ -274,6 +308,114 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
               </select>
             </div>
           ) : null}
+
+          {/* Visibility */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Visibility</Label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setVisibility("PUBLIC")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 rounded-lg border py-2 text-sm font-medium transition-colors",
+                  visibility === "PUBLIC"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/40"
+                )}
+              >
+                <Globe className="size-4" /> Public
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibility("INVITE_ONLY")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 rounded-lg border py-2 text-sm font-medium transition-colors",
+                  visibility === "INVITE_ONLY"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/40"
+                )}
+              >
+                <Lock className="size-4" /> Invite Only
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {visibility === "PUBLIC"
+                ? "Any enrolled student can join this session."
+                : "Only students you invite will see and join this session."}
+            </p>
+          </div>
+
+          {/* Student invite (only when INVITE_ONLY) */}
+          {visibility === "INVITE_ONLY" && (
+            <div className="flex flex-col gap-2">
+              <Label className="flex items-center gap-1.5"><UserPlus className="size-3.5" /> Invite Students</Label>
+              {/* Search input */}
+              <div className="relative" ref={searchRef}>
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="Search by name or email…"
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+                  className="pl-8"
+                />
+                {searchLoading && (
+                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-muted-foreground" />
+                )}
+                {/* Dropdown */}
+                {showDropdown && searchResults.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 w-full rounded-lg border bg-popover shadow-md overflow-hidden">
+                    {searchResults.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setInvitedStudents(prev => [...prev, s])
+                          setStudentSearch("")
+                          setShowDropdown(false)
+                        }}
+                      >
+                        <div className="size-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-medium shrink-0">
+                          {s.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{s.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">{s.email}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showDropdown && !searchLoading && searchResults.length === 0 && studentSearch.trim() && (
+                  <div className="absolute z-50 top-full mt-1 w-full rounded-lg border bg-popover shadow-md px-3 py-2 text-sm text-muted-foreground">
+                    No students found
+                  </div>
+                )}
+              </div>
+              {/* Selected chips */}
+              {invitedStudents.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {invitedStudents.map((s) => (
+                    <span
+                      key={s.id}
+                      className="flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs px-2.5 py-1 font-medium"
+                    >
+                      {s.name}
+                      <button
+                        type="button"
+                        onClick={() => setInvitedStudents(prev => prev.filter(i => i.id !== s.id))}
+                        className="ml-0.5 rounded-full hover:bg-primary/20 transition-colors"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </form>
 
         <DialogFooter>
@@ -293,248 +435,18 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
   )
 }
 
-// ─── Session Detail Dialog ────────────────────────────────────────────────────
-
-type Attendance = {
-  studentId: string; studentName: string; studentEmail: string
-  joinedAt: string | null; leftAt: string | null
-}
-type SessionDetail = {
-  id: string; title: string; description: string | null
-  scheduledAt: string; durationMins: number; roomName: string
-  maxStudents: number | null; status: "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED"
-  startedAt: string | null; endedAt: string | null; recordingUrl: string | null
-  course: { id: string; title: string } | null; attendances: Attendance[]
-}
-
-function SessionDetailDialog({
-  sessionId,
-  onMutated,
-}: {
-  sessionId: string
-  onMutated?: () => void
-}) {
-  const [open, setOpen] = useState(false)
-
-  const { data, loading, refetch } = useFetch<{ session: SessionDetail }>(
-    `/api/tutor/sessions/${sessionId}`,
-    { errorMessage: "Could not load session", immediate: false }
-  )
-
-  React.useEffect(() => {
-    if (open) refetch()
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const { execute: patch, loading: patching } = usePatchCallback<
-    { session: SessionDetail },
-    { status: "LIVE" | "COMPLETED" | "CANCELLED" }
-  >(`/api/tutor/sessions/${sessionId}`, {
-    successMessage: (d) => `Session ${(d as { session: { status: string } }).session.status.toLowerCase()}`,
-    errorMessage: "Could not update session",
-    onSuccess: () => { refetch(); onMutated?.() },
-  })
-
-  const { execute: del, loading: deleting } = useDeleteCallback(
-    `/api/tutor/sessions/${sessionId}`,
-    {
-      successMessage: "Session deleted",
-      errorMessage: "Could not delete session",
-      onSuccess: () => { setOpen(false); onMutated?.() },
-    }
-  )
-
-  const s = data?.session
-  const scheduled = s ? new Date(s.scheduledAt) : null
-  const isLive = s?.status === "LIVE"
-  const isDone = s?.status === "COMPLETED" || s?.status === "CANCELLED"
-
-  function formatDuration(start: string, end: string) {
-    const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000)
-    if (mins < 60) return `${mins} min`
-    const h = Math.floor(mins / 60), m = mins % 60
-    return m ? `${h}h ${m}m` : `${h}h`
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="ml-auto h-7 text-xs px-2 text-muted-foreground">
-          Details
-        </Button>
-      </DialogTrigger>
-
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-        {loading || !s ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="size-6 animate-spin text-primary" />
-          </div>
-        ) : (
-          <>
-            <DialogHeader>
-              <div className="flex items-start gap-3 pr-6">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <Badge variant="outline" className={cn("text-xs gap-1", STATUS[s.status].badge)}>
-                      {s.status === "LIVE" && <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />}
-                      {STATUS[s.status].label}
-                    </Badge>
-                    {s.course && (
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <BookOpen className="size-3" /> {s.course.title}
-                      </span>
-                    )}
-                  </div>
-                  <DialogTitle className="text-lg font-black leading-snug">{s.title}</DialogTitle>
-                  {s.description && (
-                    <DialogDescription className="mt-1">{s.description}</DialogDescription>
-                  )}
-                </div>
-              </div>
-            </DialogHeader>
-
-            {/* Meta */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Date</p>
-                <p className="font-medium flex items-center gap-1.5 text-xs">
-                  <Calendar className="size-3.5 text-primary shrink-0" />
-                  {scheduled!.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Time</p>
-                <p className="font-medium flex items-center gap-1.5 text-xs">
-                  <Clock className="size-3.5 text-primary shrink-0" />
-                  {scheduled!.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Duration</p>
-                <p className="font-medium flex items-center gap-1.5 text-xs">
-                  <Clock className="size-3.5 text-primary shrink-0" />
-                  {s.startedAt && s.endedAt ? formatDuration(s.startedAt, s.endedAt) : `${s.durationMins} min`}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Students</p>
-                <p className="font-medium flex items-center gap-1.5 text-xs">
-                  <Users className="size-3.5 text-primary shrink-0" />
-                  {s.attendances.length}{s.maxStudents ? `/${s.maxStudents}` : ""}
-                </p>
-              </div>
-            </div>
-
-            {/* Attendees */}
-            {s.attendances.length > 0 && (
-              <>
-                <Separator />
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
-                    <Users className="size-3.5" /> Attendees
-                    <Badge variant="secondary" className="text-[10px]">{s.attendances.length}</Badge>
-                  </p>
-                  <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
-                    {s.attendances.map((a) => {
-                      const initials = a.studentName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-                      return (
-                        <div key={a.studentId} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/40">
-                          <Avatar className="size-7 shrink-0">
-                            <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">{initials}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold">{a.studentName}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{a.studentEmail}</p>
-                          </div>
-                          {a.joinedAt && (
-                            <p className="text-[10px] text-muted-foreground shrink-0">
-                              {new Date(a.joinedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </>
-            )}
-
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              {/* Danger: delete */}
-              {!isDone && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive hover:bg-destructive/10 mr-auto"
-                  disabled={deleting}
-                  onClick={() => del()}
-                >
-                  <Trash2 className="size-3.5 mr-1.5" />
-                  {deleting ? "Deleting…" : "Delete"}
-                </Button>
-              )}
-
-              {s.recordingUrl && (
-                <Button asChild size="sm" variant="outline">
-                  <a href={s.recordingUrl} download target="_blank" rel="noopener noreferrer">
-                    <Download className="size-3.5 mr-1.5" /> Recording
-                  </a>
-                </Button>
-              )}
-
-              <DialogClose asChild>
-                <Button variant="outline" size="sm">Close</Button>
-              </DialogClose>
-
-              {s.status === "SCHEDULED" && (
-                <>
-                  <Button size="sm" variant="outline"
-                    className="text-destructive hover:text-destructive"
-                    disabled={patching}
-                    onClick={() => patch({ status: "CANCELLED" })}>
-                    Cancel Session
-                  </Button>
-                  <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                    <Link href={`/tutor/sessions/${s.id}/live`}>
-                      <MonitorPlay className="size-3.5 mr-1.5" /> Open Classroom
-                    </Link>
-                  </Button>
-                </>
-              )}
-              {isLive && (
-                <>
-                  <Button size="sm" variant="outline" disabled={patching}
-                    onClick={() => patch({ status: "COMPLETED" })}>
-                    <CheckCircle2 className="size-3.5 mr-1.5" /> End Session
-                  </Button>
-                  <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                    <Link href={`/tutor/sessions/${s.id}/live`}>
-                      <MonitorPlay className="size-3.5 mr-1.5" /> Open Classroom
-                    </Link>
-                  </Button>
-                </>
-              )}
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ─── Session Card ─────────────────────────────────────────────────────────────
 
 function SessionCard({
   session,
   onMutated,
-  compact = false,
 }: {
   session: SessionItem
   onMutated?: () => void
-  compact?: boolean
 }) {
-  const { date, time } = formatDate(session.scheduledAt)
   const cfg = STATUS[session.status]
   const StatusIcon = cfg.icon
+  const scheduled = new Date(session.scheduledAt)
 
   const { execute: patch, loading: patching } = usePatchCallback<
     { session: SessionItem },
@@ -548,73 +460,110 @@ function SessionCard({
 
   return (
     <div className={cn(
-      "rounded-2xl border p-4 flex flex-col gap-3 transition-all hover:shadow-sm",
+      "rounded-2xl border overflow-hidden transition-all hover:shadow-sm",
       cfg.card
     )}>
-      <div className="flex items-start gap-2.5">
-        <span className={cn("block size-2 rounded-full mt-1.5 shrink-0", cfg.dot)} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-            <Badge variant="outline" className={cn("text-[10px] gap-1 h-4 px-1.5", cfg.badge)}>
-              <StatusIcon className="size-2.5" />
-              {cfg.label}
-            </Badge>
-            {session.course && (
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <BookOpen className="size-2.5" />
-                {session.course.title}
-              </span>
+      {/* Live banner */}
+      {session.status === "LIVE" && (
+        <div className="bg-emerald-500 text-white px-4 py-1.5 flex items-center gap-2">
+          <Radio className="size-3 animate-pulse" />
+          <span className="text-xs font-bold uppercase tracking-wide">Session in progress</span>
+        </div>
+      )}
+
+      <div className="p-5 flex flex-col gap-4">
+        {/* Top: badges + title + description */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <Badge variant="outline" className={cn("text-xs gap-1", cfg.badge)}>
+                <StatusIcon className="size-3" />
+                {cfg.label}
+              </Badge>
+              {session.course && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <BookOpen className="size-3" />
+                  {session.course.title}
+                </span>
+              )}
+            </div>
+            <h3 className="font-bold text-base leading-snug">{session.title}</h3>
+            {session.description && (
+              <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{session.description}</p>
             )}
           </div>
-          <p className="font-bold text-sm leading-snug">{session.title}</p>
-          {!compact && session.description && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{session.description}</p>
-          )}
-        </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground pl-4">
-        <span className="flex items-center gap-1"><Clock className="size-3 text-primary/50" /> {time}</span>
-        <span className="flex items-center gap-1"><Clock className="size-3 text-primary/50" /> {session.durationMins} min</span>
-        <span className="flex items-center gap-1"><Users className="size-3 text-primary/50" /> {session.attendeeCount}{session.maxStudents ? `/${session.maxStudents}` : ""}</span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5 pl-4">
-        {session.status === "SCHEDULED" && (
-          <>
-            <Button size="sm" disabled={patching} onClick={() => patch({ status: "LIVE" })}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs px-2.5">
-              <Radio className="size-3" /> Start
-            </Button>
-            <Button size="sm" variant="outline" disabled={patching}
-              className="text-destructive hover:text-destructive h-7 text-xs px-2.5"
-              onClick={() => patch({ status: "CANCELLED" })}>
-              Cancel
-            </Button>
-          </>
-        )}
-        {session.status === "LIVE" && (
-          <>
-            <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs px-2.5">
+          {/* Primary action — top-right for quick access */}
+          {session.status === "LIVE" && (
+            <Button asChild size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
               <Link href={`/tutor/sessions/${session.id}/live`}>
-                <MonitorPlay className="size-3" /> Open
+                <MonitorPlay className="size-3.5" /> Open Classroom
               </Link>
             </Button>
-            <Button size="sm" variant="outline" disabled={patching}
-              className="h-7 text-xs px-2.5"
-              onClick={() => patch({ status: "COMPLETED" })}>
-              End
+          )}
+          {session.status === "SCHEDULED" && (
+            <Button size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+              disabled={patching} onClick={() => patch({ status: "LIVE" })}>
+              <Radio className="size-3.5" /> Start
             </Button>
-          </>
-        )}
-        {session.status === "COMPLETED" && session.recordingUrl && (
-          <Button asChild size="sm" variant="outline" className="gap-1 h-7 text-xs px-2.5">
-            <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
-              <Download className="size-3" /> Recording
-            </a>
-          </Button>
-        )}
-        <SessionDetailDialog sessionId={session.id} onMutated={onMutated} />
+          )}
+        </div>
+
+        {/* Meta row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Date</p>
+            <p className="text-xs font-semibold">
+              {scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+            </p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Time</p>
+            <p className="text-xs font-semibold">
+              {scheduled.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Duration</p>
+            <p className="text-xs font-semibold">{session.durationMins} min</p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Students</p>
+            <p className="text-xs font-semibold">
+              {session.attendeeCount}{session.maxStudents ? ` / ${session.maxStudents}` : " joined"}
+            </p>
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+          {session.status === "LIVE" && (
+            <Button size="sm" variant="outline" disabled={patching} className="h-7 text-xs"
+              onClick={() => patch({ status: "COMPLETED" })}>
+              <CheckCircle2 className="size-3 mr-1.5" /> End Session
+            </Button>
+          )}
+          {session.status === "SCHEDULED" && (
+            <Button size="sm" variant="outline" disabled={patching}
+              className="h-7 text-xs text-destructive hover:text-destructive"
+              onClick={() => patch({ status: "CANCELLED" })}>
+              <XCircle className="size-3 mr-1.5" /> Cancel
+            </Button>
+          )}
+          {session.status === "COMPLETED" && session.recordingUrl && (
+            <Button asChild size="sm" variant="outline" className="h-7 text-xs gap-1.5">
+              <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
+                <Download className="size-3" /> Download Recording
+              </a>
+            </Button>
+          )}
+          {session.status === "COMPLETED" && !session.recordingUrl && (
+            <span className="text-xs text-muted-foreground">No recording available</span>
+          )}
+          {session.status === "CANCELLED" && (
+            <span className="text-xs text-muted-foreground">This session was cancelled</span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -776,7 +725,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
       </div>
 
       {/* ── Right sidebar ── */}
-      <div className="w-64 shrink-0 flex flex-col gap-4">
+      <div className="w-64 shrink-0 flex flex-col gap-4 mt-10">
         {/* Selected day panel */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className={cn(
@@ -881,7 +830,7 @@ function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onM
     .slice(0, 5)
 
   return (
-    <div className="w-64 shrink-0 flex flex-col gap-4">
+    <div className="w-64 shrink-0 flex flex-col gap-4 mt-10">
       {/* Today */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border bg-primary/5">
