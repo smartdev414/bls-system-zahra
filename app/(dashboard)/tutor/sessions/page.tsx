@@ -6,12 +6,20 @@ import {
   Video, CalendarPlus, Clock, Users,
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, Download, MonitorPlay,
-  Sparkles, BookOpen,
+  Sparkles, BookOpen, ChevronLeft, ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Calendar } from "@/components/ui/calendar"
-import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { DatePicker } from "@/components/ui/date-picker"
+import { TimePicker } from "@/components/ui/time-picker"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, DialogClose, DialogTrigger,
+} from "@/components/ui/dialog"
+import { useFetch, usePatchCallback, usePostCallback } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,6 +49,7 @@ const STATUS = {
     dot: "bg-amber-400",
     badge: "border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-950 dark:text-amber-300",
     card: "border-border hover:border-primary/30",
+    chip: "bg-primary/80 text-primary-foreground",
     icon: Clock,
   },
   LIVE: {
@@ -48,13 +57,15 @@ const STATUS = {
     dot: "bg-emerald-500 animate-pulse",
     badge: "border-emerald-300 text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300",
     card: "border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50/50 to-background dark:from-emerald-950/20",
+    chip: "bg-emerald-500 text-white",
     icon: Radio,
   },
   COMPLETED: {
     label: "Completed",
-    dot: "bg-primary/60",
+    dot: "bg-muted-foreground/40",
     badge: "border-border text-muted-foreground bg-muted/60",
     card: "border-border opacity-90",
+    chip: "bg-muted text-muted-foreground",
     icon: CheckCircle2,
   },
   CANCELLED: {
@@ -62,21 +73,12 @@ const STATUS = {
     dot: "bg-rose-400",
     badge: "border-rose-200 text-rose-600 bg-rose-50 dark:bg-rose-950 dark:text-rose-300",
     card: "border-border opacity-70",
+    chip: "bg-rose-100 text-rose-600 dark:bg-rose-900/60 dark:text-rose-300",
     icon: XCircle,
   },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  return {
-    date: d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
-    time: d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-    dateOnly: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-    dateKey: d.toDateString(),
-  }
-}
 
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() &&
@@ -84,14 +86,220 @@ function isSameDay(a: Date, b: Date) {
     a.getDate() === b.getDate()
 }
 
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  return {
+    date: d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+    time: d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+  }
+}
+
+// Build a 6-row month grid (Mon–Sun)
+function buildMonthGrid(year: number, month: number): Date[][] {
+  const firstDay = new Date(year, month, 1)
+  const startOffset = (firstDay.getDay() + 6) % 7 // 0=Mon
+  const start = new Date(year, month, 1 - startOffset)
+  const weeks: Date[][] = []
+  const cursor = new Date(start)
+  for (let w = 0; w < 6; w++) {
+    const week: Date[] = []
+    for (let d = 0; d < 7; d++) {
+      week.push(new Date(cursor))
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    weeks.push(week)
+  }
+  return weeks
+}
+
+// ─── Schedule Session Dialog ──────────────────────────────────────────────────
+
+type CoursesData = { courses: Array<{ id: string; title: string }> }
+type SessionBody = {
+  title: string; description: string; scheduledAt: string
+  durationMins: number; maxStudents: number | undefined; courseId: string | undefined
+}
+
+function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [date, setDate] = useState<Date | undefined>(undefined)
+  const [time, setTime] = useState("")
+  const [durationMins, setDurationMins] = useState(60)
+  const [maxStudents, setMaxStudents] = useState("")
+  const [courseId, setCourseId] = useState("")
+
+  const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
+
+  const { execute: create, loading } = usePostCallback<{ session: { id: string } }, SessionBody>(
+    "/api/tutor/sessions",
+    {
+      successMessage: "Session scheduled!",
+      errorMessage: "Could not schedule session",
+      onSuccess: () => {
+        setOpen(false)
+        resetForm()
+        onCreated()
+      },
+    }
+  )
+
+  function resetForm() {
+    setTitle(""); setDescription(""); setDate(undefined); setTime("")
+    setDurationMins(60); setMaxStudents(""); setCourseId("")
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!date || !time) return
+    const [hours, minutes] = time.split(":")
+    const scheduledAt = new Date(date)
+    scheduledAt.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+    create({
+      title, description, scheduledAt: scheduledAt.toISOString(),
+      durationMins,
+      maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
+      courseId: courseId || undefined,
+    })
+  }
+
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const canSubmit = title.trim() && date && time
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <CalendarPlus className="size-4 mr-1.5" /> Schedule Session
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarPlus className="size-4 text-primary" /> Schedule Live Session
+          </DialogTitle>
+          <DialogDescription>
+            Set up a new BSL live session for your students.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form id="schedule-form" onSubmit={handleSubmit} className="flex flex-col gap-4 py-1">
+          {/* Title */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="s-title">Title <span className="text-destructive">*</span></Label>
+            <Input
+              id="s-title"
+              placeholder="e.g. BSL Fingerspelling Basics"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Description */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="s-desc">Description</Label>
+            <Textarea
+              id="s-desc"
+              placeholder="What will students learn?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              className="resize-none"
+            />
+          </div>
+
+          {/* Date + Time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Date <span className="text-destructive">*</span></Label>
+              <DatePicker value={date} onChange={setDate} placeholder="Pick a date" disabled={(d) => d < today} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Time <span className="text-destructive">*</span></Label>
+              <TimePicker value={time} onChange={setTime} />
+            </div>
+          </div>
+
+          {/* Duration + Max students */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="s-dur">Duration (min) <span className="text-destructive">*</span></Label>
+              <Input
+                id="s-dur"
+                type="number"
+                min={5}
+                max={480}
+                value={durationMins}
+                onChange={(e) => setDurationMins(parseInt(e.target.value))}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="s-max">Max Students</Label>
+              <Input
+                id="s-max"
+                type="number"
+                min={1}
+                placeholder="Unlimited"
+                value={maxStudents}
+                onChange={(e) => setMaxStudents(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Course */}
+          {coursesData?.courses.length ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="s-course">Link to Course (optional)</Label>
+              <select
+                id="s-course"
+                value={courseId}
+                onChange={(e) => setCourseId(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">No course</option>
+                {coursesData.courses.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </form>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button
+            type="submit"
+            form="schedule-form"
+            disabled={loading || !canSubmit}
+          >
+            {loading ? <><Loader2 className="size-3.5 animate-spin mr-1.5" /> Scheduling…</> : "Schedule Session"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Session Card ─────────────────────────────────────────────────────────────
 
 function SessionCard({
   session,
   onMutated,
+  compact = false,
 }: {
   session: SessionItem
   onMutated?: () => void
+  compact?: boolean
 }) {
   const { date, time } = formatDate(session.scheduledAt)
   const cfg = STATUS[session.status]
@@ -109,194 +317,418 @@ function SessionCard({
 
   return (
     <div className={cn(
-      "rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-sm",
+      "rounded-2xl border p-4 flex flex-col gap-3 transition-all hover:shadow-sm",
       cfg.card
     )}>
-      {/* Top row */}
-      <div className="flex items-start gap-3">
-        {/* Status dot */}
-        <div className="mt-1 shrink-0">
-          <span className={cn("block size-2.5 rounded-full", cfg.dot)} />
-        </div>
-
+      <div className="flex items-start gap-2.5">
+        <span className={cn("block size-2 rounded-full mt-1.5 shrink-0", cfg.dot)} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <Badge variant="outline" className={cn("text-[10px] gap-1 h-5", cfg.badge)}>
-              <StatusIcon className="size-3" />
+          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+            <Badge variant="outline" className={cn("text-[10px] gap-1 h-4 px-1.5", cfg.badge)}>
+              <StatusIcon className="size-2.5" />
               {cfg.label}
             </Badge>
             {session.course && (
               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <BookOpen className="size-3" />
+                <BookOpen className="size-2.5" />
                 {session.course.title}
               </span>
             )}
           </div>
-
-          <h3 className="font-bold text-sm leading-snug">{session.title}</h3>
-          {session.description && (
+          <p className="font-bold text-sm leading-snug">{session.title}</p>
+          {!compact && session.description && (
             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{session.description}</p>
           )}
         </div>
       </div>
 
-      {/* Meta row */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pl-5">
-        <span className="flex items-center gap-1.5">
-          <CalendarDays className="size-3.5 shrink-0 text-primary/60" />
-          {date}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Clock className="size-3.5 shrink-0 text-primary/60" />
-          {time} · {session.durationMins} min
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Users className="size-3.5 shrink-0 text-primary/60" />
-          {session.attendeeCount}{session.maxStudents ? `/${session.maxStudents}` : ""} students
-        </span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground pl-4">
+        <span className="flex items-center gap-1"><Clock className="size-3 text-primary/50" /> {time}</span>
+        <span className="flex items-center gap-1"><Clock className="size-3 text-primary/50" /> {session.durationMins} min</span>
+        <span className="flex items-center gap-1"><Users className="size-3 text-primary/50" /> {session.attendeeCount}{session.maxStudents ? `/${session.maxStudents}` : ""}</span>
       </div>
 
-      {/* Actions */}
-      <div className="flex flex-wrap items-center gap-2 pl-5">
+      <div className="flex flex-wrap items-center gap-1.5 pl-4">
         {session.status === "SCHEDULED" && (
           <>
-            <Button
-              size="sm"
-              disabled={patching}
-              onClick={() => patch({ status: "LIVE" })}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 h-7 text-xs px-3"
-            >
+            <Button size="sm" disabled={patching} onClick={() => patch({ status: "LIVE" })}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs px-2.5">
               <Radio className="size-3" /> Start
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={patching}
-              className="text-destructive hover:text-destructive h-7 text-xs px-3"
-              onClick={() => patch({ status: "CANCELLED" })}
-            >
+            <Button size="sm" variant="outline" disabled={patching}
+              className="text-destructive hover:text-destructive h-7 text-xs px-2.5"
+              onClick={() => patch({ status: "CANCELLED" })}>
               Cancel
             </Button>
           </>
         )}
-
         {session.status === "LIVE" && (
           <>
-            <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 h-7 text-xs px-3">
+            <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs px-2.5">
               <Link href={`/tutor/sessions/${session.id}/live`}>
-                <MonitorPlay className="size-3" /> Open Classroom
+                <MonitorPlay className="size-3" /> Open
               </Link>
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={patching}
-              className="h-7 text-xs px-3"
-              onClick={() => patch({ status: "COMPLETED" })}
-            >
-              <CheckCircle2 className="size-3 mr-1" /> End Session
+            <Button size="sm" variant="outline" disabled={patching}
+              className="h-7 text-xs px-2.5"
+              onClick={() => patch({ status: "COMPLETED" })}>
+              End
             </Button>
           </>
         )}
-
         {session.status === "COMPLETED" && session.recordingUrl && (
-          <Button asChild size="sm" variant="outline" className="gap-1.5 h-7 text-xs px-3">
+          <Button asChild size="sm" variant="outline" className="gap-1 h-7 text-xs px-2.5">
             <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
-              <Download className="size-3" /> Download Recording
+              <Download className="size-3" /> Recording
             </a>
           </Button>
         )}
-
         <Button asChild size="sm" variant="ghost" className="ml-auto h-7 text-xs px-2 text-muted-foreground">
-          <Link href={`/tutor/sessions/${session.id}`}>
-            View details
-          </Link>
+          <Link href={`/tutor/sessions/${session.id}`}>Details</Link>
         </Button>
       </div>
     </div>
   )
 }
 
-// ─── Calendar View ────────────────────────────────────────────────────────────
+// ─── Big Calendar View ────────────────────────────────────────────────────────
 
-function CalendarView({ sessions, onMutated }: { sessions: SessionItem[]; onMutated: () => void }) {
-  const [selected, setSelected] = useState<Date | undefined>(new Date())
+function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutated: () => void }) {
+  const today = useMemo(() => new Date(), [])
+  const [current, setCurrent] = useState(() => new Date())
+  const [selectedDay, setSelectedDay] = useState<Date>(today)
 
-  // Dates that have at least one session
-  const sessionDates = useMemo(
-    () => sessions.map((s) => new Date(s.scheduledAt)),
+  const weeks = useMemo(
+    () => buildMonthGrid(current.getFullYear(), current.getMonth()),
+    [current]
+  )
+
+  const sessionsByDay = useMemo(() => {
+    const map = new Map<string, SessionItem[]>()
+    for (const s of sessions) {
+      const key = new Date(s.scheduledAt).toDateString()
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(s)
+    }
+    return map
+  }, [sessions])
+
+  const selectedSessions = sessionsByDay.get(selectedDay.toDateString()) ?? []
+
+  // Upcoming sessions (next 5 not on selectedDay)
+  const upcomingPreviews = useMemo(() =>
+    sessions
+      .filter((s) => s.status === "SCHEDULED" || s.status === "LIVE")
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+      .slice(0, 5),
     [sessions]
   )
 
-  const filteredSessions = useMemo(() => {
-    if (!selected) return sessions
-    return sessions.filter((s) => isSameDay(new Date(s.scheduledAt), selected))
-  }, [sessions, selected])
+  const monthLabel = current.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
 
-  const selectedLabel = selected
-    ? selected.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })
-    : "All sessions"
+  function prevMonth() {
+    const d = new Date(current)
+    d.setMonth(d.getMonth() - 1)
+    setCurrent(d)
+  }
+  function nextMonth() {
+    const d = new Date(current)
+    d.setMonth(d.getMonth() + 1)
+    setCurrent(d)
+  }
+
+  const selectedLabel = selectedDay.toLocaleDateString("en-GB", {
+    weekday: "long", day: "numeric", month: "long",
+  })
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6">
-      {/* Calendar panel */}
-      <div className="shrink-0 rounded-2xl border border-border bg-card p-4 self-start">
-        <Calendar
-          mode="single"
-          selected={selected}
-          onSelect={setSelected}
-          modifiers={{ hasSession: sessionDates }}
-          modifiersClassNames={{
-            hasSession: "font-bold after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:size-1 after:rounded-full after:bg-primary after:content-['']",
-          }}
-          className="p-0"
-        />
-        {selected && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full mt-3 text-xs text-muted-foreground h-7"
-            onClick={() => setSelected(undefined)}
-          >
-            Clear — show all
-          </Button>
-        )}
-      </div>
-
-      {/* Session list for selected date */}
-      <div className="flex-1 flex flex-col gap-4 min-w-0">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="size-4 text-muted-foreground" />
-          <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wide">
-            {selectedLabel}
-          </h2>
-          {filteredSessions.length > 0 && (
-            <Badge variant="secondary" className="text-xs ml-1">
-              {filteredSessions.length}
-            </Badge>
-          )}
+    <div className="flex gap-5 items-start">
+      {/* ── Main grid ── */}
+      <div className="flex-1 min-w-0 flex flex-col gap-3">
+        {/* Month nav */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold">{monthLabel}</h2>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" className="size-7" onClick={prevMonth}>
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs px-2"
+              onClick={() => { setCurrent(new Date()); setSelectedDay(new Date()) }}>
+              Today
+            </Button>
+            <Button variant="ghost" size="icon" className="size-7" onClick={nextMonth}>
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </div>
 
-        {filteredSessions.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {filteredSessions.map((s) => (
+        {/* Grid */}
+        <div className="rounded-2xl border border-border overflow-hidden">
+          {/* Day headers */}
+          <div className="grid grid-cols-7 bg-muted/50 border-b border-border">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+              <div key={d} className="py-2 text-center text-[11px] font-semibold text-muted-foreground">
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Weeks */}
+          {weeks.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7 border-b last:border-b-0 border-border">
+              {week.map((day, di) => {
+                const isThisMonth = day.getMonth() === current.getMonth()
+                const isToday = isSameDay(day, today)
+                const isSelected = isSameDay(day, selectedDay)
+                const daySessions = sessionsByDay.get(day.toDateString()) ?? []
+
+                return (
+                  <div
+                    key={di}
+                    onClick={() => setSelectedDay(new Date(day))}
+                    className={cn(
+                      "min-h-[90px] p-1.5 border-r last:border-r-0 border-border cursor-pointer transition-colors group",
+                      isThisMonth ? "bg-background" : "bg-muted/15",
+                      isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/20",
+                      !isSelected && "hover:bg-muted/30"
+                    )}
+                  >
+                    {/* Date number */}
+                    <div className="flex justify-end mb-1">
+                      <span className={cn(
+                        "size-6 flex items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+                        isToday && "bg-primary text-primary-foreground",
+                        !isToday && isThisMonth && "text-foreground group-hover:text-primary",
+                        !isToday && !isThisMonth && "text-muted-foreground/40"
+                      )}>
+                        {day.getDate()}
+                      </span>
+                    </div>
+
+                    {/* Event chips */}
+                    <div className="flex flex-col gap-0.5">
+                      {daySessions.slice(0, 3).map((s) => (
+                        <div
+                          key={s.id}
+                          className={cn(
+                            "text-[10px] font-medium px-1.5 py-0.5 rounded-md truncate leading-tight",
+                            STATUS[s.status].chip
+                          )}
+                        >
+                          {formatTime(s.scheduledAt)} {s.title}
+                        </div>
+                      ))}
+                      {daySessions.length > 3 && (
+                        <span className="text-[9px] text-muted-foreground pl-1 font-medium">
+                          +{daySessions.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        {/* Selected day sessions (below calendar) */}
+        {selectedSessions.length > 0 && (
+          <div className="flex flex-col gap-3 pt-1">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+              <CalendarDays className="size-3.5" />
+              {selectedLabel}
+              <Badge variant="secondary" className="text-xs">{selectedSessions.length}</Badge>
+            </h3>
+            {selectedSessions.map((s) => (
               <SessionCard key={s.id} session={s} onMutated={onMutated} />
             ))}
           </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-border bg-muted/20 py-14 flex flex-col items-center gap-3 text-center">
-            <div className="size-12 rounded-2xl bg-muted flex items-center justify-center">
-              <Sparkles className="size-5 text-muted-foreground" />
-            </div>
-            <p className="text-sm font-medium">No sessions on this day</p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/tutor/sessions/new">
-                <CalendarPlus className="size-3.5 mr-1.5" /> Schedule One
-              </Link>
-            </Button>
-          </div>
         )}
       </div>
+
+      {/* ── Right sidebar ── */}
+      <div className="w-64 shrink-0 flex flex-col gap-4">
+        {/* Selected day panel */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className={cn(
+            "px-4 py-3 border-b border-border",
+            isSameDay(selectedDay, today) ? "bg-primary/5" : "bg-muted/30"
+          )}>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+              {isSameDay(selectedDay, today) ? "Today" : selectedDay.toLocaleDateString("en-GB", { weekday: "short", month: "short", day: "numeric" })}
+            </p>
+            <p className="text-2xl font-black tabular-nums leading-none mt-0.5">
+              {selectedDay.getDate()}
+            </p>
+          </div>
+
+          <div className="p-3 flex flex-col gap-2">
+            {selectedSessions.length > 0 ? (
+              selectedSessions.map((s) => (
+                <div key={s.id} className="flex items-start gap-2 group">
+                  <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate">{s.title}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {formatTime(s.scheduledAt)} · {s.durationMins} min
+                    </p>
+                  </div>
+                  <Badge variant="outline" className={cn("text-[9px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
+                    {STATUS[s.status].label}
+                  </Badge>
+                </div>
+              ))
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-4 text-center">
+                <p className="text-xs text-muted-foreground">No sessions</p>
+                <ScheduleSessionDialog onCreated={onMutated} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Upcoming sessions */}
+        {upcomingPreviews.length > 0 && (
+          <div className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Upcoming</p>
+            </div>
+            <div className="p-3 flex flex-col gap-2">
+              {upcomingPreviews.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    const d = new Date(s.scheduledAt)
+                    setCurrent(new Date(d.getFullYear(), d.getMonth(), 1))
+                    setSelectedDay(d)
+                  }}
+                  className="flex items-start gap-2 text-left w-full hover:bg-muted/40 rounded-lg p-1.5 -mx-1.5 transition-colors group"
+                >
+                  <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate group-hover:text-primary transition-colors">{s.title}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {new Date(s.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                      {" · "}{formatTime(s.scheduledAt)}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Quick stats */}
+        <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Overview</p>
+          {(["LIVE", "SCHEDULED", "COMPLETED"] as const).map((status) => {
+            const count = sessions.filter((s) => s.status === status).length
+            if (!count) return null
+            const cfg = STATUS[status]
+            return (
+              <div key={status} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className={cn("size-2 rounded-full", cfg.dot.replace("animate-pulse", ""))} />
+                  <span className="text-xs text-muted-foreground">{cfg.label}</span>
+                </div>
+                <span className="text-xs font-bold tabular-nums">{count}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Shared Sidebar ───────────────────────────────────────────────────────────
+
+function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onMutated: () => void }) {
+  const today = new Date()
+  const todaySessions = sessions.filter((s) => isSameDay(new Date(s.scheduledAt), today))
+  const upcomingPreviews = sessions
+    .filter((s) => s.status === "SCHEDULED" || s.status === "LIVE")
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+    .slice(0, 5)
+
+  return (
+    <div className="w-64 shrink-0 flex flex-col gap-4">
+      {/* Today */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-primary/5">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Today</p>
+          <p className="text-2xl font-black tabular-nums leading-none mt-0.5">{today.getDate()}</p>
+          <p className="text-xs text-muted-foreground">
+            {today.toLocaleDateString("en-GB", { weekday: "long", month: "short" })}
+          </p>
+        </div>
+        <div className="p-3 flex flex-col gap-2">
+          {todaySessions.length > 0 ? (
+            todaySessions.map((s) => (
+              <div key={s.id} className="flex items-start gap-2">
+                <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate">{s.title}</p>
+                  <p className="text-[10px] text-muted-foreground">{formatTime(s.scheduledAt)} · {s.durationMins} min</p>
+                </div>
+                <Badge variant="outline" className={cn("text-[9px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
+                  {STATUS[s.status].label}
+                </Badge>
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-2">No sessions today</p>
+          )}
+        </div>
+      </div>
+
+      {/* Upcoming */}
+      {upcomingPreviews.length > 0 && (
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Upcoming</p>
+          </div>
+          <div className="p-3 flex flex-col gap-2">
+            {upcomingPreviews.map((s) => (
+              <div key={s.id} className="flex items-start gap-2 rounded-lg p-1.5 -mx-1.5">
+                <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate">{s.title}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {new Date(s.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    {" · "}{formatTime(s.scheduledAt)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Overview stats */}
+      <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Overview</p>
+        {(["LIVE", "SCHEDULED", "COMPLETED"] as const).map((status) => {
+          const count = sessions.filter((s) => s.status === status).length
+          if (!count) return null
+          const cfg = STATUS[status]
+          return (
+            <div key={status} className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className={cn("size-2 rounded-full", cfg.dot.replace("animate-pulse", ""))} />
+                <span className="text-xs text-muted-foreground">{cfg.label}</span>
+              </div>
+              <span className="text-xs font-bold tabular-nums">{count}</span>
+            </div>
+          )
+        })}
+        {sessions.length === 0 && (
+          <p className="text-xs text-muted-foreground">No sessions yet.</p>
+        )}
+      </div>
+
+      {/* Quick schedule */}
+      <ScheduleSessionDialog onCreated={onMutated} />
     </div>
   )
 }
@@ -309,38 +741,35 @@ function ListView({ sessions, onMutated }: { sessions: SessionItem[]; onMutated:
   const past      = sessions.filter((s) => s.status === "COMPLETED" || s.status === "CANCELLED")
 
   return (
-    <div className="flex flex-col gap-8">
-      {live.length > 0 && (
-        <Section title="Live Now" dot>
-          {live.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)}
-        </Section>
-      )}
-
-      <Section title="Upcoming">
-        {upcoming.length > 0 ? (
-          upcoming.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)
-        ) : (
-          <div className="rounded-2xl border border-dashed border-border bg-muted/20 py-10 flex flex-col items-center gap-3 text-center">
-            <p className="text-sm text-muted-foreground">No upcoming sessions.</p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/tutor/sessions/new">
-                <CalendarPlus className="size-3.5 mr-1.5" /> Schedule one
-              </Link>
-            </Button>
-          </div>
+    <div className="flex gap-5 items-start">
+      {/* Main list */}
+      <div className="flex-1 min-w-0 flex flex-col gap-8">
+        {live.length > 0 && (
+          <Section title="Live Now" dot>
+            {live.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)}
+          </Section>
         )}
-      </Section>
-
-      {past.length > 0 && (
-        <Section title="Past Sessions">
-          {past.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)}
+        <Section title="Upcoming">
+          {upcoming.length > 0 ? (
+            upcoming.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)
+          ) : (
+            <div className="rounded-2xl border border-dashed py-10 flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-muted-foreground">No upcoming sessions yet.</p>
+            </div>
+          )}
         </Section>
-      )}
+        {past.length > 0 && (
+          <Section title="Past Sessions">
+            {past.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)}
+          </Section>
+        )}
+      </div>
+
+      {/* Sidebar — same layout as calendar */}
+      <SessionsSidebar sessions={sessions} onMutated={onMutated} />
     </div>
   )
 }
-
-// ─── Section wrapper ──────────────────────────────────────────────────────────
 
 function Section({ title, dot, children }: { title: string; dot?: boolean; children: React.ReactNode }) {
   return (
@@ -366,7 +795,7 @@ export default function TutorSessionsPage() {
   const sessions = data?.sessions ?? []
 
   return (
-    <div className="flex flex-col gap-6 max-w-4xl">
+    <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
@@ -380,15 +809,12 @@ export default function TutorSessionsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1">
+          <div className="flex items-center gap-0.5 rounded-xl border border-border bg-muted/40 p-1">
             <button
               onClick={() => setView("list")}
               className={cn(
                 "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-                view === "list"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                view === "list" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
               )}
             >
               <List className="size-3.5" /> List
@@ -397,20 +823,14 @@ export default function TutorSessionsPage() {
               onClick={() => setView("calendar")}
               className={cn(
                 "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-                view === "calendar"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                view === "calendar" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
               )}
             >
               <CalendarDays className="size-3.5" /> Calendar
             </button>
           </div>
 
-          <Button asChild size="sm">
-            <Link href="/tutor/sessions/new">
-              <CalendarPlus className="size-4 mr-1.5" /> Schedule Session
-            </Link>
-          </Button>
+          <ScheduleSessionDialog onCreated={refetch} />
         </div>
       </div>
 
@@ -419,7 +839,7 @@ export default function TutorSessionsPage() {
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : view === "calendar" ? (
-        <CalendarView sessions={sessions} onMutated={refetch} />
+        <BigCalendar sessions={sessions} onMutated={refetch} />
       ) : (
         <ListView sessions={sessions} onMutated={refetch} />
       )}

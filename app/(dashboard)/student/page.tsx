@@ -34,7 +34,7 @@ type DashboardData = {
 // ─── Module grid config ───────────────────────────────────────────────────────
 
 const modules = [
-  { label: "Lessons", desc: "Continue learning", href: "/student/lessons", icon: BookOpen, vip: false },
+  { label: "Courses", desc: "Continue learning", href: "/student/courses", icon: BookOpen, vip: false },
   { label: "Resources", desc: "Course materials", href: "/student/resources", icon: FolderOpen, vip: false },
   { label: "Dictionary", desc: "Search signs", href: "/student/dictionary", icon: Library, vip: false },
   { label: "Tests", desc: "Practice exams", href: "/student/tests", icon: FlaskConical, vip: false },
@@ -194,13 +194,22 @@ export default function StudentDashboardPage() {
                             <span className="text-lg font-black leading-tight">{day}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold leading-snug">{session.title}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-sm font-semibold leading-snug">{session.title}</p>
+                              {session.status === "LIVE" && (
+                                <Badge className="text-[10px] h-4 px-1.5 bg-emerald-500 animate-pulse shrink-0">Live now</Badge>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                               <Clock className="size-3" />
                               {time} · {session.tutorName}
                             </div>
                             {session.status === "LIVE" && (
-                              <Badge className="mt-1 text-[10px] h-4 px-1.5 bg-emerald-500">Live now</Badge>
+                              <Button asChild size="sm" className="mt-1.5 h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white gap-1">
+                                <Link href={`/student/classroom/${session.id}`}>
+                                  <Video className="size-2.5" /> Join
+                                </Link>
+                              </Button>
                             )}
                           </div>
                         </div>
@@ -216,21 +225,6 @@ export default function StudentDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Upgrade to Pro */}
-          <div className="rounded-2xl bg-foreground text-background p-6 flex flex-col items-center text-center gap-3">
-            <div className="bg-primary rounded-full p-2.5">
-              <Video className="size-5 text-primary-foreground" />
-            </div>
-            <div>
-              <p className="font-bold text-sm">Upgrade to Pro</p>
-              <p className="text-xs text-background/60 mt-1 leading-snug">
-                Unlock the dictionary, offline lessons, and private tutoring.
-              </p>
-            </div>
-            <Button size="sm" className="w-full mt-1">
-              Go Premium
-            </Button>
-          </div>
         </div>
       </div>
     </div>

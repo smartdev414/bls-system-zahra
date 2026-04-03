@@ -35,7 +35,6 @@ type NavItem = {
 const studentNav: NavItem[] = [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
   { label: "Courses", href: "/student/courses", icon: BookOpen },
-  { label: "Lessons", href: "/student/lessons", icon: BookOpen },
   { label: "Resources", href: "/student/resources", icon: FolderOpen },
   { label: "Dictionary", href: "/student/dictionary", icon: Library },
   { label: "Tests", href: "/student/tests", icon: FlaskConical },
@@ -134,23 +133,18 @@ export function Header({ role, user }: HeaderProps) {
           </nav>
         </div>
 
-        {/* Right: notifications + avatar */}
-        <div className="flex items-center gap-3">
-          {/* Role badge */}
-          <Badge variant="secondary" className="hidden sm:inline-flex capitalize text-xs">
-            {role.toLowerCase()}
-          </Badge>
-
-          {/* Theme toggle */}
+        {/* Right: theme + notifications + avatar */}
+        <div className="flex items-center gap-1">
+          {/* Theme toggle — UI utility, lives outside the user cluster */}
           <ThemeToggle />
 
-          {/* Notifications */}
+          <Separator orientation="vertical" className="h-5 mx-1" />
+
+          {/* Bell sits next to avatar — both are user-centric */}
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="size-4" />
             <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
           </Button>
-
-          <Separator orientation="vertical" className="h-6" />
 
           {/* Avatar dropdown */}
           <DropdownMenu>
@@ -162,9 +156,14 @@ export function Header({ role, user }: HeaderProps) {
                     {initials}
                   </AvatarFallback>
                 </Avatar>
-                <span className="hidden sm:block text-sm font-medium max-w-[120px] truncate">
-                  {user.name}
-                </span>
+                <div className="hidden sm:flex flex-col items-start">
+                  <span className="text-sm font-medium max-w-[120px] truncate leading-tight">
+                    {user.name}
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] h-3.5 px-1 leading-none capitalize mt-0.5">
+                    {role.toLowerCase()}
+                  </Badge>
+                </div>
                 <ChevronDown className="size-3.5 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
@@ -174,6 +173,9 @@ export function Header({ role, user }: HeaderProps) {
                 <div className="flex flex-col gap-0.5">
                   <span className="font-semibold text-sm">{user.name}</span>
                   <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 capitalize w-fit mt-0.5">
+                    {role.toLowerCase()}
+                  </Badge>
                 </div>
               </DropdownMenuLabel>
 
