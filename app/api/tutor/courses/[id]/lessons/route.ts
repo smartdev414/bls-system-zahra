@@ -1,0 +1,79 @@
+import { NextRequest, NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
+import { getSession } from "@/lib/auth"
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+
+    const { id: courseId } = await params
+    const course = await prisma.course.findFirst({ where: { id: courseId, tutorId: session.sub } })
+    if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
+
+    const body = await req.json() as {
+      sectionId: string
+      title: string
+      type: "VIDEO" | "TEXT" | "QUIZ"
+      description?: string
+      isFree?: boolean
+      assets?: Array<{
+        type: "VIDEO" | "PDF" | "IMAGE" | "DOCUMENT" | "AUDIO" | "SUBTITLE"
+        title: string
+        description?: string
+        fileUrl: string
+        fileName: string
+        fileSize?: number
+        duration?: number
+        mimeType?: string
+      }>
+    }
+
+    const { sectionId, title, type, description, isFree = false, assets = [] } = body
+
+    if (!sectionId || !title?.trim()) {
+      return NextResponse.json({ message: "sectionId and title are required" }, { status: 400 })
+    }
+
+    const section = await prisma.section.findFirst({ where: { id: sectionId, courseId } })
+    if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })
+
+    const lessonCount = await prisma.lesson.count({ where: { sectionId } })
+
+    const lesson = await prisma.lesson.create({
+      data: {
+        sectionId,
+        title: title.trim(),
+        type,
+        description: description?.trim() ?? null,
+        isFree,
+        order: lessonCount + 1,
+        assets: {
+          create: assets.map((asset, i) => ({
+            type: asset.type,
+            title: asset.title,
+            description: asset.description ?? null,
+            fileUrl: asset.fileUrl,
+            fileName: asset.fileName,
+            fileSize: asset.fileSize ?? null,
+            duration: asset.duration ?? null,
+            mimeType: asset.mimeType ?? null,
+            order: i,
+          })),
+        },
+      },
+      include: { assets: true },
+    })
+
+    return NextResponse.json({ lesson }, { status: 201 })
+  } catch (err) {
+    console.error("[POST /api/tutor/courses/[id]/lessons]", err)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
+}
