@@ -7,6 +7,7 @@ import {
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
+  Calendar, Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,11 +16,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DatePicker } from "@/components/ui/date-picker"
 import { TimePicker } from "@/components/ui/time-picker"
+import { Separator } from "@/components/ui/separator"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, DialogClose, DialogTrigger,
 } from "@/components/ui/dialog"
-import { useFetch, usePatchCallback, usePostCallback } from "@/hooks/use-fetch"
+import { useFetch, usePatchCallback, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -290,6 +293,234 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
   )
 }
 
+// ─── Session Detail Dialog ────────────────────────────────────────────────────
+
+type Attendance = {
+  studentId: string; studentName: string; studentEmail: string
+  joinedAt: string | null; leftAt: string | null
+}
+type SessionDetail = {
+  id: string; title: string; description: string | null
+  scheduledAt: string; durationMins: number; roomName: string
+  maxStudents: number | null; status: "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED"
+  startedAt: string | null; endedAt: string | null; recordingUrl: string | null
+  course: { id: string; title: string } | null; attendances: Attendance[]
+}
+
+function SessionDetailDialog({
+  sessionId,
+  onMutated,
+}: {
+  sessionId: string
+  onMutated?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  const { data, loading, refetch } = useFetch<{ session: SessionDetail }>(
+    `/api/tutor/sessions/${sessionId}`,
+    { errorMessage: "Could not load session", immediate: false }
+  )
+
+  React.useEffect(() => {
+    if (open) refetch()
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { execute: patch, loading: patching } = usePatchCallback<
+    { session: SessionDetail },
+    { status: "LIVE" | "COMPLETED" | "CANCELLED" }
+  >(`/api/tutor/sessions/${sessionId}`, {
+    successMessage: (d) => `Session ${(d as { session: { status: string } }).session.status.toLowerCase()}`,
+    errorMessage: "Could not update session",
+    onSuccess: () => { refetch(); onMutated?.() },
+  })
+
+  const { execute: del, loading: deleting } = useDeleteCallback(
+    `/api/tutor/sessions/${sessionId}`,
+    {
+      successMessage: "Session deleted",
+      errorMessage: "Could not delete session",
+      onSuccess: () => { setOpen(false); onMutated?.() },
+    }
+  )
+
+  const s = data?.session
+  const scheduled = s ? new Date(s.scheduledAt) : null
+  const isLive = s?.status === "LIVE"
+  const isDone = s?.status === "COMPLETED" || s?.status === "CANCELLED"
+
+  function formatDuration(start: string, end: string) {
+    const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000)
+    if (mins < 60) return `${mins} min`
+    const h = Math.floor(mins / 60), m = mins % 60
+    return m ? `${h}h ${m}m` : `${h}h`
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost" className="ml-auto h-7 text-xs px-2 text-muted-foreground">
+          Details
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        {loading || !s ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="size-6 animate-spin text-primary" />
+          </div>
+        ) : (
+          <>
+            <DialogHeader>
+              <div className="flex items-start gap-3 pr-6">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <Badge variant="outline" className={cn("text-xs gap-1", STATUS[s.status].badge)}>
+                      {s.status === "LIVE" && <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />}
+                      {STATUS[s.status].label}
+                    </Badge>
+                    {s.course && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <BookOpen className="size-3" /> {s.course.title}
+                      </span>
+                    )}
+                  </div>
+                  <DialogTitle className="text-lg font-black leading-snug">{s.title}</DialogTitle>
+                  {s.description && (
+                    <DialogDescription className="mt-1">{s.description}</DialogDescription>
+                  )}
+                </div>
+              </div>
+            </DialogHeader>
+
+            {/* Meta */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Date</p>
+                <p className="font-medium flex items-center gap-1.5 text-xs">
+                  <Calendar className="size-3.5 text-primary shrink-0" />
+                  {scheduled!.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Time</p>
+                <p className="font-medium flex items-center gap-1.5 text-xs">
+                  <Clock className="size-3.5 text-primary shrink-0" />
+                  {scheduled!.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Duration</p>
+                <p className="font-medium flex items-center gap-1.5 text-xs">
+                  <Clock className="size-3.5 text-primary shrink-0" />
+                  {s.startedAt && s.endedAt ? formatDuration(s.startedAt, s.endedAt) : `${s.durationMins} min`}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Students</p>
+                <p className="font-medium flex items-center gap-1.5 text-xs">
+                  <Users className="size-3.5 text-primary shrink-0" />
+                  {s.attendances.length}{s.maxStudents ? `/${s.maxStudents}` : ""}
+                </p>
+              </div>
+            </div>
+
+            {/* Attendees */}
+            {s.attendances.length > 0 && (
+              <>
+                <Separator />
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <Users className="size-3.5" /> Attendees
+                    <Badge variant="secondary" className="text-[10px]">{s.attendances.length}</Badge>
+                  </p>
+                  <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                    {s.attendances.map((a) => {
+                      const initials = a.studentName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+                      return (
+                        <div key={a.studentId} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/40">
+                          <Avatar className="size-7 shrink-0">
+                            <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">{initials}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold">{a.studentName}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{a.studentEmail}</p>
+                          </div>
+                          {a.joinedAt && (
+                            <p className="text-[10px] text-muted-foreground shrink-0">
+                              {new Date(a.joinedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              {/* Danger: delete */}
+              {!isDone && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10 mr-auto"
+                  disabled={deleting}
+                  onClick={() => del()}
+                >
+                  <Trash2 className="size-3.5 mr-1.5" />
+                  {deleting ? "Deleting…" : "Delete"}
+                </Button>
+              )}
+
+              {s.recordingUrl && (
+                <Button asChild size="sm" variant="outline">
+                  <a href={s.recordingUrl} download target="_blank" rel="noopener noreferrer">
+                    <Download className="size-3.5 mr-1.5" /> Recording
+                  </a>
+                </Button>
+              )}
+
+              <DialogClose asChild>
+                <Button variant="outline" size="sm">Close</Button>
+              </DialogClose>
+
+              {s.status === "SCHEDULED" && (
+                <>
+                  <Button size="sm" variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    disabled={patching}
+                    onClick={() => patch({ status: "CANCELLED" })}>
+                    Cancel Session
+                  </Button>
+                  <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Link href={`/tutor/sessions/${s.id}/live`}>
+                      <MonitorPlay className="size-3.5 mr-1.5" /> Open Classroom
+                    </Link>
+                  </Button>
+                </>
+              )}
+              {isLive && (
+                <>
+                  <Button size="sm" variant="outline" disabled={patching}
+                    onClick={() => patch({ status: "COMPLETED" })}>
+                    <CheckCircle2 className="size-3.5 mr-1.5" /> End Session
+                  </Button>
+                  <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Link href={`/tutor/sessions/${s.id}/live`}>
+                      <MonitorPlay className="size-3.5 mr-1.5" /> Open Classroom
+                    </Link>
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Session Card ─────────────────────────────────────────────────────────────
 
 function SessionCard({
@@ -383,9 +614,7 @@ function SessionCard({
             </a>
           </Button>
         )}
-        <Button asChild size="sm" variant="ghost" className="ml-auto h-7 text-xs px-2 text-muted-foreground">
-          <Link href={`/tutor/sessions/${session.id}`}>Details</Link>
-        </Button>
+        <SessionDetailDialog sessionId={session.id} onMutated={onMutated} />
       </div>
     </div>
   )

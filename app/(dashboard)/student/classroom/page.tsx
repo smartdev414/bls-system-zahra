@@ -10,6 +10,11 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, DialogClose, DialogTrigger,
+} from "@/components/ui/dialog"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 
@@ -110,6 +115,89 @@ function TutorAvatar({ name }: { name: string }) {
   )
 }
 
+// ─── Student Session Detail Dialog ───────────────────────────────────────────
+
+function StudentSessionDetailDialog({ session }: { session: LiveSession }) {
+  const { title, description, scheduledAt, durationMins, maxStudents, tutor, course, attendeeCount } = session
+  const scheduled = new Date(scheduledAt)
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="h-7 text-xs px-2.5">Details</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <Badge variant="outline" className={cn("text-xs gap-1", STATUS[session.status].badge)}>
+              {STATUS[session.status].label}
+            </Badge>
+            {course && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <BookOpen className="size-3" /> {course.title}
+              </span>
+            )}
+          </div>
+          <DialogTitle className="text-base font-black">{title}</DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Date</p>
+            <p className="text-xs font-medium flex items-center gap-1.5">
+              <CalendarDays className="size-3.5 text-primary shrink-0" />
+              {scheduled.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Time</p>
+            <p className="text-xs font-medium flex items-center gap-1.5">
+              <Clock className="size-3.5 text-primary shrink-0" />
+              {scheduled.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Duration</p>
+            <p className="text-xs font-medium flex items-center gap-1.5">
+              <Clock className="size-3.5 text-primary shrink-0" />
+              {durationMins} min
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Students</p>
+            <p className="text-xs font-medium flex items-center gap-1.5">
+              <Users className="size-3.5 text-primary shrink-0" />
+              {attendeeCount}{maxStudents ? `/${maxStudents}` : ""}
+            </p>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="flex items-center gap-2">
+          <TutorAvatar name={tutor.name} />
+          <div>
+            <p className="text-sm font-semibold">{tutor.name}</p>
+            <p className="text-xs text-muted-foreground">Tutor</p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">Close</Button>
+          </DialogClose>
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/student/classroom/${session.id}`}>
+              View Lobby
+            </Link>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Session Card ─────────────────────────────────────────────────────────────
 
 function SessionCard({ session }: { session: LiveSession }) {
@@ -165,9 +253,7 @@ function SessionCard({ session }: { session: LiveSession }) {
             </Button>
           )}
           {session.status === "SCHEDULED" && (
-            <Button asChild size="sm" variant="outline" className="h-7 text-xs px-2.5">
-              <Link href={`/student/classroom/${session.id}`}>View</Link>
-            </Button>
+            <StudentSessionDetailDialog session={session} />
           )}
           {session.status === "COMPLETED" && session.recordingUrl && (
             <Button asChild size="sm" variant="outline" className="gap-1 h-7 text-xs px-2.5">
