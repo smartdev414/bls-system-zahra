@@ -15,7 +15,7 @@ import { Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Mic, Camera, Monitor, Hand, PhoneOff, Send, Radio, Users,
-  Maximize2, Minimize2, ChevronDown, MessageSquare, PenTool,
+  Maximize2, Minimize2, ChevronDown, MessageSquare,
   HandMetal,
 } from "lucide-react"
 
@@ -44,8 +44,6 @@ type RaisedHand = {
   identity: string
   name: string
 }
-
-type Tab = "Video" | "Whiteboard"
 
 // ─── Audio renderer ───────────────────────────────────────────────────────────
 
@@ -92,11 +90,6 @@ function TutorVideoArea({
         </div>
       )}
 
-      {/* LIVE badge */}
-      <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-rose-600/90 text-white text-[11px] font-bold px-2.5 py-1 rounded-full backdrop-blur-sm">
-        <span className="size-1.5 rounded-full bg-white animate-pulse inline-block" />
-        LIVE
-      </div>
 
       {/* Tutor name */}
       {active && (
@@ -117,81 +110,151 @@ function TutorVideoArea({
   )
 }
 
-// ─── Student strip ────────────────────────────────────────────────────────────
+// ─── Participants panel (right sidebar, sorted camera-on first) ───────────────
 
-function StudentStrip({
+function ParticipantsPanel({
   pinnedId,
   onPin,
+  collapsed,
+  onToggleCollapse,
 }: {
   pinnedId: string | null
-  onPin: (identity: string) => void
+  onPin: (identity: string | null) => void
+  collapsed: boolean
+  onToggleCollapse: () => void
 }) {
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
-  // useTracks default: published for local, subscribed for remote
   const camTracks            = useTracks([Track.Source.Camera])
 
-  const students = allParticipants.filter((p) => p.metadata !== "tutor")
+  // Attach camera track ref to each participant
+  const withTracks = allParticipants.map((p) => {
+    const trackRef = camTracks.find(
+      (t) => t.participant.identity === p.identity && isTrackReference(t)
+    )
+    return { p, trackRef, camOn: !!trackRef }
+  })
 
-  if (students.length === 0) {
-    return <span className="text-zinc-600 text-xs my-auto mx-4">No students connected yet</span>
+  // Sort: camera-on first, then camera-off; tutor always first within each group
+  const sorted = [...withTracks].sort((a, b) => {
+    if (a.camOn !== b.camOn) return a.camOn ? -1 : 1
+    if (a.p.metadata === "tutor" && b.p.metadata !== "tutor") return -1
+    if (b.p.metadata === "tutor" && a.p.metadata !== "tutor") return 1
+    return 0
+  })
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-col items-center h-full bg-zinc-900">
+        <button
+          onClick={onToggleCollapse}
+          className="w-full flex items-center justify-center py-3 hover:bg-zinc-800 transition-colors"
+          title="Expand Participants"
+        >
+          <Users className="size-4 text-primary" />
+        </button>
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+            Participants · {allParticipants.length}
+          </span>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <>
-      {students.map((p) => {
-        const isLocal  = p.identity === localParticipant.identity
-        const isPinned = pinnedId === p.identity
-        const trackRef = camTracks.find(
-          (t) => t.participant.identity === p.identity && isTrackReference(t)
-        )
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+      {/* Header */}
+      <button
+        onClick={onToggleCollapse}
+        className="shrink-0 px-4 py-2.5 flex items-center gap-2 bg-zinc-900 border-b border-zinc-800 hover:bg-zinc-800/60 transition-colors w-full text-left"
+      >
+        <Users className="size-3.5 text-primary shrink-0" />
+        <span className="text-xs font-bold text-white">Participants</span>
+        <span className="text-[10px] text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded-full font-medium">
+          {allParticipants.length}
+        </span>
+        <ChevronDown className="size-3.5 text-zinc-500 ml-auto" />
+      </button>
 
-        return (
-          <div
-            key={p.identity}
-            onClick={() => onPin(p.identity)}
-            title="Click to expand"
-            className={cn(
-              "relative bg-zinc-800 rounded-xl overflow-hidden shrink-0 w-24 h-[4.5rem] cursor-pointer group transition-all",
-              isPinned
-                ? "border-2 border-primary ring-1 ring-primary/40"
-                : "border border-zinc-700 hover:border-zinc-400"
-            )}
-          >
-            {/* Camera feed — only if track is genuinely published/subscribed */}
-            {trackRef ? (
-              <VideoTrack
-                trackRef={trackRef}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <div className="size-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
-                  {(p.name ?? p.identity)[0]?.toUpperCase()}
+      {/* Tiles */}
+      <div className="overflow-y-auto flex flex-col gap-1.5 p-2 min-h-0 flex-1">
+        {sorted.map(({ p, trackRef, camOn }) => {
+          const isLocal     = p.identity === localParticipant.identity
+          const isPinned    = pinnedId === p.identity
+          const isTutor     = p.metadata === "tutor"
+          const displayName = p.name ?? p.identity
+
+          return (
+            <div
+              key={p.identity}
+              onClick={() => !isTutor && onPin(isPinned ? null : p.identity)}
+              title={isTutor ? undefined : isPinned ? "Click to unpin" : "Click to pin to main view"}
+              className={cn(
+                "relative rounded-xl overflow-hidden transition-all aspect-square bg-zinc-800 border shrink-0 group",
+                isTutor
+                  ? "border-amber-500/30 cursor-default"
+                  : isPinned
+                  ? "border-primary ring-1 ring-primary/30 cursor-pointer"
+                  : "border-zinc-700 hover:border-zinc-500 cursor-pointer"
+              )}
+            >
+              {/* Camera video or avatar row */}
+              {camOn && trackRef ? (
+                <>
+                  <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
+                  {/* Name overlay */}
+                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-0.5">
+                    <p className="text-[10px] text-white truncate font-medium">
+                      {isLocal ? "You" : displayName}
+                      {isTutor && <span className="ml-1 text-amber-400">• Tutor</span>}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-2 px-2">
+                  <div className="size-12 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-lg shrink-0">
+                    {displayName[0]?.toUpperCase()}
+                  </div>
+                  <div className="text-center min-w-0 w-full">
+                    <p className="text-xs font-semibold text-white truncate px-1">
+                      {isLocal ? `You` : displayName}
+                    </p>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">Camera off</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Name + "You" badge */}
-            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent text-white text-[10px] text-center px-1 pb-0.5 truncate">
-              {isLocal ? "You" : (p.name ?? p.identity)}
+              {/* Hover overlay for non-tutor */}
+              {!isTutor && !isPinned && camOn && (
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/30 transition-opacity">
+                  <Maximize2 className="size-3.5 text-white" />
+                </div>
+              )}
+
+              {/* Pinned badge */}
+              {isPinned && (
+                <div className="absolute top-1 right-1 bg-primary text-primary-foreground text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                  Pinned
+                </div>
+              )}
+
+              {/* Tutor crown */}
+              {isTutor && (
+                <div className="absolute top-1 left-1 text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30">
+                  Tutor
+                </div>
+              )}
             </div>
+          )
+        })}
 
-            {/* Expand icon on hover */}
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-              <Maximize2 className="size-4 text-white drop-shadow" />
-            </div>
-
-            {/* Pinned indicator */}
-            {isPinned && (
-              <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                Pinned
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </>
+        {allParticipants.length === 0 && (
+          <p className="text-xs text-zinc-600 text-center py-4">No one else here yet</p>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -320,12 +383,16 @@ function ChatPanel({
   raisedHands,
   onSend,
   flash,
+  collapsed,
+  onToggleCollapse,
 }: {
   messages: ChatMsg[]
   localName: string
   raisedHands: RaisedHand[]
   onSend: (text: string, type: MsgType) => void
   flash: boolean
+  collapsed: boolean
+  onToggleCollapse: () => void
 }) {
   const [input, setInput] = useState("")
   const [unread, setUnread] = useState(0)
@@ -371,25 +438,52 @@ function ChatPanel({
     inputRef.current?.focus()
   }
 
-  return (
-    <div
-      className={cn(
-        "flex flex-col h-full border-l border-zinc-800 transition-all duration-300",
-        flash && "border-l-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.6)] shadow-primary/30"
-      )}
-    >
-      {/* Header */}
-      <div className="shrink-0 px-4 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900">
-        <div className="flex items-center gap-2">
+  if (collapsed) {
+    return (
+      <div className="flex flex-col items-center h-full bg-zinc-900">
+        <button
+          onClick={onToggleCollapse}
+          className="w-full flex items-center justify-center py-3 hover:bg-zinc-800 transition-colors relative"
+          title="Expand Chat"
+        >
           <MessageSquare className="size-4 text-primary" />
-          <span className="font-bold text-sm text-white">Live Chat</span>
           {unread > 0 && (
-            <span className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-bounce">
+            <span className="absolute top-1.5 right-1 size-3.5 rounded-full bg-primary text-primary-foreground text-[8px] font-bold flex items-center justify-center">
               {unread}
             </span>
           )}
+        </button>
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+            Live Chat{unread > 0 ? ` · ${unread} new` : ""}
+          </span>
         </div>
       </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300",
+        flash && "shadow-[inset_1px_0_0_hsl(var(--primary)/0.6)]"
+      )}
+    >
+      {/* Header */}
+      <button
+        onClick={onToggleCollapse}
+        className="shrink-0 px-4 py-3 border-b border-zinc-800 flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800/60 transition-colors w-full text-left"
+      >
+        <MessageSquare className="size-4 text-primary shrink-0" />
+        <span className="font-bold text-sm text-white">Live Chat</span>
+        {unread > 0 && (
+          <span className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-bounce">
+            {unread}
+          </span>
+        )}
+        <ChevronDown className={cn("size-3.5 text-zinc-500 ml-auto transition-transform duration-200", collapsed && "-rotate-90")} />
+      </button>
 
       {/* Raised hands banner */}
       {raisedHands.length > 0 && (
@@ -560,13 +654,14 @@ export function ClassroomRoom({
   const localName = localParticipant.name ?? localParticipant.identity
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [messages,     setMessages]     = useState<ChatMsg[]>([])
-  const [raisedHands,  setRaisedHands]  = useState<RaisedHand[]>([])
-  const [handRaised,   setHandRaised]   = useState(false)
-  const [chatFlash,    setChatFlash]    = useState(false)
-  const [activeTab,    setActiveTab]    = useState<Tab>("Video")
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [pinnedId,     setPinnedId]     = useState<string | null>(null)
+  const [messages,            setMessages]            = useState<ChatMsg[]>([])
+  const [raisedHands,         setRaisedHands]         = useState<RaisedHand[]>([])
+  const [handRaised,          setHandRaised]          = useState(false)
+  const [chatFlash,           setChatFlash]           = useState(false)
+  const [isFullscreen,        setIsFullscreen]        = useState(false)
+  const [pinnedId,            setPinnedId]            = useState<string | null>(null)
+  const [participantsOpen,    setParticipantsOpen]    = useState(true)
+  const [chatOpen,            setChatOpen]            = useState(true)
 
   const videoContainerRef = useRef<HTMLDivElement>(null)
 
@@ -592,6 +687,14 @@ export function ClassroomRoom({
         }
         return prev.filter((h) => h.identity !== data.identity)
       })
+      // Tutor: auto-pin the student who raised their hand; unpin when lowered
+      if (isTutor) {
+        if (data.raised) {
+          setPinnedId(data.identity)
+        } else {
+          setPinnedId((prev) => prev === data.identity ? null : prev)
+        }
+      }
       // Add system message to chat
       const text = data.raised ? `${data.name} raised their hand ✋` : `${data.name} lowered their hand`
       setMessages((prev) => [
@@ -644,7 +747,6 @@ export function ClassroomRoom({
   }, [handRaised, localParticipant.identity, localName, sendHand])
 
   const studentCount = participants.filter((p) => p.metadata !== "tutor").length
-  const tabs: Tab[]  = ["Video", "Whiteboard"]
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -672,70 +774,54 @@ export function ClassroomRoom({
 
         {/* Center: video + tabs + whiteboard */}
         <div className="flex-1 flex flex-col overflow-hidden">
-
-          {/* Tab bar (only show if Whiteboard needed) */}
-          <div className="flex items-center bg-zinc-900 border-b border-zinc-800 shrink-0 px-3 gap-0">
-            {tabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors",
-                  activeTab === tab
-                    ? "border-primary text-primary"
-                    : "border-transparent text-zinc-500 hover:text-zinc-200"
-                )}
-              >
-                {tab === "Video"       && <Camera    className="size-3.5" />}
-                {tab === "Whiteboard"  && <PenTool   className="size-3.5" />}
-                {tab}
-              </button>
-            ))}
-          </div>
-
           {/* Content area */}
           <div className="flex-1 overflow-hidden">
-            {activeTab === "Video" && (
-              pinnedId ? (
-                <PinnedVideoArea
-                  identity={pinnedId}
-                  containerRef={videoContainerRef}
-                  isFullscreen={isFullscreen}
-                  onToggleFullscreen={toggleFullscreen}
-                  onUnpin={() => setPinnedId(null)}
-                />
-              ) : (
-                <TutorVideoArea
-                  containerRef={videoContainerRef}
-                  isFullscreen={isFullscreen}
-                  onToggleFullscreen={toggleFullscreen}
-                />
-              )
-            )}
-            {activeTab === "Whiteboard" && (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-700">
-                <PenTool className="size-12 opacity-20" />
-                <p className="text-sm opacity-60">Whiteboard coming soon</p>
-              </div>
+            {pinnedId ? (
+              <PinnedVideoArea
+                identity={pinnedId}
+                containerRef={videoContainerRef}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={toggleFullscreen}
+                onUnpin={() => setPinnedId(null)}
+              />
+            ) : (
+              <TutorVideoArea
+                containerRef={videoContainerRef}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={toggleFullscreen}
+              />
             )}
           </div>
         </div>
 
-        {/* Right: always-visible chat panel */}
-        <div className="w-72 shrink-0 flex flex-col overflow-hidden relative">
+        {/* Participants column — collapsible, fixed width when open */}
+        <div className={cn(
+          "flex flex-col h-full overflow-hidden border-l border-zinc-800 transition-all duration-200",
+          participantsOpen ? "w-72" : "w-10"
+        )}>
+          <ParticipantsPanel
+            pinnedId={pinnedId}
+            onPin={setPinnedId}
+            collapsed={!participantsOpen}
+            onToggleCollapse={() => setParticipantsOpen((v) => !v)}
+          />
+        </div>
+
+        {/* Chat column — collapsible, fixed width when open */}
+        <div className={cn(
+          "flex flex-col h-full overflow-hidden border-l border-zinc-800 transition-all duration-200",
+          chatOpen ? "w-72" : "w-10"
+        )}>
           <ChatPanel
             messages={messages}
             localName={localName}
             raisedHands={raisedHands}
             onSend={handleSend}
             flash={chatFlash}
+            collapsed={!chatOpen}
+            onToggleCollapse={() => setChatOpen((v) => !v)}
           />
         </div>
-      </div>
-
-      {/* ── Bottom: student strip row ── */}
-      <div className="h-24 bg-zinc-900 border-t border-zinc-800 shrink-0 flex items-center gap-2 overflow-x-auto px-3">
-        <StudentStrip pinnedId={pinnedId} onPin={setPinnedId} />
       </div>
 
       {/* ── Bottom: controls row ── */}
