@@ -16,7 +16,7 @@ export async function GET() {
       orderBy: { scheduledAt: "desc" },
       include: {
         course: { select: { id: true, title: true } },
-        _count: { select: { attendances: true } },
+        _count: { select: { attendances: true, invites: true } },
       },
     })
 
@@ -30,8 +30,10 @@ export async function GET() {
         roomName: s.roomName,
         maxStudents: s.maxStudents,
         status: s.status,
+        visibility: s.visibility,
         course: s.course,
         attendeeCount: s._count.attendances,
+        inviteCount: s._count.invites,
         startedAt: s.startedAt?.toISOString() ?? null,
         endedAt: s.endedAt?.toISOString() ?? null,
         recordingUrl: s.recordingUrl ?? null,
@@ -58,9 +60,11 @@ export async function POST(req: NextRequest) {
       durationMins: number
       maxStudents?: number
       courseId?: string
+      visibility?: "PUBLIC" | "INVITE_ONLY"
+      invitedStudentIds?: string[]
     }
 
-    const { title, description, scheduledAt, durationMins, maxStudents, courseId } = body
+    const { title, description, scheduledAt, durationMins, maxStudents, courseId, visibility = "PUBLIC", invitedStudentIds = [] } = body
 
     if (!title?.trim()) return NextResponse.json({ message: "Title is required" }, { status: 400 })
     if (!scheduledAt) return NextResponse.json({ message: "scheduledAt is required" }, { status: 400 })
@@ -82,6 +86,12 @@ export async function POST(req: NextRequest) {
         maxStudents: maxStudents ?? null,
         courseId: courseId ?? null,
         status: "SCHEDULED",
+        visibility,
+        ...(visibility === "INVITE_ONLY" && invitedStudentIds.length > 0 && {
+          invites: {
+            create: invitedStudentIds.map((studentId) => ({ studentId })),
+          },
+        }),
       },
     })
 

@@ -113,69 +113,108 @@ function TutorAvatar({ name }: { name: string }) {
 // ─── Session Card ─────────────────────────────────────────────────────────────
 
 function SessionCard({ session }: { session: LiveSession }) {
-  const { date, time } = formatDate(session.scheduledAt)
   const cfg = STATUS[session.status]
+  const scheduled = new Date(session.scheduledAt)
 
   return (
     <div className={cn(
-      "rounded-2xl border p-4 flex flex-col gap-3 transition-all hover:shadow-sm",
+      "rounded-2xl border overflow-hidden transition-all hover:shadow-sm",
       cfg.card
     )}>
-      <div className="flex items-start gap-2.5">
-        <span className={cn("block size-2 rounded-full mt-1.5 shrink-0", cfg.dot)} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-            <Badge variant="outline" className={cn("text-[10px] gap-1 h-4 px-1.5", cfg.badge)}>
-              {session.status === "LIVE" && <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />}
-              {session.status === "COMPLETED" && <CheckCircle2 className="size-2.5" />}
-              {session.status === "CANCELLED" && <XCircle className="size-2.5" />}
-              {cfg.label}
-            </Badge>
-            {session.course && (
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <BookOpen className="size-2.5" />
-                {session.course.title}
-              </span>
+      {/* Live banner */}
+      {session.status === "LIVE" && (
+        <div className="bg-emerald-500 text-white px-4 py-1.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Radio className="size-3 animate-pulse" />
+            <span className="text-xs font-bold uppercase tracking-wide">Happening now</span>
+          </div>
+          <Button asChild size="sm" className="h-6 text-[11px] px-3 bg-white text-emerald-700 hover:bg-white/90 gap-1">
+            <Link href={`/student/classroom/${session.id}`}>
+              <Radio className="size-2.5" /> Join
+            </Link>
+          </Button>
+        </div>
+      )}
+
+      <div className="p-5 flex flex-col gap-4">
+        {/* Title + badges */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <Badge variant="outline" className={cn("text-xs gap-1", cfg.badge)}>
+                {session.status === "COMPLETED" && <CheckCircle2 className="size-3" />}
+                {session.status === "CANCELLED" && <XCircle className="size-3" />}
+                {cfg.label}
+              </Badge>
+              {session.course && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <BookOpen className="size-3" />
+                  {session.course.title}
+                </span>
+              )}
+            </div>
+            <h3 className="font-bold text-base leading-snug">{session.title}</h3>
+            {session.description && (
+              <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{session.description}</p>
             )}
           </div>
-          <p className="font-bold text-sm leading-snug">{session.title}</p>
-          {session.description && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{session.description}</p>
-          )}
         </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground pl-4">
-        <span className="flex items-center gap-1"><CalendarDays className="size-3 text-primary/50" /> {date}</span>
-        <span className="flex items-center gap-1"><Clock className="size-3 text-primary/50" /> {time} · {session.durationMins} min</span>
-        <span className="flex items-center gap-1"><Users className="size-3 text-primary/50" /> {session.attendeeCount}{session.maxStudents ? `/${session.maxStudents}` : ""}</span>
-      </div>
-
-      <div className="flex items-center justify-between gap-3 pl-4 pt-1 border-t border-border/40">
-        <div className="flex items-center gap-2">
-          <TutorAvatar name={session.tutor.name} />
-          <span className="text-xs font-semibold">{session.tutor.name}</span>
+        {/* Meta grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Date</p>
+            <p className="text-xs font-semibold">
+              {scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+            </p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Time</p>
+            <p className="text-xs font-semibold">
+              {scheduled.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Duration</p>
+            <p className="text-xs font-semibold">{session.durationMins} min</p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Students</p>
+            <p className="text-xs font-semibold">
+              {session.attendeeCount}{session.maxStudents ? ` / ${session.maxStudents}` : " joined"}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          {session.status === "LIVE" && (
-            <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs px-2.5">
-              <Link href={`/student/classroom/${session.id}`}>
-                <Radio className="size-3 animate-pulse" /> Join
-              </Link>
-            </Button>
-          )}
-          {session.status === "SCHEDULED" && (
-            <Button asChild size="sm" variant="outline" className="h-7 text-xs px-2.5">
-              <Link href={`/student/classroom/${session.id}`}>View</Link>
-            </Button>
-          )}
-          {session.status === "COMPLETED" && session.recordingUrl && (
-            <Button asChild size="sm" variant="outline" className="gap-1 h-7 text-xs px-2.5">
-              <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
-                <Download className="size-3" /> Recording
-              </a>
-            </Button>
-          )}
+
+        {/* Footer: tutor + action */}
+        <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/50">
+          <div className="flex items-center gap-2">
+            <TutorAvatar name={session.tutor.name} />
+            <div>
+              <p className="text-xs font-semibold leading-tight">{session.tutor.name}</p>
+              <p className="text-[10px] text-muted-foreground">Tutor</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {session.status === "COMPLETED" && session.recordingUrl && (
+              <Button asChild size="sm" variant="outline" className="gap-1.5 h-8">
+                <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
+                  <Download className="size-3.5" /> Download Recording
+                </a>
+              </Button>
+            )}
+            {session.status === "COMPLETED" && !session.recordingUrl && (
+              <span className="text-xs text-muted-foreground">No recording available</span>
+            )}
+            {session.status === "SCHEDULED" && (
+              <Button asChild size="sm" variant="outline" className="h-8 gap-1.5">
+                <Link href={`/student/classroom/${session.id}`}>
+                  View Lobby
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

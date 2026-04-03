@@ -6,20 +6,19 @@ import {
   useLocalParticipant,
   useTracks,
   useDataChannel,
+  useRoomContext,
   VideoTrack,
   AudioTrack,
   TrackToggle,
   isTrackReference,
 } from "@livekit/components-react"
-import { Track } from "livekit-client"
+import { Track, RoomEvent } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Mic, Camera, Monitor, Hand, PhoneOff, Send, Radio, Users,
   Maximize2, Minimize2, ChevronDown, MessageSquare,
   HandMetal,
 } from "lucide-react"
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CHAT_TOPIC  = "cls-chat"
 const HAND_TOPIC  = "cls-hand"
@@ -205,7 +204,7 @@ function ParticipantsPanel({
                 <>
                   <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
                   {/* Name overlay */}
-                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-0.5">
+                  <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 pb-0.5">
                     <p className="text-[10px] text-white truncate font-medium">
                       {isLocal ? "You" : displayName}
                       {isTutor && <span className="ml-1 text-amber-400">• Tutor</span>}
@@ -362,7 +361,7 @@ function MessageBubble({ msg, isOwn }: { msg: ChatMsg; isOwn: boolean }) {
       )}
       <div
         className={cn(
-          "px-3 py-2 text-sm leading-snug break-words",
+          "px-3 py-2 text-sm leading-snug wrap-break-word",
           isOwn
             ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm"
             : "bg-zinc-800 text-zinc-100 rounded-2xl rounded-bl-sm"
@@ -374,8 +373,6 @@ function MessageBubble({ msg, isOwn }: { msg: ChatMsg; isOwn: boolean }) {
     </div>
   )
 }
-
-// ─── Chat panel ───────────────────────────────────────────────────────────────
 
 function ChatPanel({
   messages,
@@ -507,7 +504,7 @@ function ChatPanel({
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-700 select-none">
             <MessageSquare className="size-8 opacity-30" />
-            <p className="text-xs text-center opacity-70 max-w-[12rem]">
+            <p className="text-xs text-center opacity-70 max-w-48">
               Chat is how everyone communicates here. Say hello! 👋
             </p>
           </div>
@@ -520,7 +517,7 @@ function ChatPanel({
 
       {/* Scroll-to-bottom pill */}
       {!atBottom && (
-        <div className="absolute bottom-[9.5rem] left-1/2 -translate-x-1/2 z-10 right-panel-anchor">
+        <div className="absolute bottom-38 left-1/2 -translate-x-1/2 z-10 right-panel-anchor">
           <button
             onClick={scrollToBottom}
             className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg hover:bg-primary/90 transition-colors"
@@ -633,6 +630,73 @@ function ControlsBar({
       >
         <PhoneOff className="size-3.5" /> Leave
       </button>
+    </div>
+  )
+}
+
+// ─── Live Captions Overlay ────────────────────────────────────────────────────
+
+type CaptionEntry = {
+  id: string
+  speakerName: string
+  text: string
+  final: boolean
+}
+
+function CaptionsOverlay() {
+  const room = useRoomContext()
+  const [captions, setCaptions] = useState<CaptionEntry[]>([])
+  const clearTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handler = (segments: any[], participant: any) => {
+      segments.forEach((seg) => {
+        if (!seg.text?.trim()) return
+        setCaptions((prev) => {
+          const idx = prev.findIndex((c) => c.id === seg.id)
+          const entry: CaptionEntry = {
+            id: seg.id,
+            speakerName: participant?.name ?? participant?.identity ?? "Unknown",
+            text: seg.text,
+            final: seg.final,
+          }
+          if (idx >= 0) {
+            const next = [...prev]; next[idx] = entry; return next
+          }
+          return [...prev.slice(-1), entry]
+        })
+        if (seg.final) {
+          const existing = clearTimers.current.get(seg.id)
+          if (existing) clearTimeout(existing)
+          clearTimers.current.set(seg.id, setTimeout(() => {
+            setCaptions((prev) => prev.filter((c) => c.id !== seg.id))
+            clearTimers.current.delete(seg.id)
+          }, 4000))
+        }
+      })
+    }
+
+    room.on(RoomEvent.TranscriptionReceived, handler)
+    return () => {
+      room.off(RoomEvent.TranscriptionReceived, handler)
+      clearTimers.current.forEach(clearTimeout)
+    }
+  }, [room])
+
+  const visible = captions.filter((c) => c.text.trim())
+  if (visible.length === 0) return null
+
+  return (
+    <div className="absolute bottom-4 inset-x-0 flex justify-center pointer-events-none z-20 px-6">
+      <div className="bg-black/80 backdrop-blur-sm rounded-2xl px-5 py-3 max-w-2xl w-full flex flex-col gap-1.5">
+        {visible.map((c) => (
+          <p key={c.id} className="text-sm leading-snug text-white">
+            <span className="font-semibold text-amber-400 mr-1.5">{c.speakerName}:</span>
+            {c.text}
+          </p>
+        ))}
+      </div>
     </div>
   )
 }
@@ -772,9 +836,8 @@ export function ClassroomRoom({
       {/* ── Main body ── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Center: video + tabs + whiteboard */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Content area */}
+        {/* Center: main video area */}
+        <div className="flex-1 flex flex-col overflow-hidden relative">
           <div className="flex-1 overflow-hidden">
             {pinnedId ? (
               <PinnedVideoArea
@@ -792,6 +855,8 @@ export function ClassroomRoom({
               />
             )}
           </div>
+          {/* Live captions — bottom-center overlay like Google Meet / Zoom */}
+          <CaptionsOverlay />
         </div>
 
         {/* Participants column — collapsible, fixed width when open */}

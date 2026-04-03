@@ -15,6 +15,12 @@ export async function GET() {
           { status: { in: ["SCHEDULED", "LIVE"] } },
           { status: "COMPLETED" },
         ],
+        AND: {
+          OR: [
+            { visibility: "PUBLIC" },
+            { visibility: "INVITE_ONLY", invites: { some: { studentId: session.sub } } },
+          ],
+        },
       },
       orderBy: { scheduledAt: "desc" },
       include: {

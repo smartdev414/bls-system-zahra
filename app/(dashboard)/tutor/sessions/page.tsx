@@ -1,12 +1,13 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect, useRef } from "react"
 import Link from "next/link"
 import {
   Video, CalendarPlus, Clock, Users,
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
+  Calendar, Globe, Lock, X, Search, UserPlus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -119,9 +120,11 @@ function buildMonthGrid(year: number, month: number): Date[][] {
 // ─── Schedule Session Dialog ──────────────────────────────────────────────────
 
 type CoursesData = { courses: Array<{ id: string; title: string }> }
+type StudentResult = { id: string; name: string; email: string; avatarUrl: string | null }
 type SessionBody = {
   title: string; description: string; scheduledAt: string
   durationMins: number; maxStudents: number | undefined; courseId: string | undefined
+  visibility: "PUBLIC" | "INVITE_ONLY"; invitedStudentIds: string[]
 }
 
 function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
@@ -133,8 +136,39 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
   const [durationMins, setDurationMins] = useState(60)
   const [maxStudents, setMaxStudents] = useState("")
   const [courseId, setCourseId] = useState("")
+  const [visibility, setVisibility] = useState<"PUBLIC" | "INVITE_ONLY">("PUBLIC")
+  const [invitedStudents, setInvitedStudents] = useState<StudentResult[]>([])
+  const [studentSearch, setStudentSearch] = useState("")
+  const [searchResults, setSearchResults] = useState<StudentResult[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
 
   const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
+
+  // Debounced student search
+  useEffect(() => {
+    if (!studentSearch.trim()) { setSearchResults([]); setShowDropdown(false); return }
+    const t = setTimeout(async () => {
+      setSearchLoading(true)
+      try {
+        const res = await fetch(`/api/tutor/students/search?q=${encodeURIComponent(studentSearch)}`)
+        const data = await res.json() as { students: StudentResult[] }
+        setSearchResults(data.students.filter(s => !invitedStudents.some(i => i.id === s.id)))
+        setShowDropdown(true)
+      } finally { setSearchLoading(false) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [studentSearch, invitedStudents])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowDropdown(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
 
   const { execute: create, loading } = usePostCallback<{ session: { id: string } }, SessionBody>(
     "/api/tutor/sessions",
@@ -152,6 +186,7 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
   function resetForm() {
     setTitle(""); setDescription(""); setDate(undefined); setTime("")
     setDurationMins(60); setMaxStudents(""); setCourseId("")
+    setVisibility("PUBLIC"); setInvitedStudents([]); setStudentSearch(""); setSearchResults([])
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -165,6 +200,8 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
       durationMins,
       maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
       courseId: courseId || undefined,
+      visibility,
+      invitedStudentIds: invitedStudents.map(s => s.id),
     })
   }
 
@@ -179,7 +216,7 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarPlus className="size-4 text-primary" /> Schedule Live Session
@@ -271,6 +308,114 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
               </select>
             </div>
           ) : null}
+
+          {/* Visibility */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Visibility</Label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setVisibility("PUBLIC")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 rounded-lg border py-2 text-sm font-medium transition-colors",
+                  visibility === "PUBLIC"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/40"
+                )}
+              >
+                <Globe className="size-4" /> Public
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibility("INVITE_ONLY")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 rounded-lg border py-2 text-sm font-medium transition-colors",
+                  visibility === "INVITE_ONLY"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/40"
+                )}
+              >
+                <Lock className="size-4" /> Invite Only
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {visibility === "PUBLIC"
+                ? "Any enrolled student can join this session."
+                : "Only students you invite will see and join this session."}
+            </p>
+          </div>
+
+          {/* Student invite (only when INVITE_ONLY) */}
+          {visibility === "INVITE_ONLY" && (
+            <div className="flex flex-col gap-2">
+              <Label className="flex items-center gap-1.5"><UserPlus className="size-3.5" /> Invite Students</Label>
+              {/* Search input */}
+              <div className="relative" ref={searchRef}>
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="Search by name or email…"
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+                  className="pl-8"
+                />
+                {searchLoading && (
+                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-muted-foreground" />
+                )}
+                {/* Dropdown */}
+                {showDropdown && searchResults.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 w-full rounded-lg border bg-popover shadow-md overflow-hidden">
+                    {searchResults.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setInvitedStudents(prev => [...prev, s])
+                          setStudentSearch("")
+                          setShowDropdown(false)
+                        }}
+                      >
+                        <div className="size-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-medium shrink-0">
+                          {s.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{s.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">{s.email}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showDropdown && !searchLoading && searchResults.length === 0 && studentSearch.trim() && (
+                  <div className="absolute z-50 top-full mt-1 w-full rounded-lg border bg-popover shadow-md px-3 py-2 text-sm text-muted-foreground">
+                    No students found
+                  </div>
+                )}
+              </div>
+              {/* Selected chips */}
+              {invitedStudents.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {invitedStudents.map((s) => (
+                    <span
+                      key={s.id}
+                      className="flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs px-2.5 py-1 font-medium"
+                    >
+                      {s.name}
+                      <button
+                        type="button"
+                        onClick={() => setInvitedStudents(prev => prev.filter(i => i.id !== s.id))}
+                        className="ml-0.5 rounded-full hover:bg-primary/20 transition-colors"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </form>
 
         <DialogFooter>
@@ -295,15 +440,13 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
 function SessionCard({
   session,
   onMutated,
-  compact = false,
 }: {
   session: SessionItem
   onMutated?: () => void
-  compact?: boolean
 }) {
-  const { date, time } = formatDate(session.scheduledAt)
   const cfg = STATUS[session.status]
   const StatusIcon = cfg.icon
+  const scheduled = new Date(session.scheduledAt)
 
   const { execute: patch, loading: patching } = usePatchCallback<
     { session: SessionItem },
@@ -317,75 +460,110 @@ function SessionCard({
 
   return (
     <div className={cn(
-      "rounded-2xl border p-4 flex flex-col gap-3 transition-all hover:shadow-sm",
+      "rounded-2xl border overflow-hidden transition-all hover:shadow-sm",
       cfg.card
     )}>
-      <div className="flex items-start gap-2.5">
-        <span className={cn("block size-2 rounded-full mt-1.5 shrink-0", cfg.dot)} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-            <Badge variant="outline" className={cn("text-[10px] gap-1 h-4 px-1.5", cfg.badge)}>
-              <StatusIcon className="size-2.5" />
-              {cfg.label}
-            </Badge>
-            {session.course && (
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <BookOpen className="size-2.5" />
-                {session.course.title}
-              </span>
+      {/* Live banner */}
+      {session.status === "LIVE" && (
+        <div className="bg-emerald-500 text-white px-4 py-1.5 flex items-center gap-2">
+          <Radio className="size-3 animate-pulse" />
+          <span className="text-xs font-bold uppercase tracking-wide">Session in progress</span>
+        </div>
+      )}
+
+      <div className="p-5 flex flex-col gap-4">
+        {/* Top: badges + title + description */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <Badge variant="outline" className={cn("text-xs gap-1", cfg.badge)}>
+                <StatusIcon className="size-3" />
+                {cfg.label}
+              </Badge>
+              {session.course && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <BookOpen className="size-3" />
+                  {session.course.title}
+                </span>
+              )}
+            </div>
+            <h3 className="font-bold text-base leading-snug">{session.title}</h3>
+            {session.description && (
+              <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{session.description}</p>
             )}
           </div>
-          <p className="font-bold text-sm leading-snug">{session.title}</p>
-          {!compact && session.description && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{session.description}</p>
-          )}
-        </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground pl-4">
-        <span className="flex items-center gap-1"><Clock className="size-3 text-primary/50" /> {time}</span>
-        <span className="flex items-center gap-1"><Clock className="size-3 text-primary/50" /> {session.durationMins} min</span>
-        <span className="flex items-center gap-1"><Users className="size-3 text-primary/50" /> {session.attendeeCount}{session.maxStudents ? `/${session.maxStudents}` : ""}</span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5 pl-4">
-        {session.status === "SCHEDULED" && (
-          <>
-            <Button size="sm" disabled={patching} onClick={() => patch({ status: "LIVE" })}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs px-2.5">
-              <Radio className="size-3" /> Start
-            </Button>
-            <Button size="sm" variant="outline" disabled={patching}
-              className="text-destructive hover:text-destructive h-7 text-xs px-2.5"
-              onClick={() => patch({ status: "CANCELLED" })}>
-              Cancel
-            </Button>
-          </>
-        )}
-        {session.status === "LIVE" && (
-          <>
-            <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs px-2.5">
+          {/* Primary action — top-right for quick access */}
+          {session.status === "LIVE" && (
+            <Button asChild size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
               <Link href={`/tutor/sessions/${session.id}/live`}>
-                <MonitorPlay className="size-3" /> Open
+                <MonitorPlay className="size-3.5" /> Open Classroom
               </Link>
             </Button>
-            <Button size="sm" variant="outline" disabled={patching}
-              className="h-7 text-xs px-2.5"
-              onClick={() => patch({ status: "COMPLETED" })}>
-              End
+          )}
+          {session.status === "SCHEDULED" && (
+            <Button size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+              disabled={patching} onClick={() => patch({ status: "LIVE" })}>
+              <Radio className="size-3.5" /> Start
             </Button>
-          </>
-        )}
-        {session.status === "COMPLETED" && session.recordingUrl && (
-          <Button asChild size="sm" variant="outline" className="gap-1 h-7 text-xs px-2.5">
-            <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
-              <Download className="size-3" /> Recording
-            </a>
-          </Button>
-        )}
-        <Button asChild size="sm" variant="ghost" className="ml-auto h-7 text-xs px-2 text-muted-foreground">
-          <Link href={`/tutor/sessions/${session.id}`}>Details</Link>
-        </Button>
+          )}
+        </div>
+
+        {/* Meta row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Date</p>
+            <p className="text-xs font-semibold">
+              {scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+            </p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Time</p>
+            <p className="text-xs font-semibold">
+              {scheduled.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Duration</p>
+            <p className="text-xs font-semibold">{session.durationMins} min</p>
+          </div>
+          <div className="bg-muted/40 rounded-xl px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Students</p>
+            <p className="text-xs font-semibold">
+              {session.attendeeCount}{session.maxStudents ? ` / ${session.maxStudents}` : " joined"}
+            </p>
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+          {session.status === "LIVE" && (
+            <Button size="sm" variant="outline" disabled={patching} className="h-7 text-xs"
+              onClick={() => patch({ status: "COMPLETED" })}>
+              <CheckCircle2 className="size-3 mr-1.5" /> End Session
+            </Button>
+          )}
+          {session.status === "SCHEDULED" && (
+            <Button size="sm" variant="outline" disabled={patching}
+              className="h-7 text-xs text-destructive hover:text-destructive"
+              onClick={() => patch({ status: "CANCELLED" })}>
+              <XCircle className="size-3 mr-1.5" /> Cancel
+            </Button>
+          )}
+          {session.status === "COMPLETED" && session.recordingUrl && (
+            <Button asChild size="sm" variant="outline" className="h-7 text-xs gap-1.5">
+              <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
+                <Download className="size-3" /> Download Recording
+              </a>
+            </Button>
+          )}
+          {session.status === "COMPLETED" && !session.recordingUrl && (
+            <span className="text-xs text-muted-foreground">No recording available</span>
+          )}
+          {session.status === "CANCELLED" && (
+            <span className="text-xs text-muted-foreground">This session was cancelled</span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -547,7 +725,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
       </div>
 
       {/* ── Right sidebar ── */}
-      <div className="w-64 shrink-0 flex flex-col gap-4">
+      <div className="w-64 shrink-0 flex flex-col gap-4 mt-10">
         {/* Selected day panel */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className={cn(
@@ -652,7 +830,7 @@ function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onM
     .slice(0, 5)
 
   return (
-    <div className="w-64 shrink-0 flex flex-col gap-4">
+    <div className="w-64 shrink-0 flex flex-col gap-4 mt-10">
       {/* Today */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border bg-primary/5">
