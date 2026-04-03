@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_figma_figma__get_metadata",
+      "mcp__plugin_figma_figma__get_design_context",
+      "Bash(npx shadcn@latest add input label card checkbox avatar dropdown-menu badge separator progress --yes)",
+      "Bash(npx shadcn@latest add sonner --yes)",
+      "Bash(npx tsc:*)",
+      "Bash(npx shadcn@latest add radio-group tabs --yes)",
+      "Bash(find E:/2026-projects/BSL/bsl-system -name \"*.tmp.*\" -delete)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest add select dialog textarea --yes)",
+      "Bash(grep -oP '`[^`]*`|\"/[^\"]*\"')",
+      "Bash(grep -oP 'href=\\\\{?[`\"].*?[`\"]\\\\}?')",
+      "Bash(npx shadcn@latest add dropdown-menu --yes)",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(git -C E:/2026-projects/BSL/bsl-system status --short)",
+      "Bash(npx prisma:*)",
+      "Bash(node:*)",
+      "Bash(python3:*)",
+      "mcp__plugin_figma_figma__get_screenshot",
+      "Bash(npx shadcn@latest add calendar popover --yes)",
+      "Bash(grep -v \"//\")"
+    ]
+  }
+}
