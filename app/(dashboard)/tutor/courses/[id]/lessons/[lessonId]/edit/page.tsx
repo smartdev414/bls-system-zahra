@@ -174,10 +174,9 @@ export default function EditLessonPage({
     setAssets((a) => a.filter((x) => x.id !== assetId))
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[300px]">
+      <div className="flex items-center justify-center min-h-75">
         <Loader2 className="size-8 animate-spin text-primary" />
       </div>
     )
@@ -324,7 +323,6 @@ export default function EditLessonPage({
             lessonId={lessonId}
             questions={questions}
             onChange={(q) => { setQuestions(q); setError(null) }}
-            onChange={setQuestions}
           />
         </>
       )}
