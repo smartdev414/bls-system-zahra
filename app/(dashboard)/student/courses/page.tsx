@@ -4,12 +4,13 @@ import { useState } from "react"
 import Link from "next/link"
 import {
   BookOpen, Search, Star, Users, Layers, CheckCircle2,
-  Loader2, Filter, ArrowRight, LogOut,
+  Loader2, Filter, ArrowRight, LogOut, Trophy, TrendingUp,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -23,6 +24,13 @@ import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type CourseProgress = {
+  completedLessons: number
+  totalLessons: number
+  completion: number
+  isCompleted: boolean
+}
 
 type Course = {
   id: string
@@ -38,6 +46,7 @@ type Course = {
   avgRating: number | null
   reviewCount: number
   isEnrolled: boolean
+  progress: CourseProgress | null
 }
 
 type CoursesData = { courses: Course[]; total: number; page: number; totalPages: number }
@@ -68,13 +77,16 @@ export default function StudentCoursesPage() {
     errorMessage: "Could not load courses",
   })
 
-  const enrolled = (data?.courses ?? []).filter((c) => c.isEnrolled)
-  const available = (data?.courses ?? []).filter((c) => !c.isEnrolled)
+  const completed  = (data?.courses ?? []).filter((c) => c.progress?.isCompleted)
+  const inProgress = (data?.courses ?? []).filter((c) => c.isEnrolled && !c.progress?.isCompleted)
+  const available  = (data?.courses ?? []).filter((c) => !c.isEnrolled)
 
   function handleLevelChange(value: string) {
     setLevelFilter(value)
     setPage(1)
   }
+
+  const noResults = !loading && data?.courses.length === 0
 
   return (
     <div className="flex flex-col gap-8">
@@ -114,45 +126,64 @@ export default function StudentCoursesPage() {
         <div className="flex items-center justify-center min-h-[300px]">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
+      ) : noResults ? (
+        <Card className="shadow-sm">
+          <CardContent className="py-16 flex flex-col items-center gap-4 text-center">
+            <div className="rounded-full bg-muted p-6">
+              <BookOpen className="size-10 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="font-semibold text-lg">No courses found</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {debouncedQuery || levelFilter !== "all" ? "Try adjusting your filters." : "No published courses yet."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <>
-          {enrolled.length > 0 && (
-            <section>
-              <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
-                <CheckCircle2 className="size-3.5 text-emerald-500" /> My Enrolled Courses
+          {/* Completed courses */}
+          {completed.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                <Trophy className="size-3.5 text-amber-500" />
+                Completed
+                <Badge variant="secondary" className="text-xs font-semibold">{completed.length}</Badge>
               </h2>
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {enrolled.map((c) => <CourseCard key={c.id} course={c} onMutated={refetch} />)}
+                {completed.map((c) => <CourseCard key={c.id} course={c} onMutated={refetch} />)}
               </div>
             </section>
           )}
 
-          <section>
-            {enrolled.length > 0 && available.length > 0 && (
-              <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
-                <BookOpen className="size-3.5" /> Available Courses
+          {/* In-progress courses */}
+          {inProgress.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                <TrendingUp className="size-3.5 text-primary" />
+                In Progress
+                <Badge variant="secondary" className="text-xs font-semibold">{inProgress.length}</Badge>
               </h2>
-            )}
-            {available.length > 0 ? (
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {inProgress.map((c) => <CourseCard key={c.id} course={c} onMutated={refetch} />)}
+              </div>
+            </section>
+          )}
+
+          {/* Available courses */}
+          {available.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                <BookOpen className="size-3.5" />
+                Available Courses
+                <Badge variant="secondary" className="text-xs font-semibold">{available.length}</Badge>
+              </h2>
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {available.map((c) => <CourseCard key={c.id} course={c} onMutated={refetch} />)}
               </div>
-            ) : !enrolled.length ? (
-              <Card className="shadow-sm">
-                <CardContent className="py-16 flex flex-col items-center gap-4 text-center">
-                  <div className="rounded-full bg-muted p-6">
-                    <BookOpen className="size-10 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-lg">No courses found</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {debouncedQuery || levelFilter !== "all" ? "Try adjusting your filters." : "No published courses yet."}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
-          </section>
+            </section>
+          )}
+
           {data && data.totalPages > 1 && (
             <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} />
           )}
@@ -162,12 +193,16 @@ export default function StudentCoursesPage() {
   )
 }
 
-// ─── Course card — owns enrol + review hooks ──────────────────────────────────
+// ─── Course card ──────────────────────────────────────────────────────────────
 
 function CourseCard({ course, onMutated }: { course: Course; onMutated: () => void }) {
   const [reviewOpen, setReviewOpen] = useState(false)
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState("")
+
+  const progress = course.progress
+  const isCompleted = progress?.isCompleted ?? false
+  const completion = progress?.completion ?? 0
 
   const { execute: enroll, loading: enrolling } = usePostCallback<
     { enrollment: object },
@@ -198,22 +233,37 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
 
   return (
     <>
-      <Card className="shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-shadow">
+      <Card className={`shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-shadow ${isCompleted ? "ring-1 ring-emerald-200" : ""}`}>
         {/* Thumbnail */}
         <div className="aspect-video bg-primary/10 flex items-center justify-center relative overflow-hidden shrink-0">
           {course.thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
           ) : (
             <BookOpen className="size-10 text-primary/40" />
           )}
+          {/* Level badge */}
           <div className="absolute top-2 left-2">
-            <Badge variant="outline" className={`text-[10px] ${levelColor[course.level]}`}>
+            <Badge variant="outline" className={`text-[10px] backdrop-blur-sm bg-white/80 ${levelColor[course.level]}`}>
               {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
             </Badge>
           </div>
-          {course.isEnrolled && (
-            <div className="absolute top-2 right-2">
-              <Badge className="bg-emerald-500 text-white text-[10px]">Enrolled</Badge>
+          {/* Status badge */}
+          <div className="absolute top-2 right-2">
+            {isCompleted ? (
+              <Badge className="bg-emerald-500 text-white text-[10px] gap-1">
+                <CheckCircle2 className="size-2.5" /> Completed
+              </Badge>
+            ) : course.isEnrolled ? (
+              <Badge className="bg-primary text-primary-foreground text-[10px]">Enrolled</Badge>
+            ) : null}
+          </div>
+          {/* Completion overlay on thumbnail */}
+          {isCompleted && (
+            <div className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center">
+              <div className="bg-emerald-500 rounded-full p-3 shadow-lg">
+                <Trophy className="size-6 text-white" />
+              </div>
             </div>
           )}
         </div>
@@ -227,11 +277,13 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
         </CardHeader>
 
         <CardContent className="pt-0 space-y-3">
+          {/* Course meta */}
           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
             <span className="flex items-center gap-1"><Layers className="size-3" /> {course.sectionCount} sections</span>
             <span className="flex items-center gap-1"><BookOpen className="size-3" /> {course.lessonCount} lessons</span>
             <span className="flex items-center gap-1"><Users className="size-3" /> {course.enrollmentCount}</span>
           </div>
+
           {course.avgRating && (
             <div className="flex items-center gap-1 text-xs">
               <Star className="size-3 fill-amber-400 text-amber-400" />
@@ -240,13 +292,40 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
             </div>
           )}
 
+          {/* Progress bar for enrolled courses */}
+          {course.isEnrolled && progress && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {progress.completedLessons} / {progress.totalLessons} lessons
+                </span>
+                <span className={`font-semibold ${isCompleted ? "text-emerald-600" : "text-foreground"}`}>
+                  {completion}%
+                </span>
+              </div>
+              <Progress
+                value={completion}
+                className={`h-1.5 ${isCompleted ? "[&>div]:bg-emerald-500" : ""}`}
+              />
+            </div>
+          )}
+
+          {/* Actions */}
           {course.isEnrolled ? (
             <div className="flex gap-2">
-              <Button asChild size="sm" className="flex-1">
-                <Link href="/student/lessons">
-                  Continue <ArrowRight className="size-4 ml-1" />
-                </Link>
-              </Button>
+              {isCompleted ? (
+                <Button asChild size="sm" variant="outline" className="flex-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+                  <Link href="/student/lessons">
+                    <CheckCircle2 className="size-3.5 mr-1.5" /> Review
+                  </Link>
+                </Button>
+              ) : (
+                <Button asChild size="sm" className="flex-1">
+                  <Link href="/student/lessons">
+                    Continue <ArrowRight className="size-4 ml-1" />
+                  </Link>
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)} title="Rate course">
                 <Star className="size-4" />
               </Button>

@@ -7,7 +7,8 @@ import {
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
-  Calendar, Globe, Lock, X, Search, UserPlus, Pencil, Play,
+  Globe, Lock, X, Search, UserPlus, Pencil, Play,
+  Paperclip, FileText, Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,11 +17,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DatePicker } from "@/components/ui/date-picker"
 import { TimePicker } from "@/components/ui/time-picker"
+import { Separator } from "@/components/ui/separator"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, DialogClose, DialogTrigger,
 } from "@/components/ui/dialog"
-import { useFetch, usePatchCallback, usePostCallback } from "@/hooks/use-fetch"
+import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
+import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { Pagination } from "@/components/ui/pagination"
 import { cn } from "@/lib/utils"
 
@@ -127,6 +130,17 @@ type SessionBody = {
   durationMins: number; maxStudents: number | undefined; courseId: string | undefined
   visibility: "PUBLIC" | "INVITE_ONLY"; invitedStudentIds: string[]
 }
+type SessionResource = {
+  id: string; title: string; fileUrl: string; fileName: string
+  fileSize: number | null; mimeType: string | null
+}
+
+function formatBytes(bytes: number | null) {
+  if (!bytes) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 function ScheduleSessionDialog({
   onCreated,
@@ -159,7 +173,22 @@ function ScheduleSessionDialog({
   const [showDropdown, setShowDropdown] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
 
+  // Resources state
+  const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([])
+  const [savedResources, setSavedResources] = useState<SessionResource[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
   const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
+
+  // Load existing resources when editing
+  useEffect(() => {
+    if (!open || !isEdit || !editSession?.id) return
+    fetch(`/api/tutor/sessions/${editSession.id}/resources`)
+      .then((r) => r.json())
+      .then((d: { resources: SessionResource[] }) => setSavedResources(d.resources))
+      .catch(() => {})
+  }, [open, isEdit, editSession?.id])
 
   // Pre-fill form when editing
   useEffect(() => {
@@ -199,50 +228,83 @@ function ScheduleSessionDialog({
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
-  const { execute: create, loading: creating } = usePostCallback<{ session: { id: string } }, SessionBody>(
-    "/api/tutor/sessions",
-    {
-      successMessage: "Session scheduled!",
-      errorMessage: "Could not schedule session",
-      onSuccess: () => { setOpen(false); resetForm(); onCreated() },
-    }
-  )
-
-  const { execute: update, loading: updating } = usePatchCallback<{ session: SessionItem }, Partial<SessionBody>>(
-    `/api/tutor/sessions/${editSession?.id ?? ""}`,
-    {
-      successMessage: "Session updated!",
-      errorMessage: "Could not update session",
-      onSuccess: () => { setOpen(false); onCreated() },
-    }
-  )
-
-  const loading = creating || updating
-
   function resetForm() {
     setTitle(""); setDescription(""); setDate(undefined); setTime("")
     setDurationMins(60); setMaxStudents(""); setCourseId("")
     setVisibility("PUBLIC"); setInvitedStudents([]); setStudentSearch(""); setSearchResults([])
+    setPendingFiles([]); setSavedResources([]); setSubmitError(null)
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function attachResources(sessionId: string, files: UploadedFile[]) {
+    await Promise.all(files.map((f) =>
+      fetch(`/api/tutor/sessions/${sessionId}/resources`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: f.fileName,
+          fileUrl: f.fileUrl,
+          fileName: f.fileName,
+          fileSize: f.fileSize,
+          mimeType: f.mimeType,
+        }),
+      })
+    ))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!date || !time) return
     const [hours, minutes] = time.split(":")
     const scheduledAt = new Date(date)
     scheduledAt.setHours(parseInt(hours), parseInt(minutes), 0, 0)
-    const body: Partial<SessionBody> = {
-      title, description, scheduledAt: scheduledAt.toISOString(),
-      durationMins,
-      maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
-      courseId: courseId || undefined,
-    }
-    if (isEdit) {
-      update(body)
-    } else {
-      create({ ...body, visibility, invitedStudentIds: invitedStudents.map(s => s.id) } as SessionBody)
+
+    setSubmitting(true)
+    setSubmitError(null)
+
+    try {
+      if (isEdit && editSession) {
+        const res = await fetch(`/api/tutor/sessions/${editSession.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title, description, scheduledAt: scheduledAt.toISOString(),
+            durationMins,
+            maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
+            courseId: courseId || undefined,
+          }),
+        })
+        if (!res.ok) throw new Error((await res.json() as { message?: string }).message ?? "Could not update session")
+        if (pendingFiles.length > 0) await attachResources(editSession.id, pendingFiles)
+        setOpen(false)
+        onCreated()
+      } else {
+        const res = await fetch("/api/tutor/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title, description, scheduledAt: scheduledAt.toISOString(),
+            durationMins,
+            maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
+            courseId: courseId || undefined,
+            visibility,
+            invitedStudentIds: invitedStudents.map((s) => s.id),
+          }),
+        })
+        if (!res.ok) throw new Error((await res.json() as { message?: string }).message ?? "Could not schedule session")
+        const data = await res.json() as { session: { id: string } }
+        if (pendingFiles.length > 0) await attachResources(data.session.id, pendingFiles)
+        setOpen(false)
+        resetForm()
+        onCreated()
+      }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setSubmitting(false)
     }
   }
+
+  const loading = submitting
 
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const canSubmit = title.trim() && date && time
@@ -459,6 +521,66 @@ function ScheduleSessionDialog({
                 </div>
               )}
             </div>
+          )}
+
+          {/* Resource files */}
+          <Separator />
+          <div className="flex flex-col gap-2">
+            <Label className="flex items-center gap-1.5">
+              <Paperclip className="size-3.5" /> Resource Files
+              <span className="text-muted-foreground font-normal text-xs">(students can download before joining)</span>
+            </Label>
+
+            {/* Saved resources (edit mode) */}
+            {savedResources.map((r) => (
+              <div key={r.id} className="flex items-center gap-3 rounded-xl border bg-muted/30 px-3 py-2 overflow-hidden">
+                <FileText className="size-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{r.fileName}</p>
+                  {r.fileSize && <p className="text-xs text-muted-foreground">{formatBytes(r.fileSize)}</p>}
+                </div>
+                <Button
+                  type="button" variant="ghost" size="icon" className="size-7 shrink-0 text-destructive hover:text-destructive"
+                  onClick={async () => {
+                    await fetch(`/api/tutor/sessions/${editSession!.id}/resources/${r.id}`, { method: "DELETE" })
+                    setSavedResources((prev) => prev.filter((x) => x.id !== r.id))
+                  }}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+
+            {/* Pending new uploads */}
+            {pendingFiles.map((f, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-xl border bg-emerald-50 border-emerald-200 px-3 py-2 overflow-hidden">
+                <FileText className="size-4 text-emerald-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{f.fileName}</p>
+                  <p className="text-xs text-emerald-600">{formatBytes(f.fileSize)} · Ready to save</p>
+                </div>
+                <Button
+                  type="button" variant="ghost" size="icon" className="size-7 shrink-0"
+                  onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+                >
+                  <X className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+
+            {/* Upload a new file — resets after each upload so user can keep adding */}
+            <FileUpload
+              accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,video/*,audio/*"
+              label="Attach a file"
+              uploaded={null}
+              onUploaded={(f) => setPendingFiles((prev) => [...prev, f])}
+            />
+          </div>
+
+          {submitError && (
+            <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+              {submitError}
+            </p>
           )}
         </form>
 

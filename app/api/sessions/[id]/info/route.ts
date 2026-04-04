@@ -17,10 +17,18 @@ export async function GET(
       select: {
         id: true,
         title: true,
+        description: true,
         status: true,
         tutorId: true,
+        durationMins: true,
+        scheduledAt: true,
         tutor: { select: { name: true } },
         course: { select: { id: true, title: true } },
+        resources: {
+          select: { id: true, title: true, fileUrl: true, fileName: true, fileSize: true, mimeType: true },
+          orderBy: { createdAt: "asc" },
+        },
+        _count: { select: { attendances: true } },
       },
     })
 

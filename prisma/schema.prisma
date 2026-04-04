@@ -281,6 +281,7 @@ model LiveSession {
   course      Course?                 @relation(fields: [courseId], references: [id])
   attendances LiveSessionAttendance[]
   invites     LiveSessionInvite[]
+  resources   LiveSessionResource[]
 
   @@index([tutorId])
   @@index([status])
@@ -359,6 +360,21 @@ model Message {
 
   @@index([conversationId])
   @@index([senderId])
+}
+
+model LiveSessionResource {
+  id        String   @id @default(cuid())
+  sessionId String
+  title     String
+  fileUrl   String
+  fileName  String
+  fileSize  Int?
+  mimeType  String?
+  createdAt DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
 }
 
 model QuizQuestion {
