@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import {
   Search, Send, Plus, MessageSquare, Loader2,
-  CheckCheck, Check, MoreVertical, Users,
+  CheckCheck, Check, MoreVertical, Users, Wifi, WifiOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
+import { getPusherClient } from "@/lib/pusher-client"
+import type { Channel } from "pusher-js"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,9 +47,9 @@ type ConversationDetail = {
   messages: MessageItem[]
 }
 
-type ConvsData = { conversations: ConversationSummary[] }
-type ConvData  = { conversation: ConversationDetail }
-type ContactsData = { contacts: Contact[] }
+type ConvsData     = { conversations: ConversationSummary[] }
+type ConvData      = { conversation: ConversationDetail }
+type ContactsData  = { contacts: Contact[] }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -75,9 +77,13 @@ export default function MessagingCenter({
   role: "STUDENT" | "TUTOR"
   basePath: string
 }) {
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeId, setActiveId]       = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [newConvOpen, setNewConvOpen] = useState(false)
+  const [connected, setConnected]     = useState(false)
+
+  // Local messages state — seeded from fetch, then appended via Pusher
+  const [messages, setMessages] = useState<MessageItem[]>([])
 
   // ── Conversation list ──────────────────────────────────────────────────────
   const { data: convsData, loading: convsLoading, refetch: refetchConvs } = useFetch<ConvsData>(
@@ -85,37 +91,91 @@ export default function MessagingCenter({
     { errorMessage: "Could not load conversations" }
   )
 
-  // Poll conversation list every 10 s
-  useEffect(() => {
-    const id = setInterval(() => refetchConvs(), 10_000)
-    return () => clearInterval(id)
-  }, [refetchConvs])
-
   const filtered = (convsData?.conversations ?? []).filter((c) =>
     !searchQuery || c.other.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  // ── Active conversation ────────────────────────────────────────────────────
+  // ── Active conversation (initial load) ────────────────────────────────────
   const { data: convData, loading: convLoading, refetch: refetchConv } = useFetch<ConvData>(
     activeId ? `/api/messages/conversations/${activeId}` : "",
-    { errorMessage: "Could not load messages", immediate: !!activeId }
+    {
+      errorMessage: "Could not load messages",
+      immediate: !!activeId,
+      onSuccess: (d) => setMessages(d.conversation.messages),
+    }
   )
 
-  // Poll active conversation every 4 s
+  const activeConv = convData?.conversation ?? null
+
+  // ── Pusher: connect once per session ──────────────────────────────────────
+  const userChannelRef = useRef<Channel | null>(null)
+
+  useEffect(() => {
+    const pusher = getPusherClient()
+
+    pusher.connection.bind("connected",    () => setConnected(true))
+    pusher.connection.bind("disconnected", () => setConnected(false))
+    pusher.connection.bind("error",        () => setConnected(false))
+
+    // Subscribe to personal channel for sidebar updates
+    const ch = pusher.subscribe(`private-user-${getUserId()}`)
+    userChannelRef.current = ch
+
+    ch.bind("new-message", () => {
+      refetchConvs()
+    })
+
+    return () => {
+      ch.unbind_all()
+      pusher.unsubscribe(`private-user-${getUserId()}`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Pusher: subscribe to active conversation channel ──────────────────────
+  const convChannelRef = useRef<Channel | null>(null)
+
   useEffect(() => {
     if (!activeId) return
-    const id = setInterval(() => {
-      refetchConv()
+
+    const pusher = getPusherClient()
+    const channelName = `private-conversation-${activeId}`
+    const ch = pusher.subscribe(channelName)
+    convChannelRef.current = ch
+
+    ch.bind("new-message", (incoming: MessageItem) => {
+      setMessages((prev) => {
+        // Avoid duplicates (our own sent message is already in state)
+        if (prev.some((m) => m.id === incoming.id)) return prev
+        return [...prev, incoming]
+      })
+      // Update sidebar last-message
       refetchConvs()
-    }, 4_000)
-    return () => clearInterval(id)
-  }, [activeId, refetchConv, refetchConvs])
+      // Mark messages as read on server (fire-and-forget)
+      fetch(`/api/messages/conversations/${activeId}`, { method: "GET" }).catch(() => {})
+    })
+
+    return () => {
+      ch.unbind_all()
+      pusher.unsubscribe(channelName)
+      convChannelRef.current = null
+    }
+  }, [activeId, refetchConvs])
+
+  // Reload messages when switching conversation
+  useEffect(() => {
+    if (activeId) {
+      setMessages([])
+      refetchConv()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId])
 
   // Auto-scroll to bottom when messages change
   const messagesEndRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [convData?.conversation.messages.length])
+  }, [messages.length])
 
   // ── Send message ───────────────────────────────────────────────────────────
   const [draft, setDraft] = useState("")
@@ -128,9 +188,12 @@ export default function MessagingCenter({
     {
       successMessage: false,
       errorMessage: "Could not send message",
-      onSuccess: () => {
+      onSuccess: (d) => {
+        // Optimistically append our own message immediately
+        setMessages((prev) =>
+          prev.some((m) => m.id === d.message.id) ? prev : [...prev, d.message]
+        )
         setDraft("")
-        refetchConv()
         refetchConvs()
       },
     }
@@ -155,9 +218,12 @@ export default function MessagingCenter({
     },
   })
 
-  const activeConv = convData?.conversation
   const currentUserId = activeConv
     ? role === "STUDENT" ? activeConv.student.id : activeConv.tutor.id
+    : null
+
+  const otherUser = activeConv
+    ? role === "STUDENT" ? activeConv.tutor : activeConv.student
     : null
 
   return (
@@ -172,13 +238,21 @@ export default function MessagingCenter({
             <h1 className="text-base font-black flex items-center gap-2">
               <MessageSquare className="size-4 text-primary" /> Messages
             </h1>
-            <Button
-              size="icon" variant="ghost" className="size-8"
-              onClick={() => setNewConvOpen(true)}
-              title="New conversation"
-            >
-              <Plus className="size-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {/* Real-time connection indicator */}
+              <span title={connected ? "Connected" : "Connecting…"}>
+                {connected
+                  ? <Wifi className="size-3.5 text-emerald-500" />
+                  : <WifiOff className="size-3.5 text-muted-foreground animate-pulse" />}
+              </span>
+              <Button
+                size="icon" variant="ghost" className="size-8"
+                onClick={() => setNewConvOpen(true)}
+                title="New conversation"
+              >
+                <Plus className="size-4" />
+              </Button>
+            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
@@ -223,42 +297,37 @@ export default function MessagingCenter({
       </aside>
 
       {/* ── RIGHT: chat window ──────────────────────────────────────────────── */}
-      {activeConv ? (
+      {activeConv && otherUser ? (
         <div className="flex-1 flex flex-col min-w-0">
 
           {/* Chat header */}
           <div className="flex items-center gap-3 px-5 py-3.5 border-b bg-background shrink-0">
             <Avatar className="size-9">
-              <AvatarImage src={role === "STUDENT" ? activeConv.tutor.avatarUrl ?? undefined : activeConv.student.avatarUrl ?? undefined} />
+              <AvatarImage src={otherUser.avatarUrl ?? undefined} />
               <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                {initials(role === "STUDENT" ? activeConv.tutor.name : activeConv.student.name)}
+                {initials(otherUser.name)}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold truncate">
-                {role === "STUDENT" ? activeConv.tutor.name : activeConv.student.name}
-              </p>
+              <p className="text-sm font-bold truncate">{otherUser.name}</p>
               <p className="text-xs text-muted-foreground">
                 {role === "STUDENT" ? "Tutor" : "Student"}
               </p>
             </div>
-            <Button size="icon" variant="ghost" className="size-8">
-              <MoreVertical className="size-4" />
-            </Button>
           </div>
 
           {/* Messages */}
           <ScrollArea className="flex-1 px-5 py-4">
-            {convLoading ? (
+            {convLoading && messages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="size-6 animate-spin text-primary" />
               </div>
-            ) : activeConv.messages.length > 0 ? (
+            ) : messages.length > 0 ? (
               <div className="flex flex-col gap-3">
-                {activeConv.messages.map((msg, i) => {
-                  const isMine = msg.senderId === currentUserId
+                {messages.map((msg, i) => {
+                  const isMine    = msg.senderId === currentUserId
                   const showAvatar = !isMine &&
-                    (i === 0 || activeConv.messages[i - 1].senderId !== msg.senderId)
+                    (i === 0 || messages[i - 1].senderId !== msg.senderId)
                   return (
                     <MessageBubble
                       key={msg.id}
@@ -326,6 +395,17 @@ export default function MessagingCenter({
       />
     </div>
   )
+}
+
+// ─── getUserId — reads from a cookie/session on client side ──────────────────
+// We need the current user's ID for the personal Pusher channel.
+// It's embedded in the JWT session cookie; we read it from a server component
+// via a small helper endpoint instead of calling getSession() (server-only).
+function getUserId(): string {
+  if (typeof window === "undefined") return ""
+  // Stored in a meta tag rendered by the layout, or read from a data attribute.
+  // Fallback: try sessionStorage where the layout stores it.
+  return sessionStorage.getItem("userId") ?? ""
 }
 
 // ─── Conversation row ─────────────────────────────────────────────────────────
@@ -398,7 +478,6 @@ function MessageBubble({
 
   return (
     <div className={cn("flex items-end gap-2", isMine ? "flex-row-reverse" : "flex-row")}>
-      {/* Avatar placeholder — keeps alignment consistent */}
       <div className="size-7 shrink-0">
         {!isMine && showAvatar && (
           <Avatar className="size-7">
@@ -411,14 +490,12 @@ function MessageBubble({
       </div>
 
       <div className={cn("flex flex-col gap-0.5 max-w-[70%]", isMine ? "items-end" : "items-start")}>
-        <div
-          className={cn(
-            "px-4 py-2.5 rounded-2xl text-sm leading-relaxed",
-            isMine
-              ? "bg-primary text-primary-foreground rounded-br-sm"
-              : "bg-muted rounded-bl-sm"
-          )}
-        >
+        <div className={cn(
+          "px-4 py-2.5 rounded-2xl text-sm leading-relaxed",
+          isMine
+            ? "bg-primary text-primary-foreground rounded-br-sm"
+            : "bg-muted rounded-bl-sm"
+        )}>
           {message.content}
         </div>
         <div className="flex items-center gap-1 px-1">

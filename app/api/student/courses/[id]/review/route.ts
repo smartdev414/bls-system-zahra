@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { createNotification } from "@/lib/notifications"
 
 export async function POST(
   req: NextRequest,
@@ -23,11 +24,27 @@ export async function POST(
     })
     if (!enrollment) return NextResponse.json({ message: "Not enrolled in this course" }, { status: 403 })
 
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      select: { title: true, tutorId: true },
+    })
+
     const review = await prisma.review.upsert({
       where: { studentId_courseId: { studentId: session.sub, courseId } },
       create: { studentId: session.sub, courseId, rating, comment: comment?.trim() ?? null },
       update: { rating, comment: comment?.trim() ?? null },
     })
+
+    if (course) {
+      const stars = "★".repeat(rating) + "☆".repeat(5 - rating)
+      void createNotification(
+        course.tutorId,
+        "NEW_REVIEW",
+        "New course review",
+        `${session.name} rated "${course.title}" ${stars} (${rating}/5)${comment ? `: "${comment.slice(0, 80)}"` : ""}`,
+        `/tutor/courses/${courseId}`,
+      )
+    }
 
     return NextResponse.json({ review }, { status: 201 })
   } catch (err) {

@@ -3,9 +3,9 @@
 import { useState } from "react"
 import {
   Library, Plus, Pencil, Trash2, Loader2,
-  Search, Filter, Video, Check, X, Database,
+  Search, Filter, Video, Check, X, Database, Image as ImageIcon,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -17,6 +17,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
+import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { useFetch, usePostCallback, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ const blank = (): Omit<Sign, "id"> => ({
 export default function AdminSignsPage() {
   const [query, setQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [levelFilter, setLevelFilter] = useState("all")
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState(blank())
 
@@ -81,7 +83,8 @@ export default function AdminSignsPage() {
       s.word.toLowerCase().includes(query.toLowerCase()) ||
       s.category.toLowerCase().includes(query.toLowerCase())
     const matchCat = categoryFilter === "all" || s.category === categoryFilter
-    return matchQ && matchCat
+    const matchLvl = levelFilter === "all" || s.level === levelFilter
+    return matchQ && matchCat && matchLvl
   })
 
   return (
@@ -92,7 +95,7 @@ export default function AdminSignsPage() {
             <Library className="size-6 text-primary" /> BSL Dictionary
           </h1>
           <p className="text-muted-foreground mt-1">
-            {loading ? "\u00A0" : `${data?.total ?? 0} signs in the dictionary`}
+            {loading ? "\u00A0" : `${data?.total ?? 0} signs — ${filtered.length} shown`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -109,8 +112,8 @@ export default function AdminSignsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-52">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search signs..."
@@ -131,6 +134,17 @@ export default function AdminSignsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={levelFilter} onValueChange={setLevelFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Level" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All levels</SelectItem>
+            <SelectItem value="BEGINNER">Beginner</SelectItem>
+            <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
+            <SelectItem value="ADVANCED">Advanced</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {loading ? (
@@ -148,8 +162,10 @@ export default function AdminSignsPage() {
           <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
             <Library className="size-10 text-muted-foreground" />
             <p className="font-semibold">No signs found</p>
-            {data?.total === 0 && (
+            {data?.total === 0 ? (
               <p className="text-sm text-muted-foreground">Click "Seed defaults" to load the starter dictionary.</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Try adjusting your filters.</p>
             )}
           </CardContent>
         </Card>
@@ -198,6 +214,18 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
       <Card className="shadow-sm">
         <CardContent className="p-4">
           <div className="flex items-center gap-4">
+            {/* Thumbnail */}
+            <div className="shrink-0 size-12 rounded-lg bg-primary/10 overflow-hidden flex items-center justify-center">
+              {sign.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={sign.imageUrl} alt={sign.word} className="size-full object-cover" />
+              ) : sign.videoUrl ? (
+                <Video className="size-5 text-primary" />
+              ) : (
+                <Library className="size-5 text-primary" />
+              )}
+            </div>
+
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-0.5">
                 <p className="font-semibold">{sign.word}</p>
@@ -208,6 +236,11 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
                 {sign.videoUrl && (
                   <Badge variant="outline" className="text-[10px] gap-1 bg-violet-50 text-violet-700 border-violet-200">
                     <Video className="size-2.5" /> Video
+                  </Badge>
+                )}
+                {sign.imageUrl && (
+                  <Badge variant="outline" className="text-[10px] gap-1 bg-sky-50 text-sky-700 border-sky-200">
+                    <ImageIcon className="size-2.5" /> Image
                   </Badge>
                 )}
               </div>
@@ -266,6 +299,14 @@ function SignDialog({
   const valid = form.word.trim() && form.category.trim() && form.description.trim() &&
     form.handshape.trim() && form.usage.trim()
 
+  // Track uploaded file objects so we can show the FileUpload "uploaded" state
+  const videoUploaded: UploadedFile | null = form.videoUrl
+    ? { fileUrl: form.videoUrl, fileName: form.videoUrl.split("/").pop() ?? "video", fileSize: 0, mimeType: "video/mp4", assetType: "VIDEO" }
+    : null
+  const imageUploaded: UploadedFile | null = form.imageUrl
+    ? { fileUrl: form.imageUrl, fileName: form.imageUrl.split("/").pop() ?? "image", fileSize: 0, mimeType: "image/jpeg", assetType: "IMAGE" }
+    : null
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -273,6 +314,7 @@ function SignDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-2">
+          {/* Core fields */}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Word *</Label>
@@ -298,6 +340,7 @@ function SignDialog({
               <Input value={form.handshape} onChange={(e) => set("handshape", e.target.value)} placeholder="e.g. Open hand" />
             </div>
           </div>
+
           <div className="flex flex-col gap-1.5">
             <Label>Description *</Label>
             <Textarea
@@ -307,27 +350,39 @@ function SignDialog({
               rows={3}
             />
           </div>
+
           <div className="flex flex-col gap-1.5">
             <Label>Usage *</Label>
             <Input value={form.usage} onChange={(e) => set("usage", e.target.value)} placeholder="e.g. Used as a general greeting" />
           </div>
+
+          {/* Video upload */}
           <div className="flex flex-col gap-1.5">
-            <Label>Video URL (optional)</Label>
-            <Input
-              value={form.videoUrl ?? ""}
-              onChange={(e) => set("videoUrl", e.target.value || null)}
-              placeholder="https://..."
+            <Label>Sign Video (optional)</Label>
+            <FileUpload
+              accept="video/mp4,video/webm,video/quicktime"
+              label="Upload sign video"
+              uploaded={videoUploaded}
+              onUploaded={(f) => set("videoUrl", f.fileUrl)}
+              onRemove={() => set("videoUrl", null)}
+              disabled={loading}
             />
           </div>
+
+          {/* Image upload */}
           <div className="flex flex-col gap-1.5">
-            <Label>Image URL (optional)</Label>
-            <Input
-              value={form.imageUrl ?? ""}
-              onChange={(e) => set("imageUrl", e.target.value || null)}
-              placeholder="https://..."
+            <Label>Sign Image (optional)</Label>
+            <FileUpload
+              accept="image/jpeg,image/png,image/webp"
+              label="Upload sign image"
+              uploaded={imageUploaded}
+              onUploaded={(f) => set("imageUrl", f.fileUrl)}
+              onRemove={() => set("imageUrl", null)}
+              disabled={loading}
             />
           </div>
         </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             <X className="size-4 mr-1.5" /> Cancel

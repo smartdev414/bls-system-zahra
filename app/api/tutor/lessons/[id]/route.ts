@@ -5,9 +5,43 @@ import { getSession } from "@/lib/auth"
 async function verifyLessonOwnership(lessonId: string, tutorId: string) {
   const lesson = await prisma.lesson.findFirst({
     where: { id: lessonId, section: { course: { tutorId } } },
-    include: { section: { include: { course: { select: { tutorId: true } } } } },
+    include: { section: { include: { course: { select: { tutorId: true, id: true } } } } },
   })
   return lesson
+}
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+
+    const { id } = await params
+    const lesson = await verifyLessonOwnership(id, session.sub)
+    if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+
+    const full = await prisma.lesson.findUnique({
+      where: { id },
+      include: {
+        assets: { orderBy: { order: "asc" } },
+        questions: {
+          orderBy: { order: "asc" },
+          include: { options: { orderBy: { order: "asc" } } },
+        },
+        section: { select: { courseId: true } },
+      },
+    })
+
+    return NextResponse.json({ lesson: full })
+  } catch (err) {
+    console.error("[GET /api/tutor/lessons/[id]]", err)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
 }
 
 export async function PUT(

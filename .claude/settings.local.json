@@ -20,7 +20,14 @@
       "Bash(python3:*)",
       "mcp__plugin_figma_figma__get_screenshot",
       "Bash(npx shadcn@latest add calendar popover --yes)",
-      "Bash(grep -v \"//\")"
+      "Bash(grep -v \"//\")",
+      "Bash(xargs grep:*)",
+      "Bash(mkdir -p \"E:\\\\2026-projects\\\\BSL\\\\bsl-system\\\\app\\\\api\\\\tutor\\\\lessons\\\\[id]\\\\questions\\\\[qid]\")",
+      "Bash(mkdir -p \"E:\\\\2026-projects\\\\BSL\\\\bsl-system\\\\app\\\\api\\\\student\\\\lessons\\\\[id]\\\\quiz\\\\attempt\")",
+      "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/student/courses/[id]/route.ts)",
+      "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/messages/conversations/[id]/route.ts)",
+      "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/student/lessons/[id]/quiz/route.ts)",
+      "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/tutor/courses/[id]/route.ts)"
     ]
   }
 }

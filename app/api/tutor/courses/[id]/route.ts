@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { createNotifications } from "@/lib/notifications"
 
 export async function GET(
   _req: Request,
@@ -77,6 +78,22 @@ export async function PUT(
         ...(body.thumbnailUrl !== undefined && { thumbnailUrl: body.thumbnailUrl }),
       },
     })
+
+    // When a course is published for the first time, notify enrolled students
+    if (body.status === "PUBLISHED" && existing.status !== "PUBLISHED") {
+      const enrollments = await prisma.enrollment.findMany({
+        where: { courseId: id },
+        select: { studentId: true },
+      })
+      const studentIds = enrollments.map((e) => e.studentId)
+      void createNotifications(
+        studentIds,
+        "COURSE_PUBLISHED",
+        "Course is now available",
+        `"${course.title}" has been published — start learning now!`,
+        `/student/courses/${id}`,
+      )
+    }
 
     return NextResponse.json({ course })
   } catch (err) {

@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
+import { QuizTaker } from "@/components/quiz/QuizTaker"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,6 +50,11 @@ type SectionItem = {
   order: number
   lessons: SectionLesson[]
 }
+
+type QuizOption = { id: string; text: string; imageUrl?: string | null; order: number }
+type QuizQuestion = { id: string; question: string; imageUrl?: string | null; type: string; options: QuizOption[] }
+type QuizAttemptAnswer = { questionId: string; optionId: string | null; isCorrect: boolean }
+type BestAttempt = { score: number; passed: boolean; answers: QuizAttemptAnswer[] } | null
 
 type LessonData = {
   lesson: {
@@ -97,6 +103,8 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   const { id } = use(params)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isCompleted, setIsCompleted] = useState(false)
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
+  const [bestAttempt, setBestAttempt] = useState<BestAttempt>(null)
   const completedRef = useRef(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -105,6 +113,16 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
     onSuccess: (d) => {
       setIsCompleted(d.lesson.isCompleted)
       completedRef.current = d.lesson.isCompleted
+      // Fetch quiz data if this is a QUIZ lesson
+      if (d.lesson.type === "QUIZ") {
+        fetch(`/api/student/lessons/${id}/quiz`)
+          .then((r) => r.json())
+          .then((q: { questions: QuizQuestion[]; bestAttempt: BestAttempt }) => {
+            setQuizQuestions(q.questions ?? [])
+            setBestAttempt(q.bestAttempt ?? null)
+          })
+          .catch(() => {})
+      }
     },
   })
 
@@ -270,13 +288,131 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
               />
             </div>
           ) : lesson.type === "TEXT" ? (
-            <div className="mx-6 mt-6 rounded-xl border bg-muted/20 p-6">
-              <p className="text-muted-foreground text-sm">{lesson.description ?? "No content available."}</p>
+            <div className="flex flex-col gap-6 px-6 py-6">
+              {lesson.assets.map((asset) => {
+                if (asset.type === "VIDEO") {
+                  return (
+                    <div key={asset.id} className="rounded-xl overflow-hidden border bg-black">
+                      <video
+                        src={asset.fileUrl}
+                        controls
+                        autoPlay
+                        className="w-full aspect-video"
+                        onTimeUpdate={handleTimeUpdate}
+                      />
+                    </div>
+                  )
+                }
+
+                if (asset.type === "IMAGE") {
+                  return (
+                    <div key={asset.id} className="rounded-xl overflow-hidden border">
+                      <img
+                        src={asset.fileUrl}
+                        alt={asset.title}
+                        className="w-full object-contain max-h-[500px]"
+                      />
+                    </div>
+                  )
+                }
+
+                if (asset.type === "AUDIO") {
+                  return (
+                    <div key={asset.id} className="rounded-xl border bg-muted/20 p-4 flex flex-col gap-2">
+                      <p className="text-sm font-semibold">{asset.title}</p>
+                      <audio src={asset.fileUrl} controls className="w-full" />
+                    </div>
+                  )
+                }
+
+                if (asset.type === "PDF") {
+                  return (
+                    <div key={asset.id} className="flex flex-col gap-2">
+                      <p className="text-sm font-semibold">{asset.title}</p>
+                      <div className="rounded-xl border overflow-hidden" style={{ height: "700px" }}>
+                        <iframe
+                          src={asset.fileUrl}
+                          className="w-full h-full"
+                          title={asset.title}
+                        />
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (asset.type === "DOCUMENT") {
+                  // Use Microsoft Office Online viewer for Word/Excel/PowerPoint files
+                  const officeViewer = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(asset.fileUrl)}`
+                  return (
+                    <div key={asset.id} className="flex flex-col gap-2">
+                      <p className="text-sm font-semibold">{asset.title}</p>
+                      <div className="rounded-xl border overflow-hidden" style={{ height: "700px" }}>
+                        <iframe
+                          src={officeViewer}
+                          className="w-full h-full"
+                          title={asset.title}
+                        />
+                      </div>
+                      <a
+                        href={asset.fileUrl}
+                        download={asset.fileName}
+                        className="self-start text-xs text-primary underline underline-offset-2"
+                      >
+                        Download file
+                      </a>
+                    </div>
+                  )
+                }
+
+                // Fallback: download link for any other type (SUBTITLE, etc.)
+                return (
+                  <div key={asset.id} className="rounded-xl border bg-muted/20 p-4 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{asset.title || asset.fileName}</p>
+                      <p className="text-xs text-muted-foreground">{asset.type.toLowerCase()}</p>
+                    </div>
+                    <a
+                      href={asset.fileUrl}
+                      download={asset.fileName}
+                      className="text-xs text-primary border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/5 transition-colors shrink-0"
+                    >
+                      Download
+                    </a>
+                  </div>
+                )
+              })}
+
+              {lesson.description && (
+                <div className="rounded-xl border bg-muted/20 p-6">
+                  <div
+                    className="prose prose-sm max-w-none text-foreground"
+                    dangerouslySetInnerHTML={{ __html: lesson.description }}
+                  />
+                </div>
+              )}
+            </div>
+          ) : lesson.type === "QUIZ" ? (
+            <div className="mx-6 mt-6 rounded-xl border bg-background p-6">
+              {quizQuestions.length === 0 ? (
+                <div className="text-center py-6">
+                  <FlaskConical className="size-10 text-primary mx-auto mb-2" />
+                  <p className="font-semibold">No questions yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">The tutor hasn't added questions to this quiz yet.</p>
+                </div>
+              ) : (
+                <QuizTaker
+                  lessonId={id}
+                  enrollmentId={data.enrollmentId}
+                  questions={quizQuestions}
+                  bestAttempt={bestAttempt}
+                  onCompleted={() => { setIsCompleted(true); refetch() }}
+                />
+              )}
             </div>
           ) : (
             <div className="mx-6 mt-6 rounded-xl border bg-primary/5 p-6 text-center">
               <FlaskConical className="size-10 text-primary mx-auto mb-2" />
-              <p className="font-semibold">Quiz content coming soon</p>
+              <p className="font-semibold">Content coming soon</p>
             </div>
           )}
 
@@ -317,7 +453,10 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
 
               <TabsContent value="overview" className="space-y-4">
                 {lesson.description ? (
-                  <p className="text-sm text-muted-foreground leading-relaxed">{lesson.description}</p>
+                  <div
+                    className="prose prose-sm max-w-none text-foreground"
+                    dangerouslySetInnerHTML={{ __html: lesson.description }}
+                  />
                 ) : (
                   <p className="text-sm text-muted-foreground italic">No description provided.</p>
                 )}
@@ -403,7 +542,6 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 <ChevronLeft className="size-4 mr-1" />
                 <div className="text-left">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Previous</p>
-                  <p className="text-xs font-semibold truncate max-w-[180px]">{navigation.prev.title}</p>
                 </div>
               </Link>
             </Button>
@@ -415,8 +553,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
             <Button asChild size="sm">
               <Link href={`/student/lessons/${navigation.next.id}`}>
                 <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-wide opacity-70">Up Next</p>
-                  <p className="text-xs font-semibold truncate max-w-[180px]">{navigation.next.title}</p>
+                  <p className="text-[10px] uppercase tracking-wide opacity-70">Next</p>
                 </div>
                 <ChevronRight className="size-4 ml-1" />
               </Link>

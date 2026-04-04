@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { createNotification } from "@/lib/notifications"
+import { triggerNewMessage, triggerUserEvent } from "@/lib/pusher-server"
 
 export async function POST(
   req: NextRequest,
@@ -43,6 +45,29 @@ export async function POST(
         data: { lastMessageAt: new Date() },
       }),
     ])
+
+    const recipientId = conversation.studentId === session.sub
+      ? conversation.tutorId
+      : conversation.studentId
+
+    // Push real-time events (fire-and-forget — don't block the response)
+    void triggerNewMessage(conversationId, message)
+    void triggerUserEvent(recipientId, "new-message", {
+      conversationId,
+      senderId: session.sub,
+      senderName: session.name,
+    })
+
+    // In-app notification
+    void createNotification(
+      recipientId,
+      "NEW_MESSAGE",
+      `New message from ${session.name}`,
+      content.trim().slice(0, 100),
+      session.role === "STUDENT"
+        ? `/tutor/messages`
+        : `/student/messages`,
+    )
 
     return NextResponse.json({ message }, { status: 201 })
   } catch (err) {

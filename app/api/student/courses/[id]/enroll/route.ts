@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { createNotification } from "@/lib/notifications"
 
 export async function POST(
   _req: Request,
@@ -15,6 +16,7 @@ export async function POST(
 
     const course = await prisma.course.findFirst({
       where: { id: courseId, status: "PUBLISHED" },
+      include: { tutor: { select: { id: true } } },
     })
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
@@ -26,6 +28,23 @@ export async function POST(
     const enrollment = await prisma.enrollment.create({
       data: { studentId: session.sub, courseId },
     })
+
+    // Notify tutor
+    void createNotification(
+      course.tutor.id,
+      "NEW_ENROLLMENT",
+      "New student enrolled",
+      `${session.name} enrolled in "${course.title}"`,
+      `/tutor/courses/${courseId}`,
+    )
+    // Notify student (confirmation)
+    void createNotification(
+      session.sub,
+      "NEW_ENROLLMENT",
+      "Enrollment confirmed",
+      `You're now enrolled in "${course.title}"`,
+      `/student/courses/${courseId}`,
+    )
 
     return NextResponse.json({ enrollment }, { status: 201 })
   } catch (err) {

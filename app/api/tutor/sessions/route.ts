@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { randomBytes } from "crypto"
+import { createNotifications } from "@/lib/notifications"
 
 export async function GET() {
   try {
@@ -94,6 +95,37 @@ export async function POST(req: NextRequest) {
         }),
       },
     })
+
+    const scheduledDate = new Date(scheduledAt).toLocaleString("en-GB", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })
+    const sessionLink = `/student/classroom`
+
+    if (visibility === "INVITE_ONLY" && invitedStudentIds.length > 0) {
+      // Notify only invited students
+      void createNotifications(
+        invitedStudentIds,
+        "SESSION_INVITE",
+        "You've been invited to a live session",
+        `${session.name} invited you to "${title.trim()}" on ${scheduledDate}`,
+        sessionLink,
+      )
+    } else if (visibility === "PUBLIC" && courseId) {
+      // Notify all students enrolled in the linked course
+      const enrollments = await prisma.enrollment.findMany({
+        where: { courseId },
+        select: { studentId: true },
+      })
+      const studentIds = enrollments.map((e) => e.studentId).filter((id) => id !== session.sub)
+      void createNotifications(
+        studentIds,
+        "SESSION_SCHEDULED",
+        "New live session scheduled",
+        `${session.name} scheduled "${title.trim()}" on ${scheduledDate}`,
+        sessionLink,
+      )
+    }
 
     return NextResponse.json({ session: liveSession }, { status: 201 })
   } catch (err) {

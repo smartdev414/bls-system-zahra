@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   BookOpen, Plus, Users, Layers, FileText,
@@ -8,7 +10,23 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useFetch } from "@/hooks/use-fetch"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { useFetch, usePostCallback } from "@/hooks/use-fetch"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +47,7 @@ type CourseItem = {
 }
 
 type CoursesData = { courses: CourseItem[] }
+type CourseBody = { title: string; description: string; level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -47,9 +66,39 @@ const levelColor: Record<string, string> = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TutorCoursesPage() {
+  const router = useRouter()
   const { data, loading } = useFetch<CoursesData>("/api/tutor/courses", {
     errorMessage: "Could not load courses",
   })
+
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [level, setLevel] = useState<CourseBody["level"]>("BEGINNER")
+
+  const { execute: createCourse, loading: creating } = usePostCallback<{ course: { id: string } }, CourseBody>(
+    "/api/tutor/courses",
+    {
+      successMessage: "Course created!",
+      errorMessage: "Could not create course",
+      onSuccess: (data) => {
+        setOpen(false)
+        router.push(`/tutor/courses/${data.course.id}`)
+      },
+    }
+  )
+
+  function openDialog() {
+    setTitle("")
+    setDescription("")
+    setLevel("BEGINNER")
+    setOpen(true)
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    createCourse({ title, description, level })
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -59,10 +108,8 @@ export default function TutorCoursesPage() {
           <h1 className="text-2xl font-black tracking-tight">My Courses</h1>
           <p className="text-muted-foreground mt-1">Manage your BSL courses and lessons.</p>
         </div>
-        <Button asChild>
-          <Link href="/tutor/courses/new">
-            <Plus className="size-4 mr-1.5" /> New Course
-          </Link>
+        <Button onClick={openDialog}>
+          <Plus className="size-4 mr-1.5" /> New Course
         </Button>
       </div>
 
@@ -139,14 +186,70 @@ export default function TutorCoursesPage() {
                 Create your first BSL course and start teaching.
               </p>
             </div>
-            <Button asChild>
-              <Link href="/tutor/courses/new">
-                <Plus className="size-4 mr-1.5" /> Create First Course
-              </Link>
+            <Button onClick={openDialog}>
+              <Plus className="size-4 mr-1.5" /> Create First Course
             </Button>
           </CardContent>
         </Card>
       )}
+
+      {/* New Course Dialog */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BookOpen className="size-4 text-primary" /> Create New Course
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5 pt-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="title">Course Title <span className="text-destructive">*</span></Label>
+              <Input
+                id="title"
+                placeholder="e.g. BSL Beginner Basics"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="description">Description <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="description"
+                placeholder="Describe what students will learn in this course..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="level">Level <span className="text-destructive">*</span></Label>
+              <Select value={level} onValueChange={(v) => setLevel(v as typeof level)}>
+                <SelectTrigger id="level">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BEGINNER">Beginner</SelectItem>
+                  <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
+                  <SelectItem value="ADVANCED">Advanced</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <Button type="submit" disabled={creating || !title.trim() || !description.trim()}>
+                {creating ? "Creating..." : "Create Course"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

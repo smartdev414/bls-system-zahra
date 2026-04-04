@@ -104,7 +104,7 @@ function buildMonthGrid(year: number, month: number): Date[][] {
 function TutorAvatar({ name }: { name: string }) {
   const initials = name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
   return (
-    <div className="size-7 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center font-bold text-primary text-[10px] shrink-0">
+    <div className="size-7 rounded-full bg-linear-to-br from-primary/30 to-primary/10 flex items-center justify-center font-bold text-primary text-[10px] shrink-0">
       {initials}
     </div>
   )
@@ -299,7 +299,7 @@ function BigCalendar({ sessions }: { sessions: LiveSession[] }) {
                     key={di}
                     onClick={() => setSelectedDay(new Date(day))}
                     className={cn(
-                      "min-h-[90px] p-1.5 border-r last:border-r-0 border-border cursor-pointer transition-colors group",
+                      "min-h-22.5 p-1.5 border-r last:border-r-0 border-border cursor-pointer transition-colors group",
                       isThisMonth ? "bg-background" : "bg-muted/15",
                       isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/20",
                       !isSelected && "hover:bg-muted/30"
