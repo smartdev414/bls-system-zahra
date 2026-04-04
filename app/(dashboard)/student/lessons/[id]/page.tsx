@@ -310,7 +310,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                       <img
                         src={asset.fileUrl}
                         alt={asset.title}
-                        className="w-full object-contain max-h-[500px]"
+                        className="w-full object-contain max-h-125"
                       />
                     </div>
                   )

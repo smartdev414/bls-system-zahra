@@ -12,7 +12,9 @@ import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Option = { id: string; text: string; imageUrl?: string | null; mediaType?: string | null; order: number }
+type Option = {
+  isCorrect?: boolean; id: string; text: string; imageUrl?: string | null; mediaType?: string | null; order: number
+}
 
 function isVideoUrl(url: string | null | undefined, mediaType?: string | null): boolean {
   if (mediaType === "video") return true
