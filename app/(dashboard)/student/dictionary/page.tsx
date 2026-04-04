@@ -1,11 +1,10 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { Search, Library, PlayCircle, BookOpen, Loader2, Filter } from "lucide-react"
+import { Search, Library, PlayCircle, BookOpen, Loader2, Filter, Image as ImageIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   Select,
   SelectContent,
@@ -57,6 +56,33 @@ function buildUrl(q: string, category: string, level: string) {
   return `/api/dictionary?${params.toString()}`
 }
 
+// ─── Card thumbnail ───────────────────────────────────────────────────────────
+
+function SignThumbnail({ sign, size = "md" }: { sign: Sign; size?: "md" | "lg" }) {
+  const cls = size === "lg"
+    ? "w-full aspect-video rounded-xl object-cover"
+    : "size-full object-cover"
+
+  if (sign.videoUrl) {
+    return (
+      <div className={`bg-primary/10 flex items-center justify-center ${size === "lg" ? "aspect-video w-full rounded-xl" : "size-full"}`}>
+        <PlayCircle className={size === "lg" ? "size-12 text-primary" : "size-8 text-primary"} />
+      </div>
+    )
+  }
+  if (sign.imageUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={sign.imageUrl} alt={sign.word} className={cls} />
+    )
+  }
+  return (
+    <div className={`bg-primary/10 flex items-center justify-center ${size === "lg" ? "aspect-video w-full rounded-xl" : "size-full"}`}>
+      <BookOpen className={size === "lg" ? "size-12 text-primary" : "size-8 text-primary"} />
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DictionaryPage() {
@@ -100,7 +126,7 @@ export default function DictionaryPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search signs..."
+            placeholder="Search signs, categories..."
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-9"
@@ -154,27 +180,34 @@ export default function DictionaryPage() {
             <button
               key={sign.id}
               onClick={() => setSelectedSign(sign)}
-              className="group text-left rounded-2xl border bg-background p-4 hover:border-primary hover:shadow-md transition-all"
+              className="group text-left rounded-2xl border bg-background hover:border-primary hover:shadow-md transition-all overflow-hidden"
             >
-              {/* Thumbnail placeholder */}
-              <div className="aspect-square rounded-xl bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
-                {sign.videoUrl ? (
-                  <PlayCircle className="size-8 text-primary" />
-                ) : (
-                  <BookOpen className="size-8 text-primary" />
-                )}
+              {/* Thumbnail */}
+              <div className="aspect-square bg-primary/10 overflow-hidden group-hover:opacity-90 transition-opacity">
+                <SignThumbnail sign={sign} />
               </div>
 
-              <p className="font-bold text-sm leading-snug">{sign.word}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{sign.category}</p>
-
-              <div className="mt-2">
-                <Badge
-                  variant="outline"
-                  className={`text-[10px] h-4 px-1.5 ${levelColor[sign.level]}`}
-                >
-                  {sign.level.charAt(0) + sign.level.slice(1).toLowerCase()}
-                </Badge>
+              <div className="p-3">
+                <p className="font-bold text-sm leading-snug">{sign.word}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{sign.category}</p>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] h-4 px-1.5 ${levelColor[sign.level]}`}
+                  >
+                    {sign.level.charAt(0) + sign.level.slice(1).toLowerCase()}
+                  </Badge>
+                  {sign.videoUrl && (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-1 bg-violet-50 text-violet-700 border-violet-200">
+                      <PlayCircle className="size-2.5" /> Video
+                    </Badge>
+                  )}
+                  {!sign.videoUrl && sign.imageUrl && (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-1 bg-sky-50 text-sky-700 border-sky-200">
+                      <ImageIcon className="size-2.5" /> Image
+                    </Badge>
+                  )}
+                </div>
               </div>
             </button>
           ))}
@@ -206,7 +239,7 @@ export default function DictionaryPage() {
       )}
 
       {/* Sign detail dialog */}
-      <Dialog open={!!selectedSign} onOpenChange={(isOpen: boolean) => !isOpen && setSelectedSign(null)}>
+      <Dialog open={!!selectedSign} onOpenChange={(isOpen) => !isOpen && setSelectedSign(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-2xl font-black">{selectedSign?.word}</DialogTitle>
@@ -214,14 +247,26 @@ export default function DictionaryPage() {
 
           {selectedSign && (
             <div className="space-y-4">
-              {/* Video/image placeholder */}
-              <div className="aspect-video rounded-xl bg-primary/10 flex items-center justify-center">
+              {/* Video or image */}
+              <div className="rounded-xl overflow-hidden bg-primary/10">
                 {selectedSign.videoUrl ? (
-                  <video src={selectedSign.videoUrl} controls className="w-full h-full rounded-xl" />
+                  <video
+                    src={selectedSign.videoUrl}
+                    controls
+                    className="w-full rounded-xl"
+                    poster={selectedSign.imageUrl ?? undefined}
+                  />
+                ) : selectedSign.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={selectedSign.imageUrl}
+                    alt={selectedSign.word}
+                    className="w-full rounded-xl object-contain max-h-64"
+                  />
                 ) : (
-                  <div className="flex flex-col items-center gap-2 text-primary">
+                  <div className="aspect-video flex flex-col items-center justify-center gap-2 text-primary">
                     <PlayCircle className="size-12" />
-                    <p className="text-xs font-medium">Video coming soon</p>
+                    <p className="text-xs font-medium">Media coming soon</p>
                   </div>
                 )}
               </div>
@@ -248,7 +293,7 @@ export default function DictionaryPage() {
 
               {/* Usage */}
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">Usage</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">Usage example</p>
                 <p className="text-sm text-muted-foreground">{selectedSign.usage}</p>
               </div>
             </div>

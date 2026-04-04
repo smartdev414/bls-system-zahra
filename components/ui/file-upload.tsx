@@ -99,12 +99,14 @@ export function FileUpload({ accept, label = "Upload file", onUploaded, onRemove
   if (uploaded) {
     const Icon = fileIcon(uploaded.mimeType)
     return (
-      <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3">
+      <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3 overflow-hidden">
         <div className="rounded-lg bg-primary/10 p-2 shrink-0">
           <Icon className="size-4 text-primary" />
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">{uploaded.fileName}</p>
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <p className="text-sm font-semibold truncate" title={uploaded.fileName}>
+            {uploaded.fileName.length > 30 ? `${uploaded.fileName.substring(0, 30)}...` : uploaded.fileName}
+          </p>
           <p className="text-xs text-muted-foreground">{formatBytes(uploaded.fileSize)}</p>
         </div>
         <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />

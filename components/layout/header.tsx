@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
-  LayoutDashboard, Settings, LogOut, ChevronDown, Bell, ShieldCheck, Tag, FolderOpen, MessageSquare,
+  LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
   Sun, Moon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useDeleteCallback } from "@/hooks/use-fetch"
+import { NotificationBell } from "@/components/ui/notification-bell"
 
 type Role = "STUDENT" | "TUTOR" | "ADMIN"
 
@@ -54,6 +55,7 @@ const tutorNav: NavItem[] = [
   { label: "Dashboard", href: "/tutor", icon: LayoutDashboard },
   { label: "My Courses", href: "/tutor/courses", icon: BookOpen },
   { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
+  { label: "Dictionary", href: "/tutor/dictionary", icon: Library },
   { label: "Students", href: "/tutor/students", icon: Users },
   { label: "Messages", href: "/tutor/messages", icon: MessageSquare },
 ]
@@ -141,10 +143,7 @@ export function Header({ role, user }: HeaderProps) {
           <Separator orientation="vertical" className="h-5 mx-1" />
 
           {/* Bell sits next to avatar — both are user-centric */}
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="size-4" />
-            <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
-          </Button>
+          <NotificationBell />
 
           {/* Avatar dropdown */}
           <DropdownMenu>

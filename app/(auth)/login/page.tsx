@@ -37,15 +37,8 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="flex flex-col items-center gap-1 py-8">
-        <Logo />
-        <p className="text-sm text-muted-foreground mt-1">Learn British Sign Language Online</p>
-      </header>
-
-      {/* Main */}
       <main className="flex-1 flex items-center justify-center px-4 pb-16">
-        <Card className="w-full max-w-[400px] shadow-lg">
+        <Card className="w-full max-w-100 shadow-lg">
           <CardHeader className="text-center pb-2">
             <CardTitle className="text-2xl">Sign In</CardTitle>
             <CardDescription>Welcome back! Please enter your details.</CardDescription>

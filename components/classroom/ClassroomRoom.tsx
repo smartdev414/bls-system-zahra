@@ -188,8 +188,6 @@ function ParticipantsPanel({
           return (
             <div
               key={p.identity}
-              onClick={() => !isTutor && onPin(isPinned ? null : p.identity)}
-              title={isTutor ? undefined : isPinned ? "Click to unpin" : "Click to pin to main view"}
               className={cn(
                 "relative rounded-xl overflow-hidden transition-all aspect-square bg-zinc-800 border shrink-0 group",
                 isTutor
@@ -204,7 +202,7 @@ function ParticipantsPanel({
                 <>
                   <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
                   {/* Name overlay */}
-                  <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 pb-0.5">
+                  <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 pb-0.5 pointer-events-none">
                     <p className="text-[10px] text-white truncate font-medium">
                       {isLocal ? "You" : displayName}
                       {isTutor && <span className="ml-1 text-amber-400">• Tutor</span>}
@@ -225,10 +223,17 @@ function ParticipantsPanel({
                 </div>
               )}
 
-              {/* Hover overlay for non-tutor */}
-              {!isTutor && !isPinned && camOn && (
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/30 transition-opacity">
-                  <Maximize2 className="size-3.5 text-white" />
+              {/* Click capture + hover overlay for non-tutor tiles */}
+              {!isTutor && (
+                <div
+                  className={cn(
+                    "absolute inset-0 z-10 flex items-center justify-center transition-opacity",
+                    camOn ? "opacity-0 group-hover:opacity-100 bg-black/30" : "opacity-0"
+                  )}
+                  onClick={() => onPin(isPinned ? null : p.identity)}
+                  title={isPinned ? "Click to unpin" : "Click to pin to main view"}
+                >
+                  {!isPinned && camOn && <Maximize2 className="size-3.5 text-white" />}
                 </div>
               )}
 

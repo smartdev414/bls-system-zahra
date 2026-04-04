@@ -7,7 +7,7 @@ import {
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
-  Calendar, Globe, Lock, X, Search, UserPlus,
+  Calendar, Globe, Lock, X, Search, UserPlus, Pencil, Play,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -127,8 +127,22 @@ type SessionBody = {
   visibility: "PUBLIC" | "INVITE_ONLY"; invitedStudentIds: string[]
 }
 
-function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false)
+function ScheduleSessionDialog({
+  onCreated,
+  editSession,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: {
+  onCreated: () => void
+  editSession?: SessionItem
+  open?: boolean
+  onOpenChange?: (v: boolean) => void
+}) {
+  const isEdit = !!editSession
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const open = controlledOpen !== undefined ? controlledOpen : uncontrolledOpen
+  const setOpen = controlledOnOpenChange ?? setUncontrolledOpen
+
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [date, setDate] = useState<Date | undefined>(undefined)
@@ -145,6 +159,20 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
   const searchRef = useRef<HTMLDivElement>(null)
 
   const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
+
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (open && editSession) {
+      const d = new Date(editSession.scheduledAt)
+      setTitle(editSession.title)
+      setDescription(editSession.description ?? "")
+      setDate(d)
+      setTime(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`)
+      setDurationMins(editSession.durationMins)
+      setMaxStudents(editSession.maxStudents ? String(editSession.maxStudents) : "")
+      setCourseId(editSession.course?.id ?? "")
+    }
+  }, [open, editSession])
 
   // Debounced student search
   useEffect(() => {
@@ -170,18 +198,25 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
-  const { execute: create, loading } = usePostCallback<{ session: { id: string } }, SessionBody>(
+  const { execute: create, loading: creating } = usePostCallback<{ session: { id: string } }, SessionBody>(
     "/api/tutor/sessions",
     {
       successMessage: "Session scheduled!",
       errorMessage: "Could not schedule session",
-      onSuccess: () => {
-        setOpen(false)
-        resetForm()
-        onCreated()
-      },
+      onSuccess: () => { setOpen(false); resetForm(); onCreated() },
     }
   )
+
+  const { execute: update, loading: updating } = usePatchCallback<{ session: SessionItem }, Partial<SessionBody>>(
+    `/api/tutor/sessions/${editSession?.id ?? ""}`,
+    {
+      successMessage: "Session updated!",
+      errorMessage: "Could not update session",
+      onSuccess: () => { setOpen(false); onCreated() },
+    }
+  )
+
+  const loading = creating || updating
 
   function resetForm() {
     setTitle(""); setDescription(""); setDate(undefined); setTime("")
@@ -195,34 +230,42 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
     const [hours, minutes] = time.split(":")
     const scheduledAt = new Date(date)
     scheduledAt.setHours(parseInt(hours), parseInt(minutes), 0, 0)
-    create({
+    const body: Partial<SessionBody> = {
       title, description, scheduledAt: scheduledAt.toISOString(),
       durationMins,
       maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
       courseId: courseId || undefined,
-      visibility,
-      invitedStudentIds: invitedStudents.map(s => s.id),
-    })
+    }
+    if (isEdit) {
+      update(body)
+    } else {
+      create({ ...body, visibility, invitedStudentIds: invitedStudents.map(s => s.id) } as SessionBody)
+    }
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const canSubmit = title.trim() && date && time
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <CalendarPlus className="size-4 mr-1.5" /> Schedule Session
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v && !isEdit) resetForm() }}>
+      {!isEdit && (
+        <DialogTrigger asChild>
+          <Button size="sm">
+            <CalendarPlus className="size-4 mr-1.5" /> Schedule Session
+          </Button>
+        </DialogTrigger>
+      )}
 
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CalendarPlus className="size-4 text-primary" /> Schedule Live Session
+            {isEdit
+              ? <><Pencil className="size-4 text-primary" /> Edit Session</>
+              : <><CalendarPlus className="size-4 text-primary" /> Schedule Live Session</>
+            }
           </DialogTitle>
           <DialogDescription>
-            Set up a new BSL live session for your students.
+            {isEdit ? "Update the session details below." : "Set up a new BSL live session for your students."}
           </DialogDescription>
         </DialogHeader>
 
@@ -427,7 +470,10 @@ function ScheduleSessionDialog({ onCreated }: { onCreated: () => void }) {
             form="schedule-form"
             disabled={loading || !canSubmit}
           >
-            {loading ? <><Loader2 className="size-3.5 animate-spin mr-1.5" /> Scheduling…</> : "Schedule Session"}
+            {loading
+            ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />{isEdit ? "Saving…" : "Scheduling…"}</>
+            : isEdit ? "Save Changes" : "Schedule Session"
+          }
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -447,6 +493,10 @@ function SessionCard({
   const cfg = STATUS[session.status]
   const StatusIcon = cfg.icon
   const scheduled = new Date(session.scheduledAt)
+  const [editOpen, setEditOpen] = useState(false)
+  const [recordingOpen, setRecordingOpen] = useState(false)
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
+  const [recordingLoading, setRecordingLoading] = useState(false)
 
   const { execute: patch, loading: patching } = usePatchCallback<
     { session: SessionItem },
@@ -457,6 +507,17 @@ function SessionCard({
     errorMessage: "Could not update session",
     onSuccess: () => onMutated?.(),
   })
+
+  async function openRecording() {
+    setRecordingLoading(true)
+    try {
+      const res  = await fetch(`/api/sessions/${session.id}/recording`)
+      const data = await res.json() as { url?: string }
+      if (data.url) { setRecordingUrl(data.url); setRecordingOpen(true) }
+    } finally {
+      setRecordingLoading(false)
+    }
+  }
 
   return (
     <div className={cn(
@@ -544,18 +605,46 @@ function SessionCard({
             </Button>
           )}
           {session.status === "SCHEDULED" && (
-            <Button size="sm" variant="outline" disabled={patching}
-              className="h-7 text-xs text-destructive hover:text-destructive"
-              onClick={() => patch({ status: "CANCELLED" })}>
-              <XCircle className="size-3 mr-1.5" /> Cancel
-            </Button>
+            <>
+              <Button size="sm" variant="outline" disabled={patching}
+                className="h-7 text-xs gap-1.5"
+                onClick={() => setEditOpen(true)}>
+                <Pencil className="size-3" /> Edit
+              </Button>
+              <Button size="sm" variant="outline" disabled={patching}
+                className="h-7 text-xs text-destructive hover:text-destructive"
+                onClick={() => patch({ status: "CANCELLED" })}>
+                <XCircle className="size-3 mr-1.5" /> Cancel
+              </Button>
+            </>
           )}
           {session.status === "COMPLETED" && session.recordingUrl && (
-            <Button asChild size="sm" variant="outline" className="h-7 text-xs gap-1.5">
-              <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
-                <Download className="size-3" /> Download Recording
-              </a>
-            </Button>
+            <>
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5"
+                disabled={recordingLoading} onClick={openRecording}>
+                {recordingLoading
+                  ? <Loader2 className="size-3 animate-spin" />
+                  : <Play className="size-3" />}
+                Watch
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5"
+                disabled={recordingLoading}
+                onClick={async () => {
+                  setRecordingLoading(true)
+                  try {
+                    const res  = await fetch(`/api/sessions/${session.id}/recording`)
+                    const data = await res.json() as { url?: string }
+                    if (data.url) {
+                      const a = document.createElement("a")
+                      a.href = data.url
+                      a.download = `${session.title}.mp4`
+                      a.click()
+                    }
+                  } finally { setRecordingLoading(false) }
+                }}>
+                <Download className="size-3" /> Download
+              </Button>
+            </>
           )}
           {session.status === "COMPLETED" && !session.recordingUrl && (
             <span className="text-xs text-muted-foreground">No recording available</span>
@@ -565,6 +654,31 @@ function SessionCard({
           )}
         </div>
       </div>
+
+      {/* Edit dialog */}
+      <ScheduleSessionDialog
+        editSession={session}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onCreated={() => { setEditOpen(false); onMutated?.() }}
+      />
+
+      {/* Recording viewer */}
+      <Dialog open={recordingOpen} onOpenChange={setRecordingOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{session.title} — Recording</DialogTitle>
+          </DialogHeader>
+          {recordingUrl && (
+            <video
+              src={recordingUrl}
+              controls
+              className="w-full rounded-lg bg-black"
+              style={{ maxHeight: "60vh" }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -665,7 +779,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
                     key={di}
                     onClick={() => setSelectedDay(new Date(day))}
                     className={cn(
-                      "min-h-[90px] p-1.5 border-r last:border-r-0 border-border cursor-pointer transition-colors group",
+                      "min-h-22.5 p-1.5 border-r last:border-r-0 border-border cursor-pointer transition-colors group",
                       isThisMonth ? "bg-background" : "bg-muted/15",
                       isSelected && "bg-primary/5 ring-1 ring-inset ring-primary/20",
                       !isSelected && "hover:bg-muted/30"

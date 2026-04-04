@@ -31,6 +31,11 @@ enum LessonType {
   QUIZ
 }
 
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+}
+
 enum AssetType {
   VIDEO
   PDF
@@ -52,6 +57,27 @@ enum LiveSessionVisibility {
   INVITE_ONLY
 }
 
+enum NotificationType {
+  // Session events
+  SESSION_SCHEDULED
+  SESSION_STARTED
+  SESSION_CANCELLED
+  SESSION_DELETED
+  SESSION_INVITE
+  RECORDING_READY
+  // Course / lesson events
+  COURSE_PUBLISHED
+  NEW_LESSON
+  // Student activity (for tutors)
+  NEW_ENROLLMENT
+  NEW_REVIEW
+  // Quiz results (for students)
+  QUIZ_PASSED
+  QUIZ_FAILED
+  // Messaging
+  NEW_MESSAGE
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -65,6 +91,7 @@ model User {
 
   tutorProfile          TutorProfile?
   courses               Course[]                @relation("TutorCourses")
+  quizAttempts          QuizAttempt[]
   hostedSessions        LiveSession[]           @relation("TutorLiveSessions")
   enrollments           Enrollment[]
   attendances           LiveSessionAttendance[]
@@ -73,6 +100,24 @@ model User {
   studentConversations  Conversation[]          @relation("StudentConversations")
   tutorConversations    Conversation[]          @relation("TutorConversations")
   sentMessages          Message[]               @relation("SentMessages")
+  notifications         Notification[]
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
 }
 
 model TutorProfile {
@@ -154,9 +199,11 @@ model Lesson {
   order       Int
   isFree      Boolean    @default(false)
 
-  section  Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  assets   LessonAsset[]
-  progress LessonProgress[]
+  section   Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  assets    LessonAsset[]
+  progress  LessonProgress[]
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
 
   @@index([sectionId])
 }
@@ -225,6 +272,8 @@ model LiveSession {
   visibility   LiveSessionVisibility  @default(PUBLIC)
   startedAt    DateTime?
   endedAt      DateTime?
+  egressId     String?
+  recordingKey String?
   recordingUrl String?
   createdAt    DateTime               @default(now())
 
@@ -310,4 +359,64 @@ model Message {
 
   @@index([conversationId])
   @@index([senderId])
+}
+
+model QuizQuestion {
+  id        String       @id @default(cuid())
+  lessonId  String
+  question  String
+  imageUrl  String?      // optional image shown with the question
+  type      QuestionType @default(MULTIPLE_CHOICE)
+  order     Int
+
+  lesson  Lesson              @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  options QuizOption[]
+  answers QuizAttemptAnswer[]
+
+  @@index([lessonId])
+}
+
+model QuizOption {
+  id         String  @id @default(cuid())
+  questionId String
+  text       String
+  imageUrl   String? // optional image or video url for the option
+  mediaType  String? // "image" | "video"
+  isCorrect  Boolean @default(false)
+  order      Int
+
+  question QuizQuestion        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  QuizAttemptAnswer[]
+
+  @@index([questionId])
+}
+
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  lessonId  String
+  userId    String
+  score     Int
+  passed    Boolean
+  createdAt DateTime @default(now())
+
+  lesson  Lesson              @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers QuizAttemptAnswer[]
+
+  @@index([lessonId])
+  @@index([userId])
+}
+
+model QuizAttemptAnswer {
+  id         String  @id @default(cuid())
+  attemptId  String
+  questionId String
+  optionId   String?
+  isCorrect  Boolean
+
+  attempt  QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question QuizQuestion @relation(fields: [questionId], references: [id])
+  option   QuizOption?  @relation(fields: [optionId], references: [id])
+
+  @@index([attemptId])
 }

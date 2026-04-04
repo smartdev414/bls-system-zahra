@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { createNotifications } from "@/lib/notifications"
 
 export async function POST(
   req: NextRequest,
@@ -70,6 +71,22 @@ export async function POST(
       },
       include: { assets: true },
     })
+
+    // Notify enrolled students when a new lesson is added to a published course
+    if (course.status === "PUBLISHED") {
+      const enrollments = await prisma.enrollment.findMany({
+        where: { courseId },
+        select: { studentId: true },
+      })
+      const studentIds = enrollments.map((e) => e.studentId)
+      void createNotifications(
+        studentIds,
+        "NEW_LESSON",
+        "New lesson available",
+        `"${title.trim()}" has been added to "${course.title}"`,
+        `/student/courses/${courseId}`,
+      )
+    }
 
     return NextResponse.json({ lesson }, { status: 201 })
   } catch (err) {
