@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -10,10 +10,20 @@ export async function GET() {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
-    // All enrollments in this tutor's courses
+    const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
+
+    // All enrollments in this tutor's courses, optionally filtered by student name/email
     const enrollments = await prisma.enrollment.findMany({
       where: {
         course: { tutorId: session.sub },
+        ...(q ? {
+          student: {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { email: { contains: q, mode: "insensitive" } },
+            ],
+          },
+        } : {}),
       },
       include: {
         student: {

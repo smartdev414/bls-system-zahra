@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { useState } from "react"
 import { useFetch } from "@/hooks/use-fetch"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,10 +73,18 @@ function formatDuration(secs: number) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 5
+
 export default function LessonsPage() {
+  const [page, setPage] = useState(1)
+
   const { data, loading } = useFetch<LessonsData>("/api/student/lessons", {
     errorMessage: "Could not load lessons",
   })
+
+  const allCourses = data?.courses ?? []
+  const totalPages = Math.ceil(allCourses.length / PAGE_SIZE)
+  const pagedCourses = allCourses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   if (loading) {
     return (
@@ -106,7 +116,7 @@ export default function LessonsPage() {
         <p className="text-muted-foreground mt-1">Continue your BSL learning journey.</p>
       </div>
 
-      {data.courses.map((enrollment) => (
+      {pagedCourses.map((enrollment) => (
         <Card key={enrollment.enrollmentId} className="shadow-sm overflow-hidden">
           {/* Course header */}
           <CardHeader className="bg-muted/30 border-b">
@@ -210,6 +220,10 @@ export default function LessonsPage() {
           </CardContent>
         </Card>
       ))}
+
+      {totalPages > 1 && (
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      )}
     </div>
   )
 }

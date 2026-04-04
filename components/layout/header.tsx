@@ -24,6 +24,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useDeleteCallback } from "@/hooks/use-fetch"
 import { NotificationBell } from "@/components/ui/notification-bell"
+import { MessagesBadge } from "@/components/layout/messages-badge"
 
 type Role = "STUDENT" | "TUTOR" | "ADMIN"
 
@@ -63,6 +64,7 @@ const tutorNav: NavItem[] = [
 type HeaderProps = {
   role: Role
   user: {
+    id?: string
     name: string
     email: string
     avatarUrl?: string
@@ -87,6 +89,7 @@ function ThemeToggle() {
 export function Header({ role, user }: HeaderProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const isMessagesRole = role === "STUDENT" || role === "TUTOR"
 
   const navItems = role === "TUTOR" ? tutorNav : role === "ADMIN" ? adminNav : studentNav
 
@@ -129,6 +132,9 @@ export function Header({ role, user }: HeaderProps) {
                 >
                   <Icon className="size-4" />
                   {label}
+                  {label === "Messages" && isMessagesRole && user.id && (
+                    <MessagesBadge userId={user.id} />
+                  )}
                 </Link>
               )
             })}

@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Search, Send, Plus, MessageSquare, Loader2,
-  CheckCheck, Check, MoreVertical, Users, Wifi, WifiOff,
+  CheckCheck, Check, Users, Wifi, WifiOff, AlertCircle, RotateCcw, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,6 +38,12 @@ type MessageItem = {
   senderId: string
   isRead: boolean
   sender: Contact
+}
+
+// Extends MessageItem with local UI state for optimistic sending
+type LocalMessage = MessageItem & {
+  status: "sending" | "sent" | "failed"
+  tempId?: string
 }
 
 type ConversationDetail = {
@@ -83,7 +89,7 @@ export default function MessagingCenter({
   const [connected, setConnected]     = useState(false)
 
   // Local messages state — seeded from fetch, then appended via Pusher
-  const [messages, setMessages] = useState<MessageItem[]>([])
+  const [messages, setMessages] = useState<LocalMessage[]>([])
 
   // ── Conversation list ──────────────────────────────────────────────────────
   const { data: convsData, loading: convsLoading, refetch: refetchConvs } = useFetch<ConvsData>(
@@ -101,7 +107,7 @@ export default function MessagingCenter({
     {
       errorMessage: "Could not load messages",
       immediate: !!activeId,
-      onSuccess: (d) => setMessages(d.conversation.messages),
+      onSuccess: (d) => setMessages(d.conversation.messages.map((m) => ({ ...m, status: "sent" as const }))),
     }
   )
 
@@ -147,7 +153,7 @@ export default function MessagingCenter({
       setMessages((prev) => {
         // Avoid duplicates (our own sent message is already in state)
         if (prev.some((m) => m.id === incoming.id)) return prev
-        return [...prev, incoming]
+        return [...prev, { ...incoming, status: "sent" as const }]
       })
       // Update sidebar last-message
       refetchConvs()
@@ -162,7 +168,7 @@ export default function MessagingCenter({
     }
   }, [activeId, refetchConvs])
 
-  // Reload messages when switching conversation
+  // Clear messages and reload when switching conversation
   useEffect(() => {
     if (activeId) {
       setMessages([])
@@ -180,28 +186,55 @@ export default function MessagingCenter({
   // ── Send message ───────────────────────────────────────────────────────────
   const [draft, setDraft] = useState("")
 
-  const { execute: sendMessage, loading: sending } = usePostCallback<
-    { message: MessageItem },
-    { content: string }
-  >(
-    activeId ? `/api/messages/conversations/${activeId}/messages` : "",
-    {
-      successMessage: false,
-      errorMessage: "Could not send message",
-      onSuccess: (d) => {
-        // Optimistically append our own message immediately
-        setMessages((prev) =>
-          prev.some((m) => m.id === d.message.id) ? prev : [...prev, d.message]
-        )
-        setDraft("")
-        refetchConvs()
-      },
-    }
-  )
+  const currentUser = activeConv
+    ? role === "STUDENT" ? activeConv.student : activeConv.tutor
+    : null
 
-  function handleSend() {
-    if (!draft.trim() || !activeId) return
-    sendMessage({ content: draft })
+  async function doSend(content: string, tempId: string) {
+    if (!activeId) return
+    try {
+      const res = await fetch(`/api/messages/conversations/${activeId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      })
+      if (!res.ok) throw new Error("send_failed")
+      const data = await res.json() as { message: MessageItem }
+      // Replace optimistic message with real one
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.tempId === tempId ? { ...data.message, status: "sent" as const } : m
+        )
+      )
+      refetchConvs()
+    } catch {
+      // Mark as failed so user can retry
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.tempId === tempId ? { ...m, status: "failed" as const } : m
+        )
+      )
+    }
+  }
+
+  async function handleSend() {
+    if (!draft.trim() || !activeId || !currentUser || !currentUserId) return
+    const content = draft.trim()
+    setDraft("")
+
+    const tempId = crypto.randomUUID()
+    const tempMsg: LocalMessage = {
+      id: tempId,
+      tempId,
+      content,
+      createdAt: new Date().toISOString(),
+      senderId: currentUserId,
+      isRead: false,
+      sender: currentUser,
+      status: "sending",
+    }
+    setMessages((prev) => [...prev, tempMsg])
+    await doSend(content, tempId)
   }
 
   // ── Start new conversation ─────────────────────────────────────────────────
@@ -221,6 +254,19 @@ export default function MessagingCenter({
   const currentUserId = activeConv
     ? role === "STUDENT" ? activeConv.student.id : activeConv.tutor.id
     : null
+
+  function retryMessage(msg: LocalMessage) {
+    if (!msg.tempId) return
+    const tempId = msg.tempId
+    setMessages((prev) =>
+      prev.map((m) => m.tempId === tempId ? { ...m, status: "sending" as const } : m)
+    )
+    doSend(msg.content, tempId)
+  }
+
+  function dismissMessage(tempId: string) {
+    setMessages((prev) => prev.filter((m) => m.tempId !== tempId))
+  }
 
   const otherUser = activeConv
     ? role === "STUDENT" ? activeConv.tutor : activeConv.student
@@ -330,10 +376,12 @@ export default function MessagingCenter({
                     (i === 0 || messages[i - 1].senderId !== msg.senderId)
                   return (
                     <MessageBubble
-                      key={msg.id}
+                      key={msg.tempId ?? msg.id}
                       message={msg}
                       isMine={isMine}
                       showAvatar={showAvatar}
+                      onRetry={msg.status === "failed" ? () => retryMessage(msg) : undefined}
+                      onDismiss={msg.status === "failed" && msg.tempId ? () => dismissMessage(msg.tempId!) : undefined}
                     />
                   )
                 })}
@@ -362,8 +410,8 @@ export default function MessagingCenter({
                   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend() }
                 }}
               />
-              <Button type="submit" size="icon" disabled={!draft.trim() || sending}>
-                {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              <Button type="submit" size="icon" disabled={!draft.trim()}>
+                <Send className="size-4" />
               </Button>
             </form>
           </div>
@@ -466,15 +514,20 @@ function ConversationRow({
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
 function MessageBubble({
-  message, isMine, showAvatar,
+  message, isMine, showAvatar, onRetry, onDismiss,
 }: {
-  message: MessageItem
+  message: LocalMessage
   isMine: boolean
   showAvatar: boolean
+  onRetry?: () => void
+  onDismiss?: () => void
 }) {
   const time = new Date(message.createdAt).toLocaleTimeString("en-GB", {
     hour: "2-digit", minute: "2-digit",
   })
+
+  const failed = message.status === "failed"
+  const sending = message.status === "sending"
 
   return (
     <div className={cn("flex items-end gap-2", isMine ? "flex-row-reverse" : "flex-row")}>
@@ -493,19 +546,45 @@ function MessageBubble({
         <div className={cn(
           "px-4 py-2.5 rounded-2xl text-sm leading-relaxed",
           isMine
-            ? "bg-primary text-primary-foreground rounded-br-sm"
-            : "bg-muted rounded-bl-sm"
+            ? failed
+              ? "bg-rose-500 text-white rounded-br-sm"
+              : "bg-primary text-primary-foreground rounded-br-sm"
+            : "bg-muted rounded-bl-sm",
+          sending && "opacity-60"
         )}>
           {message.content}
         </div>
+
         <div className="flex items-center gap-1 px-1">
           <span className="text-[10px] text-muted-foreground">{time}</span>
-          {isMine && (
-            message.isRead
-              ? <CheckCheck className="size-3 text-primary" />
-              : <Check className="size-3 text-muted-foreground" />
+          {isMine && !failed && (
+            sending
+              ? <Loader2 className="size-3 animate-spin text-muted-foreground" />
+              : message.isRead
+                ? <CheckCheck className="size-3 text-primary" />
+                : <Check className="size-3 text-muted-foreground" />
           )}
         </div>
+
+        {/* Failed state — retry / dismiss actions */}
+        {isMine && failed && (
+          <div className="flex items-center gap-1.5 px-1">
+            <AlertCircle className="size-3 text-rose-500 shrink-0" />
+            <span className="text-[10px] text-rose-500">Failed to send</span>
+            <button
+              onClick={onRetry}
+              className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+            >
+              <RotateCcw className="size-2.5" /> Retry
+            </button>
+            <button
+              onClick={onDismiss}
+              className="text-[10px] text-muted-foreground hover:underline flex items-center gap-0.5"
+            >
+              <X className="size-2.5" /> Dismiss
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -21,6 +21,7 @@ import {
   DialogDescription, DialogFooter, DialogClose, DialogTrigger,
 } from "@/components/ui/dialog"
 import { useFetch, usePatchCallback, usePostCallback } from "@/hooks/use-fetch"
+import { Pagination } from "@/components/ui/pagination"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1027,10 +1028,16 @@ function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onM
 
 // ─── List View ────────────────────────────────────────────────────────────────
 
+const PAST_PAGE_SIZE = 10
+
 function ListView({ sessions, onMutated }: { sessions: SessionItem[]; onMutated: () => void }) {
+  const [pastPage, setPastPage] = useState(1)
+
   const live      = sessions.filter((s) => s.status === "LIVE")
   const upcoming  = sessions.filter((s) => s.status === "SCHEDULED")
   const past      = sessions.filter((s) => s.status === "COMPLETED" || s.status === "CANCELLED")
+  const pastTotalPages = Math.ceil(past.length / PAST_PAGE_SIZE)
+  const pastPaged = past.slice((pastPage - 1) * PAST_PAGE_SIZE, pastPage * PAST_PAGE_SIZE)
 
   return (
     <div className="flex gap-5 items-start">
@@ -1052,7 +1059,10 @@ function ListView({ sessions, onMutated }: { sessions: SessionItem[]; onMutated:
         </Section>
         {past.length > 0 && (
           <Section title="Past Sessions">
-            {past.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)}
+            {pastPaged.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)}
+            {pastTotalPages > 1 && (
+              <Pagination page={pastPage} totalPages={pastTotalPages} onPageChange={setPastPage} className="mt-2" />
+            )}
           </Section>
         )}
       </div>

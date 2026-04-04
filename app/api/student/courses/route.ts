@@ -1,17 +1,37 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (session.role !== "STUDENT") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
-    const [courses, enrollments] = await Promise.all([
+    const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
+    const level = req.nextUrl.searchParams.get("level")?.toUpperCase().trim() ?? ""
+    const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
+    const limit = 12
+    const skip = (page - 1) * limit
+
+    const where = {
+      status: "PUBLISHED" as const,
+      ...(q ? {
+        OR: [
+          { title: { contains: q, mode: "insensitive" as const } },
+          { tutor: { name: { contains: q, mode: "insensitive" as const } } },
+        ],
+      } : {}),
+      ...(level ? { level: level as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" } : {}),
+    }
+
+    const [total, courses, enrollments] = await Promise.all([
+      prisma.course.count({ where }),
       prisma.course.findMany({
-        where: { status: "PUBLISHED" },
+        where,
         orderBy: { createdAt: "desc" },
+        take: limit,
+        skip,
         include: {
           tutor: { select: { id: true, name: true, avatarUrl: true } },
           category: { select: { id: true, name: true } },
@@ -50,6 +70,9 @@ export async function GET() {
           isEnrolled: enrolledIds.has(c.id),
         }
       }),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
     })
   } catch (err) {
     console.error("[GET /api/student/courses]", err)

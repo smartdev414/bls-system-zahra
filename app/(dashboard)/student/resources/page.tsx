@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { useFetch } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,21 +55,18 @@ export default function ResourcesPage() {
   const [query, setQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
 
-  const { data, loading } = useFetch<ResourcesData>("/api/student/resources", {
+  const debouncedQuery = useDebounce(query)
+
+  const params = new URLSearchParams()
+  if (debouncedQuery) params.set("q", debouncedQuery)
+  if (typeFilter !== "all") params.set("type", typeFilter)
+
+  const { data, loading } = useFetch<ResourcesData>(`/api/student/resources?${params.toString()}`, {
     errorMessage: "Could not load resources",
   })
 
-  const filtered = (data?.resources ?? []).filter((r) => {
-    const matchQ = !query ||
-      r.title.toLowerCase().includes(query.toLowerCase()) ||
-      r.courseTitle.toLowerCase().includes(query.toLowerCase()) ||
-      r.lessonTitle.toLowerCase().includes(query.toLowerCase())
-    const matchType = typeFilter === "all" || r.type === typeFilter
-    return matchQ && matchType
-  })
-
   // Group by course
-  const grouped = filtered.reduce<Record<string, { courseTitle: string; resources: Resource[] }>>(
+  const grouped = (data?.resources ?? []).reduce<Record<string, { courseTitle: string; resources: Resource[] }>>(
     (acc, r) => {
       if (!acc[r.courseId]) acc[r.courseId] = { courseTitle: r.courseTitle, resources: [] }
       acc[r.courseId].resources.push(r)

@@ -13,6 +13,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +32,7 @@ type CourseItem = {
   createdAt: string
 }
 
-type CoursesData = { courses: CourseItem[]; total: number }
+type CoursesData = { courses: CourseItem[]; total: number; page: number; totalPages: number }
 
 const statusConfig = {
   PUBLISHED: { label: "Published", icon: Globe, className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
@@ -49,14 +51,23 @@ const levelColor: Record<string, string> = {
 export default function AdminCoursesPage() {
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [page, setPage] = useState(1)
+
+  const debouncedQuery = useDebounce(query)
 
   const params = new URLSearchParams()
-  if (query) params.set("q", query)
+  if (debouncedQuery) params.set("q", debouncedQuery)
   if (statusFilter !== "all") params.set("status", statusFilter)
+  params.set("page", String(page))
 
   const { data, loading, refetch } = useFetch<CoursesData>(`/api/admin/courses?${params.toString()}`, {
     errorMessage: "Could not load courses",
   })
+
+  function handleStatusChange(value: string) {
+    setStatusFilter(value)
+    setPage(1)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -76,11 +87,11 @@ export default function AdminCoursesPage() {
           <Input
             placeholder="Search courses..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1) }}
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={handleStatusChange}>
           <SelectTrigger className="w-36">
             <Filter className="size-3.5 mr-2 text-muted-foreground" />
             <SelectValue />
@@ -111,6 +122,10 @@ export default function AdminCoursesPage() {
             <p className="font-semibold">No courses found</p>
           </CardContent>
         </Card>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} className="mt-2" />
       )}
     </div>
   )

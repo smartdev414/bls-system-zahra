@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState } from "react"
 import { Search, Library, PlayCircle, BookOpen, Loader2, Filter, Image as ImageIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useFetch } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,8 @@ type Sign = {
 type DictionaryData = {
   signs: Sign[]
   total: number
+  totalPages: number
+  page: number
   categories: string[]
 }
 
@@ -48,11 +52,12 @@ const levelColor: Record<string, string> = {
   ADVANCED: "bg-rose-100 text-rose-700 border-rose-200",
 }
 
-function buildUrl(q: string, category: string, level: string) {
+function buildUrl(q: string, category: string, level: string, page: number) {
   const params = new URLSearchParams()
   if (q) params.set("q", q)
   if (category && category !== "all") params.set("category", category)
   if (level && level !== "all") params.set("level", level)
+  params.set("page", String(page))
   return `/api/dictionary?${params.toString()}`
 }
 
@@ -77,26 +82,27 @@ function SignThumbnail({ sign }: { sign: Sign }) {
 
 export default function TutorDictionaryPage() {
   const [query, setQuery] = useState("")
-  const [debouncedQuery, setDebouncedQuery] = useState("")
   const [category, setCategory] = useState("all")
   const [level, setLevel] = useState("all")
+  const [page, setPage] = useState(1)
   const [selectedSign, setSelectedSign] = useState<Sign | null>(null)
-  const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
 
-  const url = buildUrl(debouncedQuery, category, level)
+  const debouncedQuery = useDebounce(query)
+
+  const url = buildUrl(debouncedQuery, category, level, page)
   const { data, loading } = useFetch<DictionaryData>(url, {
     errorMessage: "Could not load dictionary",
   })
 
-  const handleSearch = useCallback(
-    (value: string) => {
-      setQuery(value)
-      if (debounceTimer) clearTimeout(debounceTimer)
-      const t = setTimeout(() => setDebouncedQuery(value), 350)
-      setDebounceTimer(t)
-    },
-    [debounceTimer]
-  )
+  function handleCategoryChange(value: string) {
+    setCategory(value)
+    setPage(1)
+  }
+
+  function handleLevelChange(value: string) {
+    setLevel(value)
+    setPage(1)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -118,13 +124,13 @@ export default function TutorDictionaryPage() {
           <Input
             placeholder="Search signs, categories..."
             value={query}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1) }}
             className="pl-9"
           />
         </div>
 
         <div className="flex gap-2">
-          <Select value={category} onValueChange={setCategory}>
+          <Select value={category} onValueChange={handleCategoryChange}>
             <SelectTrigger className="w-40">
               <Filter className="size-3.5 mr-2 text-muted-foreground" />
               <SelectValue placeholder="Category" />
@@ -137,7 +143,7 @@ export default function TutorDictionaryPage() {
             </SelectContent>
           </Select>
 
-          <Select value={level} onValueChange={setLevel}>
+          <Select value={level} onValueChange={handleLevelChange}>
             <SelectTrigger className="w-36">
               <SelectValue placeholder="Level" />
             </SelectTrigger>
@@ -216,15 +222,19 @@ export default function TutorDictionaryPage() {
               size="sm"
               onClick={() => {
                 setQuery("")
-                setDebouncedQuery("")
                 setCategory("all")
                 setLevel("all")
+                setPage(1)
               }}
             >
               Clear filters
             </Button>
           )}
         </div>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} />
       )}
 
       {/* Sign detail dialog */}

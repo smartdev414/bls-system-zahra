@@ -10,20 +10,30 @@ export async function GET(req: NextRequest) {
 
     const status = req.nextUrl.searchParams.get("status")?.toUpperCase()
     const q = req.nextUrl.searchParams.get("q")?.trim()
+    const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
+    const limit = 20
+    const skip = (page - 1) * limit
 
-    const courses = await prisma.course.findMany({
-      where: {
-        ...(status ? { status: status as "DRAFT" | "PUBLISHED" | "ARCHIVED" } : {}),
-        ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      include: {
-        tutor: { select: { id: true, name: true } },
-        category: { select: { name: true } },
-        _count: { select: { enrollments: true, sections: true } },
-        reviews: { select: { rating: true } },
-      },
-    })
+    const where = {
+      ...(status ? { status: status as "DRAFT" | "PUBLISHED" | "ARCHIVED" } : {}),
+      ...(q ? { title: { contains: q, mode: "insensitive" as const } } : {}),
+    }
+
+    const [total, courses] = await Promise.all([
+      prisma.course.count({ where }),
+      prisma.course.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip,
+        include: {
+          tutor: { select: { id: true, name: true } },
+          category: { select: { name: true } },
+          _count: { select: { enrollments: true, sections: true } },
+          reviews: { select: { rating: true } },
+        },
+      }),
+    ])
 
     return NextResponse.json({
       courses: courses.map((c) => ({
@@ -41,7 +51,9 @@ export async function GET(req: NextRequest) {
         reviewCount: c.reviews.length,
         createdAt: c.createdAt.toISOString(),
       })),
-      total: courses.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
     })
   } catch (err) {
     console.error("[GET /api/admin/courses]", err)
