@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,20 +44,26 @@ const levelColor: Record<string, string> = {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 20
+
 export default function TutorStudentsPage() {
   const [query, setQuery] = useState("")
+  const [page, setPage] = useState(1)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const { data, loading } = useFetch<StudentsData>("/api/tutor/students", {
+  const debouncedQuery = useDebounce(query)
+
+  const params = new URLSearchParams()
+  if (debouncedQuery) params.set("q", debouncedQuery)
+  params.set("page", String(page))
+
+  const { data, loading } = useFetch<StudentsData>(`/api/tutor/students?${params.toString()}`, {
     errorMessage: "Could not load students",
   })
 
-  const filtered = data?.students.filter(
-    (s) =>
-      !query.trim() ||
-      s.name.toLowerCase().includes(query.toLowerCase()) ||
-      s.email.toLowerCase().includes(query.toLowerCase())
-  ) ?? []
+  const students = data?.students ?? []
+  const totalPages = Math.ceil(students.length / PAGE_SIZE)
+  const paginated = students.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div className="flex flex-col gap-6">
@@ -75,7 +83,7 @@ export default function TutorStudentsPage() {
           <Input
             placeholder="Search students..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1) }}
             className="pl-9"
           />
         </div>
@@ -85,9 +93,9 @@ export default function TutorStudentsPage() {
         <div className="flex items-center justify-center min-h-[300px]">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
-      ) : filtered.length ? (
+      ) : paginated.length ? (
         <div className="flex flex-col gap-3">
-          {filtered.map((student) => {
+          {paginated.map((student) => {
             const isExpanded = expandedId === student.id
             const initials = student.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
             const overallCompletion = student.courses.length > 0
@@ -174,16 +182,20 @@ export default function TutorStudentsPage() {
             </div>
             <div>
               <p className="font-semibold text-lg">
-                {query ? "No students match your search" : "No students yet"}
+                {debouncedQuery ? "No students match your search" : "No students yet"}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {query
+                {debouncedQuery
                   ? "Try a different name or email."
                   : "Students will appear here once they enrol in your courses."}
               </p>
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {totalPages > 1 && (
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} className="mt-2" />
       )}
     </div>
   )

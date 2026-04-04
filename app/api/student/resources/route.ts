@@ -1,31 +1,45 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (session.role !== "STUDENT") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
+    const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
+    const type = req.nextUrl.searchParams.get("type")?.toUpperCase() ?? ""
+
+    type ResourceAssetType = "PDF" | "DOCUMENT" | "IMAGE" | "AUDIO"
+    const resourceTypes: ResourceAssetType[] = ["PDF", "DOCUMENT", "IMAGE", "AUDIO"]
+
     // All non-VIDEO, non-SUBTITLE assets from lessons in courses the student is enrolled in
     const enrollments = await prisma.enrollment.findMany({
       where: { studentId: session.sub },
-      select: {
+      include: {
         course: {
           select: {
             id: true,
             title: true,
             sections: {
               orderBy: { order: "asc" },
-              select: {
+              include: {
                 lessons: {
                   orderBy: { order: "asc" },
-                  select: {
-                    id: true,
-                    title: true,
+                  include: {
                     assets: {
-                      where: { type: { in: ["PDF", "DOCUMENT", "IMAGE", "AUDIO"] } },
+                      where: {
+                        type: type
+                          ? { equals: type as ResourceAssetType }
+                          : { in: resourceTypes },
+                        ...(q ? {
+                          OR: [
+                            { title: { contains: q, mode: "insensitive" } },
+                            { fileName: { contains: q, mode: "insensitive" } },
+                          ],
+                        } : {}),
+                      },
                       orderBy: { order: "asc" },
                     },
                   },

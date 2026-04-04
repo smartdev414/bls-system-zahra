@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useFetch } from "@/hooks/use-fetch"
+import { Pagination } from "@/components/ui/pagination"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -529,10 +530,16 @@ function SessionsSidebar({ sessions }: { sessions: LiveSession[] }) {
 
 // ─── List View ────────────────────────────────────────────────────────────────
 
+const COMPLETED_PAGE_SIZE = 10
+
 function ListView({ sessions }: { sessions: LiveSession[] }) {
+  const [completedPage, setCompletedPage] = useState(1)
+
   const live      = sessions.filter((s) => s.status === "LIVE")
   const upcoming  = sessions.filter((s) => s.status === "SCHEDULED")
   const completed = sessions.filter((s) => s.status === "COMPLETED")
+  const completedTotalPages = Math.ceil(completed.length / COMPLETED_PAGE_SIZE)
+  const completedPaged = completed.slice((completedPage - 1) * COMPLETED_PAGE_SIZE, completedPage * COMPLETED_PAGE_SIZE)
 
   return (
     <div className="flex gap-5 items-start">
@@ -560,7 +567,15 @@ function ListView({ sessions }: { sessions: LiveSession[] }) {
         </Section>
         {completed.length > 0 && (
           <Section title="Past Sessions">
-            {completed.map((s) => <SessionCard key={s.id} session={s} />)}
+            {completedPaged.map((s) => <SessionCard key={s.id} session={s} />)}
+            {completedTotalPages > 1 && (
+              <Pagination
+                page={completedPage}
+                totalPages={completedTotalPages}
+                onPageChange={setCompletedPage}
+                className="mt-2"
+              />
+            )}
           </Section>
         )}
       </div>

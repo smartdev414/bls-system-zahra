@@ -19,6 +19,8 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { useFetch, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,7 +40,7 @@ type Course = {
   isEnrolled: boolean
 }
 
-type CoursesData = { courses: Course[] }
+type CoursesData = { courses: Course[]; total: number; page: number; totalPages: number }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,21 +55,26 @@ const levelColor: Record<string, string> = {
 export default function StudentCoursesPage() {
   const [query, setQuery] = useState("")
   const [levelFilter, setLevelFilter] = useState("all")
+  const [page, setPage] = useState(1)
 
-  const { data, loading, refetch } = useFetch<CoursesData>("/api/student/courses", {
+  const debouncedQuery = useDebounce(query)
+
+  const params = new URLSearchParams()
+  if (debouncedQuery) params.set("q", debouncedQuery)
+  if (levelFilter !== "all") params.set("level", levelFilter)
+  params.set("page", String(page))
+
+  const { data, loading, refetch } = useFetch<CoursesData>(`/api/student/courses?${params.toString()}`, {
     errorMessage: "Could not load courses",
   })
 
-  const filtered = (data?.courses ?? []).filter((c) => {
-    const matchQ = !query ||
-      c.title.toLowerCase().includes(query.toLowerCase()) ||
-      c.tutor.name.toLowerCase().includes(query.toLowerCase())
-    const matchLevel = levelFilter === "all" || c.level === levelFilter
-    return matchQ && matchLevel
-  })
+  const enrolled = (data?.courses ?? []).filter((c) => c.isEnrolled)
+  const available = (data?.courses ?? []).filter((c) => !c.isEnrolled)
 
-  const enrolled = filtered.filter((c) => c.isEnrolled)
-  const available = filtered.filter((c) => !c.isEnrolled)
+  function handleLevelChange(value: string) {
+    setLevelFilter(value)
+    setPage(1)
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -85,11 +92,11 @@ export default function StudentCoursesPage() {
           <Input
             placeholder="Search courses or tutors..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1) }}
             className="pl-9"
           />
         </div>
-        <Select value={levelFilter} onValueChange={setLevelFilter}>
+        <Select value={levelFilter} onValueChange={handleLevelChange}>
           <SelectTrigger className="w-40">
             <Filter className="size-3.5 mr-2 text-muted-foreground" />
             <SelectValue placeholder="Level" />
@@ -139,13 +146,16 @@ export default function StudentCoursesPage() {
                   <div>
                     <p className="font-semibold text-lg">No courses found</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {query || levelFilter !== "all" ? "Try adjusting your filters." : "No published courses yet."}
+                      {debouncedQuery || levelFilter !== "all" ? "Try adjusting your filters." : "No published courses yet."}
                     </p>
                   </div>
                 </CardContent>
               </Card>
             ) : null}
           </section>
+          {data && data.totalPages > 1 && (
+            <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} />
+          )}
         </>
       )}
     </div>

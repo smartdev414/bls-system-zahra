@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, Clock, BookOpen,
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { useFetch } from "@/hooks/use-fetch"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +32,11 @@ type TestsData = {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 10
+
 export default function TestsPage() {
+  const [page, setPage] = useState(1)
+
   const { data, loading } = useFetch<TestsData>("/api/student/tests", {
     errorMessage: "Could not load tests",
   })
@@ -40,6 +46,10 @@ export default function TestsPage() {
       ? Math.round((data.stats.passedTests / data.stats.totalTests) * 100)
       : 0
     : 0
+
+  const allTests = data?.tests ?? []
+  const totalPages = Math.ceil(allTests.length / PAGE_SIZE)
+  const pagedTests = allTests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div className="flex flex-col gap-8">
@@ -83,9 +93,9 @@ export default function TestsPage() {
           )}
 
           {/* Test list */}
-          {data?.tests.length ? (
+          {allTests.length > 0 ? (
             <div className="flex flex-col gap-4">
-              {data.tests.map((test) => (
+              {pagedTests.map((test) => (
                 <Card key={test.id} className={`shadow-sm overflow-hidden ${test.isCompleted ? "opacity-80" : ""}`}>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-4">
@@ -140,6 +150,9 @@ export default function TestsPage() {
                   </CardContent>
                 </Card>
               ))}
+              {totalPages > 1 && (
+                <Pagination page={page} totalPages={totalPages} onPageChange={setPage} className="mt-2" />
+              )}
             </div>
           ) : (
             <Card className="shadow-sm">

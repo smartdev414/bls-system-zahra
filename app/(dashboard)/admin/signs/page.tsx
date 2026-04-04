@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/dialog"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { useFetch, usePostCallback, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,7 +36,7 @@ type Sign = {
   imageUrl: string | null
 }
 
-type SignsData = { signs: Sign[]; total: number; categories: string[] }
+type SignsData = { signs: Sign[]; total: number; totalPages: number; page: number; categories: string[] }
 
 const levelColor: Record<string, string> = {
   BEGINNER: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -53,10 +55,19 @@ export default function AdminSignsPage() {
   const [query, setQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [levelFilter, setLevelFilter] = useState("all")
+  const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState(blank())
 
-  const { data, loading, refetch } = useFetch<SignsData>("/api/admin/signs", {
+  const debouncedQuery = useDebounce(query)
+
+  const params = new URLSearchParams()
+  if (debouncedQuery) params.set("q", debouncedQuery)
+  if (categoryFilter !== "all") params.set("category", categoryFilter)
+  if (levelFilter !== "all") params.set("level", levelFilter)
+  params.set("page", String(page))
+
+  const { data, loading, refetch } = useFetch<SignsData>(`/api/admin/signs?${params.toString()}`, {
     errorMessage: "Could not load signs",
   })
 
@@ -78,14 +89,15 @@ export default function AdminSignsPage() {
     }
   )
 
-  const filtered = (data?.signs ?? []).filter((s) => {
-    const matchQ = !query ||
-      s.word.toLowerCase().includes(query.toLowerCase()) ||
-      s.category.toLowerCase().includes(query.toLowerCase())
-    const matchCat = categoryFilter === "all" || s.category === categoryFilter
-    const matchLvl = levelFilter === "all" || s.level === levelFilter
-    return matchQ && matchCat && matchLvl
-  })
+  function handleCategoryChange(value: string) {
+    setCategoryFilter(value)
+    setPage(1)
+  }
+
+  function handleLevelChange(value: string) {
+    setLevelFilter(value)
+    setPage(1)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -95,7 +107,7 @@ export default function AdminSignsPage() {
             <Library className="size-6 text-primary" /> BSL Dictionary
           </h1>
           <p className="text-muted-foreground mt-1">
-            {loading ? "\u00A0" : `${data?.total ?? 0} signs — ${filtered.length} shown`}
+            {loading ? "\u00A0" : `${data?.total ?? 0} sign${data?.total !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -118,11 +130,11 @@ export default function AdminSignsPage() {
           <Input
             placeholder="Search signs..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1) }}
             className="pl-9"
           />
         </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+        <Select value={categoryFilter} onValueChange={handleCategoryChange}>
           <SelectTrigger className="w-44">
             <Filter className="size-3.5 mr-2 text-muted-foreground" />
             <SelectValue />
@@ -134,7 +146,7 @@ export default function AdminSignsPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={levelFilter} onValueChange={setLevelFilter}>
+        <Select value={levelFilter} onValueChange={handleLevelChange}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Level" />
           </SelectTrigger>
@@ -151,9 +163,9 @@ export default function AdminSignsPage() {
         <div className="flex items-center justify-center min-h-[300px]">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
-      ) : filtered.length > 0 ? (
+      ) : data?.signs.length ? (
         <div className="flex flex-col gap-2">
-          {filtered.map((sign) => (
+          {data.signs.map((sign) => (
             <SignRow key={sign.id} sign={sign} onMutated={refetch} />
           ))}
         </div>
@@ -169,6 +181,10 @@ export default function AdminSignsPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} className="mt-2" />
       )}
 
       {/* Create dialog */}

@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,7 +34,7 @@ type UserItem = {
   courseCount: number
 }
 
-type UsersData = { users: UserItem[]; total: number }
+type UsersData = { users: UserItem[]; total: number; page: number; totalPages: number }
 
 const roleColor: Record<string, string> = {
   STUDENT: "bg-blue-100 text-blue-700 border-blue-200",
@@ -45,14 +47,23 @@ const roleColor: Record<string, string> = {
 export default function AdminUsersPage() {
   const [query, setQuery] = useState("")
   const [roleFilter, setRoleFilter] = useState("all")
+  const [page, setPage] = useState(1)
+
+  const debouncedQuery = useDebounce(query)
 
   const params = new URLSearchParams()
-  if (query) params.set("q", query)
+  if (debouncedQuery) params.set("q", debouncedQuery)
   if (roleFilter !== "all") params.set("role", roleFilter)
+  params.set("page", String(page))
 
   const { data, loading, refetch } = useFetch<UsersData>(`/api/admin/users?${params.toString()}`, {
     errorMessage: "Could not load users",
   })
+
+  function handleRoleChange(value: string) {
+    setRoleFilter(value)
+    setPage(1)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -75,11 +86,11 @@ export default function AdminUsersPage() {
           <Input
             placeholder="Search name or email..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1) }}
             className="pl-9"
           />
         </div>
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
+        <Select value={roleFilter} onValueChange={handleRoleChange}>
           <SelectTrigger className="w-36">
             <Filter className="size-3.5 mr-2 text-muted-foreground" />
             <SelectValue />
@@ -110,6 +121,10 @@ export default function AdminUsersPage() {
             <p className="font-semibold">No users found</p>
           </CardContent>
         </Card>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} className="mt-2" />
       )}
     </div>
   )

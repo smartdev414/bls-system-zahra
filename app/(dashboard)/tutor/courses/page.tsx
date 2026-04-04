@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
+import { Pagination } from "@/components/ui/pagination"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,12 +66,15 @@ const levelColor: Record<string, string> = {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 12
+
 export default function TutorCoursesPage() {
   const router = useRouter()
   const { data, loading } = useFetch<CoursesData>("/api/tutor/courses", {
     errorMessage: "Could not load courses",
   })
 
+  const [page, setPage] = useState(1)
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -118,8 +122,9 @@ export default function TutorCoursesPage() {
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : data?.courses.length ? (
+        <>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {data.courses.map((course) => {
+          {data.courses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((course) => {
             const StatusIcon = statusIcon[course.status]
             return (
               <Card key={course.id} className="shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
@@ -174,6 +179,15 @@ export default function TutorCoursesPage() {
             )
           })}
         </div>
+        {Math.ceil((data.courses.length) / PAGE_SIZE) > 1 && (
+          <Pagination
+            page={page}
+            totalPages={Math.ceil(data.courses.length / PAGE_SIZE)}
+            onPageChange={setPage}
+            className="mt-2"
+          />
+        )}
+        </>
       ) : (
         <Card className="shadow-sm">
           <CardContent className="py-16 flex flex-col items-center gap-4 text-center">

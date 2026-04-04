@@ -10,31 +10,41 @@ export async function GET(req: NextRequest) {
 
     const role = req.nextUrl.searchParams.get("role")?.toUpperCase()
     const q = req.nextUrl.searchParams.get("q")?.trim()
+    const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
+    const limit = 20
+    const skip = (page - 1) * limit
 
-    const users = await prisma.user.findMany({
-      where: {
-        ...(role ? { role: role as "STUDENT" | "TUTOR" | "ADMIN" } : {}),
-        ...(q
-          ? {
-              OR: [
-                { name: { contains: q, mode: "insensitive" } },
-                { email: { contains: q, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        bslLevel: true,
-        createdAt: true,
-        tutorProfile: { select: { isVerified: true } },
-        _count: { select: { enrollments: true, courses: true } },
-      },
-    })
+    const where = {
+      ...(role ? { role: role as "STUDENT" | "TUTOR" | "ADMIN" } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" as const } },
+              { email: { contains: q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    }
+
+    const [total, users] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          bslLevel: true,
+          createdAt: true,
+          tutorProfile: { select: { isVerified: true } },
+          _count: { select: { enrollments: true, courses: true } },
+        },
+      }),
+    ])
 
     return NextResponse.json({
       users: users.map((u) => ({
@@ -48,7 +58,9 @@ export async function GET(req: NextRequest) {
         enrollmentCount: u._count.enrollments,
         courseCount: u._count.courses,
       })),
-      total: users.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
     })
   } catch (err) {
     console.error("[GET /api/admin/users]", err)
