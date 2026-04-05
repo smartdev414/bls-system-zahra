@@ -6,7 +6,6 @@ import {
   Bell,
   BookOpen,
   CheckCheck,
-  MessageSquare,
   Trash2,
   Video,
   Award,
@@ -42,7 +41,6 @@ type NotificationType =
   | "NEW_REVIEW"
   | "QUIZ_PASSED"
   | "QUIZ_FAILED"
-  | "NEW_MESSAGE"
 
 type Notification = {
   id: string
@@ -67,7 +65,6 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   NEW_REVIEW: Star,
   QUIZ_PASSED: Award,
   QUIZ_FAILED: Award,
-  NEW_MESSAGE: MessageSquare,
 }
 
 const typeColor: Record<NotificationType, string> = {
@@ -83,7 +80,6 @@ const typeColor: Record<NotificationType, string> = {
   NEW_REVIEW: "text-yellow-500",
   QUIZ_PASSED: "text-green-500",
   QUIZ_FAILED: "text-destructive",
-  NEW_MESSAGE: "text-blue-500",
 }
 
 const POLL_INTERVAL = 30_000 // 30 seconds

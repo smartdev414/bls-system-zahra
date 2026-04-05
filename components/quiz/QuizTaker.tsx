@@ -268,15 +268,13 @@ export function QuizTaker({ lessonId, enrollmentId, questions, bestAttempt, onCo
               const isVideo = isVideoUrl(opt.imageUrl, opt.mediaType)
 
               if (opt.imageUrl && isVideo) {
-                // ── Video option card
+                // ── Video option card — video is for watching only; text label selects
                 return (
-                  <button
+                  <div
                     key={opt.id}
-                    type="button"
-                    onClick={() => setSelected((s) => ({ ...s, [q.id]: opt.id }))}
                     className={cn(
-                      "rounded-xl border overflow-hidden flex flex-col transition-all text-left",
-                      isSelected ? "border-primary ring-2 ring-primary" : "border-border hover:border-primary/50"
+                      "rounded-xl border overflow-hidden flex flex-col transition-all",
+                      isSelected ? "border-primary ring-2 ring-primary" : "border-border"
                     )}
                   >
                     <div className="relative">
@@ -288,7 +286,6 @@ export function QuizTaker({ lessonId, enrollmentId, questions, bestAttempt, onCo
                         playsInline
                         controls
                         className="w-full aspect-video object-cover"
-                        onClick={(e) => e.stopPropagation()}
                       />
                       {isSelected && (
                         <div className="absolute top-2 right-2 pointer-events-none">
@@ -296,15 +293,19 @@ export function QuizTaker({ lessonId, enrollmentId, questions, bestAttempt, onCo
                         </div>
                       )}
                     </div>
-                    {opt.text && (
-                      <div className={cn(
-                        "px-3 py-2 text-xs font-medium text-center",
-                        isSelected ? "bg-primary text-primary-foreground" : "bg-background text-foreground"
-                      )}>
-                        {opt.text}
-                      </div>
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelected((s) => ({ ...s, [q.id]: opt.id }))}
+                      className={cn(
+                        "px-3 py-2.5 text-xs font-medium text-center w-full transition-colors",
+                        isSelected
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background text-foreground hover:bg-muted"
+                      )}
+                    >
+                      {opt.text || "Select this answer"}
+                    </button>
+                  </div>
                 )
               }
 

@@ -6,12 +6,22 @@ import { getPusherClient } from "@/lib/pusher-client"
 export function MessagesBadge({ userId }: { userId: string }) {
   const [count, setCount] = useState(0)
 
-  // Initial fetch
-  useEffect(() => {
+  function refreshCount() {
     fetch("/api/messages/unread")
       .then((r) => r.json())
       .then((d: { count: number }) => setCount(d.count))
       .catch(() => {})
+  }
+
+  // Initial fetch
+  useEffect(() => {
+    refreshCount()
+  }, [])
+
+  // Re-fetch when messages are read in the messaging center
+  useEffect(() => {
+    window.addEventListener("messages-read", refreshCount)
+    return () => window.removeEventListener("messages-read", refreshCount)
   }, [])
 
   // Real-time updates via Pusher personal channel
@@ -20,15 +30,10 @@ export function MessagesBadge({ userId }: { userId: string }) {
     const pusher = getPusherClient()
     const ch = pusher.subscribe(`private-user-${userId}`)
 
-    ch.bind("new-message", () => {
-      fetch("/api/messages/unread")
-        .then((r) => r.json())
-        .then((d: { count: number }) => setCount(d.count))
-        .catch(() => {})
-    })
+    ch.bind("new-message", refreshCount)
 
     return () => {
-      ch.unbind("new-message")
+      ch.unbind("new-message", refreshCount)
       pusher.unsubscribe(`private-user-${userId}`)
     }
   }, [userId])

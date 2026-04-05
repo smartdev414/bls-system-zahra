@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { createNotification } from "@/lib/notifications"
 import { triggerNewMessage, triggerUserEvent } from "@/lib/pusher-server"
 
 export async function POST(
@@ -57,17 +56,6 @@ export async function POST(
       senderId: session.sub,
       senderName: session.name,
     })
-
-    // In-app notification
-    void createNotification(
-      recipientId,
-      "NEW_MESSAGE",
-      `New message from ${session.name}`,
-      content.trim().slice(0, 100),
-      session.role === "STUDENT"
-        ? `/tutor/messages`
-        : `/student/messages`,
-    )
 
     return NextResponse.json({ message }, { status: 201 })
   } catch (err) {

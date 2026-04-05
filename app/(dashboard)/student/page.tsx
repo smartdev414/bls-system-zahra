@@ -4,6 +4,7 @@ import Link from "next/link"
 import {
   BookOpen, Library, FlaskConical, Video, Settings,
   FolderOpen, Calendar, ArrowRight, Clock, Loader2,
+  PlayCircle, FileText, CheckCircle2, Radio,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,17 @@ import { useFetch } from "@/hooks/use-fetch"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type CurrentCourse = {
+  courseId: string
+  courseTitle: string
+  thumbnailUrl: string | null
+  tutorName: string
+  completion: number
+  completedLessons: number
+  totalLessons: number
+  nextLesson: { id: string; title: string; type: string } | null
+}
+
 type DashboardData = {
   student: { name: string; bslLevel: string | null }
   stats: {
@@ -22,6 +34,7 @@ type DashboardData = {
     testsPassed: number
     totalTests: number
   }
+  currentCourse: CurrentCourse | null
   upcomingSessions: Array<{
     id: string
     title: string
@@ -34,13 +47,19 @@ type DashboardData = {
 // ─── Module grid config ───────────────────────────────────────────────────────
 
 const modules = [
-  { label: "Courses", desc: "Continue learning", href: "/student/courses", icon: BookOpen, vip: false },
-  { label: "Resources", desc: "Course materials", href: "/student/resources", icon: FolderOpen, vip: false },
-  { label: "Dictionary", desc: "Search signs", href: "/student/dictionary", icon: Library, vip: false },
-  { label: "Tests", desc: "Practice exams", href: "/student/tests", icon: FlaskConical, vip: false },
-  { label: "Classroom", desc: "Live sessions", href: "/student/classroom", icon: Video, vip: false },
-  { label: "Settings", desc: "Preferences", href: "/student/settings", icon: Settings, vip: false },
+  { label: "Courses", desc: "Continue learning", href: "/student/courses", icon: BookOpen },
+  { label: "Resources", desc: "Course materials", href: "/student/resources", icon: FolderOpen },
+  { label: "Dictionary", desc: "Search signs", href: "/student/dictionary", icon: Library },
+  { label: "Tests", desc: "Practice exams", href: "/student/tests", icon: FlaskConical },
+  { label: "Classroom", desc: "Live sessions", href: "/student/classroom", icon: Video },
+  { label: "Settings", desc: "Preferences", href: "/student/settings", icon: Settings },
 ]
+
+const lessonTypeIcon = {
+  VIDEO: PlayCircle,
+  TEXT: FileText,
+  QUIZ: FlaskConical,
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,6 +72,108 @@ function formatSessionDate(iso: string) {
   }
 }
 
+// ─── Current Course Card ──────────────────────────────────────────────────────
+
+function CurrentCourseCard({ course, loading }: { course: CurrentCourse | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <Card className="shadow-sm">
+        <CardContent className="p-5 flex flex-col gap-3">
+          <div className="h-4 w-32 bg-muted rounded animate-pulse" />
+          <div className="h-6 w-56 bg-muted rounded animate-pulse" />
+          <div className="h-2 w-full bg-muted rounded animate-pulse" />
+          <div className="h-8 w-36 bg-muted rounded animate-pulse" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!course) {
+    return (
+      <Card className="shadow-sm border-dashed">
+        <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
+          <div className="rounded-full bg-primary/10 p-4">
+            <BookOpen className="size-6 text-primary" />
+          </div>
+          <div>
+            <p className="font-semibold">No course enrolled yet</p>
+            <p className="text-sm text-muted-foreground mt-1">Browse available courses to get started.</p>
+          </div>
+          <Button asChild size="sm">
+            <Link href="/student/courses">Browse Courses <ArrowRight className="size-3.5 ml-1" /></Link>
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const isComplete = course.completion === 100
+  const LessonIcon = course.nextLesson
+    ? (lessonTypeIcon[course.nextLesson.type as keyof typeof lessonTypeIcon] ?? PlayCircle)
+    : CheckCircle2
+
+  return (
+    <Card className="shadow-sm overflow-hidden">
+      <div className="flex gap-0">
+        {/* Thumbnail */}
+        {course.thumbnailUrl ? (
+          <div className="w-32 shrink-0 hidden sm:block">
+            <img
+              src={course.thumbnailUrl}
+              alt={course.courseTitle}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="w-32 shrink-0 hidden sm:flex items-center justify-center bg-primary/10">
+            <BookOpen className="size-8 text-primary/40" />
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="flex-1 p-5 flex flex-col gap-3 min-w-0">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
+              Continue Learning
+            </p>
+            <h3 className="font-bold text-base leading-snug truncate">{course.courseTitle}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">with {course.tutorName}</p>
+          </div>
+
+          {/* Progress */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">{course.completedLessons}/{course.totalLessons} lessons</span>
+              <span className="font-semibold">{course.completion}%</span>
+            </div>
+            <Progress value={course.completion} className="h-1.5" />
+          </div>
+
+          {/* Next lesson / action */}
+          {isComplete ? (
+            <div className="flex items-center gap-2 text-sm text-emerald-600 font-semibold">
+              <CheckCircle2 className="size-4" />
+              Course complete!
+            </div>
+          ) : course.nextLesson ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 flex-1">
+                <LessonIcon className="size-3.5 shrink-0" />
+                <span className="truncate">Next: {course.nextLesson.title}</span>
+              </div>
+              <Button asChild size="sm" className="shrink-0 h-8">
+                <Link href={`/student/lessons/${course.nextLesson.id}`}>
+                  Start Lesson <ArrowRight className="size-3.5 ml-1" />
+                </Link>
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StudentDashboardPage() {
@@ -62,9 +183,11 @@ export default function StudentDashboardPage() {
 
   const name = data?.student.name?.split(" ")[0] ?? "there"
   const stats = data?.stats ?? { currentDay: 1, completion: 0, testsPassed: 0, totalTests: 0 }
+  const liveSessions = data?.upcomingSessions.filter((s) => s.status === "LIVE") ?? []
+  const scheduledSessions = data?.upcomingSessions.filter((s) => s.status !== "LIVE") ?? []
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
 
       {/* Welcome banner */}
       <div className="rounded-2xl bg-primary p-8 text-primary-foreground relative overflow-hidden">
@@ -78,16 +201,26 @@ export default function StudentDashboardPage() {
               <h1 className="text-3xl font-black tracking-tight mb-2">
                 Welcome back, {name}!
               </h1>
-              <p className="text-primary-foreground/80 mb-6">
+              <p className="text-primary-foreground/80 mb-5">
                 {stats.completion > 0
-                  ? `You're making great progress. Keep going — you're on Day ${stats.currentDay}!`
+                  ? `You're making great progress — Day ${stats.currentDay} and ${stats.completion}% complete!`
                   : "You're just getting started. Pick a lesson below to begin your BSL journey!"}
               </p>
-              <Button asChild variant="secondary" size="sm">
-                <Link href="/student/lessons">
-                  Resume Learning <ArrowRight className="size-4 ml-1.5" />
-                </Link>
-              </Button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button asChild variant="secondary" size="sm">
+                  <Link href="/student/courses">
+                    My Courses <ArrowRight className="size-4 ml-1.5" />
+                  </Link>
+                </Button>
+                {liveSessions.length > 0 && (
+                  <Button asChild size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white border-0 gap-1.5">
+                    <Link href={`/student/classroom/${liveSessions[0].id}`}>
+                      <Radio className="size-3.5 animate-pulse" />
+                      Join Live Session
+                    </Link>
+                  </Button>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -96,8 +229,11 @@ export default function StudentDashboardPage() {
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* Left — stats + modules (2/3) */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
+        {/* Left — current course + stats + modules */}
+        <div className="lg:col-span-2 flex flex-col gap-5">
+
+          {/* Current course */}
+          <CurrentCourseCard course={data?.currentCourse ?? null} loading={loading} />
 
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
@@ -133,20 +269,18 @@ export default function StudentDashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-3 gap-3 pt-0">
-              {modules.map(({ label, desc, href, icon: Icon, vip }) => (
+              {modules.map(({ label, desc, href, icon: Icon }) => (
                 <Link
                   key={label}
                   href={href}
-                  className="relative flex flex-col items-center gap-2 rounded-xl border p-5 text-center transition-all hover:border-primary hover:bg-primary/5 group"
+                  className="flex flex-col items-center gap-2 rounded-xl border p-5 text-center transition-all hover:border-primary hover:bg-primary/5"
                 >
-                  <div className={`rounded-full p-3 ${vip ? "bg-muted" : "bg-primary/10"}`}>
-                    <Icon className={`size-5 ${vip ? "text-muted-foreground" : "text-primary"}`} />
+                  <div className="rounded-full bg-primary/10 p-3">
+                    <Icon className="size-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm font-bold">{label}</p>
-                    <p className={`text-xs mt-0.5 ${vip ? "text-primary font-semibold" : "text-muted-foreground"}`}>
-                      {desc}
-                    </p>
+                    <p className="text-xs mt-0.5 text-muted-foreground">{desc}</p>
                   </div>
                 </Link>
               ))}
@@ -154,8 +288,33 @@ export default function StudentDashboardPage() {
           </Card>
         </div>
 
-        {/* Right — upcoming sessions + upgrade (1/3) */}
+        {/* Right — sessions */}
         <div className="flex flex-col gap-4">
+
+          {/* Live now — shown only when active */}
+          {liveSessions.length > 0 && (
+            <Card className="shadow-sm border-emerald-200 bg-emerald-50">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2 text-emerald-700">
+                  <Radio className="size-4 animate-pulse" />
+                  Live Now
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 flex flex-col gap-3">
+                {liveSessions.map((session) => (
+                  <div key={session.id} className="flex flex-col gap-2">
+                    <p className="text-sm font-semibold leading-snug">{session.title}</p>
+                    <p className="text-xs text-emerald-700/80">{session.tutorName}</p>
+                    <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white w-full gap-1.5">
+                      <Link href={`/student/classroom/${session.id}`}>
+                        <Video className="size-3.5" /> Join Now
+                      </Link>
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Upcoming Sessions */}
           <Card className="shadow-sm">
@@ -181,9 +340,9 @@ export default function StudentDashboardPage() {
                     </div>
                   ))}
                 </div>
-              ) : data?.upcomingSessions.length ? (
+              ) : scheduledSessions.length ? (
                 <div className="flex flex-col gap-4">
-                  {data.upcomingSessions.map((session, i) => {
+                  {scheduledSessions.map((session, i) => {
                     const { month, day, time } = formatSessionDate(session.scheduledAt)
                     return (
                       <div key={session.id}>
@@ -194,23 +353,11 @@ export default function StudentDashboardPage() {
                             <span className="text-lg font-black leading-tight">{day}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-sm font-semibold leading-snug">{session.title}</p>
-                              {session.status === "LIVE" && (
-                                <Badge className="text-[10px] h-4 px-1.5 bg-emerald-500 animate-pulse shrink-0">Live now</Badge>
-                              )}
-                            </div>
+                            <p className="text-sm font-semibold leading-snug">{session.title}</p>
                             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                               <Clock className="size-3" />
                               {time} · {session.tutorName}
                             </div>
-                            {session.status === "LIVE" && (
-                              <Button asChild size="sm" className="mt-1.5 h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white gap-1">
-                                <Link href={`/student/classroom/${session.id}`}>
-                                  <Video className="size-2.5" /> Join
-                                </Link>
-                              </Button>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -219,7 +366,7 @@ export default function StudentDashboardPage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground py-4 text-center">
-                  No upcoming sessions.
+                  No upcoming sessions scheduled.
                 </p>
               )}
             </CardContent>
