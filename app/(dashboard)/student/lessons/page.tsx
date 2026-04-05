@@ -14,8 +14,6 @@ import { useState } from "react"
 import { useFetch } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type LessonItem = {
   id: string
   title: string
@@ -52,8 +50,6 @@ type CourseEnrollment = {
 
 type LessonsData = { courses: CourseEnrollment[] }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 const typeIcon = {
   VIDEO: PlayCircle,
   TEXT: FileText,
@@ -71,8 +67,6 @@ function formatDuration(secs: number) {
   const s = secs % 60
   return `${m}:${String(s).padStart(2, "0")}`
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 5
 

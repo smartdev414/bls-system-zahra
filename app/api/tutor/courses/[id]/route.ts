@@ -91,7 +91,7 @@ export async function PUT(
         "COURSE_PUBLISHED",
         "Course is now available",
         `"${course.title}" has been published — start learning now!`,
-        `/student/courses/${id}`,
+        `/student/lessons?courseId=${id}`,
       )
     }
 
