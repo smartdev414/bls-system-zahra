@@ -107,7 +107,12 @@ export default function MessagingCenter({
     {
       errorMessage: "Could not load messages",
       immediate: !!activeId,
-      onSuccess: (d) => setMessages(d.conversation.messages.map((m) => ({ ...m, status: "sent" as const }))),
+      onSuccess: (d) => {
+        setMessages(d.conversation.messages.map((m) => ({ ...m, status: "sent" as const })))
+        // Server marks messages as read on GET — refresh sidebar counts and nav badge
+        refetchConvs()
+        window.dispatchEvent(new Event("messages-read"))
+      },
     }
   )
 
@@ -123,17 +128,17 @@ export default function MessagingCenter({
     pusher.connection.bind("disconnected", () => setConnected(false))
     pusher.connection.bind("error",        () => setConnected(false))
 
-    // Subscribe to personal channel for sidebar updates
+    // Subscribe to personal channel for sidebar updates.
+    // MessagesBadge (in layout) also uses this channel — don't unsubscribe or
+    // unbind_all on cleanup or it will destroy MessagesBadge's binding too.
     const ch = pusher.subscribe(`private-user-${getUserId()}`)
     userChannelRef.current = ch
 
-    ch.bind("new-message", () => {
-      refetchConvs()
-    })
+    function onNewMessage() { refetchConvs() }
+    ch.bind("new-message", onNewMessage)
 
     return () => {
-      ch.unbind_all()
-      pusher.unsubscribe(`private-user-${getUserId()}`)
+      ch.unbind("new-message", onNewMessage)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -273,7 +278,7 @@ export default function MessagingCenter({
     : null
 
   return (
-    <div className="-mx-6 -mt-8 flex h-[calc(100vh-4rem)]">
+    <div className="-mx-6 -my-8 flex h-[calc(100vh-4rem)]">
 
       {/* ── LEFT: conversation list ─────────────────────────────────────────── */}
       <aside className="w-80 shrink-0 border-r flex flex-col bg-background">

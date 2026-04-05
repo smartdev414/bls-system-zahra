@@ -1,8 +1,14 @@
+"use client"
+
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Hand } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 
 export function Footer() {
+  const pathname = usePathname()
+  if (pathname.endsWith("/messages")) return null
+
   return (
     <footer className="bg-background border-t">
       <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
