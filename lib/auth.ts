@@ -7,6 +7,7 @@ const SECRET = new TextEncoder().encode(
 )
 const COOKIE = "bsl-token"
 const EXPIRY = "7d"
+const PENDING_GOOGLE_COOKIE = "bsl-pending-google"
 
 export type SessionPayload = {
   sub: string   // userId
@@ -59,4 +60,55 @@ export function dashboardPath(role: SessionPayload["role"]): string {
   if (role === "TUTOR") return "/tutor"
   if (role === "ADMIN") return "/admin"
   return "/student"
+}
+
+// ─── Pending Google OAuth token (short-lived, for onboarding) ─────────────────
+
+export type PendingGooglePayload = {
+  type: "pending-google"
+  googleId: string
+  email: string
+  name: string
+  avatarUrl?: string
+}
+
+export async function signPendingGoogleToken(
+  payload: Omit<PendingGooglePayload, "type">
+): Promise<string> {
+  return new SignJWT({ ...payload, type: "pending-google" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(SECRET)
+}
+
+export async function verifyPendingGoogleToken(
+  token: string
+): Promise<PendingGooglePayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, SECRET)
+    if (payload.type !== "pending-google") return null
+    return payload as unknown as PendingGooglePayload
+  } catch {
+    return null
+  }
+}
+
+export function setPendingGoogleCookie(res: NextResponse, token: string): void {
+  res.cookies.set(PENDING_GOOGLE_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 15, // 15 minutes
+    path: "/",
+  })
+}
+
+export function clearPendingGoogleCookie(res: NextResponse): void {
+  res.cookies.delete(PENDING_GOOGLE_COOKIE)
+}
+
+export async function getPendingGoogleToken(): Promise<string | undefined> {
+  const cookieStore = await cookies()
+  return cookieStore.get(PENDING_GOOGLE_COOKIE)?.value
 }

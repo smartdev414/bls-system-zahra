@@ -27,7 +27,8 @@
       "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/student/courses/[id]/route.ts)",
       "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/messages/conversations/[id]/route.ts)",
       "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/student/lessons/[id]/quiz/route.ts)",
-      "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/tutor/courses/[id]/route.ts)"
+      "Bash(cat E:/2026-projects/BSL/bsl-system/app/api/tutor/courses/[id]/route.ts)",
+      "Bash(npx --yes acorn --ecma2020 --module \"E:/2026-projects/BSL/bsl-system/app/\\(dashboard\\)/tutor/courses/[id]/page.tsx\")"
     ]
   }
 }

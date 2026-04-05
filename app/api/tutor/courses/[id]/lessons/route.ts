@@ -84,7 +84,7 @@ export async function POST(
         "NEW_LESSON",
         "New lesson available",
         `"${title.trim()}" has been added to "${course.title}"`,
-        `/student/courses/${courseId}`,
+        `/student/lessons?courseId=${courseId}`,
       )
     }
 

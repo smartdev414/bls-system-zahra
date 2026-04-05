@@ -28,8 +28,6 @@ import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type CourseProgress = {
   id: string
   title: string
@@ -61,8 +59,6 @@ type LiveSession = {
 
 type SessionsData = { sessions: LiveSession[] }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const PAGE_SIZE = 50
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -87,8 +83,6 @@ const SORT_LABELS: Record<SortKey, string> = {
   "progress-desc": "Progress (high)",
   "progress-asc": "Progress (low)",
 }
-
-// ─── Invite Modal ─────────────────────────────────────────────────────────────
 
 function InviteModal({
   student,
@@ -182,8 +176,6 @@ function InviteModal({
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function TutorStudentsPage() {
   const router = useRouter()
   const [query, setQuery] = useState("")
@@ -217,12 +209,12 @@ export default function TutorStudentsPage() {
         ? b.courses.reduce((s, c) => s + c.completion, 0) / b.courses.length : 0
 
       switch (sortKey) {
-        case "name-asc":  return a.name.localeCompare(b.name)
+        case "name-asc": return a.name.localeCompare(b.name)
         case "name-desc": return b.name.localeCompare(a.name)
         case "joined-desc": return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
-        case "joined-asc":  return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()
+        case "joined-asc": return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()
         case "progress-desc": return bProgress - aProgress
-        case "progress-asc":  return aProgress - bProgress
+        case "progress-asc": return aProgress - bProgress
         default: return 0
       }
     })
@@ -312,7 +304,7 @@ export default function TutorStudentsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="flex items-center justify-center min-h-[300px]">
+        <div className="flex items-center justify-center min-h-75">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : paginated.length ? (

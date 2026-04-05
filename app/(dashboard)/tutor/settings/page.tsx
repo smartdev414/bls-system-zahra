@@ -17,8 +17,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { useFetch, usePutCallback } from "@/hooks/use-fetch"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type UserData = {
   user: {
     id: string
@@ -36,9 +34,7 @@ type UserData = {
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-type PwStrength = { score: 0|1|2|3|4; label: string; color: string }
+type PwStrength = { score: 0 | 1 | 2 | 3 | 4; label: string; color: string }
 function pwStrength(p: string): PwStrength {
   if (!p) return { score: 0, label: "", color: "" }
   let s = 0
@@ -47,24 +43,24 @@ function pwStrength(p: string): PwStrength {
   if (/[A-Z]/.test(p) && /[a-z]/.test(p)) s++
   if (/\d/.test(p)) s++
   if (/[^A-Za-z0-9]/.test(p)) s++
-  const c = Math.min(s, 4) as 0|1|2|3|4
-  return { score: c, ...[
-    { label: "Too short",  color: "bg-muted"       },
-    { label: "Weak",       color: "bg-destructive" },
-    { label: "Fair",       color: "bg-amber-400"   },
-    { label: "Good",       color: "bg-blue-500"    },
-    { label: "Strong",     color: "bg-emerald-500" },
-  ][c] }
+  const c = Math.min(s, 4) as 0 | 1 | 2 | 3 | 4
+  return {
+    score: c, ...[
+      { label: "Too short", color: "bg-muted" },
+      { label: "Weak", color: "bg-destructive" },
+      { label: "Fair", color: "bg-amber-400" },
+      { label: "Good", color: "bg-blue-500" },
+      { label: "Strong", color: "bg-emerald-500" },
+    ][c]
+  }
 }
 
 type Section = "profile" | "security" | "account"
 const NAV: { id: Section; label: string; icon: React.ElementType }[] = [
-  { id: "profile",  label: "Tutor Profile", icon: User  },
-  { id: "security", label: "Security",      icon: Lock  },
-  { id: "account",  label: "Account",       icon: Info  },
+  { id: "profile", label: "Tutor Profile", icon: User },
+  { id: "security", label: "Security", icon: Lock },
+  { id: "account", label: "Account", icon: Info },
 ]
-
-// ─── Avatar uploader ─────────────────────────────────────────────────────────
 
 function AvatarUploader({ name, currentUrl, onUploaded }: {
   name: string; currentUrl: string | null; onUploaded: (url: string) => void
@@ -105,23 +101,21 @@ function AvatarUploader({ name, currentUrl, onUploaded }: {
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function TutorSettingsPage() {
   const [section, setSection] = useState<Section>("profile")
   const { data, loading, refetch } = useFetch<UserData>("/api/user/settings", { errorMessage: "Could not load profile" })
 
-  const [name, setName]                     = useState("")
-  const [bio, setBio]                       = useState("")
+  const [name, setName] = useState("")
+  const [bio, setBio] = useState("")
   const [qualifications, setQualifications] = useState<string[]>([])
-  const [newQual, setNewQual]               = useState("")
-  const [avatarUrl, setAvatar]              = useState<string | null>(null)
+  const [newQual, setNewQual] = useState("")
+  const [avatarUrl, setAvatar] = useState<string | null>(null)
 
   const [currentPw, setCurrentPw] = useState("")
-  const [newPw, setNewPw]         = useState("")
+  const [newPw, setNewPw] = useState("")
   const [confirmPw, setConfirmPw] = useState("")
-  const [showC, setShowC]         = useState(false)
-  const [showN, setShowN]         = useState(false)
+  const [showC, setShowC] = useState(false)
+  const [showN, setShowN] = useState(false)
 
   useEffect(() => {
     if (data?.user) {
@@ -151,14 +145,14 @@ export default function TutorSettingsPage() {
     if (t && !qualifications.includes(t)) { setQualifications((p) => [...p, t]); setNewQual("") }
   }
 
-  const str        = pwStrength(newPw)
-  const pwMatch    = newPw && confirmPw && newPw === confirmPw
+  const str = pwStrength(newPw)
+  const pwMatch = newPw && confirmPw && newPw === confirmPw
   const pwMismatch = confirmPw && newPw !== confirmPw
-  const user       = data?.user
+  const user = data?.user
   const isVerified = user?.tutorProfile?.isVerified ?? false
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-[400px]">
+    <div className="flex items-center justify-center min-h-100">
       <Loader2 className="size-8 animate-spin text-primary" />
     </div>
   )
@@ -206,7 +200,7 @@ export default function TutorSettingsPage() {
             <>
               {/* Profile preview card */}
               <div className="rounded-2xl border bg-card overflow-hidden">
-                <div className="h-24 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent" />
+                <div className="h-24 bg-linear-to-r from-primary/20 via-primary/10 to-transparent" />
                 <div className="px-6 pb-6">
                   <div className="flex items-end justify-between -mt-10 mb-4">
                     <AvatarUploader
@@ -343,9 +337,9 @@ export default function TutorSettingsPage() {
                 <h2 className="font-semibold mb-4">Quick Links</h2>
                 <div className="grid sm:grid-cols-3 gap-3">
                   {[
-                    { label: "My Courses",    href: "/tutor/courses",    icon: BookOpen },
-                    { label: "Live Sessions", href: "/tutor/sessions",   icon: Video    },
-                    { label: "My Students",   href: "/tutor/students",   icon: Users    },
+                    { label: "My Courses", href: "/tutor/courses", icon: BookOpen },
+                    { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
+                    { label: "My Students", href: "/tutor/students", icon: Users },
                   ].map(({ label, href, icon: Icon }) => (
                     <Link key={href} href={href}
                       className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-medium hover:bg-muted/50 hover:border-primary/50 transition-colors group">
@@ -407,11 +401,11 @@ export default function TutorSettingsPage() {
                   {newPw && (
                     <div className="flex flex-col gap-1.5 mt-1">
                       <div className="flex gap-1">
-                        {[1,2,3,4].map((i) => (
+                        {[1, 2, 3, 4].map((i) => (
                           <div key={i} className={cn("h-1 flex-1 rounded-full transition-all", i <= str.score ? str.color : "bg-muted")} />
                         ))}
                       </div>
-                      <p className={cn("text-xs font-medium", { "text-destructive": str.score<=1, "text-amber-500": str.score===2, "text-blue-500": str.score===3, "text-emerald-500": str.score===4 })}>
+                      <p className={cn("text-xs font-medium", { "text-destructive": str.score <= 1, "text-amber-500": str.score === 2, "text-blue-500": str.score === 3, "text-emerald-500": str.score === 4 })}>
                         {str.label}
                       </p>
                     </div>
@@ -423,8 +417,8 @@ export default function TutorSettingsPage() {
                   <div className="relative">
                     <Input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)}
                       required className="pr-10" placeholder="Repeat new password" />
-                    {pwMatch    && <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-emerald-500" />}
-                    {pwMismatch && <X     className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-destructive"  />}
+                    {pwMatch && <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-emerald-500" />}
+                    {pwMismatch && <X className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-destructive" />}
                   </div>
                   {pwMismatch && <p className="text-xs text-destructive">Passwords do not match</p>}
                 </div>
@@ -432,10 +426,10 @@ export default function TutorSettingsPage() {
                 <div className="rounded-xl bg-muted/50 p-4 text-xs text-muted-foreground space-y-1.5">
                   <p className="font-semibold text-foreground mb-2">Requirements</p>
                   {[
-                    { ok: newPw.length >= 8,                         text: "At least 8 characters"        },
-                    { ok: /[A-Z]/.test(newPw)&&/[a-z]/.test(newPw), text: "Upper and lowercase letters"   },
-                    { ok: /\d/.test(newPw),                          text: "At least one number"           },
-                    { ok: /[^A-Za-z0-9]/.test(newPw),               text: "At least one special character" },
+                    { ok: newPw.length >= 8, text: "At least 8 characters" },
+                    { ok: /[A-Z]/.test(newPw) && /[a-z]/.test(newPw), text: "Upper and lowercase letters" },
+                    { ok: /\d/.test(newPw), text: "At least one number" },
+                    { ok: /[^A-Za-z0-9]/.test(newPw), text: "At least one special character" },
                   ].map(({ ok, text }) => (
                     <div key={text} className="flex items-center gap-2">
                       <span className={cn("size-3.5 rounded-full flex items-center justify-center shrink-0",
@@ -457,28 +451,30 @@ export default function TutorSettingsPage() {
             </div>
           )}
 
-          {/* ════ ACCOUNT ════ */}
           {section === "account" && (
             <div className="rounded-2xl border bg-card p-6">
               <h2 className="font-semibold mb-1">Account Information</h2>
               <p className="text-sm text-muted-foreground mb-5">Read-only details about your tutor account.</p>
               <div className="divide-y rounded-xl border overflow-hidden">
                 {[
-                  { icon: User,         label: "Account Type",         value: <Badge variant="secondary" className="capitalize">{user?.role.toLowerCase()}</Badge> },
-                  { icon: BadgeCheck,   label: "Verification Status",  value: isVerified
-                    ? <Badge variant="outline" className="gap-1 text-xs bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><BadgeCheck className="size-3" />Verified</Badge>
-                    : <Badge variant="outline" className="gap-1 text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300">Pending Review</Badge>
+                  { icon: User, label: "Account Type", value: <Badge variant="secondary" className="capitalize">{user?.role.toLowerCase()}</Badge> },
+                  {
+                    icon: BadgeCheck, label: "Verification Status", value: isVerified
+                      ? <Badge variant="outline" className="gap-1 text-xs bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><BadgeCheck className="size-3" />Verified</Badge>
+                      : <Badge variant="outline" className="gap-1 text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300">Pending Review</Badge>
                   },
-                  { icon: Mail,         label: "Email Address",        value: <span className="flex items-center gap-2 text-sm">{user?.email}<Badge variant="outline" className="gap-1 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
-                  { icon: Calendar,     label: "Member Since",         value: <span className="text-sm">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—"}</span> },
-                  { icon: GraduationCap,label: "Qualifications",       value: (
-                    <div className="flex flex-wrap gap-1 justify-end">
-                      {(user?.tutorProfile?.qualifications ?? []).length > 0
-                        ? user!.tutorProfile!.qualifications.map((q) => <Badge key={q} variant="secondary" className="text-[10px]">{q}</Badge>)
-                        : <span className="text-sm text-muted-foreground">None added</span>
-                      }
-                    </div>
-                  )},
+                  { icon: Mail, label: "Email Address", value: <span className="flex items-center gap-2 text-sm">{user?.email}<Badge variant="outline" className="gap-1 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
+                  { icon: Calendar, label: "Member Since", value: <span className="text-sm">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—"}</span> },
+                  {
+                    icon: GraduationCap, label: "Qualifications", value: (
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {(user?.tutorProfile?.qualifications ?? []).length > 0
+                          ? user!.tutorProfile!.qualifications.map((q) => <Badge key={q} variant="secondary" className="text-[10px]">{q}</Badge>)
+                          : <span className="text-sm text-muted-foreground">None added</span>
+                        }
+                      </div>
+                    )
+                  },
                 ].map(({ icon: Icon, label, value }) => (
                   <div key={label} className="flex items-center justify-between px-4 py-3.5 bg-card gap-4">
                     <div className="flex items-center gap-3 text-sm text-muted-foreground shrink-0">

@@ -43,7 +43,7 @@ export async function POST(
       "NEW_ENROLLMENT",
       "Enrollment confirmed",
       `You're now enrolled in "${course.title}"`,
-      `/student/courses/${courseId}`,
+      `/student/lessons?courseId=${courseId}`,
     )
 
     return NextResponse.json({ enrollment }, { status: 201 })

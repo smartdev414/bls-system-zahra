@@ -1,12 +1,12 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   ChevronLeft, Plus, Layers, FileText, PlayCircle,
   FlaskConical, Loader2, ChevronDown, ChevronUp,
-  Globe, Lock, Edit3, Trash2, Save, Pencil, X,
+  Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -68,6 +68,101 @@ type CourseDetail = {
 type CourseData = { course: CourseDetail }
 
 const typeIcon = { VIDEO: PlayCircle, TEXT: FileText, QUIZ: FlaskConical }
+
+// ─── Thumbnail editor ─────────────────────────────────────────────────────────
+
+function ThumbnailEditor({
+  courseId,
+  thumbnailUrl,
+  onSaved,
+}: {
+  courseId: string
+  thumbnailUrl: string | null
+  onSaved: (url: string | null) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [preview, setPreview] = useState<string | null>(thumbnailUrl)
+
+  async function handleFile(file: File) {
+    setUploading(true)
+    try {
+      const presignRes = await fetch("/api/upload/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, contentType: file.type, fileSize: file.size }),
+      })
+      if (!presignRes.ok) throw new Error("Could not get upload URL")
+      const { presignedUrl, fileUrl } = await presignRes.json() as { presignedUrl: string; fileUrl: string }
+
+      const uploadRes = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      })
+      if (!uploadRes.ok) throw new Error("Upload failed")
+
+      // Save to course immediately
+      const saveRes = await fetch(`/api/tutor/courses/${courseId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thumbnailUrl: fileUrl }),
+      })
+      if (!saveRes.ok) throw new Error("Could not save thumbnail")
+
+      setPreview(fileUrl)
+      onSaved(fileUrl)
+    } catch {
+      // silently revert — upload errors are non-critical
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="relative w-44 aspect-video rounded-xl overflow-hidden border bg-muted shrink-0 group">
+      {preview ? (
+        <img src={preview} alt="thumbnail" className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground">
+          <Camera className="size-6" />
+          <span className="text-[10px] font-medium">No thumbnail</span>
+        </div>
+      )}
+
+      {/* Hover overlay */}
+      <button
+        type="button"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+        className="absolute inset-0 bg-black/0 group-hover:bg-black/50 flex flex-col items-center justify-center gap-1 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+      >
+        {uploading ? (
+          <Loader2 className="size-5 text-white animate-spin" />
+        ) : (
+          <>
+            <Camera className="size-5 text-white" />
+            <span className="text-[11px] font-semibold text-white">
+              {preview ? "Change" : "Upload"}
+            </span>
+          </>
+        )}
+      </button>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) handleFile(file)
+          e.target.value = ""
+        }}
+      />
+    </div>
+  )
+}
 
 export default function CourseEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -145,24 +240,34 @@ return (
       </Button>
 
       {/* Course header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <Badge
-              variant="outline"
-              className={isPublished
-                ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                : "bg-amber-100 text-amber-700 border-amber-200"}
-            >
-              {isPublished ? <Globe className="size-3 mr-1" /> : <Lock className="size-3 mr-1" />}
-              {course.status.charAt(0) + course.status.slice(1).toLowerCase()}
-            </Badge>
-          </div>
-          <h1 className="text-2xl font-black truncate">{course.title}</h1>
-          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{course.description}</p>
-        </div>
+      <div className="flex items-start gap-5">
+        <ThumbnailEditor
+          courseId={id}
+          thumbnailUrl={course.thumbnailUrl}
+          onSaved={(url) => {
+            // Optimistically update local data — refetch handles the rest
+            if (url) refetch()
+          }}
+        />
 
-        <div className="flex gap-2 shrink-0">
+        <div className="flex-1 min-w-0 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <Badge
+                variant="outline"
+                className={isPublished
+                  ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                  : "bg-amber-100 text-amber-700 border-amber-200"}
+              >
+                {isPublished ? <Globe className="size-3 mr-1" /> : <Lock className="size-3 mr-1" />}
+                {course.status.charAt(0) + course.status.slice(1).toLowerCase()}
+              </Badge>
+            </div>
+            <h1 className="text-2xl font-black truncate">{course.title}</h1>
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{course.description}</p>
+          </div>
+
+          <div className="flex gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -190,6 +295,7 @@ return (
               <><Globe className="size-4 mr-1.5" /> Publish</>
             )}
           </Button>
+        </div>
         </div>
       </div>
 

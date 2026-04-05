@@ -8,12 +8,9 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type CurrentCourse = {
   courseId: string
@@ -44,8 +41,6 @@ type DashboardData = {
   }>
 }
 
-// ─── Module grid config ───────────────────────────────────────────────────────
-
 const modules = [
   { label: "Courses", desc: "Continue learning", href: "/student/courses", icon: BookOpen },
   { label: "Resources", desc: "Course materials", href: "/student/resources", icon: FolderOpen },
@@ -61,8 +56,6 @@ const lessonTypeIcon = {
   QUIZ: FlaskConical,
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function formatSessionDate(iso: string) {
   const date = new Date(iso)
   return {
@@ -71,8 +64,6 @@ function formatSessionDate(iso: string) {
     time: date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
   }
 }
-
-// ─── Current Course Card ──────────────────────────────────────────────────────
 
 function CurrentCourseCard({ course, loading }: { course: CurrentCourse | null; loading: boolean }) {
   if (loading) {
@@ -173,8 +164,6 @@ function CurrentCourseCard({ course, loading }: { course: CurrentCourse | null; 
     </Card>
   )
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StudentDashboardPage() {
   const { data, loading } = useFetch<DashboardData>("/api/student/dashboard", {
@@ -348,7 +337,7 @@ export default function StudentDashboardPage() {
                       <div key={session.id}>
                         {i > 0 && <Separator className="mb-4" />}
                         <div className="flex gap-3 items-start">
-                          <div className="bg-muted flex flex-col items-center justify-center rounded-xl px-3 py-2 shrink-0 min-w-[48px]">
+                          <div className="bg-muted flex flex-col items-center justify-center rounded-xl px-3 py-2 shrink-0 min-w-12">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase">{month}</span>
                             <span className="text-lg font-black leading-tight">{day}</span>
                           </div>

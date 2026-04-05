@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import {
   BookOpen, PlayCircle, FileText, FlaskConical,
   Clock, CheckCircle2, Loader2, Lock, ChevronRight,
@@ -12,8 +13,6 @@ import { Progress } from "@/components/ui/progress"
 import { useState } from "react"
 import { useFetch } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type LessonItem = {
   id: string
@@ -51,8 +50,6 @@ type CourseEnrollment = {
 
 type LessonsData = { courses: CourseEnrollment[] }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 const typeIcon = {
   VIDEO: PlayCircle,
   TEXT: FileText,
@@ -71,14 +68,15 @@ function formatDuration(secs: number) {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 const PAGE_SIZE = 5
 
 export default function LessonsPage() {
   const [page, setPage] = useState(1)
+  const searchParams = useSearchParams()
+  const courseId = searchParams.get("courseId")
 
-  const { data, loading } = useFetch<LessonsData>("/api/student/lessons", {
+  const apiUrl = courseId ? `/api/student/lessons?courseId=${courseId}` : "/api/student/lessons"
+  const { data, loading } = useFetch<LessonsData>(apiUrl, {
     errorMessage: "Could not load lessons",
   })
 
@@ -112,13 +110,14 @@ export default function LessonsPage() {
     <div className="flex flex-col gap-8">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-black tracking-tight">My Lessons</h1>
+        <h1 className="text-2xl font-black tracking-tight">
+          {courseId && pagedCourses[0] ? pagedCourses[0].course.title : "My Lessons"}
+        </h1>
         <p className="text-muted-foreground mt-1">Continue your BSL learning journey.</p>
       </div>
 
       {pagedCourses.map((enrollment) => (
         <Card key={enrollment.enrollmentId} className="shadow-sm overflow-hidden">
-          {/* Course header */}
           <CardHeader className="bg-muted/30 border-b">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
