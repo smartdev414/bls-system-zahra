@@ -2,14 +2,17 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (session.role !== "STUDENT") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
+    const { searchParams } = new URL(req.url)
+    const courseId = searchParams.get("courseId")
+
     const enrollments = await prisma.enrollment.findMany({
-      where: { studentId: session.sub },
+      where: { studentId: session.sub, ...(courseId ? { courseId } : {}) },
       include: {
         course: {
           include: {

@@ -315,13 +315,13 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
             <div className="flex gap-2">
               {isCompleted ? (
                 <Button asChild size="sm" variant="outline" className="flex-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50">
-                  <Link href="/student/lessons">
+                  <Link href={`/student/lessons?courseId=${course.id}`}>
                     <CheckCircle2 className="size-3.5 mr-1.5" /> Review
                   </Link>
                 </Button>
               ) : (
                 <Button asChild size="sm" className="flex-1">
-                  <Link href="/student/lessons">
+                  <Link href={`/student/lessons?courseId=${course.id}`}>
                     Continue <ArrowRight className="size-4 ml-1" />
                   </Link>
                 </Button>
