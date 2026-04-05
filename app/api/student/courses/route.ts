@@ -40,13 +40,23 @@ export async function GET(req: NextRequest) {
           sections: { include: { _count: { select: { lessons: true } } } },
         },
       }),
+      // Fetch enrollments with completed lesson counts
       prisma.enrollment.findMany({
         where: { studentId: session.sub },
-        select: { courseId: true },
+        select: {
+          courseId: true,
+          completedAt: true,
+          progress: {
+            where: { isCompleted: true },
+            select: { lessonId: true },
+          },
+        },
       }),
     ])
 
-    const enrolledIds = new Set(enrollments.map((e) => e.courseId))
+    const enrollmentMap = new Map(
+      enrollments.map((e) => [e.courseId, { completedAt: e.completedAt, completedLessons: e.progress.length }])
+    )
 
     return NextResponse.json({
       courses: courses.map((c) => {
@@ -54,6 +64,9 @@ export async function GET(req: NextRequest) {
         const avgRating = c.reviews.length > 0
           ? Math.round((c.reviews.reduce((s, r) => s + r.rating, 0) / c.reviews.length) * 10) / 10
           : null
+        const enrollment = enrollmentMap.get(c.id)
+        const completedLessons = enrollment?.completedLessons ?? 0
+        const completion = lessonCount > 0 ? Math.round((completedLessons / lessonCount) * 100) : 0
         return {
           id: c.id,
           title: c.title,
@@ -67,7 +80,13 @@ export async function GET(req: NextRequest) {
           lessonCount,
           avgRating,
           reviewCount: c.reviews.length,
-          isEnrolled: enrolledIds.has(c.id),
+          isEnrolled: enrollmentMap.has(c.id),
+          progress: enrollment ? {
+            completedLessons,
+            totalLessons: lessonCount,
+            completion,
+            isCompleted: enrollment.completedAt !== null || completion >= 100,
+          } : null,
         }
       }),
       total,
