@@ -188,9 +188,9 @@ export function Header({ role, user }: HeaderProps) {
 
               {role !== "ADMIN" && (
                 <DropdownMenuItem asChild>
-                  <Link href={`/${role.toLowerCase()}/profile`} className="cursor-pointer">
+                  <Link href={`/${role.toLowerCase()}/settings`} className="cursor-pointer">
                     <Users className="size-4 mr-2" />
-                    Profile
+                    Profile & Settings
                   </Link>
                 </DropdownMenuItem>
               )}
@@ -202,12 +202,14 @@ export function Header({ role, user }: HeaderProps) {
                   </Link>
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem asChild>
-                <Link href={`/${role.toLowerCase()}/settings`} className="cursor-pointer">
-                  <Settings className="size-4 mr-2" />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
+              {role === "ADMIN" && (
+                <DropdownMenuItem asChild>
+                  <Link href="/admin/settings" className="cursor-pointer">
+                    <Settings className="size-4 mr-2" />
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
+              )}
 
               <DropdownMenuSeparator />
 
