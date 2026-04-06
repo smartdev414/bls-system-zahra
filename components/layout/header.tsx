@@ -41,7 +41,7 @@ const studentNav: NavItem[] = [
   { label: "Dictionary", href: "/student/dictionary", icon: Library },
   { label: "Tests", href: "/student/tests", icon: FlaskConical },
   { label: "Classroom", href: "/student/classroom", icon: Video },
-  { label: "Messages", href: "/student/messages", icon: MessageSquare },
+  // { label: "Messages", href: "/student/messages", icon: MessageSquare },
   { label: "Tickets", href: "/student/tickets", icon: Ticket },
 ]
 
@@ -61,7 +61,7 @@ const tutorNav: NavItem[] = [
   { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
   { label: "Dictionary", href: "/tutor/dictionary", icon: Library },
   { label: "Students", href: "/tutor/students", icon: Users },
-  { label: "Messages", href: "/tutor/messages", icon: MessageSquare },
+  // { label: "Messages", href: "/tutor/messages", icon: MessageSquare },
   { label: "Tickets", href: "/tutor/tickets", icon: Ticket },
 ]
 
