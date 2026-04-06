@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation"
 import {
   Users, Search, BookOpen, Loader2, ChevronDown, ChevronUp,
   MessageSquare, CalendarPlus, Check, X, Filter, ArrowUpDown, FolderOpen,
-  UserPlus, Send, Trash2, Clock,
+  UserPlus, Trash2,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -29,9 +29,8 @@ import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 import { ManageGroupsModal } from "@/components/classroom/ManageGroupsModal"
-import { Textarea } from "@/components/ui/textarea"
+import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
 import { toast } from "sonner"
-import { Separator } from "@/components/ui/separator"
 
 type CourseProgress = {
   id: string
@@ -49,6 +48,7 @@ type Student = {
   avatarUrl: string | null
   bslLevel: string | null
   joinedAt: string
+  source: "enrolled" | "invited" | "both"
   courses: CourseProgress[]
 }
 
@@ -181,125 +181,6 @@ function InviteModal({
   )
 }
 
-type InviteRecord = {
-  id: string
-  email: string
-  status: "PENDING" | "ACCEPTED" | "EXPIRED"
-  createdAt: string
-  expiresAt: string
-}
-
-function InviteStudentsEmailModal({ onClose }: { onClose: () => void }) {
-  const [emailInput, setEmailInput] = useState("")
-  const [sending, setSending] = useState(false)
-  const { data, loading, refetch } = useFetch<{ invites: InviteRecord[] }>("/api/tutor/invites", {
-    errorMessage: "Could not load invitations",
-  })
-
-  const invites = data?.invites ?? []
-
-  async function handleSend() {
-    const emails = emailInput
-      .split(/[\n,;]+/)
-      .map((e) => e.trim())
-      .filter((e) => e.includes("@"))
-
-    if (emails.length === 0) {
-      toast.error("Enter at least one valid email address")
-      return
-    }
-
-    setSending(true)
-    try {
-      const res = await fetch("/api/tutor/invites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emails }),
-      })
-      const result = await res.json()
-      if (!res.ok) { toast.error(result.message ?? "Failed to send invites"); return }
-
-      const sentCount = result.sent?.length ?? 0
-      const skippedCount = result.skipped?.length ?? 0
-      if (sentCount > 0) toast.success(`${sentCount} invitation${sentCount !== 1 ? "s" : ""} sent`)
-      if (skippedCount > 0) toast.info(`${skippedCount} email${skippedCount !== 1 ? "s" : ""} skipped (already have accounts)`)
-      setEmailInput("")
-      refetch()
-    } catch {
-      toast.error("Something went wrong")
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const statusColor: Record<string, string> = {
-    PENDING:  "bg-amber-100 text-amber-700 border-amber-200",
-    ACCEPTED: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    EXPIRED:  "bg-muted text-muted-foreground border-border",
-  }
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="size-4 text-primary" /> Invite Students by Email
-          </DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            Enter email addresses to send invitation links. Students will create a student account and be linked to you.
-          </p>
-        </DialogHeader>
-
-        {/* Input area */}
-        <div className="flex flex-col gap-2">
-          <Textarea
-            placeholder={"alice@example.com\nbob@example.com, carol@example.com"}
-            rows={4}
-            value={emailInput}
-            onChange={(e) => setEmailInput(e.target.value)}
-            className="resize-none text-sm font-mono"
-          />
-          <p className="text-xs text-muted-foreground">Separate multiple addresses with commas, semicolons, or new lines.</p>
-          <Button onClick={handleSend} disabled={sending || !emailInput.trim()} className="gap-1.5">
-            {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-            {sending ? "Sending…" : "Send Invitations"}
-          </Button>
-        </div>
-
-        <Separator />
-
-        {/* Sent invitations history */}
-        <div>
-          <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-            <Clock className="size-3.5 text-muted-foreground" /> Sent Invitations
-          </h4>
-          {loading ? (
-            <div className="flex justify-center py-4"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
-          ) : invites.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">No invitations sent yet.</p>
-          ) : (
-            <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-1">
-              {invites.map((inv) => (
-                <div key={inv.id} className="flex items-center gap-2 rounded-md border px-3 py-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{inv.email}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Sent {new Date(inv.createdAt).toLocaleDateString("en-GB", { dateStyle: "medium" })}
-                      {" · "}Expires {new Date(inv.expiresAt).toLocaleDateString("en-GB", { dateStyle: "medium" })}
-                    </p>
-                  </div>
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusColor[inv.status]}`}>
-                    {inv.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 export default function TutorStudentsPage() {
   const router = useRouter()
@@ -471,6 +352,7 @@ export default function TutorStudentsPage() {
                       onClick={() => setExpandedId(isExpanded ? null : student.id)}
                     >
                       <Avatar className="size-7 shrink-0">
+                        {student.avatarUrl && <AvatarImage src={student.avatarUrl} alt={student.name} />}
                         <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[10px]">
                           {initials}
                         </AvatarFallback>
@@ -478,6 +360,11 @@ export default function TutorStudentsPage() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-medium truncate leading-none">{student.name}</span>
+                          {(student.source === "invited" || student.source === "both") && (
+                            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-sky-50 text-sky-600 border-sky-200">
+                              Invited
+                            </span>
+                          )}
                           {isExpanded
                             ? <ChevronUp className="size-3 text-muted-foreground shrink-0" />
                             : <ChevronDown className="size-3 text-muted-foreground shrink-0" />}
@@ -585,7 +472,7 @@ export default function TutorStudentsPage() {
               <p className="text-sm text-muted-foreground mt-1">
                 {debouncedQuery || levelFilter !== "ALL"
                   ? "Try adjusting your search or filters."
-                  : "Students will appear here once they enrol in your courses."}
+                  : "Students will appear here once they enrol in your courses or accept your invitation."}
               </p>
             </div>
           </CardContent>

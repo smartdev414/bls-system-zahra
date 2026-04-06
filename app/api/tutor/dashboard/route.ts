@@ -21,7 +21,23 @@ async function handleGET() {
       orderBy: { createdAt: "desc" },
     })
 
-    const totalStudents = courses.reduce((sum, c) => sum + c._count.enrollments, 0)
+    // Count unique students: enrolled in any course OR invited by this tutor
+    const [enrolledStudentIds, invitedStudentIds] = await Promise.all([
+      prisma.enrollment.findMany({
+        where: { course: { tutorId: session.sub } },
+        select: { studentId: true },
+        distinct: ["studentId"],
+      }),
+      prisma.user.findMany({
+        where: { invitedById: session.sub },
+        select: { id: true },
+      }),
+    ])
+    const uniqueStudentIds = new Set([
+      ...enrolledStudentIds.map((e) => e.studentId),
+      ...invitedStudentIds.map((s) => s.id),
+    ])
+    const totalStudents = uniqueStudentIds.size
     const publishedCount = courses.filter((c) => c.status === "PUBLISHED").length
     const draftCount = courses.filter((c) => c.status === "DRAFT").length
 

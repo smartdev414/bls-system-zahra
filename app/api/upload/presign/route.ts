@@ -5,14 +5,12 @@ import { randomUUID } from "crypto"
 import { withAudit } from "@/lib/audit"
 
 // Allowed MIME types and their S3 folder prefix
+// Images are NOT listed here — they go through /api/upload/image for WebP conversion
 const ALLOWED: Record<string, { prefix: string; assetType: string }> = {
   "video/mp4":        { prefix: "videos",    assetType: "VIDEO" },
   "video/webm":       { prefix: "videos",    assetType: "VIDEO" },
   "video/quicktime":  { prefix: "videos",    assetType: "VIDEO" },
   "application/pdf":  { prefix: "documents", assetType: "PDF" },
-  "image/jpeg":       { prefix: "images",    assetType: "IMAGE" },
-  "image/png":        { prefix: "images",    assetType: "IMAGE" },
-  "image/webp":       { prefix: "images",    assetType: "IMAGE" },
   "audio/mpeg":       { prefix: "audio",     assetType: "AUDIO" },
   "audio/wav":        { prefix: "audio",     assetType: "AUDIO" },
   "text/vtt":         { prefix: "subtitles", assetType: "SUBTITLE" },

@@ -73,15 +73,11 @@ function blankTrueFalse(): QuestionDraft {
 }
 
 async function uploadImage(file: File): Promise<string> {
-  const presignRes = await fetch("/api/upload/presign", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileName: file.name, contentType: file.type, fileSize: file.size }),
-  })
-  if (!presignRes.ok) throw new Error("Could not get upload URL")
-  const { presignedUrl, fileUrl } = await presignRes.json() as { presignedUrl: string; fileUrl: string }
-  const uploadRes = await fetch(presignedUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file })
-  if (!uploadRes.ok) throw new Error("Upload failed")
+  const form = new FormData()
+  form.append("file", file)
+  const res = await fetch("/api/upload/image", { method: "POST", body: form })
+  if (!res.ok) throw new Error("Could not upload image")
+  const { fileUrl } = await res.json() as { fileUrl: string }
   return fileUrl
 }
 

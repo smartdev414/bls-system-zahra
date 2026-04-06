@@ -39,7 +39,7 @@ type Course = {
   description: string
   thumbnailUrl: string | null
   level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
-  tutor: { id: string; name: string }
+  tutor: { id: string; name: string; avatarUrl: string | null }
   category: { id: string; name: string } | null
   enrollmentCount: number
   sectionCount: number
@@ -276,120 +276,123 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
 
   return (
     <>
-      <Card className={`shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-shadow ${isCompleted ? "ring-1 ring-emerald-200" : ""}`}>
+      <Card className={`overflow-hidden flex flex-col group transition-all duration-200 border-0 bg-card ${isCompleted ? "ring-1 ring-emerald-200" : ""}`}>
+
         {/* Thumbnail */}
-        <div className="aspect-video bg-primary/10 flex items-center justify-center relative overflow-hidden shrink-0">
-          {course.thumbnailUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
-          ) : (
-            <BookOpen className="size-10 text-primary/40" />
-          )}
-          {/* Level badge */}
-          <div className="absolute top-2 left-2">
-            <Badge variant="outline" className={`text-[10px] backdrop-blur-sm bg-white/80 ${levelColor[course.level]}`}>
-              {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
-            </Badge>
-          </div>
-          {/* Status badge */}
-          <div className="absolute top-2 right-2">
-            {isCompleted ? (
-              <Badge className="bg-emerald-500 text-white text-[10px] gap-1">
-                <CheckCircle2 className="size-2.5" /> Completed
+        <div className="px-3 pt-3 shrink-0">
+          <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden rounded-xl">
+            {course.thumbnailUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            ) : (
+              <BookOpen className="size-10 text-muted-foreground/30" />
+            )}
+            {/* Gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+            {/* Level badge — bottom left */}
+            <div className="absolute bottom-2 left-2">
+              <Badge className={`text-[10px] border backdrop-blur-sm bg-white/90 shadow-sm ${levelColor[course.level]}`}>
+                {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
               </Badge>
-            ) : course.isEnrolled ? (
-              <Badge className="bg-primary text-primary-foreground text-[10px]">Enrolled</Badge>
-            ) : null}
-          </div>
-          {/* Completion overlay on thumbnail */}
-          {isCompleted && (
-            <div className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center">
-              <div className="bg-emerald-500 rounded-full p-3 shadow-lg">
-                <Trophy className="size-6 text-white" />
-              </div>
             </div>
-          )}
+            {/* Status badge — top right */}
+            <div className="absolute top-2 right-2">
+              {isCompleted ? (
+                <Badge className="bg-emerald-500 text-white text-[10px] shadow-sm gap-1">
+                  <CheckCircle2 className="size-2.5" /> Completed
+                </Badge>
+              ) : course.isEnrolled ? (
+                <Badge className="bg-primary/90 backdrop-blur-sm text-primary-foreground text-[10px] shadow-sm">Enrolled</Badge>
+              ) : null}
+            </div>
+            {/* Completed trophy */}
+            {isCompleted && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="bg-emerald-500 rounded-full p-3 shadow-xl ring-4 ring-white/30">
+                  <Trophy className="size-5 text-white" />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <CardHeader className="pb-2 flex-1">
-          <CardTitle className="text-base leading-snug group-hover:text-primary transition-colors line-clamp-2">
-            {course.title}
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">by {course.tutor.name}</p>
-          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{course.description}</p>
-        </CardHeader>
-
-        <CardContent className="pt-0 space-y-3">
-          {/* Course meta */}
-          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-            <span className="flex items-center gap-1"><Layers className="size-3" /> {course.sectionCount} sections</span>
-            <span className="flex items-center gap-1"><BookOpen className="size-3" /> {course.lessonCount} lessons</span>
-            <span className="flex items-center gap-1"><Users className="size-3" /> {course.enrollmentCount}</span>
+        {/* Body */}
+        <div className="flex flex-col flex-1 px-4 pt-3 pb-4 gap-3">
+          {/* Title + tutor */}
+          <div>
+            <h3 className="font-bold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+              {course.title}
+            </h3>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <Avatar className="size-5 shrink-0">
+                {course.tutor.avatarUrl && <AvatarImage src={course.tutor.avatarUrl} alt={course.tutor.name} />}
+                <AvatarFallback className="text-[8px] bg-primary/10 text-primary font-bold">
+                  {course.tutor.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-xs font-semibold text-primary truncate">{course.tutor.name}</span>
+            </div>
           </div>
 
-          {course.avgRating && (
-            <div className="flex items-center gap-1 text-xs">
-              <Star className="size-3 fill-amber-400 text-amber-400" />
-              <span className="font-semibold">{course.avgRating}</span>
-              <span className="text-muted-foreground">({course.reviewCount})</span>
-            </div>
-          )}
+          {/* Meta row */}
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1"><BookOpen className="size-3" /> {course.lessonCount} lessons</span>
+            <span className="flex items-center gap-1"><Users className="size-3" /> {course.enrollmentCount}</span>
+            {course.avgRating ? (
+              <span className="flex items-center gap-1 ml-auto">
+                <Star className="size-3 fill-amber-400 text-amber-400" />
+                <span className="font-semibold text-foreground">{course.avgRating}</span>
+                <span>({course.reviewCount})</span>
+              </span>
+            ) : null}
+          </div>
 
-          {/* Progress bar for enrolled courses */}
+          {/* Progress bar */}
           {course.isEnrolled && progress && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">
-                  {progress.completedLessons} / {progress.totalLessons} lessons
-                </span>
-                <span className={`font-semibold ${isCompleted ? "text-emerald-600" : "text-foreground"}`}>
-                  {completion}%
-                </span>
-              </div>
+            <div className="space-y-1">
               <Progress
                 value={completion}
                 className={`h-1.5 ${isCompleted ? "[&>div]:bg-emerald-500" : ""}`}
               />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>{progress.completedLessons}/{progress.totalLessons} lessons</span>
+                <span className={`font-bold ${isCompleted ? "text-emerald-600" : "text-foreground"}`}>{completion}%</span>
+              </div>
             </div>
           )}
 
           {/* Actions */}
-          {course.isEnrolled ? (
-            <div className="flex gap-2">
-              {isCompleted ? (
-                <Button asChild size="sm" variant="outline" className="flex-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50">
-                  <Link href={`/student/lessons?courseId=${course.id}`}>
-                    <CheckCircle2 className="size-3.5 mr-1.5" /> Review
-                  </Link>
+          <div className="flex gap-2 mt-auto">
+            {course.isEnrolled ? (
+              <>
+                {isCompleted ? (
+                  <Button asChild size="sm" variant="outline" className="flex-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+                    <Link href={`/student/lessons?courseId=${course.id}`}>
+                      <CheckCircle2 className="size-3.5 mr-1.5" /> Review
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button asChild size="sm" className="flex-1">
+                    <Link href={`/student/lessons?courseId=${course.id}`}>
+                      Continue <ArrowRight className="size-3.5 ml-1" />
+                    </Link>
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" className="px-2.5" onClick={() => setReviewOpen(true)} title="Rate course">
+                  <Star className="size-3.5" />
                 </Button>
-              ) : (
-                <Button asChild size="sm" className="flex-1">
-                  <Link href={`/student/lessons?courseId=${course.id}`}>
-                    Continue <ArrowRight className="size-4 ml-1" />
-                  </Link>
+                <Button variant="outline" size="sm" className="px-2.5 text-muted-foreground hover:text-destructive hover:border-destructive" disabled={unenrolling} onClick={() => unenroll()} title="Unenrol">
+                  {unenrolling ? <Loader2 className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
                 </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)} title="Rate course">
-                <Star className="size-4" />
+              </>
+            ) : (
+              <Button size="sm" className="w-full" onClick={() => enroll({})} disabled={enrolling}>
+                {enrolling ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
+                {enrolling ? "Enrolling…" : "Enrol Free"}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={unenrolling}
-                onClick={() => unenroll()}
-                title="Unenrol"
-                className="text-muted-foreground hover:text-destructive"
-              >
-                {unenrolling ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
-              </Button>
-            </div>
-          ) : (
-            <Button size="sm" className="w-full" onClick={() => enroll({})} disabled={enrolling}>
-              {enrolling && <Loader2 className="size-4 animate-spin mr-1.5" />}
-              {enrolling ? "Enrolling..." : "Enrol Free"}
-            </Button>
-          )}
-        </CardContent>
+            )}
+          </div>
+        </div>
       </Card>
 
       {/* Review dialog */}

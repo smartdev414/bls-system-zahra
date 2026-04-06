@@ -127,9 +127,10 @@ export default function TutorCoursesPage() {
           {data.courses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((course) => {
             const StatusIcon = statusIcon[course.status]
             return (
-              <Card key={course.id} className="shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
+              <Card key={course.id} className="overflow-hidden group border-0 bg-card">
                 {/* Thumbnail */}
-                <div className="aspect-video bg-primary/10 flex items-center justify-center relative overflow-hidden">
+                <div className="p-3 pb-0">
+                <div className="aspect-video bg-primary/10 flex items-center justify-center relative overflow-hidden rounded-lg">
                   {course.thumbnailUrl ? (
                     <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
                   ) : (
@@ -141,6 +142,7 @@ export default function TutorCoursesPage() {
                       {course.status.charAt(0) + course.status.slice(1).toLowerCase()}
                     </Badge>
                   </div>
+                </div>
                 </div>
 
                 <CardHeader className="pb-2">
