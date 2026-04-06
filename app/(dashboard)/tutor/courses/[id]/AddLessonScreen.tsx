@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Save } from "lucide-react"
+import { Save, Upload, Camera } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
+import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
 
 type LessonType = "VIDEO" | "TEXT" | "QUIZ"
@@ -28,6 +29,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
   const [desc, setDesc] = useState("")
   const [isFree, setIsFree] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
+  const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
   const [questions, setQuestions] = useState<QuestionDraft[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -181,19 +183,53 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
       {type !== "QUIZ" && (
         <>
           <Separator />
-          <div className="flex flex-col gap-1.5">
-            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">File</p>
-            <FileUpload
-              accept={
-                type === "VIDEO"
-                  ? "video/mp4,video/webm,video/quicktime"
-                  : "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,audio/*"
-              }
-              label={type === "VIDEO" ? "Upload video" : "Upload file"}
-              uploaded={uploadedFile}
-              onUploaded={setUploadedFile}
-              onRemove={() => setUploadedFile(null)}
-            />
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">File</p>
+              {type === "VIDEO" && !uploadedFile && (
+                <div className="flex gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={videoMode === "upload" ? "default" : "outline"}
+                    className="h-7 text-xs gap-1.5"
+                    onClick={() => setVideoMode("upload")}
+                  >
+                    <Upload className="size-3" />
+                    Upload
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={videoMode === "record" ? "default" : "outline"}
+                    className="h-7 text-xs gap-1.5"
+                    onClick={() => setVideoMode("record")}
+                  >
+                    <Camera className="size-3" />
+                    Record
+                  </Button>
+                </div>
+              )}
+            </div>
+            {type === "VIDEO" && videoMode === "record" ? (
+              <CameraRecorder
+                uploaded={uploadedFile}
+                onUploaded={setUploadedFile}
+                onRemove={() => setUploadedFile(null)}
+              />
+            ) : (
+              <FileUpload
+                accept={
+                  type === "VIDEO"
+                    ? "video/mp4,video/webm,video/quicktime"
+                    : "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,audio/*"
+                }
+                label={type === "VIDEO" ? "Upload video" : "Upload file"}
+                uploaded={uploadedFile}
+                onUploaded={setUploadedFile}
+                onRemove={() => setUploadedFile(null)}
+              />
+            )}
           </div>
         </>
       )}
