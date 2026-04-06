@@ -19,8 +19,6 @@ import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { format } from "date-fns"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 export type TicketItem = {
   id: string
   title: string
@@ -39,8 +37,6 @@ type TicketsData = {
   totalPages: number
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-
 export const TYPE_CONFIG = {
   BUG:        { label: "Bug",        icon: Bug,          color: "bg-rose-50 text-rose-700 border-rose-200" },
   FEATURE:    { label: "Feature",    icon: Sparkles,     color: "bg-violet-50 text-violet-700 border-violet-200" },
@@ -54,8 +50,6 @@ export const STATUS_CONFIG = {
   RESOLVED:    { label: "Resolved",    icon: CheckCircle2, color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   CLOSED:      { label: "Closed",      icon: CheckCircle2, color: "bg-muted text-muted-foreground border-muted" },
 }
-
-// ─── Row ──────────────────────────────────────────────────────────────────────
 
 function TicketRow({ ticket, basePath }: { ticket: TicketItem; basePath: string }) {
   const type = TYPE_CONFIG[ticket.type]
@@ -114,8 +108,6 @@ function TicketRow({ ticket, basePath }: { ticket: TicketItem; basePath: string 
   )
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 type Props = {
   /** e.g. "/student/tickets" or "/tutor/tickets" */
   basePath: string
@@ -161,18 +153,18 @@ export function MyTicketsList({ basePath }: Props) {
           {/* Stats */}
           {data && (
             <div className="flex gap-3 shrink-0">
-              <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-[64px]">
+              <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-16">
                 <p className="text-2xl font-black">{data.total}</p>
                 <p className="text-[11px] text-primary-foreground/70 mt-0.5">Total</p>
               </div>
               {openCount > 0 && (
-                <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-[64px]">
+                <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-16">
                   <p className="text-2xl font-black">{openCount}</p>
                   <p className="text-[11px] text-primary-foreground/70 mt-0.5">Open</p>
                 </div>
               )}
               {resolvedCount > 0 && (
-                <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-[64px]">
+                <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-16">
                   <p className="text-2xl font-black">{resolvedCount}</p>
                   <p className="text-[11px] text-primary-foreground/70 mt-0.5">Resolved</p>
                 </div>
@@ -184,7 +176,7 @@ export function MyTicketsList({ basePath }: Props) {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-50">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search your tickets…"
@@ -195,7 +187,7 @@ export function MyTicketsList({ basePath }: Props) {
         </div>
 
         <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="w-35">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>

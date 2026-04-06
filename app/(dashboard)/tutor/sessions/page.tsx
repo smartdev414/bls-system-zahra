@@ -1,13 +1,13 @@
 "use client"
 
-import React, { useState, useMemo, useEffect, useRef } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import {
   Video, CalendarPlus, Clock, Users,
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
-  Globe, Lock, X, Search, UserPlus, Pencil, Play,
+  Globe, Lock, X, Pencil, Play, Copy,
   Paperclip, FileText, Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,7 @@ import {
   DialogDescription, DialogFooter, DialogClose, DialogTrigger,
 } from "@/components/ui/dialog"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
+import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { Pagination } from "@/components/ui/pagination"
 import { cn } from "@/lib/utils"
@@ -146,15 +147,18 @@ function formatBytes(bytes: number | null) {
 function ScheduleSessionDialog({
   onCreated,
   editSession,
+  duplicateSession,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: {
   onCreated: () => void
   editSession?: SessionItem
+  duplicateSession?: SessionItem
   open?: boolean
   onOpenChange?: (v: boolean) => void
 }) {
   const isEdit = !!editSession
+  const isDuplicate = !!duplicateSession && !editSession
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const open = controlledOpen !== undefined ? controlledOpen : uncontrolledOpen
   const setOpen = controlledOnOpenChange ?? setUncontrolledOpen
@@ -168,11 +172,7 @@ function ScheduleSessionDialog({
   const [courseId, setCourseId] = useState("")
   const [visibility, setVisibility] = useState<"PUBLIC" | "INVITE_ONLY">("INVITE_ONLY")
   const [invitedStudents, setInvitedStudents] = useState<StudentResult[]>([])
-  const [studentSearch, setStudentSearch] = useState("")
-  const [searchResults, setSearchResults] = useState<StudentResult[]>([])
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [showDropdown, setShowDropdown] = useState(false)
-  const searchRef = useRef<HTMLDivElement>(null)
+  const [showPicker, setShowPicker] = useState(false)
 
   // Resources state
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([])
@@ -182,64 +182,51 @@ function ScheduleSessionDialog({
 
   const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
 
-  // Load existing resources and invites when editing
+  // Load existing resources and invites when editing; load invites only when duplicating
   useEffect(() => {
-    if (!open || !isEdit || !editSession?.id) return
-    fetch(`/api/tutor/sessions/${editSession.id}/resources`)
-      .then((r) => r.json())
-      .then((d: { resources: SessionResource[] }) => setSavedResources(d.resources))
-      .catch(() => {})
-    fetch(`/api/tutor/sessions/${editSession.id}/invites`)
-      .then((r) => r.json())
-      .then((d: { invites: Array<{ studentId: string; studentName: string; studentEmail: string }> }) => {
-        setInvitedStudents(d.invites.map((i) => ({ id: i.studentId, name: i.studentName, email: i.studentEmail, avatarUrl: null })))
-      })
-      .catch(() => {})
-  }, [open, isEdit, editSession?.id])
+    if (!open) return
+    if (isEdit && editSession?.id) {
+      fetch(`/api/tutor/sessions/${editSession.id}/resources`)
+        .then((r) => r.json())
+        .then((d: { resources: SessionResource[] }) => setSavedResources(d.resources))
+        .catch(() => {})
+      fetch(`/api/tutor/sessions/${editSession.id}/invites`)
+        .then((r) => r.json())
+        .then((d: { invites: Array<{ studentId: string; studentName: string; studentEmail: string }> }) => {
+          setInvitedStudents(d.invites.map((i) => ({ id: i.studentId, name: i.studentName, email: i.studentEmail, avatarUrl: null })))
+        })
+        .catch(() => {})
+    } else if (isDuplicate && duplicateSession?.id) {
+      fetch(`/api/tutor/sessions/${duplicateSession.id}/invites`)
+        .then((r) => r.json())
+        .then((d: { invites: Array<{ studentId: string; studentName: string; studentEmail: string }> }) => {
+          setInvitedStudents(d.invites.map((i) => ({ id: i.studentId, name: i.studentName, email: i.studentEmail, avatarUrl: null })))
+        })
+        .catch(() => {})
+    }
+  }, [open, isEdit, isDuplicate, editSession?.id, duplicateSession?.id])
 
-  // Pre-fill form when editing
+  // Pre-fill form when editing or duplicating
   useEffect(() => {
-    if (open && editSession) {
+    const source = editSession ?? duplicateSession
+    if (!open || !source) return
+    setTitle(source.title)
+    setDescription(source.description ?? "")
+    setDurationMins(source.durationMins)
+    setMaxStudents(source.maxStudents ? String(source.maxStudents) : "")
+    setCourseId(source.course?.id ?? "")
+    setVisibility(source.visibility ?? "INVITE_ONLY")
+    if (editSession) {
       const d = new Date(editSession.scheduledAt)
-      setTitle(editSession.title)
-      setDescription(editSession.description ?? "")
       setDate(d)
       setTime(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`)
-      setDurationMins(editSession.durationMins)
-      setMaxStudents(editSession.maxStudents ? String(editSession.maxStudents) : "")
-      setCourseId(editSession.course?.id ?? "")
-      setVisibility(editSession.visibility ?? "INVITE_ONLY")
     }
-  }, [open, editSession])
-
-  // Debounced student search
-  useEffect(() => {
-    if (!studentSearch.trim()) { setSearchResults([]); setShowDropdown(false); return }
-    const t = setTimeout(async () => {
-      setSearchLoading(true)
-      try {
-        const res = await fetch(`/api/tutor/students/search?q=${encodeURIComponent(studentSearch)}`)
-        const data = await res.json() as { students: StudentResult[] }
-        setSearchResults(data.students.filter(s => !invitedStudents.some(i => i.id === s.id)))
-        setShowDropdown(true)
-      } finally { setSearchLoading(false) }
-    }, 300)
-    return () => clearTimeout(t)
-  }, [studentSearch, invitedStudents])
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowDropdown(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [])
+  }, [open, editSession, duplicateSession])
 
   function resetForm() {
     setTitle(""); setDescription(""); setDate(undefined); setTime("")
     setDurationMins(60); setMaxStudents(""); setCourseId("")
-    setVisibility("PUBLIC"); setInvitedStudents([]); setStudentSearch(""); setSearchResults([])
+    setVisibility("PUBLIC"); setInvitedStudents([])
     setPendingFiles([]); setSavedResources([]); setSubmitError(null)
   }
 
@@ -334,11 +321,17 @@ function ScheduleSessionDialog({
           <DialogTitle className="flex items-center gap-2">
             {isEdit
               ? <><Pencil className="size-4 text-primary" /> Edit Session</>
+              : isDuplicate
+              ? <><Copy className="size-4 text-primary" /> Duplicate Session</>
               : <><CalendarPlus className="size-4 text-primary" /> Schedule Live Session</>
             }
           </DialogTitle>
           <DialogDescription>
-            {isEdit ? "Update the session details below." : "Set up a new BSL live session for your students."}
+            {isEdit
+              ? "Update the session details below."
+              : isDuplicate
+              ? "All details have been copied. Set a new date and time, then save."
+              : "Set up a new BSL live session for your students."}
           </DialogDescription>
         </DialogHeader>
 
@@ -464,54 +457,36 @@ function ScheduleSessionDialog({
           {/* Student invite (only when INVITE_ONLY) */}
           {visibility === "INVITE_ONLY" && (
             <div className="flex flex-col gap-2">
-              <Label className="flex items-center gap-1.5"><UserPlus className="size-3.5" /> Invite Students</Label>
-              {/* Search input */}
-              <div className="relative" ref={searchRef}>
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                <Input
-                  placeholder="Search by name or email…"
-                  value={studentSearch}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  className="pl-8"
-                />
-                {searchLoading && (
-                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-muted-foreground" />
-                )}
-                {/* Dropdown */}
-                {showDropdown && searchResults.length > 0 && (
-                  <div className="absolute z-50 top-full mt-1 w-full rounded-lg border bg-popover shadow-md overflow-hidden">
-                    {searchResults.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          setInvitedStudents(prev => [...prev, s])
-                          setStudentSearch("")
-                          setShowDropdown(false)
-                        }}
-                      >
-                        <div className="size-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-medium shrink-0">
-                          {s.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{s.name}</div>
-                          <div className="text-xs text-muted-foreground truncate">{s.email}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {showDropdown && !searchLoading && searchResults.length === 0 && studentSearch.trim() && (
-                  <div className="absolute z-50 top-full mt-1 w-full rounded-lg border bg-popover shadow-md px-3 py-2 text-sm text-muted-foreground">
-                    No students found
-                  </div>
-                )}
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5">
+                  <Users className="size-3.5" /> Invite Students
+                  {invitedStudents.length > 0 && (
+                    <span className="ml-1 text-xs bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded-full">
+                      {invitedStudents.length}
+                    </span>
+                  )}
+                </Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => setShowPicker(true)}
+                >
+                  <Users className="size-3" />
+                  {invitedStudents.length > 0 ? "Edit Selection" : "Select Students"}
+                </Button>
               </div>
-              {/* Selected chips */}
-              {invitedStudents.length > 0 && (
+              {invitedStudents.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowPicker(true)}
+                  className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/30 py-4 text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+                >
+                  <Users className="size-5 opacity-50" />
+                  <span className="text-xs">Click to select students or groups</span>
+                </button>
+              ) : (
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {invitedStudents.map((s) => (
                     <span
@@ -521,7 +496,7 @@ function ScheduleSessionDialog({
                       {s.name}
                       <button
                         type="button"
-                        onClick={() => setInvitedStudents(prev => prev.filter(i => i.id !== s.id))}
+                        onClick={() => setInvitedStudents((prev) => prev.filter((i) => i.id !== s.id))}
                         className="ml-0.5 rounded-full hover:bg-primary/20 transition-colors"
                       >
                         <X className="size-3" />
@@ -604,12 +579,23 @@ function ScheduleSessionDialog({
             disabled={loading || !canSubmit}
           >
             {loading
-            ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />{isEdit ? "Saving…" : "Scheduling…"}</>
-            : isEdit ? "Save Changes" : "Schedule Session"
-          }
+              ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />{isEdit ? "Saving…" : "Scheduling…"}</>
+              : isEdit ? "Save Changes" : isDuplicate ? "Schedule Duplicate" : "Schedule Session"
+            }
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {showPicker && (
+        <StudentPickerModal
+          selected={new Set(invitedStudents.map((s) => s.id))}
+          onConfirm={(_ids: any, students: React.SetStateAction<StudentResult[]>) => {
+            setInvitedStudents(students)
+            setShowPicker(false)
+          }}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </Dialog>
   )
 }
@@ -627,6 +613,7 @@ function SessionCard({
   const StatusIcon = cfg.icon
   const scheduled = new Date(session.scheduledAt)
   const [editOpen, setEditOpen] = useState(false)
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [recordingOpen, setRecordingOpen] = useState(false)
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
   const [recordingLoading, setRecordingLoading] = useState(false)
@@ -785,6 +772,14 @@ function SessionCard({
           {session.status === "CANCELLED" && (
             <span className="text-xs text-muted-foreground">This session was cancelled</span>
           )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs gap-1.5 ml-auto text-muted-foreground hover:text-foreground"
+            onClick={() => setDuplicateOpen(true)}
+          >
+            <Copy className="size-3" /> Duplicate
+          </Button>
         </div>
       </div>
 
@@ -794,6 +789,14 @@ function SessionCard({
         open={editOpen}
         onOpenChange={setEditOpen}
         onCreated={() => { setEditOpen(false); onMutated?.() }}
+      />
+
+      {/* Duplicate dialog */}
+      <ScheduleSessionDialog
+        duplicateSession={session}
+        open={duplicateOpen}
+        onOpenChange={setDuplicateOpen}
+        onCreated={() => { setDuplicateOpen(false); onMutated?.() }}
       />
 
       {/* Recording viewer */}
