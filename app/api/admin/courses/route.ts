@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function PATCH(req: NextRequest) {
+async function handlePATCH(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -83,3 +84,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const GET = withAudit(handleGET)
+export const PATCH = withAudit(handlePATCH)

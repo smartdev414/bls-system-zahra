@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
+import { withAudit } from "@/lib/audit"
 
-export async function GET() {
+async function handleGET() {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
 
@@ -24,3 +25,5 @@ export async function GET() {
     `https://accounts.google.com/o/oauth2/v2/auth?${params}`
   )
 }
+
+export const GET = withAudit(handleGET)

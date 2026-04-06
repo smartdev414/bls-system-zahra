@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
 // PATCH /api/notifications/[id] — mark a single notification as read
-export async function PATCH(
+async function handlePATCH(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -31,7 +32,7 @@ export async function PATCH(
 }
 
 // DELETE /api/notifications/[id] — dismiss a notification
-export async function DELETE(
+async function handleDELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -53,3 +54,6 @@ export async function DELETE(
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const PATCH = withAudit(handlePATCH)
+export const DELETE = withAudit(handleDELETE)

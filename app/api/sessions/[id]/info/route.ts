@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
-export async function GET(
+async function handleGET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -40,3 +41,5 @@ export async function GET(
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const GET = withAudit(handleGET)

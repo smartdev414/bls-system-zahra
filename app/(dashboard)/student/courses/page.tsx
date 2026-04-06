@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import {
   BookOpen, Search, Star, Users, Layers, CheckCircle2,
-  Loader2, Filter, ArrowRight, LogOut, Trophy, TrendingUp,
+  Loader2, Filter, ArrowRight, LogOut, Trophy, TrendingUp, Sparkles,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
@@ -49,7 +50,14 @@ type Course = {
   progress: CourseProgress | null
 }
 
-type CoursesData = { courses: Course[]; total: number; page: number; totalPages: number }
+type CoursesData = {
+  courses: Course[]
+  total: number
+  page: number
+  totalPages: number
+  recommendedCourses: Course[]
+  invitedByTutor: { id: string; name: string; avatarUrl: string | null } | null
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -142,6 +150,41 @@ export default function StudentCoursesPage() {
         </Card>
       ) : (
         <>
+          {/* Recommended courses — shown when student was invited by a tutor */}
+          {data?.recommendedCourses && data.recommendedCourses.length > 0 && data.invitedByTutor && (
+            <section className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                  <Sparkles className="size-3.5 text-primary" />
+                  Recommended by your tutor
+                </h2>
+                <div className="flex items-center gap-1.5 ml-1">
+                  <Avatar className="size-5">
+                    {data.invitedByTutor.avatarUrl && (
+                      <AvatarImage src={data.invitedByTutor.avatarUrl} alt={data.invitedByTutor.name} />
+                    )}
+                    <AvatarFallback className="text-[9px] bg-primary/10 text-primary font-bold">
+                      {data.invitedByTutor.name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-xs text-muted-foreground font-medium">{data.invitedByTutor.name}</span>
+                </div>
+              </div>
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {data.recommendedCourses.map((c) => (
+                  <div key={c.id} className="relative">
+                    <div className="absolute -top-2 -right-2 z-10">
+                      <span className="flex items-center gap-1 bg-primary text-primary-foreground text-[10px] font-semibold px-2 py-0.5 rounded-full shadow">
+                        <Sparkles className="size-2.5" /> Recommended
+                      </span>
+                    </div>
+                    <CourseCard course={c} onMutated={refetch} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Completed courses */}
           {completed.length > 0 && (
             <section className="flex flex-col gap-3">

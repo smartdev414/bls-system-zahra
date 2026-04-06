@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
 const SEED_SIGNS = [
   { word: "Hello", category: "Greetings", level: "BEGINNER" as const, description: "Open your hand and wave it from side to side at head level.", handshape: "Open hand", usage: "Used as a general greeting" },
@@ -23,7 +24,7 @@ const SEED_SIGNS = [
   { word: "Love", category: "Emotions", level: "BEGINNER" as const, description: "Cross both hands over your chest.", handshape: "Crossed hands", usage: "Expressing love or affection" },
 ]
 
-export async function POST() {
+async function handlePOST() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -45,3 +46,5 @@ export async function POST() {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const POST = withAudit(handlePOST)

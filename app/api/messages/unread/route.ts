@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
-export async function GET() {
+async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ count: 0 })
@@ -22,3 +23,5 @@ export async function GET() {
     return NextResponse.json({ count: 0 })
   }
 }
+
+export const GET = withAudit(handleGET)

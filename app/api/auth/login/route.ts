@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import prisma from "@/lib/prisma"
 import { signToken, setSessionCookie, dashboardPath } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const { email, password } = await req.json()
 
@@ -52,3 +53,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const POST = withAudit(handlePOST)

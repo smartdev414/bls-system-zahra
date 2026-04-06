@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
 import { randomUUID } from "crypto"
+import { withAudit } from "@/lib/audit"
 
 // Allowed MIME types and their S3 folder prefix
 const ALLOWED: Record<string, { prefix: string; assetType: string }> = {
@@ -19,7 +20,7 @@ const ALLOWED: Record<string, { prefix: string; assetType: string }> = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document":  { prefix: "documents", assetType: "DOCUMENT" },
 }
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -59,3 +60,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const POST = withAudit(handlePOST)

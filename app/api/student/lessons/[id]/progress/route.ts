@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
-export async function PATCH(
+async function handlePATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -50,3 +51,5 @@ export async function PATCH(
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const PATCH = withAudit(handlePATCH)

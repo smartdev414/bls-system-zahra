@@ -117,6 +117,7 @@ export default function TutorLiveClassroomPage({
     >
       <ClassroomRoom
         isTutor={true}
+        sessionId={id}
         sessionTitle={data?.session?.title ?? "Live Session"}
         onLeave={handleEndSession}
       />

@@ -4,7 +4,8 @@ import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import {
   Users, Search, BookOpen, Loader2, ChevronDown, ChevronUp,
-  MessageSquare, CalendarPlus, Check, X, Filter, ArrowUpDown,
+  MessageSquare, CalendarPlus, Check, X, Filter, ArrowUpDown, FolderOpen,
+  UserPlus, Send, Trash2, Clock,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -27,6 +28,10 @@ import {
 import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
+import { ManageGroupsModal } from "@/components/classroom/ManageGroupsModal"
+import { Textarea } from "@/components/ui/textarea"
+import { toast } from "sonner"
+import { Separator } from "@/components/ui/separator"
 
 type CourseProgress = {
   id: string
@@ -176,6 +181,126 @@ function InviteModal({
   )
 }
 
+type InviteRecord = {
+  id: string
+  email: string
+  status: "PENDING" | "ACCEPTED" | "EXPIRED"
+  createdAt: string
+  expiresAt: string
+}
+
+function InviteStudentsEmailModal({ onClose }: { onClose: () => void }) {
+  const [emailInput, setEmailInput] = useState("")
+  const [sending, setSending] = useState(false)
+  const { data, loading, refetch } = useFetch<{ invites: InviteRecord[] }>("/api/tutor/invites", {
+    errorMessage: "Could not load invitations",
+  })
+
+  const invites = data?.invites ?? []
+
+  async function handleSend() {
+    const emails = emailInput
+      .split(/[\n,;]+/)
+      .map((e) => e.trim())
+      .filter((e) => e.includes("@"))
+
+    if (emails.length === 0) {
+      toast.error("Enter at least one valid email address")
+      return
+    }
+
+    setSending(true)
+    try {
+      const res = await fetch("/api/tutor/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails }),
+      })
+      const result = await res.json()
+      if (!res.ok) { toast.error(result.message ?? "Failed to send invites"); return }
+
+      const sentCount = result.sent?.length ?? 0
+      const skippedCount = result.skipped?.length ?? 0
+      if (sentCount > 0) toast.success(`${sentCount} invitation${sentCount !== 1 ? "s" : ""} sent`)
+      if (skippedCount > 0) toast.info(`${skippedCount} email${skippedCount !== 1 ? "s" : ""} skipped (already have accounts)`)
+      setEmailInput("")
+      refetch()
+    } catch {
+      toast.error("Something went wrong")
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const statusColor: Record<string, string> = {
+    PENDING:  "bg-amber-100 text-amber-700 border-amber-200",
+    ACCEPTED: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    EXPIRED:  "bg-muted text-muted-foreground border-border",
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="size-4 text-primary" /> Invite Students by Email
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Enter email addresses to send invitation links. Students will create a student account and be linked to you.
+          </p>
+        </DialogHeader>
+
+        {/* Input area */}
+        <div className="flex flex-col gap-2">
+          <Textarea
+            placeholder={"alice@example.com\nbob@example.com, carol@example.com"}
+            rows={4}
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            className="resize-none text-sm font-mono"
+          />
+          <p className="text-xs text-muted-foreground">Separate multiple addresses with commas, semicolons, or new lines.</p>
+          <Button onClick={handleSend} disabled={sending || !emailInput.trim()} className="gap-1.5">
+            {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            {sending ? "Sending…" : "Send Invitations"}
+          </Button>
+        </div>
+
+        <Separator />
+
+        {/* Sent invitations history */}
+        <div>
+          <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+            <Clock className="size-3.5 text-muted-foreground" /> Sent Invitations
+          </h4>
+          {loading ? (
+            <div className="flex justify-center py-4"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
+          ) : invites.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No invitations sent yet.</p>
+          ) : (
+            <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-1">
+              {invites.map((inv) => (
+                <div key={inv.id} className="flex items-center gap-2 rounded-md border px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{inv.email}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Sent {new Date(inv.createdAt).toLocaleDateString("en-GB", { dateStyle: "medium" })}
+                      {" · "}Expires {new Date(inv.expiresAt).toLocaleDateString("en-GB", { dateStyle: "medium" })}
+                    </p>
+                  </div>
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusColor[inv.status]}`}>
+                    {inv.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function TutorStudentsPage() {
   const router = useRouter()
   const [query, setQuery] = useState("")
@@ -185,6 +310,8 @@ export default function TutorStudentsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("name-asc")
   const [inviteStudent, setInviteStudent] = useState<Student | null>(null)
   const [messagingId, setMessagingId] = useState<string | null>(null)
+  const [showGroups, setShowGroups] = useState(false)
+  const [showEmailInvite, setShowEmailInvite] = useState(false)
 
   const debouncedQuery = useDebounce(query)
 
@@ -253,6 +380,13 @@ export default function TutorStudentsPage() {
 
         {/* Controls */}
         <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowGroups(true)}>
+            <FolderOpen className="size-3.5" /> Manage Groups
+          </Button>
+          <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowEmailInvite(true)}>
+            <UserPlus className="size-3.5" /> Invite Students
+          </Button>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
@@ -464,6 +598,14 @@ export default function TutorStudentsPage() {
 
       {inviteStudent && (
         <InviteModal student={inviteStudent} onClose={() => setInviteStudent(null)} />
+      )}
+
+      {showGroups && (
+        <ManageGroupsModal onClose={() => setShowGroups(false)} />
+      )}
+
+      {showEmailInvite && (
+        <InviteStudentsEmailModal onClose={() => setShowEmailInvite(false)} />
       )}
     </div>
   )

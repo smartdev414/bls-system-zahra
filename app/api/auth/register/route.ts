@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import prisma from "@/lib/prisma"
 import { signToken, setSessionCookie, dashboardPath } from "@/lib/auth"
+import { Role } from "@/app/generated/prisma/enums"
+import { withAudit } from "@/lib/audit"
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
-    const { name, email, password, role } = await req.json()
+    const { name, email, password, role, inviteToken } = await req.json() as {
+      name: string
+      email: string
+      password: string
+      role: string
+      inviteToken?: string
+    }
 
     if (!name || !email || !password || !role) {
       return NextResponse.json(
@@ -16,6 +24,20 @@ export async function POST(req: NextRequest) {
 
     if (!["STUDENT", "TUTOR"].includes(role)) {
       return NextResponse.json({ message: "Invalid role" }, { status: 400 })
+    }
+
+    // Validate invite token when provided
+    let invite: { id: string; tutorId: string } | null = null
+    if (inviteToken) {
+      const fullInvite = await prisma.tutorInvite.findUnique({
+        where: { token: inviteToken },
+        select: { id: true, tutorId: true, status: true, expiresAt: true },
+      })
+
+      if (!fullInvite || fullInvite.status !== "PENDING" || fullInvite.expiresAt < new Date()) {
+        return NextResponse.json({ message: "Invalid or expired invitation" }, { status: 400 })
+      }
+      invite = { id: fullInvite.id, tutorId: fullInvite.tutorId }
     }
 
     const existing = await prisma.user.findUnique({ where: { email } })
@@ -33,13 +55,22 @@ export async function POST(req: NextRequest) {
         name,
         email,
         passwordHash,
-        role,
+        role: role as Role,
+        ...(invite && { invitedById: invite.tutorId }),
         // Create tutor profile automatically for tutors
         ...(role === "TUTOR" && {
           tutorProfile: { create: {} },
         }),
       },
     })
+
+    // Mark invite as accepted
+    if (invite) {
+      await prisma.tutorInvite.update({
+        where: { id: invite.id },
+        data: { status: "ACCEPTED" },
+      })
+    }
 
     const token = await signToken({
       sub: user.id,
@@ -59,3 +90,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const POST = withAudit(handlePOST)

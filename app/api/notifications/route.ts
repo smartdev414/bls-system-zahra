@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
 // GET /api/notifications — fetch the current user's notifications (latest 50)
-export async function GET() {
+async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -26,7 +27,7 @@ export async function GET() {
 }
 
 // PATCH /api/notifications — mark all as read
-export async function PATCH() {
+async function handlePATCH() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -42,3 +43,6 @@ export async function PATCH() {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const GET = withAudit(handleGET)
+export const PATCH = withAudit(handlePATCH)

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
 /**
  * Returns the list of people the current user can message:
  * - Students → tutors of courses they're enrolled in
  * - Tutors   → students enrolled in their courses
  */
-export async function GET() {
+async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -62,3 +63,5 @@ export async function GET() {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const GET = withAudit(handleGET)

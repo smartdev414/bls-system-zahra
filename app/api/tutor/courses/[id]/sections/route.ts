@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
-export async function POST(
+async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -31,3 +32,5 @@ export async function POST(
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const POST = withAudit(handlePOST)
