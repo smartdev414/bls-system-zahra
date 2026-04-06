@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import bcrypt from "bcryptjs"
+import { withAudit } from "@/lib/audit"
 
-export async function PUT(req: NextRequest) {
+async function handlePUT(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -47,3 +48,5 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const PUT = withAudit(handlePUT)

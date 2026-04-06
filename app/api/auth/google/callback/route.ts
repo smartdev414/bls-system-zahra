@@ -7,6 +7,7 @@ import {
   signPendingGoogleToken,
   setPendingGoogleCookie,
 } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
 type GoogleUserInfo = {
   id: string
@@ -42,7 +43,7 @@ async function fetchGoogleUser(accessToken: string): Promise<GoogleUserInfo | nu
   return res.json()
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!
   const { searchParams } = new URL(req.url)
   const code = searchParams.get("code")
@@ -113,3 +114,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${appUrl}/login?error=google_failed`)
   }
 }
+
+export const GET = withAudit(handleGET)

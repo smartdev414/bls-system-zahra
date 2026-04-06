@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
 async function verifyOwnership(lessonId: string, tutorId: string) {
   return prisma.lesson.findFirst({
@@ -9,7 +10,7 @@ async function verifyOwnership(lessonId: string, tutorId: string) {
 }
 
 // GET /api/tutor/lessons/[id]/questions
-export async function GET(
+async function handleGET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -38,7 +39,7 @@ export async function GET(
 }
 
 // POST /api/tutor/lessons/[id]/questions
-export async function POST(
+async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -99,3 +100,6 @@ export async function POST(
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const GET = withAudit(handleGET)
+export const POST = withAudit(handlePOST)

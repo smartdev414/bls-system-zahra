@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { getPusher } from "@/lib/pusher-server"
+import { withAudit } from "@/lib/audit"
 
 /**
  * Pusher private-channel auth endpoint.
  * Pusher sends socket_id + channel_name as application/x-www-form-urlencoded.
  * We verify the user owns the channel they're requesting.
  */
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
 
@@ -34,3 +35,5 @@ export async function POST(req: NextRequest) {
   const authResponse = getPusher().authorizeChannel(socketId, channelName)
   return NextResponse.json(authResponse)
 }
+
+export const POST = withAudit(handlePOST)

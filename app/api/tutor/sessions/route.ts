@@ -3,8 +3,9 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { randomBytes } from "crypto"
 import { createNotifications } from "@/lib/notifications"
+import { withAudit } from "@/lib/audit"
 
-export async function GET() {
+async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -46,7 +47,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -133,3 +134,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const GET = withAudit(handleGET)
+export const POST = withAudit(handlePOST)

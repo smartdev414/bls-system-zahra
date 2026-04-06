@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
 async function verifyOwnership(lessonId: string, tutorId: string) {
   return prisma.lesson.findFirst({
@@ -9,7 +10,7 @@ async function verifyOwnership(lessonId: string, tutorId: string) {
 }
 
 // PUT /api/tutor/lessons/[id]/questions/[qid]
-export async function PUT(
+async function handlePUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; qid: string }> }
 ) {
@@ -71,7 +72,7 @@ export async function PUT(
 }
 
 // DELETE /api/tutor/lessons/[id]/questions/[qid]
-export async function DELETE(
+async function handleDELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string; qid: string }> }
 ) {
@@ -93,3 +94,6 @@ export async function DELETE(
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const PUT = withAudit(handlePUT)
+export const DELETE = withAudit(handleDELETE)

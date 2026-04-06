@@ -102,6 +102,12 @@ model User {
   tutorConversations    Conversation[]          @relation("TutorConversations")
   sentMessages          Message[]               @relation("SentMessages")
   notifications         Notification[]
+  studentGroups         StudentGroup[]          @relation("TutorStudentGroups")
+  groupMemberships      StudentGroupMember[]
+  sentInvites           TutorInvite[]           @relation("TutorInvites")
+  invitedStudents       User[]                  @relation("InvitedByTutor")
+  invitedBy             User?                   @relation("InvitedByTutor", fields: [invitedById], references: [id])
+  invitedById           String?
 }
 
 model Notification {
@@ -361,6 +367,74 @@ model Message {
 
   @@index([conversationId])
   @@index([senderId])
+}
+
+model StudentGroup {
+  id        String   @id @default(cuid())
+  tutorId   String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tutor   User                 @relation("TutorStudentGroups", fields: [tutorId], references: [id], onDelete: Cascade)
+  members StudentGroupMember[]
+
+  @@index([tutorId])
+}
+
+model StudentGroupMember {
+  groupId   String
+  studentId String
+  addedAt   DateTime @default(now())
+
+  group   StudentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, studentId])
+  @@index([studentId])
+}
+
+enum TutorInviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+model TutorInvite {
+  id        String            @id @default(cuid())
+  tutorId   String
+  email     String
+  token     String            @unique @default(cuid())
+  status    TutorInviteStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime          @default(now())
+
+  tutor User @relation("TutorInvites", fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId])
+  @@index([token])
+  @@index([email])
+}
+
+model ApiLog {
+  id           String   @id @default(cuid())
+  method       String
+  path         String
+  statusCode   Int
+  userId       String?
+  userRole     String?
+  userEmail    String?
+  ip           String?
+  userAgent    String?
+  durationMs   Int
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([path])
+  @@index([statusCode])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([method, statusCode])
 }
 
 model LiveSessionResource {

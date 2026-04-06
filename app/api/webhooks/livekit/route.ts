@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { WebhookReceiver } from "livekit-server-sdk"
 import prisma from "@/lib/prisma"
+import { withAudit } from "@/lib/audit"
 
 const receiver = new WebhookReceiver(
   process.env.LIVEKIT_API_KEY!,
   process.env.LIVEKIT_API_SECRET!,
 )
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const body = await req.text()
     const authorization = req.headers.get("Authorization") ?? ""
@@ -45,3 +46,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false })
   }
 }
+
+export const POST = withAudit(handlePOST)

@@ -36,6 +36,7 @@ type SessionItem = {
   scheduledAt: string
   durationMins: number
   status: "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED"
+  visibility: "PUBLIC" | "INVITE_ONLY"
   attendeeCount: number
   maxStudents: number | null
   course: { id: string; title: string } | null
@@ -165,7 +166,7 @@ function ScheduleSessionDialog({
   const [durationMins, setDurationMins] = useState(60)
   const [maxStudents, setMaxStudents] = useState("")
   const [courseId, setCourseId] = useState("")
-  const [visibility, setVisibility] = useState<"PUBLIC" | "INVITE_ONLY">("PUBLIC")
+  const [visibility, setVisibility] = useState<"PUBLIC" | "INVITE_ONLY">("INVITE_ONLY")
   const [invitedStudents, setInvitedStudents] = useState<StudentResult[]>([])
   const [studentSearch, setStudentSearch] = useState("")
   const [searchResults, setSearchResults] = useState<StudentResult[]>([])
@@ -181,12 +182,18 @@ function ScheduleSessionDialog({
 
   const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
 
-  // Load existing resources when editing
+  // Load existing resources and invites when editing
   useEffect(() => {
     if (!open || !isEdit || !editSession?.id) return
     fetch(`/api/tutor/sessions/${editSession.id}/resources`)
       .then((r) => r.json())
       .then((d: { resources: SessionResource[] }) => setSavedResources(d.resources))
+      .catch(() => {})
+    fetch(`/api/tutor/sessions/${editSession.id}/invites`)
+      .then((r) => r.json())
+      .then((d: { invites: Array<{ studentId: string; studentName: string; studentEmail: string }> }) => {
+        setInvitedStudents(d.invites.map((i) => ({ id: i.studentId, name: i.studentName, email: i.studentEmail, avatarUrl: null })))
+      })
       .catch(() => {})
   }, [open, isEdit, editSession?.id])
 
@@ -201,6 +208,7 @@ function ScheduleSessionDialog({
       setDurationMins(editSession.durationMins)
       setMaxStudents(editSession.maxStudents ? String(editSession.maxStudents) : "")
       setCourseId(editSession.course?.id ?? "")
+      setVisibility(editSession.visibility ?? "INVITE_ONLY")
     }
   }, [open, editSession])
 
@@ -271,6 +279,8 @@ function ScheduleSessionDialog({
             durationMins,
             maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
             courseId: courseId || undefined,
+            visibility,
+            invitedStudentIds: invitedStudents.map((s) => s.id),
           }),
         })
         if (!res.ok) throw new Error((await res.json() as { message?: string }).message ?? "Could not update session")

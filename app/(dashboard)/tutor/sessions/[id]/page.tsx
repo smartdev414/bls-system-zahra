@@ -1,11 +1,11 @@
 "use client"
 
-import { use } from "react"
+import { use, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft, Radio, CheckCircle2, XCircle, Clock,
-  Users, Calendar, Loader2, BookOpen, Trash2, MonitorPlay,
+  Users, Calendar, Loader2, BookOpen, Trash2, MonitorPlay, UserPlus, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,8 +13,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
+import { InviteStudentsModal } from "@/components/classroom/InviteStudentsModal"
+import { toast } from "sonner"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type Invite = {
+  studentId: string
+  studentName: string
+  studentEmail: string
+  invitedAt: string
+}
 
 type Attendance = {
   studentId: string
@@ -63,10 +72,26 @@ function formatDuration(startIso: string, endIso: string) {
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const [showInviteModal, setShowInviteModal] = useState(false)
 
   const { data, loading, refetch } = useFetch<SessionData>(`/api/tutor/sessions/${id}`, {
     errorMessage: "Could not load session",
   })
+
+  const { data: invitesData, refetch: refetchInvites } = useFetch<{ invites: Invite[] }>(
+    `/api/tutor/sessions/${id}/invites`,
+    { errorMessage: false }
+  )
+
+  async function removeInvite(studentId: string) {
+    const res = await fetch(`/api/tutor/sessions/${id}/invites`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentId }),
+    })
+    if (res.ok) refetchInvites()
+    else toast.error("Could not remove invite")
+  }
 
   const { execute: patch, loading: patching } = usePatchCallback<
     { session: SessionDetail },
@@ -222,6 +247,66 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         </CardContent>
       </Card>
 
+      {/* Invited Students (only for SCHEDULED sessions) */}
+      {canStart && (
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <UserPlus className="size-4 text-primary" />
+                Invited Students
+                {(invitesData?.invites.length ?? 0) > 0 && (
+                  <Badge variant="secondary" className="ml-1">{invitesData!.invites.length}</Badge>
+                )}
+              </CardTitle>
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowInviteModal(true)}>
+                <UserPlus className="size-3" /> Invite
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!invitesData || invitesData.invites.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No students invited yet.{" "}
+                <button className="text-primary underline underline-offset-2" onClick={() => setShowInviteModal(true)}>
+                  Invite students
+                </button>
+              </p>
+            ) : (
+              <div className="divide-y">
+                {invitesData.invites.map((inv) => {
+                  const inv_initials = inv.studentName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+                  return (
+                    <div key={inv.studentId} className="flex items-center gap-3 px-5 py-2.5 group/invite">
+                      <Avatar className="size-8 shrink-0">
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                          {inv_initials}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{inv.studentName}</p>
+                        <p className="text-xs text-muted-foreground">{inv.studentEmail}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground shrink-0 hidden sm:block">
+                        {new Date(inv.invitedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                      </p>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-7 opacity-0 group-hover/invite:opacity-100 text-destructive hover:text-destructive"
+                        onClick={() => removeInvite(inv.studentId)}
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Attendees */}
       <Card className="shadow-sm">
         <CardHeader className="pb-3">
@@ -268,6 +353,14 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           )}
         </CardContent>
       </Card>
+
+      {showInviteModal && (
+        <InviteStudentsModal
+          sessionId={id}
+          sessionTitle={session.title}
+          onClose={() => { setShowInviteModal(false); refetchInvites() }}
+        />
+      )}
 
       {/* Danger zone */}
       {!isDone && (

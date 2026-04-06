@@ -1,0 +1,314 @@
+"use client"
+
+import { useState, useMemo } from "react"
+import {
+  Search, Check, Loader2, Users, ChevronRight, ChevronDown, X,
+} from "lucide-react"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { useFetch } from "@/hooks/use-fetch"
+import { toast } from "sonner"
+
+type Student = {
+  id: string
+  name: string
+  email: string
+  avatarUrl: string | null
+}
+
+type Group = {
+  id: string
+  name: string
+  members: Student[]
+}
+
+type StudentsData = { students: Student[] }
+type GroupsData = { groups: Group[] }
+
+function initials(name: string) {
+  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+}
+
+export function InviteStudentsModal({
+  sessionId,
+  sessionTitle,
+  onClose,
+}: {
+  sessionId: string
+  sessionTitle: string
+  onClose: () => void
+}) {
+  const { data: studentsData } = useFetch<StudentsData>("/api/tutor/students")
+  const { data: groupsData } = useFetch<GroupsData>("/api/tutor/groups")
+  const { data: invitesData, refetch: refetchInvites } = useFetch<{
+    invites: { studentId: string; studentName: string; studentEmail: string; invitedAt: string }[]
+  }>(`/api/tutor/sessions/${sessionId}/invites`)
+
+  const [search, setSearch] = useState("")
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [sending, setSending] = useState(false)
+
+  const allStudents = studentsData?.students ?? []
+  const groups = groupsData?.groups ?? []
+  const alreadyInvited = new Set((invitesData?.invites ?? []).map((i) => i.studentId))
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return allStudents
+    const q = search.toLowerCase()
+    return allStudents.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
+    )
+  }, [allStudents, search])
+
+  // Students not yet invited and not already selected
+  const available = filtered.filter((s) => !alreadyInvited.has(s.id))
+
+  function toggleStudent(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectGroup(group: Group) {
+    const ids = group.members.map((m) => m.id).filter((id) => !alreadyInvited.has(id))
+    const allSelected = ids.every((id) => selected.has(id))
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id))
+      } else {
+        ids.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }
+
+  function toggleGroupExpand(groupId: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
+
+  function selectAll() {
+    const allIds = available.map((s) => s.id)
+    const allSelected = allIds.every((id) => selected.has(id))
+    if (allSelected) setSelected(new Set())
+    else setSelected(new Set(allIds))
+  }
+
+  async function sendInvites() {
+    if (selected.size === 0) return
+    setSending(true)
+    try {
+      const res = await fetch(`/api/tutor/sessions/${sessionId}/invites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentIds: [...selected] }),
+      })
+      if (!res.ok) throw new Error("Failed to send invites")
+      toast.success(`Invited ${selected.size} student${selected.size !== 1 ? "s" : ""}`)
+      setSelected(new Set())
+      await refetchInvites()
+    } catch {
+      toast.error("Could not send invites")
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const allAvailableSelected = available.length > 0 && available.every((s) => selected.has(s.id))
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg flex flex-col gap-0 p-0 h-[80vh]">
+        <DialogHeader className="px-5 pt-5 pb-4 shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <Users className="size-4 text-primary" /> Invite Students
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground truncate">
+            Session: <span className="font-medium text-foreground">{sessionTitle}</span>
+          </p>
+        </DialogHeader>
+
+        <Separator />
+
+        {/* Search + select all */}
+        <div className="px-4 py-3 border-b shrink-0 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search students..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 text-sm"
+            />
+          </div>
+          {available.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs shrink-0 gap-1"
+              onClick={selectAll}
+            >
+              {allAvailableSelected ? <><X className="size-3" /> Deselect all</> : <><Check className="size-3" /> Select all</>}
+            </Button>
+          )}
+        </div>
+
+        <ScrollArea className="flex-1 min-h-0">
+          {/* Groups section */}
+          {groups.length > 0 && !search.trim() && (
+            <div>
+              <div className="px-4 py-2 bg-muted/30 sticky top-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
+              </div>
+              {groups.map((group) => {
+                const groupAvailable = group.members.filter((m) => !alreadyInvited.has(m.id))
+                const groupSelected = groupAvailable.every((m) => selected.has(m.id)) && groupAvailable.length > 0
+                const groupPartial = !groupSelected && groupAvailable.some((m) => selected.has(m.id))
+                const isExpanded = expandedGroups.has(group.id)
+
+                return (
+                  <div key={group.id}>
+                    <div className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/20">
+                      <button
+                        className={`size-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          groupSelected
+                            ? "bg-primary border-primary"
+                            : groupPartial
+                            ? "bg-primary/30 border-primary/60"
+                            : "border-muted-foreground/40 hover:border-primary"
+                        }`}
+                        onClick={() => selectGroup(group)}
+                        disabled={groupAvailable.length === 0}
+                      >
+                        {(groupSelected || groupPartial) && <Check className="size-2.5 text-white" />}
+                      </button>
+                      <button
+                        className="flex-1 flex items-center gap-2 text-left"
+                        onClick={() => toggleGroupExpand(group.id)}
+                      >
+                        <span className="text-sm font-medium">{group.name}</span>
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                          {groupAvailable.length} available
+                        </Badge>
+                        {isExpanded ? <ChevronDown className="size-3.5 text-muted-foreground ml-auto" /> : <ChevronRight className="size-3.5 text-muted-foreground ml-auto" />}
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="border-l-2 border-primary/20 ml-8 mb-1">
+                        {group.members.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-4 py-2">No members in this group.</p>
+                        ) : group.members.map((member) => {
+                          const invited = alreadyInvited.has(member.id)
+                          const isSelected = selected.has(member.id)
+                          return (
+                            <button
+                              key={member.id}
+                              disabled={invited}
+                              className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-muted/30 transition-colors ${invited ? "opacity-50 cursor-not-allowed" : ""}`}
+                              onClick={() => !invited && toggleStudent(member.id)}
+                            >
+                              <div className={`size-3.5 rounded border flex items-center justify-center shrink-0 ${isSelected ? "bg-primary border-primary" : "border-muted-foreground/40"}`}>
+                                {isSelected && <Check className="size-2 text-white" />}
+                              </div>
+                              <Avatar className="size-5 shrink-0">
+                                <AvatarFallback className="bg-primary/10 text-primary text-[8px]">{initials(member.name)}</AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium truncate">{member.name}</p>
+                              </div>
+                              {invited && <Badge variant="secondary" className="text-[9px] h-3.5 px-1">Invited</Badge>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              <Separator className="my-1" />
+            </div>
+          )}
+
+          {/* All students */}
+          <div>
+            {(groups.length > 0 || !search.trim()) && (
+              <div className="px-4 py-2 bg-muted/30 sticky top-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  {search.trim() ? "Search Results" : "All Students"}
+                </p>
+              </div>
+            )}
+            {filtered.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No students found.</p>
+            ) : (
+              filtered.map((student) => {
+                const invited = alreadyInvited.has(student.id)
+                const isSelected = selected.has(student.id)
+                return (
+                  <button
+                    key={student.id}
+                    disabled={invited}
+                    className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-muted/20 transition-colors ${invited ? "opacity-50 cursor-not-allowed" : ""}`}
+                    onClick={() => !invited && toggleStudent(student.id)}
+                  >
+                    <div className={`size-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                      isSelected ? "bg-primary border-primary" : "border-muted-foreground/40 hover:border-primary"
+                    }`}>
+                      {isSelected && <Check className="size-2.5 text-white" />}
+                    </div>
+                    <Avatar className="size-7 shrink-0">
+                      <AvatarFallback className="bg-primary/10 text-primary text-[10px]">{initials(student.name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{student.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{student.email}</p>
+                    </div>
+                    {invited && <Badge variant="secondary" className="text-[10px] h-4 px-1.5 shrink-0">Invited</Badge>}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </ScrollArea>
+
+        {/* Footer */}
+        <Separator />
+        <div className="px-5 py-3 shrink-0 flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {selected.size > 0 ? (
+              <span className="font-medium text-foreground">{selected.size} student{selected.size !== 1 ? "s" : ""} selected</span>
+            ) : (
+              "Select students to invite"
+            )}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+            <Button
+              size="sm"
+              disabled={selected.size === 0 || sending}
+              onClick={sendInvites}
+            >
+              {sending ? <Loader2 className="size-4 animate-spin" /> : `Invite${selected.size > 0 ? ` (${selected.size})` : ""}`}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

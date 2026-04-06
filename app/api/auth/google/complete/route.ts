@@ -8,10 +8,11 @@ import {
   clearPendingGoogleCookie,
   getPendingGoogleToken,
 } from "@/lib/auth"
+import { withAudit } from "@/lib/audit"
 
 type Role = "STUDENT" | "TUTOR"
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const { role, agreed } = (await req.json()) as { role: Role; agreed: boolean }
 
@@ -90,3 +91,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const POST = withAudit(handlePOST)

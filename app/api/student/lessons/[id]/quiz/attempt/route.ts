@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
+import { withAudit } from "@/lib/audit"
 
 // POST /api/student/lessons/[id]/quiz/attempt
 // body: { enrollmentId: string; answers: { questionId: string; optionId: string }[] }
-export async function POST(
+async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -110,3 +111,5 @@ export async function POST(
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const POST = withAudit(handlePOST)

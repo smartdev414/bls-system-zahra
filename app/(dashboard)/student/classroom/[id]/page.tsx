@@ -419,6 +419,7 @@ export default function ClassroomRoomPage({
     >
       <ClassroomRoom
         isTutor={false}
+        sessionId={id}
         sessionTitle={data?.session?.title ?? "Live Session"}
         onLeave={() => setDisconnected(true)}
       />

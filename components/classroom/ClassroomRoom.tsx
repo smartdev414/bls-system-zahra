@@ -17,11 +17,17 @@ import { cn } from "@/lib/utils"
 import {
   Mic, Camera, Monitor, Hand, PhoneOff, Send, Radio, Users,
   Maximize2, Minimize2, ChevronDown, MessageSquare,
-  HandMetal,
+  HandMetal, Presentation, ChevronLeft, ChevronRight,
+  Upload, X, Loader2,
 } from "lucide-react"
+import { PptSlideViewer } from "./PptSlideViewer"
 
-const CHAT_TOPIC  = "cls-chat"
-const HAND_TOPIC  = "cls-hand"
+// ─── Data channel topics ──────────────────────────────────────────────────────
+
+const CHAT_TOPIC = "cls-chat"
+const HAND_TOPIC = "cls-hand"
+const PPT_TOPIC  = "cls-ppt"
+
 const enc = new TextEncoder()
 const dec = new TextDecoder()
 
@@ -44,6 +50,13 @@ type RaisedHand = {
   name: string
 }
 
+type PptAction =
+  | { action: "start";   url: string; total: number; page: number }
+  | { action: "navigate"; page: number }
+  | { action: "stop" }
+  | { action: "sync_request" }
+  | { action: "sync_response"; url: string; total: number; page: number }
+
 // ─── Audio renderer ───────────────────────────────────────────────────────────
 
 function AudioRenderer() {
@@ -60,7 +73,7 @@ function AudioRenderer() {
   )
 }
 
-// ─── Tutor video (main area, fullscreen-capable) ──────────────────────────────
+// ─── Tutor video (normal mode main area, fullscreen-capable) ──────────────────
 
 function TutorVideoArea({
   containerRef,
@@ -89,15 +102,12 @@ function TutorVideoArea({
         </div>
       )}
 
-
-      {/* Tutor name */}
       {active && (
         <div className="absolute bottom-12 left-3 bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
           {active.participant.name ?? active.participant.identity}
         </div>
       )}
 
-      {/* Fullscreen toggle — shows on hover */}
       <button
         onClick={onToggleFullscreen}
         className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white rounded-lg p-1.5 backdrop-blur-sm"
@@ -105,6 +115,34 @@ function TutorVideoArea({
       >
         {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
       </button>
+    </div>
+  )
+}
+
+// ─── Tutor camera inset (PPT split-screen mode only) ─────────────────────────
+// Shows just the tutor's camera feed so students can read BSL signs alongside slides
+
+function TutorCameraInset() {
+  const camTracks = useTracks([Track.Source.Camera], { onlySubscribed: false })
+  const tutorCam  = camTracks.find((t) => t.participant.metadata === "tutor")
+  const name      = tutorCam?.participant.name ?? tutorCam?.participant.identity ?? "Tutor"
+
+  return (
+    <div className="relative w-full h-full bg-zinc-900 overflow-hidden">
+      {tutorCam ? (
+        <>
+          <VideoTrack trackRef={tutorCam} className="w-full h-full object-cover" />
+          {/* BSL visibility badge */}
+          <div className="absolute top-2 left-2 bg-amber-500/80 text-black text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
+            BSL · {name}
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-600">
+          <Camera className="size-8 opacity-20" />
+          <span className="text-xs opacity-50 text-center px-2">Tutor camera off</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -126,7 +164,6 @@ function ParticipantsPanel({
   const allParticipants      = useParticipants()
   const camTracks            = useTracks([Track.Source.Camera])
 
-  // Attach camera track ref to each participant
   const withTracks = allParticipants.map((p) => {
     const trackRef = camTracks.find(
       (t) => t.participant.identity === p.identity && isTrackReference(t)
@@ -134,7 +171,6 @@ function ParticipantsPanel({
     return { p, trackRef, camOn: !!trackRef }
   })
 
-  // Sort: camera-on first, then camera-off; tutor always first within each group
   const sorted = [...withTracks].sort((a, b) => {
     if (a.camOn !== b.camOn) return a.camOn ? -1 : 1
     if (a.p.metadata === "tutor" && b.p.metadata !== "tutor") return -1
@@ -153,8 +189,10 @@ function ParticipantsPanel({
           <Users className="size-4 text-primary" />
         </button>
         <div className="flex-1 flex items-center justify-center">
-          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest"
-            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+          <span
+            className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+          >
             Participants · {allParticipants.length}
           </span>
         </div>
@@ -164,7 +202,6 @@ function ParticipantsPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      {/* Header */}
       <button
         onClick={onToggleCollapse}
         className="shrink-0 px-4 py-2.5 flex items-center gap-2 bg-zinc-900 border-b border-zinc-800 hover:bg-zinc-800/60 transition-colors w-full text-left"
@@ -177,7 +214,6 @@ function ParticipantsPanel({
         <ChevronDown className="size-3.5 text-zinc-500 ml-auto" />
       </button>
 
-      {/* Tiles */}
       <div className="overflow-y-auto flex flex-col gap-1.5 p-2 min-h-0 flex-1">
         {sorted.map(({ p, trackRef, camOn }) => {
           const isLocal     = p.identity === localParticipant.identity
@@ -197,11 +233,9 @@ function ParticipantsPanel({
                   : "border-zinc-700 hover:border-zinc-500 cursor-pointer"
               )}
             >
-              {/* Camera video or avatar row */}
               {camOn && trackRef ? (
                 <>
                   <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
-                  {/* Name overlay */}
                   <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 pb-0.5 pointer-events-none">
                     <p className="text-[10px] text-white truncate font-medium">
                       {isLocal ? "You" : displayName}
@@ -216,14 +250,13 @@ function ParticipantsPanel({
                   </div>
                   <div className="text-center min-w-0 w-full">
                     <p className="text-xs font-semibold text-white truncate px-1">
-                      {isLocal ? `You` : displayName}
+                      {isLocal ? "You" : displayName}
                     </p>
                     <p className="text-[10px] text-zinc-500 mt-0.5">Camera off</p>
                   </div>
                 </div>
               )}
 
-              {/* Click capture + hover overlay for non-tutor tiles */}
               {!isTutor && (
                 <div
                   className={cn(
@@ -237,14 +270,12 @@ function ParticipantsPanel({
                 </div>
               )}
 
-              {/* Pinned badge */}
               {isPinned && (
                 <div className="absolute top-1 right-1 bg-primary text-primary-foreground text-[9px] px-1.5 py-0.5 rounded-full font-bold">
                   Pinned
                 </div>
               )}
 
-              {/* Tutor crown */}
               {isTutor && (
                 <div className="absolute top-1 left-1 text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30">
                   Tutor
@@ -262,7 +293,7 @@ function ParticipantsPanel({
   )
 }
 
-// ─── Pinned student video (fills center area) ─────────────────────────────────
+// ─── Pinned student video (fills center area in normal mode) ──────────────────
 
 function PinnedVideoArea({
   identity,
@@ -288,14 +319,11 @@ function PinnedVideoArea({
   const screenRef   = screenTracks.find(
     (t) => t.participant.identity === identity && isTrackReference(t)
   )
-  const active = screenRef ?? camRef
+  const active      = screenRef ?? camRef
   const displayName = participant?.name ?? identity
 
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-full bg-zinc-950 overflow-hidden group"
-    >
+    <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden group">
       {active ? (
         <VideoTrack trackRef={active} className="w-full h-full object-contain" />
       ) : (
@@ -307,7 +335,6 @@ function PinnedVideoArea({
         </div>
       )}
 
-      {/* Back to tutor button */}
       <button
         onClick={onUnpin}
         className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 hover:bg-black/80 text-white text-xs font-medium px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors"
@@ -315,12 +342,10 @@ function PinnedVideoArea({
         ← Tutor view
       </button>
 
-      {/* Name overlay */}
       <div className="absolute bottom-10 left-3 bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
         {displayName}
       </div>
 
-      {/* Fullscreen toggle */}
       <button
         onClick={onToggleFullscreen}
         className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white rounded-lg p-1.5 backdrop-blur-sm"
@@ -396,13 +421,12 @@ function ChatPanel({
   collapsed: boolean
   onToggleCollapse: () => void
 }) {
-  const [input, setInput] = useState("")
+  const [input, setInput]   = useState("")
   const [unread, setUnread] = useState(0)
   const [atBottom, setAtBottom] = useState(true)
-  const listRef    = useRef<HTMLDivElement>(null)
-  const inputRef   = useRef<HTMLTextAreaElement>(null)
+  const listRef  = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Scroll to bottom on new messages if already at bottom
   useEffect(() => {
     const el = listRef.current
     if (!el) return
@@ -410,7 +434,6 @@ function ChatPanel({
       el.scrollTop = el.scrollHeight
       setUnread(0)
     } else {
-      // Count only incoming (not own) messages
       const last = messages[messages.length - 1]
       if (last && last.from !== localName) setUnread((n) => n + 1)
     }
@@ -456,8 +479,10 @@ function ChatPanel({
           )}
         </button>
         <div className="flex-1 flex items-center justify-center">
-          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest"
-            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+          <span
+            className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+          >
             Live Chat{unread > 0 ? ` · ${unread} new` : ""}
           </span>
         </div>
@@ -472,7 +497,6 @@ function ChatPanel({
         flash && "shadow-[inset_1px_0_0_hsl(var(--primary)/0.6)]"
       )}
     >
-      {/* Header */}
       <button
         onClick={onToggleCollapse}
         className="shrink-0 px-4 py-3 border-b border-zinc-800 flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800/60 transition-colors w-full text-left"
@@ -487,7 +511,6 @@ function ChatPanel({
         <ChevronDown className={cn("size-3.5 text-zinc-500 ml-auto transition-transform duration-200", collapsed && "-rotate-90")} />
       </button>
 
-      {/* Raised hands banner */}
       {raisedHands.length > 0 && (
         <div className="shrink-0 px-3 py-2 bg-amber-500/15 border-b border-amber-500/30 flex items-center gap-2 flex-wrap">
           <Hand className="size-3.5 text-amber-400 shrink-0 animate-bounce" />
@@ -500,7 +523,6 @@ function ChatPanel({
         </div>
       )}
 
-      {/* Messages */}
       <div
         ref={listRef}
         onScroll={handleScroll}
@@ -520,7 +542,6 @@ function ChatPanel({
         )}
       </div>
 
-      {/* Scroll-to-bottom pill */}
       {!atBottom && (
         <div className="absolute bottom-38 left-1/2 -translate-x-1/2 z-10 right-panel-anchor">
           <button
@@ -533,7 +554,6 @@ function ChatPanel({
         </div>
       )}
 
-      {/* Quick reactions */}
       <div className="shrink-0 flex items-center gap-1 px-3 py-2 border-t border-zinc-800/60 bg-zinc-900/60">
         {QUICK_REACTIONS.map((emoji) => (
           <button
@@ -547,7 +567,6 @@ function ChatPanel({
         ))}
       </div>
 
-      {/* Input area */}
       <div className="shrink-0 p-3 border-t border-zinc-800 bg-zinc-900/80 flex gap-2 items-end">
         <textarea
           ref={inputRef}
@@ -576,6 +595,143 @@ function ChatPanel({
   )
 }
 
+// ─── Tutor slide upload panel ─────────────────────────────────────────────────
+
+function SlideUploadPanel({
+  sessionId,
+  onSlidesReady,
+  onClose,
+}: {
+  sessionId: string
+  onSlidesReady: (url: string, total: number) => void
+  onClose: () => void
+}) {
+  const [uploading, setUploading]   = useState(false)
+  const [progress, setProgress]     = useState("")
+  const [error, setError]           = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFile = async (file: File) => {
+    setError("")
+    setUploading(true)
+    setProgress("Getting upload URL…")
+
+    try {
+      // 1. Get presigned URL
+      const presignRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, mimeType: file.type }),
+      })
+      if (!presignRes.ok) {
+        const err = await presignRes.json()
+        throw new Error(err.message ?? "Could not get upload URL")
+      }
+      const { uploadUrl, fileUrl } = await presignRes.json()
+
+      // 2. Upload directly to S3
+      setProgress("Uploading file…")
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      })
+      if (!uploadRes.ok) throw new Error("Upload to storage failed")
+
+      // 3. Register the file in the session
+      setProgress("Registering slides…")
+      const registerRes = await fetch(`/api/tutor/sessions/${sessionId}/slides`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileUrl,
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
+      })
+      if (!registerRes.ok) {
+        const err = await registerRes.json()
+        throw new Error(err.message ?? "Could not save slides")
+      }
+
+      // 4. Load PDF in browser to determine page count
+      setProgress("Reading slide count…")
+      const pdfjsLib = await import("pdfjs-dist")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
+        `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+
+      const pdf = await pdfjsLib.getDocument(fileUrl).promise
+      const total = pdf.numPages
+
+      onSlidesReady(fileUrl, total)
+    } catch (err: unknown) {
+      setError((err as Error).message ?? "Upload failed")
+    } finally {
+      setUploading(false)
+      setProgress("")
+    }
+  }
+
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Presentation className="size-4 text-primary" />
+            <h3 className="font-bold text-sm text-white">Upload Slides</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-zinc-500 hover:text-white transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <p className="text-xs text-zinc-400 mb-4">
+          Upload a PDF or PowerPoint file. Students will see your slides alongside your camera.
+          For best results, export your PowerPoint as a PDF first.
+        </p>
+
+        {error && (
+          <p className="text-xs text-rose-400 bg-rose-900/20 border border-rose-800/40 rounded-lg px-3 py-2 mb-4">
+            {error}
+          </p>
+        )}
+
+        {uploading ? (
+          <div className="flex items-center gap-3 py-4 justify-center text-zinc-400">
+            <Loader2 className="size-5 animate-spin text-primary" />
+            <span className="text-sm">{progress}</span>
+          </div>
+        ) : (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleFile(file)
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-zinc-700 hover:border-primary/60 hover:bg-primary/5 text-zinc-400 hover:text-primary transition-all text-sm font-medium"
+            >
+              <Upload className="size-4" />
+              Choose PDF or PPTX file
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Bottom controls bar ──────────────────────────────────────────────────────
 
 function ControlsBar({
@@ -583,14 +739,27 @@ function ControlsBar({
   handRaised,
   onToggleHand,
   onLeave,
+  // PPT controls (tutor only)
+  pptActive,
+  pptCurrentPage,
+  pptTotalPages,
+  onShowUpload,
+  onPptNavigate,
+  onPptStop,
 }: {
   isTutor: boolean
   handRaised: boolean
   onToggleHand: () => void
   onLeave: () => void
+  pptActive: boolean
+  pptCurrentPage: number
+  pptTotalPages: number
+  onShowUpload: () => void
+  onPptNavigate: (page: number) => void
+  onPptStop: () => void
 }) {
   return (
-    <div className="flex items-center gap-2 shrink-0 px-3">
+    <div className="flex items-center gap-2 shrink-0 px-3 flex-wrap">
       <TrackToggle
         source={Track.Source.Microphone}
         className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=false]:bg-rose-900/50 data-[enabled=false]:text-rose-400 whitespace-nowrap"
@@ -612,6 +781,55 @@ function ControlsBar({
         >
           <Monitor className="size-3.5" /> Screen
         </TrackToggle>
+      )}
+
+      {/* ── PPT controls (tutor only) ── */}
+      {isTutor && !pptActive && (
+        <button
+          onClick={onShowUpload}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"
+          title="Upload and present slides"
+        >
+          <Presentation className="size-3.5" /> Slides
+        </button>
+      )}
+
+      {isTutor && pptActive && (
+        <>
+          {/* Prev slide */}
+          <button
+            onClick={() => onPptNavigate(pptCurrentPage - 1)}
+            disabled={pptCurrentPage <= 1}
+            className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Previous slide"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+
+          {/* Slide counter */}
+          <span className="text-xs text-zinc-400 bg-zinc-800 px-2.5 h-9 flex items-center rounded-xl whitespace-nowrap font-mono">
+            {pptCurrentPage} / {pptTotalPages}
+          </span>
+
+          {/* Next slide */}
+          <button
+            onClick={() => onPptNavigate(pptCurrentPage + 1)}
+            disabled={pptCurrentPage >= pptTotalPages}
+            className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Next slide"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+
+          {/* Stop presentation */}
+          <button
+            onClick={onPptStop}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-amber-900/40 hover:bg-amber-900/70 text-amber-400 border border-amber-700/40 transition-colors whitespace-nowrap"
+            title="Stop presenting slides"
+          >
+            <X className="size-3.5" /> End Slides
+          </button>
+        </>
       )}
 
       {!isTutor && (
@@ -710,10 +928,12 @@ function CaptionsOverlay() {
 
 export function ClassroomRoom({
   isTutor,
+  sessionId,
   sessionTitle,
   onLeave,
 }: {
   isTutor: boolean
+  sessionId: string
   sessionTitle: string
   onLeave: () => void
 }) {
@@ -722,29 +942,40 @@ export function ClassroomRoom({
 
   const localName = localParticipant.name ?? localParticipant.identity
 
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [messages,            setMessages]            = useState<ChatMsg[]>([])
-  const [raisedHands,         setRaisedHands]         = useState<RaisedHand[]>([])
-  const [handRaised,          setHandRaised]          = useState(false)
-  const [chatFlash,           setChatFlash]           = useState(false)
-  const [isFullscreen,        setIsFullscreen]        = useState(false)
-  const [pinnedId,            setPinnedId]            = useState<string | null>(null)
-  const [participantsOpen,    setParticipantsOpen]    = useState(true)
-  const [chatOpen,            setChatOpen]            = useState(true)
+  // ── Chat / hand state ──────────────────────────────────────────────────────
+  const [messages,         setMessages]         = useState<ChatMsg[]>([])
+  const [raisedHands,      setRaisedHands]      = useState<RaisedHand[]>([])
+  const [handRaised,       setHandRaised]       = useState(false)
+  const [chatFlash,        setChatFlash]        = useState(false)
+  const [isFullscreen,     setIsFullscreen]     = useState(false)
+  const [pinnedId,         setPinnedId]         = useState<string | null>(null)
+  const [participantsOpen, setParticipantsOpen] = useState(true)
+  const [chatOpen,         setChatOpen]         = useState(true)
+
+  // ── PPT state ──────────────────────────────────────────────────────────────
+  const [pptActive,      setPptActive]      = useState(false)
+  const [pptUrl,         setPptUrl]         = useState<string | null>(null)
+  const [pptCurrentPage, setPptCurrentPage] = useState(1)
+  const [pptTotalPages,  setPptTotalPages]  = useState(0)
+  const [showUpload,     setShowUpload]     = useState(false)
+
+  // Refs used for sync_response when participants join late
+  const pptStateRef = useRef({ active: false, url: "", total: 0, page: 1 })
 
   const videoContainerRef = useRef<HTMLDivElement>(null)
 
-  // ── DataChannels ───────────────────────────────────────────────────────────
+  // ── Data channel: chat ─────────────────────────────────────────────────────
 
   const { send: sendChat } = useDataChannel(CHAT_TOPIC, (msg) => {
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as Omit<ChatMsg, "id">
       setMessages((prev) => [...prev, { ...data, id: `${Date.now()}-${Math.random()}` }])
-      // Flash chat border for incoming messages
       setChatFlash(true)
       setTimeout(() => setChatFlash(false), 800)
     } catch { /* ignore malformed */ }
   })
+
+  // ── Data channel: hand raise ───────────────────────────────────────────────
 
   const { send: sendHand } = useDataChannel(HAND_TOPIC, (msg) => {
     try {
@@ -756,15 +987,10 @@ export function ClassroomRoom({
         }
         return prev.filter((h) => h.identity !== data.identity)
       })
-      // Tutor: auto-pin the student who raised their hand; unpin when lowered
       if (isTutor) {
-        if (data.raised) {
-          setPinnedId(data.identity)
-        } else {
-          setPinnedId((prev) => prev === data.identity ? null : prev)
-        }
+        if (data.raised) setPinnedId(data.identity)
+        else setPinnedId((prev) => prev === data.identity ? null : prev)
       }
-      // Add system message to chat
       const text = data.raised ? `${data.name} raised their hand ✋` : `${data.name} lowered their hand`
       setMessages((prev) => [
         ...prev,
@@ -772,6 +998,85 @@ export function ClassroomRoom({
       ])
     } catch { /* ignore */ }
   })
+
+  // ── Data channel: PPT sync ─────────────────────────────────────────────────
+
+  const { send: sendPpt } = useDataChannel(PPT_TOPIC, (msg) => {
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as PptAction
+
+      if (data.action === "start") {
+        setPptUrl(data.url)
+        setPptTotalPages(data.total)
+        setPptCurrentPage(data.page)
+        setPptActive(true)
+        // Collapse participants to give slides more room
+        setParticipantsOpen(false)
+        return
+      }
+
+      if (data.action === "navigate") {
+        setPptCurrentPage(data.page)
+        return
+      }
+
+      if (data.action === "stop") {
+        setPptActive(false)
+        setPptUrl(null)
+        setPptCurrentPage(1)
+        setPptTotalPages(0)
+        setParticipantsOpen(true)
+        return
+      }
+
+      // Student joined late and is requesting the current slide state
+      if (data.action === "sync_request" && isTutor) {
+        const state = pptStateRef.current
+        if (!state.active) return
+        const response: PptAction = {
+          action: "sync_response",
+          url: state.url,
+          total: state.total,
+          page: state.page,
+        }
+        sendPpt(enc.encode(JSON.stringify(response)), { reliable: true })
+        return
+      }
+
+      // Tutor responded to our sync request
+      if (data.action === "sync_response" && !isTutor) {
+        setPptUrl(data.url)
+        setPptTotalPages(data.total)
+        setPptCurrentPage(data.page)
+        setPptActive(true)
+        setParticipantsOpen(false)
+      }
+    } catch { /* ignore malformed */ }
+  })
+
+  // Keep pptStateRef in sync so sync_response handler has current values
+  useEffect(() => {
+    pptStateRef.current = {
+      active: pptActive,
+      url: pptUrl ?? "",
+      total: pptTotalPages,
+      page: pptCurrentPage,
+    }
+  }, [pptActive, pptUrl, pptTotalPages, pptCurrentPage])
+
+  // ── Student: request sync when first joining ───────────────────────────────
+  // Sends a sync_request after a short delay so the tutor's data channel listener is ready
+  const hasSentSyncRequest = useRef(false)
+  useEffect(() => {
+    if (isTutor || hasSentSyncRequest.current) return
+    const timer = setTimeout(() => {
+      hasSentSyncRequest.current = true
+      const req: PptAction = { action: "sync_request" }
+      sendPpt(enc.encode(JSON.stringify(req)), { reliable: true })
+    }, 2000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTutor])
 
   // ── Fullscreen ─────────────────────────────────────────────────────────────
 
@@ -789,7 +1094,7 @@ export function ClassroomRoom({
     }
   }, [])
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  // ── Chat handler ───────────────────────────────────────────────────────────
 
   const handleSend = useCallback(
     (text: string, type: MsgType) => {
@@ -800,12 +1105,13 @@ export function ClassroomRoom({
     [localName, sendChat]
   )
 
+  // ── Hand raise handler ─────────────────────────────────────────────────────
+
   const handleToggleHand = useCallback(() => {
     const next = !handRaised
     setHandRaised(next)
     const evt = { identity: localParticipant.identity, name: localName, raised: next }
     sendHand(enc.encode(JSON.stringify(evt)), { reliable: true })
-    // Also reflect locally in raised hands list
     setRaisedHands((prev) => {
       if (next) {
         if (prev.find((h) => h.identity === localParticipant.identity)) return prev
@@ -815,6 +1121,75 @@ export function ClassroomRoom({
     })
   }, [handRaised, localParticipant.identity, localName, sendHand])
 
+  // ── PPT handlers (tutor only) ──────────────────────────────────────────────
+
+  const handleSlidesReady = useCallback((url: string, total: number) => {
+    setShowUpload(false)
+    setPptUrl(url)
+    setPptTotalPages(total)
+    setPptCurrentPage(1)
+    setPptActive(true)
+    setParticipantsOpen(false)
+
+    const evt: PptAction = { action: "start", url, total, page: 1 }
+    sendPpt(enc.encode(JSON.stringify(evt)), { reliable: true })
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-ppt-${Date.now()}`,
+        from: "system",
+        text: "Tutor started a slide presentation 📊",
+        ts: Date.now(),
+        type: "system",
+      },
+    ])
+  }, [sendPpt])
+
+  const handlePptNavigate = useCallback((page: number) => {
+    if (page < 1 || page > pptTotalPages) return
+    setPptCurrentPage(page)
+    const evt: PptAction = { action: "navigate", page }
+    sendPpt(enc.encode(JSON.stringify(evt)), { reliable: true })
+  }, [pptTotalPages, sendPpt])
+
+  const handlePptStop = useCallback(() => {
+    setPptActive(false)
+    setPptUrl(null)
+    setPptCurrentPage(1)
+    setPptTotalPages(0)
+    setParticipantsOpen(true)
+
+    const evt: PptAction = { action: "stop" }
+    sendPpt(enc.encode(JSON.stringify(evt)), { reliable: true })
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-ppt-end-${Date.now()}`,
+        from: "system",
+        text: "Slide presentation ended",
+        ts: Date.now(),
+        type: "system",
+      },
+    ])
+  }, [sendPpt])
+
+  // ── Keyboard shortcuts for slide navigation ────────────────────────────────
+  useEffect(() => {
+    if (!isTutor || !pptActive) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return
+      if (e.key === "ArrowRight" || e.key === "PageDown") {
+        handlePptNavigate(pptCurrentPage + 1)
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        handlePptNavigate(pptCurrentPage - 1)
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [isTutor, pptActive, pptCurrentPage, handlePptNavigate])
+
   const studentCount = participants.filter((p) => p.metadata !== "tutor").length
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -823,11 +1198,26 @@ export function ClassroomRoom({
     <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col overflow-hidden z-50">
       <AudioRenderer />
 
+      {/* ── Upload panel overlay (tutor only) ── */}
+      {showUpload && isTutor && (
+        <SlideUploadPanel
+          sessionId={sessionId}
+          onSlidesReady={handleSlidesReady}
+          onClose={() => setShowUpload(false)}
+        />
+      )}
+
       {/* ── Top bar ── */}
       <header className="h-11 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-2.5">
           <Radio className="size-3.5 text-rose-500 animate-pulse shrink-0" />
           <span className="font-bold text-sm truncate max-w-xs">{sessionTitle}</span>
+          {pptActive && (
+            <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">
+              <Presentation className="size-3" />
+              Presenting
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 text-xs text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded-full">
@@ -841,30 +1231,65 @@ export function ClassroomRoom({
       {/* ── Main body ── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Center: main video area */}
-        <div className="flex-1 flex flex-col overflow-hidden relative">
-          <div className="flex-1 overflow-hidden">
-            {pinnedId ? (
-              <PinnedVideoArea
-                identity={pinnedId}
-                containerRef={videoContainerRef}
-                isFullscreen={isFullscreen}
-                onToggleFullscreen={toggleFullscreen}
-                onUnpin={() => setPinnedId(null)}
+        {pptActive && pptUrl ? (
+          // ── PPT mode: split view (slides + tutor camera) ──────────────────
+          <>
+            {/* Slide viewer — 50% width */}
+            <div className="w-1/2 shrink-0 overflow-hidden relative">
+              <PptSlideViewer
+                fileUrl={pptUrl}
+                currentPage={pptCurrentPage}
+                onTotalPages={(total) => {
+                  if (total !== pptTotalPages) setPptTotalPages(total)
+                }}
               />
-            ) : (
-              <TutorVideoArea
-                containerRef={videoContainerRef}
-                isFullscreen={isFullscreen}
-                onToggleFullscreen={toggleFullscreen}
-              />
-            )}
-          </div>
-          {/* Live captions — bottom-center overlay like Google Meet / Zoom */}
-          <CaptionsOverlay />
-        </div>
+              {/* Slide number badge */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full font-medium pointer-events-none">
+                Slide {pptCurrentPage} of {pptTotalPages}
+              </div>
+              {/* Captions in PPT mode */}
+              <CaptionsOverlay />
+            </div>
 
-        {/* Participants column — collapsible, fixed width when open */}
+            {/* Tutor camera panel — 50% width, always visible for BSL signs */}
+            <div className="w-1/2 border-l border-zinc-800 flex flex-col overflow-hidden">
+              {/* Camera area */}
+              <div className="flex-1 overflow-hidden bg-zinc-900 relative">
+                <TutorCameraInset />
+              </div>
+              {/* BSL indicator label */}
+              <div className="shrink-0 px-3 py-2 bg-zinc-900 border-t border-zinc-800 text-center">
+                <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">
+                  Tutor · Sign Language
+                </span>
+              </div>
+            </div>
+          </>
+        ) : (
+          // ── Normal mode: full tutor video / pinned student ────────────────
+          <div className="flex-1 flex flex-col overflow-hidden relative">
+            <div className="flex-1 overflow-hidden">
+              {pinnedId ? (
+                <PinnedVideoArea
+                  identity={pinnedId}
+                  containerRef={videoContainerRef}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={toggleFullscreen}
+                  onUnpin={() => setPinnedId(null)}
+                />
+              ) : (
+                <TutorVideoArea
+                  containerRef={videoContainerRef}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={toggleFullscreen}
+                />
+              )}
+            </div>
+            <CaptionsOverlay />
+          </div>
+        )}
+
+        {/* Participants column — collapsible */}
         <div className={cn(
           "flex flex-col h-full overflow-hidden border-l border-zinc-800 transition-all duration-200",
           participantsOpen ? "w-72" : "w-10"
@@ -877,7 +1302,7 @@ export function ClassroomRoom({
           />
         </div>
 
-        {/* Chat column — collapsible, fixed width when open */}
+        {/* Chat column — collapsible */}
         <div className={cn(
           "flex flex-col h-full overflow-hidden border-l border-zinc-800 transition-all duration-200",
           chatOpen ? "w-72" : "w-10"
@@ -894,13 +1319,19 @@ export function ClassroomRoom({
         </div>
       </div>
 
-      {/* ── Bottom: controls row ── */}
+      {/* ── Bottom controls row ── */}
       <div className="h-12 bg-zinc-950 border-t border-zinc-800/60 shrink-0 flex items-center px-3 gap-2">
         <ControlsBar
           isTutor={isTutor}
           handRaised={handRaised}
           onToggleHand={handleToggleHand}
           onLeave={onLeave}
+          pptActive={pptActive}
+          pptCurrentPage={pptCurrentPage}
+          pptTotalPages={pptTotalPages}
+          onShowUpload={() => setShowUpload(true)}
+          onPptNavigate={handlePptNavigate}
+          onPptStop={handlePptStop}
         />
       </div>
     </div>

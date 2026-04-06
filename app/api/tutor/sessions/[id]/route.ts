@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { EgressClient, EncodedFileOutput, S3Upload } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
+import { withAudit } from "@/lib/audit"
 
 function egressClient() {
   return new EgressClient(
@@ -40,7 +41,7 @@ async function stopEgress(egressId: string): Promise<void> {
   }
 }
 
-export async function GET(
+async function handleGET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -96,7 +97,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function handlePATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -118,6 +119,8 @@ export async function PATCH(
       scheduledAt?: string
       durationMins?: number
       maxStudents?: number | null
+      visibility?: "PUBLIC" | "INVITE_ONLY"
+      invitedStudentIds?: string[]
     }
 
     const data: Record<string, unknown> = {}
@@ -126,6 +129,7 @@ export async function PATCH(
     if (body.scheduledAt) data.scheduledAt = new Date(body.scheduledAt)
     if (body.durationMins) data.durationMins = body.durationMins
     if (body.maxStudents !== undefined) data.maxStudents = body.maxStudents
+    if (body.visibility) data.visibility = body.visibility
     if (body.status) {
       data.status = body.status
       if (body.status === "LIVE" && !existing.startedAt) {
@@ -149,6 +153,17 @@ export async function PATCH(
     }
 
     const updated = await prisma.liveSession.update({ where: { id }, data })
+
+    // Sync invites when invitedStudentIds is provided
+    if (body.invitedStudentIds !== undefined && body.visibility === "INVITE_ONLY") {
+      await prisma.liveSessionInvite.deleteMany({ where: { sessionId: id } })
+      if (body.invitedStudentIds.length > 0) {
+        await prisma.liveSessionInvite.createMany({
+          data: body.invitedStudentIds.map((studentId) => ({ sessionId: id, studentId })),
+          skipDuplicates: true,
+        })
+      }
+    }
 
     // Notify students on critical status transitions
     if (body.status === "LIVE" || body.status === "CANCELLED") {
@@ -193,7 +208,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function handleDELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -238,3 +253,7 @@ export async function DELETE(
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
   }
 }
+
+export const GET = withAudit(handleGET)
+export const PATCH = withAudit(handlePATCH)
+export const DELETE = withAudit(handleDELETE)
