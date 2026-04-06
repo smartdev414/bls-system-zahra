@@ -3,10 +3,10 @@
 import { useState } from "react"
 import Link from "next/link"
 import {
-  BookOpen, Search, Star, Users, Layers, CheckCircle2,
+  BookOpen, Search, Star, Users, CheckCircle2,
   Loader2, Filter, ArrowRight, LogOut, Trophy, TrendingUp, Sparkles,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -23,8 +23,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type CourseProgress = {
   completedLessons: number
@@ -59,15 +57,11 @@ type CoursesData = {
   invitedByTutor: { id: string; name: string; avatarUrl: string | null } | null
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 const levelColor: Record<string, string> = {
   BEGINNER: "bg-emerald-100 text-emerald-700 border-emerald-200",
   INTERMEDIATE: "bg-amber-100 text-amber-700 border-amber-200",
   ADVANCED: "bg-rose-100 text-rose-700 border-rose-200",
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StudentCoursesPage() {
   const [query, setQuery] = useState("")
@@ -131,7 +125,7 @@ export default function StudentCoursesPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center min-h-[300px]">
+        <div className="flex items-center justify-center min-h-75">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : noResults ? (
@@ -172,14 +166,7 @@ export default function StudentCoursesPage() {
               </div>
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {data.recommendedCourses.map((c) => (
-                  <div key={c.id} className="relative">
-                    <div className="absolute -top-2 -right-2 z-10">
-                      <span className="flex items-center gap-1 bg-primary text-primary-foreground text-[10px] font-semibold px-2 py-0.5 rounded-full shadow">
-                        <Sparkles className="size-2.5" /> Recommended
-                      </span>
-                    </div>
-                    <CourseCard course={c} onMutated={refetch} />
-                  </div>
+                  <CourseCard key={c.id} course={c} onMutated={refetch} />
                 ))}
               </div>
             </section>
@@ -276,10 +263,9 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
 
   return (
     <>
-      <Card className={`overflow-hidden flex flex-col group transition-all duration-200 border-0 bg-card ${isCompleted ? "ring-1 ring-emerald-200" : ""}`}>
-
+      <Card className={`overflow-hidden pt-2 flex flex-col group transition-all duration-200 border-0 bg-card ${isCompleted ? "ring-1 ring-emerald-200" : ""}`}>
         {/* Thumbnail */}
-        <div className="px-3 pt-3 shrink-0">
+        <div className="px-2 shrink-0">
           <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden rounded-xl">
             {course.thumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -288,7 +274,7 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
               <BookOpen className="size-10 text-muted-foreground/30" />
             )}
             {/* Gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-t from-black/30 via-transparent to-transparent" />
             {/* Level badge — bottom left */}
             <div className="absolute bottom-2 left-2">
               <Badge className={`text-[10px] border backdrop-blur-sm bg-white/90 shadow-sm ${levelColor[course.level]}`}>
