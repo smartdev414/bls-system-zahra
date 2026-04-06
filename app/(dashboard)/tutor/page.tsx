@@ -1,10 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import {
   Users, BookOpen, Video, TrendingUp,
   Plus, CalendarPlus, ArrowRight, Clock, Star,
-  Loader2,
+  Loader2, UserPlus,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
+import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,12 +73,61 @@ export default function TutorDashboardPage() {
   const { data, loading } = useFetch<DashboardData>("/api/tutor/dashboard", {
     errorMessage: "Could not load dashboard",
   })
+  const [showInviteModal, setShowInviteModal] = useState(false)
 
   const firstName = data?.tutorName?.split(" ")[0] ?? "there"
   const stats = data?.stats
+  const isEmpty = !loading && stats && stats.publishedCourses === 0 && stats.draftCourses === 0 && stats.totalStudents === 0
 
   return (
     <div className="flex flex-col gap-8">
+
+      {/* Quick-start strip — shown only when no courses and no students */}
+      {isEmpty && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+          {/* Create a course */}
+          <div className="relative flex items-center gap-3 rounded-xl overflow-hidden border border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 px-4 py-3">
+            <div className="absolute right-0 top-0 size-20 rounded-full bg-violet-200/40 -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+            <div className="rounded-xl bg-violet-500 p-2 shrink-0 shadow-sm">
+              <BookOpen className="size-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-violet-900 leading-none">Create your first course</p>
+              <p className="text-[11px] text-violet-600/80 mt-0.5 truncate">Students enrol and follow you automatically</p>
+            </div>
+            <Button asChild size="sm" className="shrink-0 relative gap-1.5 bg-violet-600 hover:bg-violet-700 text-white border-0 shadow-sm">
+              <Link href="/tutor/courses/new">
+                <span className="absolute -inset-1 rounded-lg animate-ping bg-violet-400/50 pointer-events-none" />
+                <span className="absolute -inset-0.5 rounded-md animate-ping bg-violet-300/30 pointer-events-none [animation-delay:150ms]" />
+                <Plus className="size-3.5" /> Create
+              </Link>
+            </Button>
+          </div>
+
+          {/* Invite students */}
+          <div className="relative flex items-center gap-3 rounded-xl overflow-hidden border border-sky-200 bg-gradient-to-r from-sky-50 to-blue-50 px-4 py-3">
+            <div className="absolute right-0 top-0 size-20 rounded-full bg-sky-200/40 -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+            <div className="rounded-xl bg-sky-500 p-2 shrink-0 shadow-sm">
+              <UserPlus className="size-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-sky-900 leading-none">Invite your students</p>
+              <p className="text-[11px] text-sky-600/80 mt-0.5 truncate">Your courses get highlighted in their feed</p>
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0 relative gap-1.5 bg-sky-500 hover:bg-sky-600 text-white border-0 shadow-sm cursor-pointer"
+              onClick={() => setShowInviteModal(true)}
+            >
+              <span className="absolute -inset-1 rounded-lg animate-ping bg-sky-400/50 pointer-events-none" />
+              <span className="absolute -inset-0.5 rounded-md animate-ping bg-sky-300/30 pointer-events-none [animation-delay:150ms]" />
+              <UserPlus className="size-3.5" /> Invite
+            </Button>
+          </div>
+
+        </div>
+      )}
 
       {/* Welcome banner */}
       <div className="rounded-2xl bg-primary p-8 text-primary-foreground relative overflow-hidden">
@@ -365,6 +416,8 @@ export default function TutorDashboardPage() {
           </Card>
         </div>
       </div>
+
+      {showInviteModal && <InviteStudentsEmailModal onClose={() => setShowInviteModal(false)} />}
     </div>
   )
 }

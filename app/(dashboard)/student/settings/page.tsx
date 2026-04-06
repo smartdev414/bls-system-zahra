@@ -83,13 +83,11 @@ function AvatarUploader({ name, currentUrl, onUploaded }: {
     if (!file.type.startsWith("image/")) return
     setUploading(true)
     try {
-      const r = await fetch("/api/upload/presign", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, contentType: file.type, fileSize: file.size }),
-      })
+      const form = new FormData()
+      form.append("file", file)
+      const r = await fetch("/api/upload/image", { method: "POST", body: form })
       if (!r.ok) return
-      const { presignedUrl, fileUrl } = await r.json() as { presignedUrl: string; fileUrl: string }
-      await fetch(presignedUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file })
+      const { fileUrl } = await r.json() as { fileUrl: string }
       onUploaded(fileUrl)
     } finally { setUploading(false) }
   }
