@@ -52,7 +52,7 @@ async function handlePATCH(req: NextRequest, { params }: { params: Promise<{ id:
       assignedToId?: string | null
     }
 
-    const existing = await prisma.ticket.findUnique({ where: { id }, select: { id: true, submitterId: true, status: true } })
+    const existing = await prisma.ticket.findUnique({ where: { id }, select: { id: true, submitterId: true, status: true, submitter: { select: { role: true } } } })
     if (!existing) return NextResponse.json({ message: "Ticket not found" }, { status: 404 })
 
     const validStatuses: TicketStatus[] = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]
@@ -79,12 +79,13 @@ async function handlePATCH(req: NextRequest, { params }: { params: Promise<{ id:
     // Notify submitter when status changes
     if (body.status && body.status !== existing.status) {
       const isResolved = body.status === "RESOLVED" || body.status === "CLOSED"
+      const roleBase = existing.submitter.role === "TUTOR" ? "tutor" : "student"
       void createNotification(
         existing.submitterId,
         isResolved ? "TICKET_RESOLVED" : "TICKET_UPDATED",
         isResolved ? "Your ticket has been resolved" : "Your ticket was updated",
         `Status changed to ${body.status.toLowerCase().replace("_", " ")}`,
-        `/student/tickets/${id}`,
+        `/${roleBase}/tickets/${id}`,
       )
     }
 
