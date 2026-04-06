@@ -12,7 +12,7 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { id: true, title: true, submitterId: true },
+      select: { id: true, title: true, submitterId: true, submitter: { select: { role: true } } },
     })
     if (!ticket) return NextResponse.json({ message: "Ticket not found" }, { status: 404 })
 
@@ -35,12 +35,13 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
         ? content.trim().slice(0, 120) + "…"
         : content.trim()
 
+      const roleBase = ticket.submitter.role === "TUTOR" ? "tutor" : "student"
       void createNotification(
         ticket.submitterId,
         "TICKET_COMMENT",
         ticket.title,           // used as subject context in the email
         preview,                // shown in bell + email body as the comment preview
-        `/student/tickets/${id}`,
+        `/${roleBase}/tickets/${id}`,
       )
     }
 
