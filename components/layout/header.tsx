@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
-  Sun, Moon, Activity,
+  Sun, Moon, Activity, Ticket,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -50,6 +50,7 @@ const adminNav: NavItem[] = [
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
   { label: "Categories", href: "/admin/categories", icon: Tag },
   { label: "Dictionary", href: "/admin/signs", icon: Library },
+  { label: "Tickets", href: "/admin/tickets", icon: Ticket },
   { label: "API Logs", href: "/admin/audit-logs", icon: Activity },
 ]
 
