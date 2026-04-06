@@ -123,72 +123,71 @@ export default function TutorCoursesPage() {
         </div>
       ) : data?.courses.length ? (
         <>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {data.courses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((course) => {
-            const StatusIcon = statusIcon[course.status]
-            return (
-              <Card key={course.id} className="overflow-hidden group border-0 bg-card">
-                {/* Thumbnail */}
-                <div className="p-3 pb-0">
-                <div className="aspect-video bg-primary/10 flex items-center justify-center relative overflow-hidden rounded-lg">
-                  {course.thumbnailUrl ? (
-                    <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
-                  ) : (
-                    <BookOpen className="size-10 text-primary/40" />
-                  )}
-                  <div className="absolute top-2 right-2">
-                    <Badge variant="outline" className={`text-xs ${statusColor[course.status]}`}>
-                      <StatusIcon className="size-3 mr-1" />
-                      {course.status.charAt(0) + course.status.slice(1).toLowerCase()}
-                    </Badge>
-                  </div>
-                </div>
-                </div>
-
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base leading-snug group-hover:text-primary transition-colors">
-                      {course.title}
-                    </CardTitle>
-                    <Badge variant="outline" className={`text-[10px] shrink-0 ${levelColor[course.level]}`}>
-                      {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
-                </CardHeader>
-
-                <CardContent className="pt-0 space-y-4">
-                  {/* Stats */}
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Users className="size-3" /> {course.enrollmentCount} students
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Layers className="size-3" /> {course.sectionCount} sections
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <FileText className="size-3" /> {course.lessonCount} lessons
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {data.courses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((course) => {
+              const StatusIcon = statusIcon[course.status]
+              return (
+                <Card key={course.id} className="overflow-hidden group border-0 bg-card pt-0">
+                  <div className="p-3 pb-0">
+                    <div className="aspect-video bg-primary/10 flex items-center justify-center relative overflow-hidden rounded-lg">
+                      {course.thumbnailUrl ? (
+                        <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <BookOpen className="size-10 text-primary/40" />
+                      )}
+                      <div className="absolute top-2 right-2">
+                        <Badge variant="outline" className={`text-xs ${statusColor[course.status]}`}>
+                          <StatusIcon className="size-3 mr-1" />
+                          {course.status.charAt(0) + course.status.slice(1).toLowerCase()}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
 
-                  <Button asChild className="w-full" size="sm" variant="outline">
-                    <Link href={`/tutor/courses/${course.id}`}>
-                      Manage Course <ChevronRight className="size-4 ml-1" />
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-        {Math.ceil((data.courses.length) / PAGE_SIZE) > 1 && (
-          <Pagination
-            page={page}
-            totalPages={Math.ceil(data.courses.length / PAGE_SIZE)}
-            onPageChange={setPage}
-            className="mt-2"
-          />
-        )}
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-base leading-snug group-hover:text-primary transition-colors">
+                        {course.title}
+                      </CardTitle>
+                      <Badge variant="outline" className={`text-[10px] shrink-0 ${levelColor[course.level]}`}>
+                        {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
+                  </CardHeader>
+
+                  <CardContent className="pt-0 space-y-4">
+                    {/* Stats */}
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Users className="size-3" /> {course.enrollmentCount} students
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Layers className="size-3" /> {course.sectionCount} sections
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <FileText className="size-3" /> {course.lessonCount} lessons
+                      </div>
+                    </div>
+
+                    <Button asChild className="w-full" size="sm" variant="outline">
+                      <Link href={`/tutor/courses/${course.id}`}>
+                        Manage Course <ChevronRight className="size-4 ml-1" />
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+          {Math.ceil((data.courses.length) / PAGE_SIZE) > 1 && (
+            <Pagination
+              page={page}
+              totalPages={Math.ceil(data.courses.length / PAGE_SIZE)}
+              onPageChange={setPage}
+              className="mt-2"
+            />
+          )}
         </>
       ) : (
         <Card className="shadow-sm">
