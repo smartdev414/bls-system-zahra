@@ -171,7 +171,7 @@ export default function AdminTicketsPage() {
       <Card className="shadow-sm">
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative flex-1 min-w-50">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
                 placeholder="Search tickets…"
@@ -182,7 +182,7 @@ export default function AdminTicketsPage() {
             </div>
 
             <Select value={type} onValueChange={resetFilters(setType)}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-35">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -195,7 +195,7 @@ export default function AdminTicketsPage() {
             </Select>
 
             <Select value={status} onValueChange={resetFilters(setStatus)}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-35">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -208,7 +208,7 @@ export default function AdminTicketsPage() {
             </Select>
 
             <Select value={priority} onValueChange={resetFilters(setPriority)}>
-              <SelectTrigger className="w-[130px]">
+              <SelectTrigger className="w-32.5">
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>

@@ -16,8 +16,6 @@ import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch
 import { InviteStudentsModal } from "@/components/classroom/InviteStudentsModal"
 import { toast } from "sonner"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type Invite = {
   studentId: string
   studentName: string
@@ -113,7 +111,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-100">
         <Loader2 className="size-8 animate-spin text-primary" />
       </div>
     )

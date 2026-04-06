@@ -16,8 +16,6 @@ import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
 import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type DashboardData = {
   tutorName: string
   stats: {
@@ -87,7 +85,7 @@ export default function TutorDashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
           {/* Create a course */}
-          <div className="relative flex items-center gap-3 rounded-xl overflow-hidden border border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 px-4 py-3">
+          <div className="relative flex items-center gap-3 rounded-xl overflow-hidden border border-violet-200 bg-linear-to-r from-violet-50 to-purple-50 px-4 py-3">
             <div className="absolute right-0 top-0 size-20 rounded-full bg-violet-200/40 -translate-y-1/2 translate-x-1/2 pointer-events-none" />
             <div className="rounded-xl bg-violet-500 p-2 shrink-0 shadow-sm">
               <BookOpen className="size-4 text-white" />
@@ -106,7 +104,7 @@ export default function TutorDashboardPage() {
           </div>
 
           {/* Invite students */}
-          <div className="relative flex items-center gap-3 rounded-xl overflow-hidden border border-sky-200 bg-gradient-to-r from-sky-50 to-blue-50 px-4 py-3">
+          <div className="relative flex items-center gap-3 rounded-xl overflow-hidden border border-sky-200 bg-linear-to-r from-sky-50 to-blue-50 px-4 py-3">
             <div className="absolute right-0 top-0 size-20 rounded-full bg-sky-200/40 -translate-y-1/2 translate-x-1/2 pointer-events-none" />
             <div className="rounded-xl bg-sky-500 p-2 shrink-0 shadow-sm">
               <UserPlus className="size-4 text-white" />
