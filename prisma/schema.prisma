@@ -80,6 +80,7 @@ enum NotificationType {
   TICKET_CREATED
   TICKET_UPDATED
   TICKET_RESOLVED
+  TICKET_COMMENT
 }
 
 enum TicketType {

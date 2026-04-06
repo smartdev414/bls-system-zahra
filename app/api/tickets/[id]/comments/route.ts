@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { createNotification } from "@/lib/notifications"
 
 async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -9,7 +10,10 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
 
     const { id } = await params
-    const ticket = await prisma.ticket.findUnique({ where: { id }, select: { id: true, submitterId: true } })
+    const ticket = await prisma.ticket.findUnique({
+      where: { id },
+      select: { id: true, title: true, submitterId: true },
+    })
     if (!ticket) return NextResponse.json({ message: "Ticket not found" }, { status: 404 })
 
     // Only admin or the submitter can comment
@@ -24,6 +28,21 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
       data: { ticketId: id, authorId: session.sub, content: content.trim() },
       include: { author: { select: { id: true, name: true, role: true, avatarUrl: true } } },
     })
+
+    // Notify the ticket submitter when an admin replies (not when they comment on their own ticket)
+    if (session.role === "ADMIN" && ticket.submitterId !== session.sub) {
+      const preview = content.trim().length > 120
+        ? content.trim().slice(0, 120) + "…"
+        : content.trim()
+
+      void createNotification(
+        ticket.submitterId,
+        "TICKET_COMMENT",
+        ticket.title,           // used as subject context in the email
+        preview,                // shown in bell + email body as the comment preview
+        `/student/tickets/${id}`,
+      )
+    }
 
     return NextResponse.json({ comment }, { status: 201 })
   } catch (err) {
