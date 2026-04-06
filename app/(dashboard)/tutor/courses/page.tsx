@@ -118,7 +118,7 @@ export default function TutorCoursesPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center min-h-[300px]">
+        <div className="flex items-center justify-center min-h-75">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : data?.courses.length ? (
