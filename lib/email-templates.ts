@@ -317,6 +317,22 @@ export function tutorInviteEmail(
   }
 }
 
+function ticketComment(name: string, body: string, commentText: string, link?: string): string {
+  const content = `
+    ${greeting(name)}
+    <div style="margin-bottom:16px">${badge("Ticket Reply", PRIMARY)}</div>
+    <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:${TEXT_MAIN}">The support team replied to your ticket</h2>
+    ${bodyText(body)}
+    <div style="background:${BG};border-left:3px solid ${PRIMARY};border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 20px;font-size:14px;color:${TEXT_MUTED};line-height:1.6;font-style:italic">
+      ${commentText}
+    </div>
+    ${link ? ctaButton("View Ticket", link) : ""}
+    ${divider()}
+    ${bodyText("You can reply directly in your ticket page. We aim to resolve all issues as quickly as possible.")}
+  `
+  return layout(content, `Support reply: ${body}`)
+}
+
 function generic(name: string, title: string, body: string, link?: string): string {
   const content = `
     ${greeting(name)}
@@ -343,6 +359,8 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.COURSE_PUBLISHED,
   NotificationType.NEW_LESSON,
   NotificationType.RECORDING_READY,
+  NotificationType.TICKET_RESOLVED,
+  NotificationType.TICKET_COMMENT,
 ])
 
 export function renderEmailTemplate(
@@ -366,6 +384,8 @@ export function renderEmailTemplate(
     [NotificationType.COURSE_PUBLISHED]:   `🚀 ${title}`,
     [NotificationType.NEW_LESSON]:         `📖 ${title}`,
     [NotificationType.RECORDING_READY]:    `🎬 ${title}`,
+    [NotificationType.TICKET_RESOLVED]:    `✅ Your ticket has been resolved — ${title}`,
+    [NotificationType.TICKET_COMMENT]:     `💬 Support replied to your ticket — ${title}`,
   }
 
   const subject = subjects[type] ?? `BSL Platform — ${title}`
@@ -385,6 +405,9 @@ export function renderEmailTemplate(
     case NotificationType.COURSE_PUBLISHED:  html = coursePublished(recipientName, body, link);  break
     case NotificationType.NEW_LESSON:        html = newLesson(recipientName, body, link);        break
     case NotificationType.RECORDING_READY:   html = recordingReady(recipientName, body, link);   break
+    case NotificationType.TICKET_RESOLVED:   html = generic(recipientName, title, body, link);   break
+    // body = ticket title, title = comment preview (passed as title for subject reuse)
+    case NotificationType.TICKET_COMMENT:    html = ticketComment(recipientName, `Re: "${title}"`, body, link); break
     default:                                 html = generic(recipientName, title, body, link);   break
   }
 
