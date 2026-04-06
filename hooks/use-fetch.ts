@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +46,7 @@ type QueryResult<TData> = {
   loading: boolean;
   error: FetchError | null;
   data: TData | null;
+  mutate: React.Dispatch<React.SetStateAction<TData | null>>;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -236,5 +237,5 @@ export function useFetch<TData = unknown>(
     if (immediate) refetch();
   }, [immediate, refetch]);
 
-  return { refetch, loading, error, data };
+  return { refetch, loading, error, data, mutate: setData };
 }

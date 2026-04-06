@@ -92,7 +92,7 @@ export default function MessagingCenter({
   const [messages, setMessages] = useState<LocalMessage[]>([])
 
   // ── Conversation list ──────────────────────────────────────────────────────
-  const { data: convsData, loading: convsLoading, refetch: refetchConvs } = useFetch<ConvsData>(
+  const { data: convsData, loading: convsLoading, refetch: refetchConvs, mutate: mutateConvs } = useFetch<ConvsData>(
     "/api/messages/conversations",
     { errorMessage: "Could not load conversations" }
   )
@@ -109,8 +109,15 @@ export default function MessagingCenter({
       immediate: !!activeId,
       onSuccess: (d) => {
         setMessages(d.conversation.messages.map((m) => ({ ...m, status: "sent" as const })))
-        // Server marks messages as read on GET — refresh sidebar counts and nav badge
-        refetchConvs()
+        // Server marks messages as read on GET — clear unread count locally, refresh nav badge
+        mutateConvs((prev) => {
+          if (!prev) return prev
+          return {
+            conversations: prev.conversations.map((c) =>
+              c.id === activeId ? { ...c, unreadCount: 0 } : c
+            ),
+          }
+        })
         window.dispatchEvent(new Event("messages-read"))
       },
     }
@@ -160,8 +167,19 @@ export default function MessagingCenter({
         if (prev.some((m) => m.id === incoming.id)) return prev
         return [...prev, { ...incoming, status: "sent" as const }]
       })
-      // Update sidebar last-message
-      refetchConvs()
+      // Update sidebar last-message locally — no refetch needed
+      mutateConvs((prev) => {
+        if (!prev) return prev
+        return {
+          conversations: prev.conversations
+            .map((c) =>
+              c.id === activeId
+                ? { ...c, lastMessage: { content: incoming.content, createdAt: incoming.createdAt, senderId: incoming.senderId, isRead: false }, lastMessageAt: incoming.createdAt, unreadCount: 0 }
+                : c
+            )
+            .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()),
+        }
+      })
       // Mark messages as read on server (fire-and-forget)
       fetch(`/api/messages/conversations/${activeId}`, { method: "GET" }).catch(() => {})
     })
@@ -171,7 +189,7 @@ export default function MessagingCenter({
       pusher.unsubscribe(channelName)
       convChannelRef.current = null
     }
-  }, [activeId, refetchConvs])
+  }, [activeId, mutateConvs])
 
   // Clear messages and reload when switching conversation
   useEffect(() => {
@@ -211,7 +229,20 @@ export default function MessagingCenter({
           m.tempId === tempId ? { ...data.message, status: "sent" as const } : m
         )
       )
-      refetchConvs()
+      // Update sidebar last-message locally — no refetch needed
+      const msg = data.message
+      mutateConvs((prev) => {
+        if (!prev) return prev
+        return {
+          conversations: prev.conversations
+            .map((c) =>
+              c.id === activeId
+                ? { ...c, lastMessage: { content: msg.content, createdAt: msg.createdAt, senderId: msg.senderId, isRead: false }, lastMessageAt: msg.createdAt }
+                : c
+            )
+            .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()),
+        }
+      })
     } catch {
       // Mark as failed so user can retry
       setMessages((prev) =>
