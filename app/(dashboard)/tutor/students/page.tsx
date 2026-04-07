@@ -398,7 +398,7 @@ export default function TutorStudentsPage() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-1 justify-end">
-                      <Button
+                      {/* <Button
                         variant="ghost"
                         size="icon"
                         className="size-7 text-muted-foreground hover:text-foreground"
@@ -409,7 +409,7 @@ export default function TutorStudentsPage() {
                         {isMessaging
                           ? <Loader2 className="size-3.5 animate-spin" />
                           : <MessageSquare className="size-3.5" />}
-                      </Button>
+                      </Button> */}
                       <Button
                         variant="ghost"
                         size="icon"
