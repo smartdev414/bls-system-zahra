@@ -196,56 +196,59 @@ export default function TutorSettingsPage() {
           {/* ════ PROFILE ════ */}
           {section === "profile" && (
             <>
-              {/* Profile preview card */}
-              <div className="rounded-2xl border bg-card overflow-hidden">
-                <div className="h-24 bg-linear-to-r from-primary/20 via-primary/10 to-transparent" />
-                <div className="px-6 pb-6">
-                  <div className="flex items-end justify-between -mt-10 mb-4">
-                    <AvatarUploader
-                      name={name || user?.name || "?"}
-                      currentUrl={avatarUrl}
-                      onUploaded={(url) => {
-                        setAvatar(url)
-                        void saveProfile({ name, bio, qualifications, avatarUrl: url })
-                      }}
-                    />
-                    <p className="text-xs text-muted-foreground pb-1">Hover photo to change</p>
-                  </div>
+              {/* Portfolio preview — mirrors what students see */}
+              <div className="rounded-2xl overflow-hidden">
+                {/* Hero gradient */}
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-violet-600" />
+                  <div className="absolute -right-12 -top-12 size-56 rounded-full bg-white/5" />
+                  <div className="absolute left-1/3 -top-8 size-40 rounded-full bg-white/5" />
 
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-xl font-bold">{user?.name}</h2>
-                        {isVerified && (
-                          <Badge variant="outline" className="gap-1 text-xs bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300">
-                            <BadgeCheck className="size-3" />Verified
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-0.5">{user?.email}</p>
-
-                      {/* Qualifications preview */}
-                      {(user?.tutorProfile?.qualifications ?? []).length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {user!.tutorProfile!.qualifications.map((q) => (
-                            <Badge key={q} variant="secondary" className="text-[10px]">{q}</Badge>
-                          ))}
+                  <div className="relative px-6 py-8">
+                    <div className="flex flex-col sm:flex-row items-start gap-5">
+                      <AvatarUploader
+                        name={name || user?.name || "?"}
+                        currentUrl={avatarUrl}
+                        onUploaded={(url) => {
+                          setAvatar(url)
+                          void saveProfile({ name, bio, qualifications, avatarUrl: url })
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-2xl font-black text-white tracking-tight">{name || user?.name}</h2>
+                          {isVerified && <BadgeCheck className="size-5 text-white/80 shrink-0" />}
                         </div>
-                      )}
+                        <p className="text-sm text-white/60 mt-0.5">{user?.email}</p>
 
-                      {/* Bio preview */}
-                      {user?.tutorProfile?.bio && (
-                        <p className="text-sm text-muted-foreground mt-3 line-clamp-2 italic">
-                          "{user.tutorProfile.bio}"
+                        {bio && (
+                          <p className="text-sm text-white/75 mt-2 max-w-xl leading-relaxed line-clamp-2">
+                            {bio}
+                          </p>
+                        )}
+
+                        {qualifications.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-3">
+                            {qualifications.map((q) => (
+                              <span key={q} className="text-[11px] font-medium bg-white/15 text-white/90 rounded-full px-2.5 py-0.5">
+                                {q}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <p className="text-xs text-white/40 mt-3">
+                          Teaching since {user?.createdAt
+                            ? new Date(user.createdAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+                            : "—"}
                         </p>
-                      )}
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground shrink-0">
-                      Since {user?.createdAt
-                        ? new Date(user.createdAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })
-                        : "—"}
-                    </p>
                   </div>
+                </div>
+                <div className="bg-card border border-t-0 rounded-b-2xl px-6 py-3 flex items-center justify-between">
+                  <p className="text-[11px] text-muted-foreground">This is how students see your public profile.</p>
+                  <Badge variant="outline" className="text-[10px]">Live Preview</Badge>
                 </div>
               </div>
 

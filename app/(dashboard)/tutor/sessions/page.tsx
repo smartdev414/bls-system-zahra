@@ -150,10 +150,12 @@ function ScheduleSessionDialog({
   duplicateSession,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  showScheduleButton: showScheduleButton = true,
 }: {
   onCreated: () => void
   editSession?: SessionItem
   duplicateSession?: SessionItem
+  showScheduleButton?: boolean
   open?: boolean
   onOpenChange?: (v: boolean) => void
 }) {
@@ -308,7 +310,7 @@ function ScheduleSessionDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v && !isEdit) resetForm() }}>
-      {!isEdit && (
+      {!isEdit && showScheduleButton && (
         <DialogTrigger asChild>
           <Button size="sm">
             <CalendarPlus className="size-4 mr-1.5" /> Schedule Session
@@ -797,6 +799,7 @@ function SessionCard({
         open={duplicateOpen}
         onOpenChange={setDuplicateOpen}
         onCreated={() => { setDuplicateOpen(false); onMutated?.() }}
+        showScheduleButton={false}
       />
 
       {/* Recording viewer */}

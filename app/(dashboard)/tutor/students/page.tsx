@@ -4,8 +4,8 @@ import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import {
   Users, Search, BookOpen, Loader2, ChevronDown, ChevronUp,
-  MessageSquare, CalendarPlus, Check, X, Filter, ArrowUpDown, FolderOpen,
-  UserPlus, Trash2,
+  CalendarPlus, Check, Filter, ArrowUpDown, FolderOpen,
+  UserPlus
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -396,20 +396,7 @@ export default function TutorStudentsPage() {
                       <Progress value={overallCompletion} className="h-1.5 w-full" />
                     </div>
 
-                    {/* Actions */}
                     <div className="flex items-center gap-1 justify-end">
-                      {/* <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-foreground"
-                        title="Send message"
-                        disabled={isMessaging}
-                        onClick={() => openMessage(student)}
-                      >
-                        {isMessaging
-                          ? <Loader2 className="size-3.5 animate-spin" />
-                          : <MessageSquare className="size-3.5" />}
-                      </Button> */}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -422,7 +409,6 @@ export default function TutorStudentsPage() {
                     </div>
                   </div>
 
-                  {/* Expanded courses */}
                   {isExpanded && (
                     <div className="border-t bg-muted/10">
                       <div className="px-4 py-1.5 border-b border-dashed">

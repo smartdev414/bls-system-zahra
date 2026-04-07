@@ -11,6 +11,7 @@ async function handleGET(req: NextRequest) {
 
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
     const level = req.nextUrl.searchParams.get("level")?.toUpperCase().trim() ?? ""
+    const tutorId = req.nextUrl.searchParams.get("tutorId")?.trim() ?? ""
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
     const limit = 12
     const skip = (page - 1) * limit
@@ -24,6 +25,7 @@ async function handleGET(req: NextRequest) {
         ],
       } : {}),
       ...(level ? { level: level as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" } : {}),
+      ...(tutorId ? { tutorId } : {}),
     }
 
     // Look up which tutor invited this student (if any)

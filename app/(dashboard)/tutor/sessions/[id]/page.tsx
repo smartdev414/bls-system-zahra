@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation"
 import {
   ChevronLeft, Radio, CheckCircle2, XCircle, Clock,
   Users, Calendar, Loader2, BookOpen, Trash2, MonitorPlay, UserPlus, X,
+  MessageSquare, Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
 import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { InviteStudentsModal } from "@/components/classroom/InviteStudentsModal"
 import { toast } from "sonner"
@@ -44,6 +46,16 @@ type SessionDetail = {
   endedAt: string | null
   course: { id: string; title: string } | null
   attendances: Attendance[]
+}
+
+type JoinRequest = {
+  id: string
+  student: { id: string; name: string; email: string; avatarUrl: string | null }
+  message: string | null
+  status: "PENDING" | "APPROVED" | "REJECTED"
+  responseMessage: string | null
+  createdAt: string
+  respondedAt: string | null
 }
 
 type SessionData = { session: SessionDetail }
@@ -80,6 +92,28 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     `/api/tutor/sessions/${id}/invites`,
     { errorMessage: false }
   )
+
+  const { data: requestsData, refetch: refetchRequests } = useFetch<{ requests: JoinRequest[] }>(
+    `/api/tutor/sessions/${id}/requests`,
+    { errorMessage: false }
+  )
+
+  const pendingRequests = (requestsData?.requests ?? []).filter((r) => r.status === "PENDING")
+
+  async function handleRequest(requestId: string, action: "approve" | "reject", message?: string) {
+    const res = await fetch(`/api/tutor/sessions/${id}/requests`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId, action, message }),
+    })
+    if (res.ok) {
+      refetchRequests()
+      if (action === "approve") refetchInvites()
+      toast.success(action === "approve" ? "Request approved" : "Request declined")
+    } else {
+      toast.error("Could not handle request")
+    }
+  }
 
   async function removeInvite(studentId: string) {
     const res = await fetch(`/api/tutor/sessions/${id}/invites`, {
@@ -305,6 +339,26 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         </Card>
       )}
 
+      {/* Join Requests */}
+      {canStart && pendingRequests.length > 0 && (
+        <Card className="shadow-sm border-amber-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="size-4 text-amber-500" />
+              Join Requests
+              <Badge className="bg-amber-100 text-amber-700 border-amber-200 ml-1">{pendingRequests.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {pendingRequests.map((req) => (
+                <RequestRow key={req.id} request={req} onAction={handleRequest} />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Attendees */}
       <Card className="shadow-sm">
         <CardHeader className="pb-3">
@@ -383,6 +437,87 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           </CardContent>
         </Card>
       )}
+    </div>
+  )
+}
+
+// ─── Request row with inline approve/reject ──────────────────────────────────
+
+function RequestRow({
+  request,
+  onAction,
+}: {
+  request: JoinRequest
+  onAction: (id: string, action: "approve" | "reject", message?: string) => void
+}) {
+  const [replyMsg, setReplyMsg] = useState("")
+  const [showReply, setShowReply] = useState(false)
+  const initials = request.student.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+
+  return (
+    <div className="px-5 py-3">
+      <div className="flex items-start gap-3">
+        <Avatar className="size-8 shrink-0 mt-0.5">
+          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">{initials}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold">{request.student.name}</p>
+              <p className="text-xs text-muted-foreground">{request.student.email}</p>
+            </div>
+            <p className="text-[11px] text-muted-foreground shrink-0">
+              {new Date(request.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
+          {request.message && (
+            <div className="mt-2 rounded-lg bg-muted/50 border px-3 py-2 text-xs text-muted-foreground leading-relaxed">
+              &ldquo;{request.message}&rdquo;
+            </div>
+          )}
+
+          {/* Reply input */}
+          {showReply && (
+            <div className="mt-2">
+              <Input
+                placeholder="Add a message (optional)..."
+                value={replyMsg}
+                onChange={(e) => setReplyMsg(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 mt-2">
+            {!showReply ? (
+              <>
+                <Button size="sm" className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => onAction(request.id, "approve")}>
+                  <Check className="size-3" /> Approve
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/5" onClick={() => onAction(request.id, "reject")}>
+                  <XCircle className="size-3" /> Decline
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setShowReply(true)}>
+                  Reply & decide
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button size="sm" className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => onAction(request.id, "approve", replyMsg)}>
+                  <Check className="size-3" /> Approve
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/5" onClick={() => onAction(request.id, "reject", replyMsg)}>
+                  <XCircle className="size-3" /> Decline
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setShowReply(false)}>
+                  Cancel
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

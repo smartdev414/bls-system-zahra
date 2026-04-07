@@ -39,6 +39,10 @@ type NotificationType =
   | "NEW_LESSON"
   | "NEW_ENROLLMENT"
   | "NEW_REVIEW"
+  | "NEW_TUTOR_REVIEW"
+  | "SESSION_JOIN_REQUEST"
+  | "SESSION_REQUEST_APPROVED"
+  | "SESSION_REQUEST_REJECTED"
   | "QUIZ_PASSED"
   | "QUIZ_FAILED"
 
@@ -63,6 +67,10 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   NEW_LESSON: BookOpen,
   NEW_ENROLLMENT: UserPlus,
   NEW_REVIEW: Star,
+  NEW_TUTOR_REVIEW: Star,
+  SESSION_JOIN_REQUEST: UserPlus,
+  SESSION_REQUEST_APPROVED: Video,
+  SESSION_REQUEST_REJECTED: XCircle,
   QUIZ_PASSED: Award,
   QUIZ_FAILED: Award,
 }
@@ -78,6 +86,10 @@ const typeColor: Record<NotificationType, string> = {
   NEW_LESSON: "text-primary",
   NEW_ENROLLMENT: "text-green-500",
   NEW_REVIEW: "text-yellow-500",
+  NEW_TUTOR_REVIEW: "text-yellow-500",
+  SESSION_JOIN_REQUEST: "text-blue-500",
+  SESSION_REQUEST_APPROVED: "text-green-500",
+  SESSION_REQUEST_REJECTED: "text-destructive",
   QUIZ_PASSED: "text-green-500",
   QUIZ_FAILED: "text-destructive",
 }

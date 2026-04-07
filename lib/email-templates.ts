@@ -223,6 +223,21 @@ function newReview(name: string, body: string, link?: string): string {
   return layout(content, `New review: ${body}`)
 }
 
+function newTutorReview(name: string, body: string, link?: string): string {
+  const content = `
+    ${greeting(name)}
+    <div style="margin-bottom:16px">${badge("Tutor Review", "#D97706")}</div>
+    <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:${TEXT_MAIN}">A student rated you</h2>
+    <div style="background:${BG};border-left:3px solid #D97706;border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 20px;font-size:14px;color:${TEXT_MUTED};line-height:1.6;font-style:italic">
+      ${body}
+    </div>
+    ${link ? ctaButton("View All Reviews", link) : ""}
+    ${divider()}
+    ${bodyText("Student reviews help you understand how you're doing and where to improve. Keep up the great teaching!")}
+  `
+  return layout(content, `New tutor review: ${body}`)
+}
+
 function quizResult(name: string, body: string, passed: boolean, link?: string): string {
   const color = passed ? "#059669" : "#DC2626"
   const label = passed ? "Passed ✓" : "Not Passed"
@@ -353,6 +368,10 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.SESSION_DELETED,
   NotificationType.NEW_ENROLLMENT,
   NotificationType.NEW_REVIEW,
+  NotificationType.NEW_TUTOR_REVIEW,
+  NotificationType.SESSION_JOIN_REQUEST,
+  NotificationType.SESSION_REQUEST_APPROVED,
+  NotificationType.SESSION_REQUEST_REJECTED,
   NotificationType.QUIZ_PASSED,
   NotificationType.QUIZ_FAILED,
   NotificationType.NEW_MESSAGE,
@@ -378,6 +397,10 @@ export function renderEmailTemplate(
     [NotificationType.SESSION_DELETED]:    `Session removed — ${title}`,
     [NotificationType.NEW_ENROLLMENT]:     `🎓 ${title}`,
     [NotificationType.NEW_REVIEW]:         `⭐ New review — ${title}`,
+    [NotificationType.NEW_TUTOR_REVIEW]:   `⭐ A student rated you — ${title}`,
+    [NotificationType.SESSION_JOIN_REQUEST]:     `🙋 Join request — ${title}`,
+    [NotificationType.SESSION_REQUEST_APPROVED]: `✅ Request approved — ${title}`,
+    [NotificationType.SESSION_REQUEST_REJECTED]: `❌ Request declined — ${title}`,
     [NotificationType.QUIZ_PASSED]:        `✅ Quiz passed — ${title}`,
     [NotificationType.QUIZ_FAILED]:        `📝 Quiz result — ${title}`,
     [NotificationType.NEW_MESSAGE]:        `💬 ${title}`,
@@ -399,6 +422,10 @@ export function renderEmailTemplate(
     case NotificationType.SESSION_DELETED:   html = sessionDeleted(recipientName, body, link);   break
     case NotificationType.NEW_ENROLLMENT:    html = newEnrollment(recipientName, body, link);    break
     case NotificationType.NEW_REVIEW:        html = newReview(recipientName, body, link);        break
+    case NotificationType.NEW_TUTOR_REVIEW:        html = newTutorReview(recipientName, body, link);   break
+    case NotificationType.SESSION_JOIN_REQUEST:     html = generic(recipientName, title, body, link);   break
+    case NotificationType.SESSION_REQUEST_APPROVED: html = generic(recipientName, title, body, link);   break
+    case NotificationType.SESSION_REQUEST_REJECTED: html = generic(recipientName, title, body, link);   break
     case NotificationType.QUIZ_PASSED:       html = quizResult(recipientName, body, true, link); break
     case NotificationType.QUIZ_FAILED:       html = quizResult(recipientName, body, false, link);break
     case NotificationType.NEW_MESSAGE:       html = newMessage(recipientName, body, link);       break

@@ -4,14 +4,17 @@ import React, { useState, useMemo } from "react"
 import Link from "next/link"
 import {
   Video, Clock, Users, Radio,
-  BookOpen, Loader2, Sparkles,
+  BookOpen, Loader2, Sparkles, Lock,
   CalendarDays, List, Download, CheckCircle2,
-  XCircle, ChevronLeft, ChevronRight,
+  XCircle, ChevronLeft, ChevronRight, Send,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { useFetch } from "@/hooks/use-fetch"
-import { Pagination } from "@/components/ui/pagination"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
+import { useFetch, usePostCallback } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -24,10 +27,13 @@ type LiveSession = {
   durationMins: number
   maxStudents: number | null
   status: "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED"
+  visibility: "PUBLIC" | "INVITE_ONLY"
   tutor: { id: string; name: string; avatarUrl: string | null }
   course: { id: string; title: string } | null
   attendeeCount: number
   recordingUrl: string | null
+  isInvited: boolean
+  joinRequest: { id: string; status: "PENDING" | "APPROVED" | "REJECTED" } | null
 }
 
 type SessionsData = { sessions: LiveSession[] }
@@ -113,11 +119,28 @@ function TutorAvatar({ name }: { name: string }) {
 
 // ─── Session Card ─────────────────────────────────────────────────────────────
 
-function SessionCard({ session }: { session: LiveSession }) {
+function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?: () => void }) {
   const cfg = STATUS[session.status]
   const scheduled = new Date(session.scheduledAt)
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [requestMsg, setRequestMsg] = useState("")
+
+  const isPrivate = session.visibility === "INVITE_ONLY"
+  const canJoin = !isPrivate || session.isInvited || session.joinRequest?.status === "APPROVED"
+  const hasPending = session.joinRequest?.status === "PENDING"
+  const wasRejected = session.joinRequest?.status === "REJECTED"
+
+  const { execute: sendRequest, loading: requesting } = usePostCallback<
+    { request: object },
+    { message: string }
+  >(`/api/sessions/${session.id}/request`, {
+    successMessage: "Request sent!",
+    errorMessage: "Could not send request",
+    onSuccess: () => { setRequestOpen(false); setRequestMsg(""); onMutated?.() },
+  })
 
   return (
+    <>
     <div className={cn(
       "rounded-2xl border overflow-hidden transition-all hover:shadow-sm",
       cfg.card
@@ -147,6 +170,11 @@ function SessionCard({ session }: { session: LiveSession }) {
                 {session.status === "CANCELLED" && <XCircle className="size-3" />}
                 {cfg.label}
               </Badge>
+              {isPrivate && (
+                <Badge variant="outline" className="text-xs gap-1 border-violet-200 text-violet-600 bg-violet-50">
+                  <Lock className="size-2.5" /> Invite Only
+                </Badge>
+              )}
               {session.course && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <BookOpen className="size-3" />
@@ -208,23 +236,65 @@ function SessionCard({ session }: { session: LiveSession }) {
             {session.status === "COMPLETED" && !session.recordingUrl && (
               <span className="text-xs text-muted-foreground">No recording available</span>
             )}
-            {session.status === "SCHEDULED" && (
+            {session.status === "SCHEDULED" && canJoin && (
               <Button asChild size="sm" variant="outline" className="h-8 gap-1.5">
                 <Link href={`/student/classroom/${session.id}`}>
                   View Lobby
                 </Link>
               </Button>
             )}
+            {session.status === "SCHEDULED" && isPrivate && !canJoin && !hasPending && !wasRejected && (
+              <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setRequestOpen(true)}>
+                <Send className="size-3" /> Request to Join
+              </Button>
+            )}
+            {hasPending && (
+              <Badge variant="outline" className="text-xs gap-1 border-amber-200 text-amber-600 bg-amber-50">
+                <Clock className="size-3" /> Request Pending
+              </Badge>
+            )}
+            {wasRejected && (
+              <Badge variant="outline" className="text-xs gap-1 border-rose-200 text-rose-600 bg-rose-50">
+                <XCircle className="size-3" /> Request Declined
+              </Badge>
+            )}
           </div>
         </div>
       </div>
     </div>
+
+    {/* Request to join dialog */}
+    <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Request to Join</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Send a message to <span className="font-medium text-foreground">{session.tutor.name}</span> explaining why you&apos;d like to join this session.
+        </p>
+        <Textarea
+          placeholder="I'd love to join because..."
+          value={requestMsg}
+          onChange={(e) => setRequestMsg(e.target.value)}
+          rows={3}
+          className="resize-none"
+        />
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setRequestOpen(false)}>Cancel</Button>
+          <Button size="sm" disabled={requesting} onClick={() => sendRequest({ message: requestMsg })} className="gap-1.5">
+            {requesting ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+            {requesting ? "Sending..." : "Send Request"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
 // ─── Big Calendar View ────────────────────────────────────────────────────────
 
-function BigCalendar({ sessions }: { sessions: LiveSession[] }) {
+function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutated: () => void }) {
   const today = useMemo(() => new Date(), [])
   const [current, setCurrent] = useState(() => new Date())
   const [selectedDay, setSelectedDay] = useState<Date>(today)
@@ -346,7 +416,7 @@ function BigCalendar({ sessions }: { sessions: LiveSession[] }) {
               {selectedDay.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
               <Badge variant="secondary" className="text-xs">{selectedSessions.length}</Badge>
             </h3>
-            {selectedSessions.map((s) => <SessionCard key={s.id} session={s} />)}
+            {selectedSessions.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)}
           </div>
         )}
       </div>
@@ -530,57 +600,131 @@ function SessionsSidebar({ sessions }: { sessions: LiveSession[] }) {
 
 // ─── List View ────────────────────────────────────────────────────────────────
 
-const COMPLETED_PAGE_SIZE = 10
+const PAGE_SIZE = 6
 
-function ListView({ sessions }: { sessions: LiveSession[] }) {
-  const [completedPage, setCompletedPage] = useState(1)
+type Tab = "invited" | "public" | "private"
 
-  const live      = sessions.filter((s) => s.status === "LIVE")
-  const upcoming  = sessions.filter((s) => s.status === "SCHEDULED")
-  const completed = sessions.filter((s) => s.status === "COMPLETED")
-  const completedTotalPages = Math.ceil(completed.length / COMPLETED_PAGE_SIZE)
-  const completedPaged = completed.slice((completedPage - 1) * COMPLETED_PAGE_SIZE, completedPage * COMPLETED_PAGE_SIZE)
+const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
+  { id: "invited", label: "My Sessions", icon: CheckCircle2 },
+  { id: "public", label: "Public", icon: Users },
+  { id: "private", label: "Private", icon: Lock },
+]
+
+function sortUpcoming(a: LiveSession, b: LiveSession) {
+  // LIVE first, then SCHEDULED by date asc, then COMPLETED by date desc
+  const order = { LIVE: 0, SCHEDULED: 1, COMPLETED: 2, CANCELLED: 3 }
+  if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status]
+  if (a.status === "COMPLETED") return new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
+  return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+}
+
+function ListView({ sessions, onMutated }: { sessions: LiveSession[]; onMutated: () => void }) {
+  const [tab, setTab] = useState<Tab>("invited")
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+
+  // Categorise
+  const invited = useMemo(
+    () => sessions.filter((s) => s.visibility === "PUBLIC" || s.isInvited || s.joinRequest?.status === "APPROVED").sort(sortUpcoming),
+    [sessions],
+  )
+  const publicSessions = useMemo(
+    () => sessions.filter((s) => s.visibility === "PUBLIC").sort(sortUpcoming),
+    [sessions],
+  )
+  const privateSessions = useMemo(
+    () => sessions.filter((s) => s.visibility === "INVITE_ONLY" && !s.isInvited && s.joinRequest?.status !== "APPROVED").sort(sortUpcoming),
+    [sessions],
+  )
+
+  const current = tab === "invited" ? invited : tab === "public" ? publicSessions : privateSessions
+  const visible = current.slice(0, visibleCount)
+  const hasMore = visibleCount < current.length
+
+  // Reset visible count on tab change
+  React.useEffect(() => setVisibleCount(PAGE_SIZE), [tab])
+
+  // Scroll-based load more
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !hasMore) return
+
+    function onScroll() {
+      if (!el) return
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+        setVisibleCount((v) => Math.min(v + PAGE_SIZE, current.length))
+      }
+    }
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => el.removeEventListener("scroll", onScroll)
+  }, [hasMore, current.length])
+
+  const counts = { invited: invited.length, public: publicSessions.length, private: privateSessions.length }
 
   return (
     <div className="flex gap-5 items-start">
-      {/* Main list */}
-      <div className="flex-1 min-w-0 flex flex-col gap-8">
-        {live.length > 0 && (
-          <Section title="Live Now" dot>
-            {live.map((s) => <SessionCard key={s.id} session={s} />)}
-          </Section>
-        )}
-        <Section title="Upcoming Sessions">
-          {upcoming.length > 0 ? (
-            upcoming.map((s) => <SessionCard key={s.id} session={s} />)
+      <div className="flex-1 min-w-0 flex flex-col gap-4">
+        {/* Tabs */}
+        <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1">
+          {TAB_CONFIG.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all flex-1 justify-center",
+                tab === id
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="size-3.5" />
+              {label}
+              <span className={cn(
+                "text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none",
+                tab === id ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              )}>
+                {counts[id]}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Sessions list with scroll */}
+        <div ref={scrollRef} className="flex flex-col gap-3 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+          {visible.length > 0 ? (
+            <>
+              {visible.map((s) => (
+                <SessionCard key={s.id} session={s} onMutated={onMutated} />
+              ))}
+              {hasMore && (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </>
           ) : (
             <div className="rounded-2xl border border-dashed py-14 flex flex-col items-center gap-3 text-center">
               <div className="size-12 rounded-2xl bg-muted flex items-center justify-center">
                 <Sparkles className="size-5 text-muted-foreground" />
               </div>
               <div>
-                <p className="font-semibold text-sm">No upcoming sessions</p>
-                <p className="text-xs text-muted-foreground mt-1">Your tutor hasn&apos;t scheduled any classes yet.</p>
+                <p className="font-semibold text-sm">
+                  {tab === "invited" ? "No sessions for you yet" : tab === "public" ? "No public sessions" : "No private sessions"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {tab === "invited"
+                    ? "Sessions you can join will appear here."
+                    : tab === "public"
+                    ? "No open sessions are currently available."
+                    : "No invite-only sessions to request access to."}
+                </p>
               </div>
             </div>
           )}
-        </Section>
-        {completed.length > 0 && (
-          <Section title="Past Sessions">
-            {completedPaged.map((s) => <SessionCard key={s.id} session={s} />)}
-            {completedTotalPages > 1 && (
-              <Pagination
-                page={completedPage}
-                totalPages={completedTotalPages}
-                onPageChange={setCompletedPage}
-                className="mt-2"
-              />
-            )}
-          </Section>
-        )}
+        </div>
       </div>
 
-      {/* Sidebar — same layout as calendar */}
+      {/* Sidebar */}
       <SessionsSidebar sessions={sessions} />
     </div>
   )
@@ -603,7 +747,7 @@ function Section({ title, dot, children }: { title: string; dot?: boolean; child
 export default function ClassroomPage() {
   const [view, setView] = useState<"list" | "calendar">("list")
 
-  const { data, loading } = useFetch<SessionsData>("/api/sessions", {
+  const { data, loading, refetch } = useFetch<SessionsData>("/api/sessions", {
     errorMessage: "Could not load sessions",
   })
 
@@ -652,9 +796,9 @@ export default function ClassroomPage() {
           <p className="text-sm text-muted-foreground">Loading sessions…</p>
         </div>
       ) : view === "calendar" ? (
-        <BigCalendar sessions={sessions} />
+        <BigCalendar sessions={sessions} onMutated={refetch} />
       ) : (
-        <ListView sessions={sessions} />
+        <ListView sessions={sessions} onMutated={refetch} />
       )}
     </div>
   )

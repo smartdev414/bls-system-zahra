@@ -57,6 +57,12 @@ enum LiveSessionVisibility {
   INVITE_ONLY
 }
 
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum NotificationType {
   // Session events
   SESSION_SCHEDULED
@@ -76,6 +82,12 @@ enum NotificationType {
   QUIZ_FAILED
   // Messaging
   NEW_MESSAGE
+  // Session join requests
+  SESSION_JOIN_REQUEST
+  SESSION_REQUEST_APPROVED
+  SESSION_REQUEST_REJECTED
+  // Tutor review
+  NEW_TUTOR_REVIEW
   // Ticket / feedback events
   TICKET_CREATED
   TICKET_UPDATED
@@ -137,6 +149,9 @@ model User {
   submittedTickets      Ticket[]                @relation("SubmittedTickets")
   assignedTickets       Ticket[]                @relation("AssignedTickets")
   ticketComments        TicketComment[]         @relation("TicketComments")
+  givenTutorReviews     TutorReview[]           @relation("StudentTutorReviews")
+  receivedTutorReviews  TutorReview[]           @relation("TutorReceivedReviews")
+  sessionJoinRequests   SessionJoinRequest[]
 }
 
 model Notification {
@@ -316,8 +331,9 @@ model LiveSession {
   tutor       User                    @relation("TutorLiveSessions", fields: [tutorId], references: [id])
   course      Course?                 @relation(fields: [courseId], references: [id])
   attendances LiveSessionAttendance[]
-  invites     LiveSessionInvite[]
-  resources   LiveSessionResource[]
+  invites      LiveSessionInvite[]
+  joinRequests SessionJoinRequest[]
+  resources    LiveSessionResource[]
 
   @@index([tutorId])
   @@index([status])
@@ -352,6 +368,24 @@ model LiveSessionAttendance {
   @@index([studentId])
 }
 
+model SessionJoinRequest {
+  id             String            @id @default(cuid())
+  sessionId      String
+  studentId      String
+  message        String?
+  status         JoinRequestStatus @default(PENDING)
+  responseMessage String?
+  createdAt      DateTime          @default(now())
+  respondedAt    DateTime?
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student User        @relation(fields: [studentId], references: [id])
+
+  @@unique([sessionId, studentId])
+  @@index([sessionId])
+  @@index([studentId])
+}
+
 model Review {
   id        String   @id @default(cuid())
   studentId String
@@ -365,6 +399,22 @@ model Review {
 
   @@unique([studentId, courseId])
   @@index([courseId])
+}
+
+model TutorReview {
+  id        String   @id @default(cuid())
+  studentId String
+  tutorId   String
+  rating    Int      // 1–5
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student User @relation("StudentTutorReviews", fields: [studentId], references: [id])
+  tutor   User @relation("TutorReceivedReviews", fields: [tutorId], references: [id])
+
+  @@unique([studentId, tutorId])
+  @@index([tutorId])
 }
 
 model Conversation {
