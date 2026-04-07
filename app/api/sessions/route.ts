@@ -8,23 +8,20 @@ async function handleGET() {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
 
+    // Show ALL sessions (public + invite-only) to students
     const sessions = await prisma.liveSession.findMany({
       where: {
-        OR: [
-          { status: { in: ["SCHEDULED", "LIVE"] } },
-          { status: "COMPLETED" },
-        ],
-        AND: {
-          OR: [
-            { visibility: "PUBLIC" },
-            { visibility: "INVITE_ONLY", invites: { some: { studentId: session.sub } } },
-          ],
-        },
+        status: { in: ["SCHEDULED", "LIVE", "COMPLETED"] },
       },
       orderBy: { scheduledAt: "desc" },
       include: {
         tutor: { select: { id: true, name: true, avatarUrl: true } },
         course: { select: { id: true, title: true } },
+        invites: { where: { studentId: session.sub }, select: { id: true } },
+        joinRequests: {
+          where: { studentId: session.sub },
+          select: { id: true, status: true },
+        },
         _count: { select: { attendances: true } },
       },
     })
@@ -39,10 +36,13 @@ async function handleGET() {
         roomName: s.roomName,
         maxStudents: s.maxStudents,
         status: s.status,
+        visibility: s.visibility,
         tutor: s.tutor,
         course: s.course,
         attendeeCount: s._count.attendances,
         recordingUrl: s.recordingUrl ?? null,
+        isInvited: s.invites.length > 0,
+        joinRequest: s.joinRequests[0] ?? null,
       })),
     })
   } catch (err) {

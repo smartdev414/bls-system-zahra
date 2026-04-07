@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
   BookOpen, Search, Star, Users, CheckCircle2,
-  Loader2, Filter, ArrowRight, LogOut, Trophy, TrendingUp, Sparkles,
+  Loader2, Filter, ArrowRight, LogOut, Trophy, TrendingUp, Sparkles, X,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -64,15 +65,24 @@ const levelColor: Record<string, string> = {
 }
 
 export default function StudentCoursesPage() {
+  const searchParams = useSearchParams()
   const [query, setQuery] = useState("")
   const [levelFilter, setLevelFilter] = useState("all")
+  const [tutorFilter, setTutorFilter] = useState(searchParams.get("tutorId") ?? "")
   const [page, setPage] = useState(1)
+
+  // Sync tutorId from URL when navigating from tutor profile
+  useEffect(() => {
+    const id = searchParams.get("tutorId")
+    if (id) setTutorFilter(id)
+  }, [searchParams])
 
   const debouncedQuery = useDebounce(query)
 
   const params = new URLSearchParams()
   if (debouncedQuery) params.set("q", debouncedQuery)
   if (levelFilter !== "all") params.set("level", levelFilter)
+  if (tutorFilter) params.set("tutorId", tutorFilter)
   params.set("page", String(page))
 
   const { data, loading, refetch } = useFetch<CoursesData>(`/api/student/courses?${params.toString()}`, {
@@ -122,6 +132,19 @@ export default function StudentCoursesPage() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Active tutor filter */}
+      {tutorFilter && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Filtered by tutor:</span>
+          <button
+            onClick={() => { setTutorFilter(""); setPage(1) }}
+            className="inline-flex items-center gap-1 text-xs font-semibold bg-primary/10 text-primary rounded-full px-2.5 py-1 hover:bg-primary/20 transition-colors cursor-pointer"
+          >
+            Clear filter <X className="size-3" />
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center min-h-75">
@@ -297,15 +320,19 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
             <h3 className="font-bold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
               {course.title}
             </h3>
-            <div className="flex items-center gap-1.5 mt-1.5">
+            <Link
+              href={`/student/tutors/${course.tutor.id}`}
+              className="flex items-center gap-1.5 mt-1.5 group/tutor w-fit"
+              onClick={(e) => e.stopPropagation()}
+            >
               <Avatar className="size-5 shrink-0">
                 {course.tutor.avatarUrl && <AvatarImage src={course.tutor.avatarUrl} alt={course.tutor.name} />}
                 <AvatarFallback className="text-[8px] bg-primary/10 text-primary font-bold">
                   {course.tutor.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                 </AvatarFallback>
               </Avatar>
-              <span className="text-xs font-semibold text-primary truncate">{course.tutor.name}</span>
-            </div>
+              <span className="text-xs font-semibold text-primary truncate group-hover/tutor:underline">{course.tutor.name}</span>
+            </Link>
           </div>
 
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
-  Sun, Moon, Activity, Ticket,
+  Sun, Moon, Activity, Ticket, Star,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -37,6 +37,7 @@ type NavItem = {
 const studentNav: NavItem[] = [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
   { label: "Courses", href: "/student/courses", icon: BookOpen },
+  { label: "Tutors", href: "/student/tutors", icon: Users },
   { label: "Resources", href: "/student/resources", icon: FolderOpen },
   { label: "Dictionary", href: "/student/dictionary", icon: Library },
   { label: "Tests", href: "/student/tests", icon: FlaskConical },
@@ -61,6 +62,7 @@ const tutorNav: NavItem[] = [
   { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
   { label: "Dictionary", href: "/tutor/dictionary", icon: Library },
   { label: "Students", href: "/tutor/students", icon: Users },
+  { label: "Reviews", href: "/tutor/reviews", icon: Star },
   // { label: "Messages", href: "/tutor/messages", icon: MessageSquare },
   { label: "Tickets", href: "/tutor/tickets", icon: Ticket },
 ]
