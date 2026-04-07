@@ -369,6 +369,9 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.NEW_ENROLLMENT,
   NotificationType.NEW_REVIEW,
   NotificationType.NEW_TUTOR_REVIEW,
+  NotificationType.CERT_STEP_REVIEWED,
+  NotificationType.CERT_COMPLETED,
+  NotificationType.CERT_SUBMISSION_RECEIVED,
   NotificationType.SESSION_JOIN_REQUEST,
   NotificationType.SESSION_REQUEST_APPROVED,
   NotificationType.SESSION_REQUEST_REJECTED,
@@ -398,6 +401,9 @@ export function renderEmailTemplate(
     [NotificationType.NEW_ENROLLMENT]:     `🎓 ${title}`,
     [NotificationType.NEW_REVIEW]:         `⭐ New review — ${title}`,
     [NotificationType.NEW_TUTOR_REVIEW]:   `⭐ A student rated you — ${title}`,
+    [NotificationType.CERT_STEP_REVIEWED]:        `📋 ${title}`,
+    [NotificationType.CERT_COMPLETED]:             `🎓 ${title}`,
+    [NotificationType.CERT_SUBMISSION_RECEIVED]:   `📥 ${title}`,
     [NotificationType.SESSION_JOIN_REQUEST]:     `🙋 Join request — ${title}`,
     [NotificationType.SESSION_REQUEST_APPROVED]: `✅ Request approved — ${title}`,
     [NotificationType.SESSION_REQUEST_REJECTED]: `❌ Request declined — ${title}`,
@@ -423,6 +429,9 @@ export function renderEmailTemplate(
     case NotificationType.NEW_ENROLLMENT:    html = newEnrollment(recipientName, body, link);    break
     case NotificationType.NEW_REVIEW:        html = newReview(recipientName, body, link);        break
     case NotificationType.NEW_TUTOR_REVIEW:        html = newTutorReview(recipientName, body, link);   break
+    case NotificationType.CERT_STEP_REVIEWED:        html = generic(recipientName, title, body, link);   break
+    case NotificationType.CERT_COMPLETED:             html = generic(recipientName, title, body, link);   break
+    case NotificationType.CERT_SUBMISSION_RECEIVED:   html = generic(recipientName, title, body, link);   break
     case NotificationType.SESSION_JOIN_REQUEST:     html = generic(recipientName, title, body, link);   break
     case NotificationType.SESSION_REQUEST_APPROVED: html = generic(recipientName, title, body, link);   break
     case NotificationType.SESSION_REQUEST_REJECTED: html = generic(recipientName, title, body, link);   break

@@ -37,12 +37,15 @@ type NavItem = {
 const studentNav: NavItem[] = [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
   { label: "Courses", href: "/student/courses", icon: BookOpen },
+  { label: "Certifications", href: "/student/certifications", icon: ShieldCheck },
   { label: "Tutors", href: "/student/tutors", icon: Users },
-  { label: "Resources", href: "/student/resources", icon: FolderOpen },
+  { label: "Classroom", href: "/student/classroom", icon: Video },
+]
+
+const studentDropdownNav: NavItem[] = [
   { label: "Dictionary", href: "/student/dictionary", icon: Library },
   { label: "Tests", href: "/student/tests", icon: FlaskConical },
-  { label: "Classroom", href: "/student/classroom", icon: Video },
-  // { label: "Messages", href: "/student/messages", icon: MessageSquare },
+  { label: "Resources", href: "/student/resources", icon: FolderOpen },
   { label: "Tickets", href: "/student/tickets", icon: Ticket },
 ]
 
@@ -50,20 +53,26 @@ const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
+  { label: "Certifications", href: "/admin/certifications", icon: ShieldCheck },
   { label: "Categories", href: "/admin/categories", icon: Tag },
+  { label: "API Logs", href: "/admin/audit-logs", icon: Activity },
+]
+
+const adminDropdownNav: NavItem[] = [
   { label: "Dictionary", href: "/admin/signs", icon: Library },
   { label: "Tickets", href: "/admin/tickets", icon: Ticket },
-  { label: "API Logs", href: "/admin/audit-logs", icon: Activity },
 ]
 
 const tutorNav: NavItem[] = [
   { label: "Dashboard", href: "/tutor", icon: LayoutDashboard },
   { label: "My Courses", href: "/tutor/courses", icon: BookOpen },
   { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
-  { label: "Dictionary", href: "/tutor/dictionary", icon: Library },
   { label: "Students", href: "/tutor/students", icon: Users },
   { label: "Reviews", href: "/tutor/reviews", icon: Star },
-  // { label: "Messages", href: "/tutor/messages", icon: MessageSquare },
+]
+
+const tutorDropdownNav: NavItem[] = [
+  { label: "Dictionary", href: "/tutor/dictionary", icon: Library },
   { label: "Tickets", href: "/tutor/tickets", icon: Ticket },
 ]
 
@@ -98,6 +107,7 @@ export function Header({ role, user }: HeaderProps) {
   const isMessagesRole = role === "STUDENT" || role === "TUTOR"
 
   const navItems = role === "TUTOR" ? tutorNav : role === "ADMIN" ? adminNav : studentNav
+  const dropdownNavItems = role === "TUTOR" ? tutorDropdownNav : role === "ADMIN" ? adminDropdownNav : studentDropdownNav
 
   const { execute: signOut, loading: signingOut } = useDeleteCallback("/api/auth/logout", {
     successMessage: "Signed out successfully",
@@ -215,6 +225,20 @@ export function Header({ role, user }: HeaderProps) {
                     Settings
                   </Link>
                 </DropdownMenuItem>
+              )}
+
+              {dropdownNavItems.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  {dropdownNavItems.map(({ label, href, icon: Icon }) => (
+                    <DropdownMenuItem key={href} asChild>
+                      <Link href={href} className="cursor-pointer">
+                        <Icon className="size-4 mr-2" />
+                        {label}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </>
               )}
 
               <DropdownMenuSeparator />
