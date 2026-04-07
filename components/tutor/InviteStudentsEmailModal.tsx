@@ -131,7 +131,7 @@ export function InviteStudentsEmailModal({ onClose }: { onClose: () => void }) {
           {/* Tag input */}
           <div
             className={cn(
-              "min-h-[44px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
+              "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
               "flex flex-wrap gap-1.5 cursor-text focus-within:ring-1 focus-within:ring-ring"
             )}
             onClick={() => inputRef.current?.focus()}
@@ -159,7 +159,7 @@ export function InviteStudentsEmailModal({ onClose }: { onClose: () => void }) {
               onPaste={handlePaste}
               onBlur={() => { if (inputValue.trim()) commitInput(inputValue) }}
               placeholder={emails.length === 0 ? "alice@example.com, bob@example.com…" : ""}
-              className="flex-1 min-w-[180px] bg-transparent outline-none placeholder:text-muted-foreground text-sm"
+              className="flex-1 min-w-45 bg-transparent outline-none placeholder:text-muted-foreground text-sm"
             />
           </div>
           <p className="text-xs text-muted-foreground">Press <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Enter</kbd>, <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">,</kbd> or <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Space</kbd> to add each address.</p>

@@ -143,7 +143,6 @@ export default function StudentCoursesPage() {
         </Card>
       ) : (
         <>
-          {/* Recommended courses — shown when student was invited by a tutor */}
           {data?.recommendedCourses && data.recommendedCourses.length > 0 && data.invitedByTutor && (
             <section className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
@@ -222,8 +221,6 @@ export default function StudentCoursesPage() {
   )
 }
 
-// ─── Course card ──────────────────────────────────────────────────────────────
-
 function CourseCard({ course, onMutated }: { course: Course; onMutated: () => void }) {
   const [reviewOpen, setReviewOpen] = useState(false)
   const [rating, setRating] = useState(5)
@@ -263,24 +260,19 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
   return (
     <>
       <Card className={`overflow-hidden pt-2 flex flex-col group transition-all duration-200 border-0 bg-card ${isCompleted ? "ring-1 ring-emerald-200" : ""}`}>
-        {/* Thumbnail */}
         <div className="px-2 shrink-0">
           <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden rounded-xl">
             {course.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
             ) : (
               <BookOpen className="size-10 text-muted-foreground/30" />
             )}
-            {/* Gradient overlay */}
             <div className="absolute inset-0 bg-linear-to-t from-black/30 via-transparent to-transparent" />
-            {/* Level badge — bottom left */}
             <div className="absolute bottom-2 left-2">
               <Badge className={`text-[10px] border backdrop-blur-sm bg-white/90 shadow-sm ${levelColor[course.level]}`}>
                 {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
               </Badge>
             </div>
-            {/* Status badge — top right */}
             <div className="absolute top-2 right-2">
               {isCompleted ? (
                 <Badge className="bg-emerald-500 text-white text-[10px] shadow-sm gap-1">
@@ -290,7 +282,6 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
                 <Badge className="bg-primary/90 backdrop-blur-sm text-primary-foreground text-[10px] shadow-sm">Enrolled</Badge>
               ) : null}
             </div>
-            {/* Completed trophy */}
             {isCompleted && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="bg-emerald-500 rounded-full p-3 shadow-xl ring-4 ring-white/30">
@@ -301,9 +292,7 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex flex-col flex-1 px-4 pt-3 pb-4 gap-3">
-          {/* Title + tutor */}
           <div>
             <h3 className="font-bold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
               {course.title}
@@ -319,7 +308,6 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
             </div>
           </div>
 
-          {/* Meta row */}
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1"><BookOpen className="size-3" /> {course.lessonCount} lessons</span>
             <span className="flex items-center gap-1"><Users className="size-3" /> {course.enrollmentCount}</span>
@@ -332,7 +320,6 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
             ) : null}
           </div>
 
-          {/* Progress bar */}
           {course.isEnrolled && progress && (
             <div className="space-y-1">
               <Progress
@@ -346,7 +333,6 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex gap-2 mt-auto">
             {course.isEnrolled ? (
               <>
@@ -380,7 +366,6 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
         </div>
       </Card>
 
-      {/* Review dialog */}
       <Dialog open={reviewOpen} onOpenChange={(open: boolean) => !open && setReviewOpen(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
