@@ -79,9 +79,9 @@ export default function StudentCoursesPage() {
     errorMessage: "Could not load courses",
   })
 
-  const completed  = (data?.courses ?? []).filter((c) => c.progress?.isCompleted)
+  const completed = (data?.courses ?? []).filter((c) => c.progress?.isCompleted)
   const inProgress = (data?.courses ?? []).filter((c) => c.isEnrolled && !c.progress?.isCompleted)
-  const available  = (data?.courses ?? []).filter((c) => !c.isEnrolled)
+  const available = (data?.courses ?? []).filter((c) => !c.isEnrolled)
 
   function handleLevelChange(value: string) {
     setLevelFilter(value)
@@ -99,7 +99,6 @@ export default function StudentCoursesPage() {
         <p className="text-muted-foreground mt-1">Browse and enrol in BSL courses.</p>
       </div>
 
-      {/* Search + filter */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
