@@ -86,6 +86,10 @@ enum NotificationType {
   SESSION_JOIN_REQUEST
   SESSION_REQUEST_APPROVED
   SESSION_REQUEST_REJECTED
+  // Certification events
+  CERT_STEP_REVIEWED
+  CERT_COMPLETED
+  CERT_SUBMISSION_RECEIVED
   // Tutor review
   NEW_TUTOR_REVIEW
   // Ticket / feedback events
@@ -152,6 +156,8 @@ model User {
   givenTutorReviews     TutorReview[]           @relation("StudentTutorReviews")
   receivedTutorReviews  TutorReview[]           @relation("TutorReceivedReviews")
   sessionJoinRequests   SessionJoinRequest[]
+  certEnrollments       CertEnrollment[]
+  certReviews           CertStepSubmission[]    @relation("CertReviewer")
 }
 
 model Notification {
@@ -642,4 +648,138 @@ model TicketComment {
 
   @@index([ticketId])
   @@index([authorId])
+}
+
+// ─── Certification System ─────────────────────────────────────────────────────
+
+enum CertProgramStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CertStepType {
+  COURSE_COMPLETION
+  QUIZ
+  VIDEO_SUBMISSION
+  LIVE_ASSESSMENT
+}
+
+enum CertSubmissionStatus {
+  NOT_STARTED
+  PENDING        // submitted, awaiting review
+  UNDER_REVIEW   // reviewer is looking at it
+  PASSED
+  FAILED
+}
+
+enum CertEnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model CertProgram {
+  id          String            @id @default(cuid())
+  title       String
+  description String?
+  level       CourseLevel       @default(BEGINNER)
+  status      CertProgramStatus @default(DRAFT)
+  price       Int               @default(0)        // in pence (0 = free)
+  imageUrl    String?
+  validityMonths Int?                               // null = never expires
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  steps       CertStep[]
+  enrollments CertEnrollment[]
+
+  @@index([status])
+}
+
+model CertStep {
+  id           String       @id @default(cuid())
+  programId    String
+  title        String
+  description  String?
+  type         CertStepType
+  sortOrder    Int          @default(0)
+
+  // Type-specific config (JSON — keeps schema flexible for admin customisation)
+  // COURSE_COMPLETION: { "courseId": "..." }
+  // QUIZ:              { "passScore": 80, "questions": [...] }
+  // VIDEO_SUBMISSION:  { "prompt": "Record yourself signing...", "maxDurationSecs": 120 }
+  // LIVE_ASSESSMENT:   { "instructions": "You will be assessed on...", "durationMins": 30 }
+  config       Json         @default("{}")
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  program      CertProgram         @relation(fields: [programId], references: [id], onDelete: Cascade)
+  submissions  CertStepSubmission[]
+
+  @@index([programId])
+}
+
+model CertEnrollment {
+  id          String               @id @default(cuid())
+  studentId   String
+  programId   String
+  status      CertEnrollmentStatus @default(ACTIVE)
+  enrolledAt  DateTime             @default(now())
+  completedAt DateTime?
+
+  student     User                  @relation(fields: [studentId], references: [id])
+  program     CertProgram           @relation(fields: [programId], references: [id])
+  submissions CertStepSubmission[]
+  certificate Certificate?
+
+  @@unique([studentId, programId])
+  @@index([studentId])
+  @@index([programId])
+}
+
+model CertStepSubmission {
+  id           String               @id @default(cuid())
+  enrollmentId String
+  stepId       String
+  status       CertSubmissionStatus  @default(NOT_STARTED)
+
+  // Submission data (varies by step type)
+  // QUIZ:             { "attemptId": "...", "score": 85 }
+  // VIDEO_SUBMISSION: { "videoUrl": "...", "fileName": "..." }
+  // LIVE_ASSESSMENT:  { "sessionDate": "...", "assessorId": "..." }
+  data         Json                  @default("{}")
+
+  // Review fields (for VIDEO_SUBMISSION and LIVE_ASSESSMENT)
+  reviewerId   String?
+  reviewNote   String?
+  reviewedAt   DateTime?
+
+  submittedAt  DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  enrollment   CertEnrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  step         CertStep              @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  reviewer     User?                 @relation("CertReviewer", fields: [reviewerId], references: [id])
+
+  @@unique([enrollmentId, stepId])
+  @@index([enrollmentId])
+  @@index([stepId])
+}
+
+model Certificate {
+  id           String         @id @default(cuid())
+  enrollmentId String         @unique
+  token        String         @unique @default(cuid())  // public verification token
+  studentName  String                                    // snapshot at issue time
+  programTitle String                                    // snapshot at issue time
+  level        String
+  issuedAt     DateTime       @default(now())
+  expiresAt    DateTime?
+
+  enrollment   CertEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([token])
 }

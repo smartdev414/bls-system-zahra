@@ -40,6 +40,9 @@ type NotificationType =
   | "NEW_ENROLLMENT"
   | "NEW_REVIEW"
   | "NEW_TUTOR_REVIEW"
+  | "CERT_STEP_REVIEWED"
+  | "CERT_COMPLETED"
+  | "CERT_SUBMISSION_RECEIVED"
   | "SESSION_JOIN_REQUEST"
   | "SESSION_REQUEST_APPROVED"
   | "SESSION_REQUEST_REJECTED"
@@ -68,6 +71,9 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   NEW_ENROLLMENT: UserPlus,
   NEW_REVIEW: Star,
   NEW_TUTOR_REVIEW: Star,
+  CERT_STEP_REVIEWED: Award,
+  CERT_COMPLETED: Award,
+  CERT_SUBMISSION_RECEIVED: Award,
   SESSION_JOIN_REQUEST: UserPlus,
   SESSION_REQUEST_APPROVED: Video,
   SESSION_REQUEST_REJECTED: XCircle,
@@ -87,6 +93,9 @@ const typeColor: Record<NotificationType, string> = {
   NEW_ENROLLMENT: "text-green-500",
   NEW_REVIEW: "text-yellow-500",
   NEW_TUTOR_REVIEW: "text-yellow-500",
+  CERT_STEP_REVIEWED: "text-primary",
+  CERT_COMPLETED: "text-green-500",
+  CERT_SUBMISSION_RECEIVED: "text-yellow-500",
   SESSION_JOIN_REQUEST: "text-blue-500",
   SESSION_REQUEST_APPROVED: "text-green-500",
   SESSION_REQUEST_REJECTED: "text-destructive",

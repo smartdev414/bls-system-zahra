@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import {
   User, Lock, Info, Camera, Eye, EyeOff, Check, X,
   Shield, Calendar, Mail, Loader2, CheckCircle2, BookOpen,
-  GraduationCap, Video, ArrowRight,
+  GraduationCap, Video, ArrowRight, Award, Copy, Share2,
 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -64,11 +64,12 @@ function pwStrength(p: string): PwStrength {
   ][c] }
 }
 
-type Section = "profile" | "security" | "account"
+type Section = "profile" | "security" | "account" | "certifications"
 const NAV: { id: Section; label: string; icon: React.ElementType }[] = [
-  { id: "profile",  label: "Profile",  icon: User   },
-  { id: "security", label: "Security", icon: Lock   },
-  { id: "account",  label: "Account",  icon: Info   },
+  { id: "profile",         label: "Profile",        icon: User  },
+  { id: "certifications",  label: "Certifications", icon: Award },
+  { id: "security",        label: "Security",       icon: Lock  },
+  { id: "account",         label: "Account",        icon: Info  },
 ]
 
 // ─── Avatar uploader ─────────────────────────────────────────────────────────
@@ -405,6 +406,11 @@ export default function StudentSettingsPage() {
             </div>
           )}
 
+          {/* ════ CERTIFICATIONS ════ */}
+          {section === "certifications" && (
+            <CertificationsSection />
+          )}
+
           {/* ════ ACCOUNT ════ */}
           {section === "account" && (
             <div className="rounded-2xl border bg-card p-6">
@@ -429,6 +435,152 @@ export default function StudentSettingsPage() {
           )}
 
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Certifications Section ──────────────────────────────────────────────────
+
+import { Progress } from "@/components/ui/progress"
+import { toast } from "sonner"
+
+type CertEnrollment = {
+  id: string
+  status: string
+  passedCount: number
+  totalSteps: number
+  progress: number
+  certificate: { token: string; issuedAt: string; expiresAt: string | null } | null
+}
+
+type CertProgram = {
+  id: string
+  title: string
+  level: string
+  isEnrolled: boolean
+  enrollment: CertEnrollment | null
+}
+
+function CertificationsSection() {
+  const { data, loading } = useFetch<{ programs: CertProgram[] }>("/api/student/certifications", {
+    errorMessage: "Could not load certifications",
+  })
+
+  const programs = data?.programs ?? []
+  const enrolled = programs.filter((p) => p.isEnrolled)
+  const completed = enrolled.filter((p) => p.enrollment?.status === "COMPLETED")
+  const active = enrolled.filter((p) => p.enrollment?.status === "ACTIVE")
+
+  const appUrl = typeof window !== "undefined" ? window.location.origin : ""
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border bg-card p-6 flex justify-center py-12">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Earned certificates */}
+      <div className="rounded-2xl border bg-card p-6">
+        <h2 className="font-semibold mb-1 flex items-center gap-2">
+          <Award className="size-4 text-primary" /> Earned Certificates
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">Certificates you can share with employers.</p>
+
+        {completed.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {completed.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+                <div className="rounded-full bg-emerald-100 p-2 shrink-0">
+                  <Award className="size-4 text-emerald-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold">{p.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Issued {p.enrollment?.certificate?.issuedAt
+                      ? new Date(p.enrollment.certificate.issuedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                      : "—"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    size="sm" variant="outline"
+                    className="h-7 text-xs gap-1 border-emerald-300 text-emerald-700"
+                    onClick={() => {
+                      if (p.enrollment?.certificate?.token) {
+                        navigator.clipboard.writeText(`${appUrl}/verify/${p.enrollment.certificate.token}`)
+                        toast.success("Link copied!")
+                      }
+                    }}
+                  >
+                    <Copy className="size-3" /> Copy
+                  </Button>
+                  {p.enrollment?.certificate?.token && (
+                    <Button asChild size="sm" className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700">
+                      <Link href={`/verify/${p.enrollment.certificate.token}`} target="_blank">
+                        <Share2 className="size-3" /> View
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No certificates yet.{" "}
+            <Link href="/student/certifications" className="text-primary underline underline-offset-2">
+              Browse certifications
+            </Link>
+          </p>
+        )}
+      </div>
+
+      {/* In progress */}
+      {active.length > 0 && (
+        <div className="rounded-2xl border bg-card p-6">
+          <h2 className="font-semibold mb-4 flex items-center gap-2">
+            <BookOpen className="size-4 text-primary" /> In Progress
+          </h2>
+          <div className="flex flex-col gap-3">
+            {active.map((p) => (
+              <Link
+                key={p.id}
+                href={`/student/certifications/${p.id}`}
+                className="flex items-center gap-3 rounded-xl border px-4 py-3 hover:bg-muted/30 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold">{p.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {p.enrollment?.passedCount}/{p.enrollment?.totalSteps} steps completed
+                  </p>
+                </div>
+                <div className="w-20 shrink-0">
+                  <Progress value={p.enrollment?.progress ?? 0} className="h-1.5" />
+                  <p className="text-[10px] text-muted-foreground text-right mt-0.5">{p.enrollment?.progress}%</p>
+                </div>
+                <ArrowRight className="size-4 text-muted-foreground shrink-0" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick link */}
+      <div className="rounded-2xl border bg-card p-6">
+        <Link
+          href="/student/certifications"
+          className="flex items-center justify-between gap-3 text-sm font-medium hover:text-primary transition-colors"
+        >
+          <span className="flex items-center gap-2">
+            <Award className="size-4 text-primary" /> Browse all certifications
+          </span>
+          <ArrowRight className="size-4 text-muted-foreground" />
+        </Link>
       </div>
     </div>
   )
