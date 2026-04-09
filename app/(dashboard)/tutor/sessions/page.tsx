@@ -48,8 +48,6 @@ type SessionItem = {
 
 type SessionsData = { sessions: SessionItem[] }
 
-// ─── Status config ────────────────────────────────────────────────────────────
-
 const STATUS = {
   SCHEDULED: {
     label: "Scheduled",
@@ -84,8 +82,6 @@ const STATUS = {
     icon: XCircle,
   },
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() &&
@@ -601,8 +597,6 @@ function ScheduleSessionDialog({
     </Dialog>
   )
 }
-
-// ─── Session Card ─────────────────────────────────────────────────────────────
 
 function SessionCard({
   session,

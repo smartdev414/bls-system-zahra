@@ -43,7 +43,7 @@ export default function VerifyCertificatePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-50 to-sky-50">
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-violet-50 to-sky-50">
         <Loader2 className="size-8 animate-spin text-violet-600" />
       </div>
     )
@@ -51,7 +51,7 @@ export default function VerifyCertificatePage() {
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-50 to-orange-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-rose-50 to-orange-50 px-4">
         <div className="max-w-md w-full text-center">
           <div className="size-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
             <XCircle className="size-8 text-rose-500" />
@@ -68,12 +68,10 @@ export default function VerifyCertificatePage() {
   const cert = data.certificate
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-sky-50 flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-linear-to-br from-violet-50 via-white to-sky-50 flex items-center justify-center px-4 py-12">
       <div className="max-w-lg w-full">
-        {/* Certificate card */}
         <div className="rounded-2xl bg-white shadow-xl overflow-hidden border">
-          {/* Header */}
-          <div className="relative bg-gradient-to-br from-violet-600 via-violet-500 to-sky-500 px-8 py-10 text-center text-white">
+          <div className="relative bg-linear-to-br from-violet-600 via-violet-500 to-sky-500 px-8 py-10 text-center text-white">
             <div className="absolute -right-8 -top-8 size-40 rounded-full bg-white/5" />
             <div className="absolute -left-4 bottom-0 size-28 rounded-full bg-white/5" />
             <div className="relative">
