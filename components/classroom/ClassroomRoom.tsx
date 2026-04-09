@@ -7,12 +7,13 @@ import {
   useTracks,
   useDataChannel,
   useRoomContext,
+  useConnectionState,
   VideoTrack,
   AudioTrack,
   TrackToggle,
   isTrackReference,
 } from "@livekit/components-react"
-import { Track, RoomEvent } from "livekit-client"
+import { Track, RoomEvent, ConnectionState } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Mic, Camera, Monitor, Hand, PhoneOff, Send, Radio, Users,
@@ -601,10 +602,12 @@ function SlideUploadPanel({
   sessionId,
   onSlidesReady,
   onClose,
+  previousSlides,
 }: {
   sessionId: string
   onSlidesReady: (url: string, total: number) => void
   onClose: () => void
+  previousSlides: { url: string; total: number } | null
 }) {
   const [uploading, setUploading]   = useState(false)
   const [progress, setProgress]     = useState("")
@@ -613,6 +616,7 @@ function SlideUploadPanel({
 
   const handleFile = async (file: File) => {
     setError("")
+
     setUploading(true)
     setProgress("Getting upload URL…")
 
@@ -655,15 +659,28 @@ function SlideUploadPanel({
         throw new Error(err.message ?? "Could not save slides")
       }
 
-      // 4. Load PDF in browser to determine page count
+      // 4. Determine slide/page count
       setProgress("Reading slide count…")
-      const pdfjsLib = await import("pdfjs-dist")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-        `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+      const isPdf = file.type === "application/pdf"
+      let total: number
 
-      const pdf = await pdfjsLib.getDocument(fileUrl).promise
-      const total = pdf.numPages
+      if (isPdf) {
+        const pdfjsLib = await import("pdfjs-dist")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
+          `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+        const arrayBuffer = await file.arrayBuffer()
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+        total = pdf.numPages
+      } else {
+        // PPTX: count slides by inspecting the ZIP structure
+        const JSZip = (await import("jszip")).default
+        const zip = await JSZip.loadAsync(file)
+        const slideFiles = Object.keys(zip.files).filter(
+          (name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)
+        )
+        total = slideFiles.length || 1
+      }
 
       onSlidesReady(fileUrl, total)
     } catch (err: unknown) {
@@ -692,7 +709,6 @@ function SlideUploadPanel({
 
         <p className="text-xs text-zinc-400 mb-4">
           Upload a PDF or PowerPoint file. Students will see your slides alongside your camera.
-          For best results, export your PowerPoint as a PDF first.
         </p>
 
         {error && (
@@ -725,6 +741,16 @@ function SlideUploadPanel({
               <Upload className="size-4" />
               Choose PDF or PPTX file
             </button>
+
+            {previousSlides && (
+              <button
+                onClick={() => onSlidesReady(previousSlides.url, previousSlides.total)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 transition-all text-sm font-medium mt-3"
+              >
+                <Presentation className="size-4" />
+                Resume previous slides
+              </button>
+            )}
           </>
         )}
       </div>
@@ -939,6 +965,7 @@ export function ClassroomRoom({
 }) {
   const { localParticipant } = useLocalParticipant()
   const participants          = useParticipants()
+  const connectionState       = useConnectionState()
 
   const localName = localParticipant.name ?? localParticipant.identity
 
@@ -958,6 +985,8 @@ export function ClassroomRoom({
   const [pptCurrentPage, setPptCurrentPage] = useState(1)
   const [pptTotalPages,  setPptTotalPages]  = useState(0)
   const [showUpload,     setShowUpload]     = useState(false)
+  // Remember uploaded slides so tutor can resume without re-uploading
+  const uploadedSlidesRef = useRef<{ url: string; total: number } | null>(null)
 
   // Refs used for sync_response when participants join late
   const pptStateRef = useRef({ active: false, url: "", total: 0, page: 1 })
@@ -1069,14 +1098,20 @@ export function ClassroomRoom({
   const hasSentSyncRequest = useRef(false)
   useEffect(() => {
     if (isTutor || hasSentSyncRequest.current) return
+    if (connectionState !== ConnectionState.Connected) return
     const timer = setTimeout(() => {
       hasSentSyncRequest.current = true
       const req: PptAction = { action: "sync_request" }
-      sendPpt(enc.encode(JSON.stringify(req)), { reliable: true })
+      try {
+        sendPpt(enc.encode(JSON.stringify(req)), { reliable: true })
+      } catch {
+        // Data channel not ready yet — will sync on next PPT action from tutor
+        hasSentSyncRequest.current = false
+      }
     }, 2000)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTutor])
+  }, [isTutor, connectionState])
 
   // ── Fullscreen ─────────────────────────────────────────────────────────────
 
@@ -1123,16 +1158,25 @@ export function ClassroomRoom({
 
   // ── PPT handlers (tutor only) ──────────────────────────────────────────────
 
+  const safeSendPpt = useCallback((data: PptAction) => {
+    if (connectionState !== ConnectionState.Connected) return
+    try {
+      sendPpt(enc.encode(JSON.stringify(data)), { reliable: true })
+    } catch {
+      // Connection may have dropped — ignore silently
+    }
+  }, [connectionState, sendPpt])
+
   const handleSlidesReady = useCallback((url: string, total: number) => {
     setShowUpload(false)
+    uploadedSlidesRef.current = { url, total }
     setPptUrl(url)
     setPptTotalPages(total)
     setPptCurrentPage(1)
     setPptActive(true)
     setParticipantsOpen(false)
 
-    const evt: PptAction = { action: "start", url, total, page: 1 }
-    sendPpt(enc.encode(JSON.stringify(evt)), { reliable: true })
+    safeSendPpt({ action: "start", url, total, page: 1 })
 
     setMessages((prev) => [
       ...prev,
@@ -1144,24 +1188,20 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [sendPpt])
+  }, [safeSendPpt])
 
   const handlePptNavigate = useCallback((page: number) => {
     if (page < 1 || page > pptTotalPages) return
     setPptCurrentPage(page)
-    const evt: PptAction = { action: "navigate", page }
-    sendPpt(enc.encode(JSON.stringify(evt)), { reliable: true })
-  }, [pptTotalPages, sendPpt])
+    safeSendPpt({ action: "navigate", page })
+  }, [pptTotalPages, safeSendPpt])
 
   const handlePptStop = useCallback(() => {
     setPptActive(false)
-    setPptUrl(null)
     setPptCurrentPage(1)
-    setPptTotalPages(0)
     setParticipantsOpen(true)
 
-    const evt: PptAction = { action: "stop" }
-    sendPpt(enc.encode(JSON.stringify(evt)), { reliable: true })
+    safeSendPpt({ action: "stop" })
 
     setMessages((prev) => [
       ...prev,
@@ -1173,7 +1213,7 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [sendPpt])
+  }, [safeSendPpt])
 
   // ── Keyboard shortcuts for slide navigation ────────────────────────────────
   useEffect(() => {
@@ -1204,6 +1244,7 @@ export function ClassroomRoom({
           sessionId={sessionId}
           onSlidesReady={handleSlidesReady}
           onClose={() => setShowUpload(false)}
+          previousSlides={uploadedSlidesRef.current}
         />
       )}
 

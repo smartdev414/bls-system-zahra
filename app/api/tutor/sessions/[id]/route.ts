@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { EgressClient, EncodedFileOutput, S3Upload } from "livekit-server-sdk"
+import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 
@@ -11,26 +11,6 @@ function egressClient() {
     process.env.LIVEKIT_API_KEY!,
     process.env.LIVEKIT_API_SECRET!,
   )
-}
-
-async function startEgress(roomName: string, sessionId: string): Promise<string | null> {
-  try {
-    const s3Upload = new S3Upload({
-      accessKey: process.env.AWS_ACCESS_KEY_ID!,
-      secret: process.env.AWS_SECRET_ACCESS_KEY!,
-      bucket: process.env.AWS_S3_BUCKET!,
-      region: process.env.AWS_REGION ?? "eu-west-2",
-    })
-    const fileOutput = new EncodedFileOutput({
-      filepath: `recordings/${sessionId}.mp4`,
-      output: { case: "s3", value: s3Upload },
-    })
-    const info = await egressClient().startRoomCompositeEgress(roomName, { file: fileOutput })
-    return info.egressId
-  } catch (e) {
-    console.error("[egress] startEgress failed", e)
-    return null
-  }
 }
 
 async function stopEgress(egressId: string): Promise<void> {
@@ -132,22 +112,23 @@ async function handlePATCH(
     if (body.visibility) data.visibility = body.visibility
     if (body.status) {
       data.status = body.status
+      console.log("[session] status transition:", existing.status, "→", body.status, "startedAt:", existing.startedAt, "endedAt:", existing.endedAt)
       if (body.status === "LIVE" && !existing.startedAt) {
         data.startedAt = new Date()
-        const egressId = await startEgress(existing.roomName, id)
-        if (egressId) {
-          data.egressId = egressId
-          data.recordingKey = `recordings/${id}.mp4`
-        }
+        // Note: egress (recording) is started from /api/sessions/[id]/recording/start
+        // after the tutor has joined the room, because the room must exist first
       }
       if (body.status === "COMPLETED" && !existing.endedAt) {
         data.endedAt = new Date()
+        console.log("[session] stopping egress, egressId:", existing.egressId)
         if (existing.egressId) {
           await stopEgress(existing.egressId)
-          // Set recordingUrl optimistically — webhook will confirm once upload finishes
           const key = existing.recordingKey ?? `recordings/${id}.mp4`
           data.recordingKey = key
           data.recordingUrl  = key
+          console.log("[session] recording URL set to:", key)
+        } else {
+          console.log("[session] no egressId found, recording not available")
         }
       }
     }

@@ -42,6 +42,7 @@ type SessionItem = {
   maxStudents: number | null
   course: { id: string; title: string } | null
   recordingUrl: string | null
+  egressId: string | null
   startedAt: string | null
   endedAt: string | null
 }
@@ -762,7 +763,12 @@ function SessionCard({
               </Button>
             </>
           )}
-          {session.status === "COMPLETED" && !session.recordingUrl && (
+          {session.status === "COMPLETED" && !session.recordingUrl && session.egressId && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 className="size-3 animate-spin" /> Recording processing…
+            </span>
+          )}
+          {session.status === "COMPLETED" && !session.recordingUrl && !session.egressId && (
             <span className="text-xs text-muted-foreground">No recording available</span>
           )}
           {session.status === "CANCELLED" && (

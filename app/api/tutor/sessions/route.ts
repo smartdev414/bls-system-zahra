@@ -39,6 +39,7 @@ async function handleGET() {
         startedAt: s.startedAt?.toISOString() ?? null,
         endedAt: s.endedAt?.toISOString() ?? null,
         recordingUrl: s.recordingUrl ?? null,
+        egressId: s.egressId ?? null,
       })),
     })
   } catch (err) {

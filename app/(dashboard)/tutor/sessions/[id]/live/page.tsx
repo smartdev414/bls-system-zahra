@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useEffect } from "react"
+import { use, useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2, AlertCircle } from "lucide-react"
 import { LiveKitRoom } from "@livekit/components-react"
@@ -67,16 +67,31 @@ export default function TutorLiveClassroomPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])
 
-  const handleLeave = async () => {
+  const handleLeave = () => {
     setEnded(true)
-    router.push(`/tutor/sessions/${id}`)
+    router.replace(`/tutor/sessions/${id}`)
   }
 
   const handleEndSession = async () => {
-    await patchStatus({ status: "COMPLETED" })
-    setEnded(true)
-    router.push(`/tutor/sessions/${id}`)
+    try {
+      await patchStatus({ status: "COMPLETED" })
+    } catch {
+      // Still navigate even if the patch fails
+    } finally {
+      setEnded(true)
+      router.replace(`/tutor/sessions/${id}`)
+    }
   }
+
+  // Start recording once the tutor has connected to the room
+  const recordingStarted = useRef(false)
+  const startRecording = useCallback(() => {
+    if (recordingStarted.current) return
+    recordingStarted.current = true
+    fetch(`/api/sessions/${id}/recording/start`, { method: "POST" })
+      .then((r) => { if (!r.ok) console.error("[recording] failed to start") })
+      .catch((e) => console.error("[recording] error", e))
+  }, [id])
 
   // ── Loading / error states ──────────────────────────────────────────────────
 
@@ -114,6 +129,7 @@ export default function TutorLiveClassroomPage({
       video={true}
       audio={true}
       onDisconnected={handleLeave}
+      onConnected={startRecording}
     >
       <ClassroomRoom
         isTutor={true}
