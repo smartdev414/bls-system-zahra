@@ -19,12 +19,13 @@ import {
   Mic, Camera, Monitor, Hand, PhoneOff, Send, Radio, Users,
   Maximize2, Minimize2, ChevronDown, MessageSquare,
   HandMetal, Presentation, ChevronLeft, ChevronRight,
-  Upload, X, Loader2, MousePointer2, UserPlus, Check, XCircle,
-  ArrowLeft, Megaphone, Info,
+  Upload, X, Loader2, UserPlus, Check, XCircle,
+  ArrowLeft, Megaphone, Info, Pen,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { PptSlideViewer } from "./PptSlideViewer"
+import { SlidePicker } from "./SlidePicker"
 
 // ─── Data channel topics ──────────────────────────────────────────────────────
 
@@ -160,7 +161,9 @@ function TutorCameraInset() {
     <div className="relative w-full h-full bg-zinc-900 overflow-hidden">
       {tutorCam ? (
         <>
-          <VideoTrack trackRef={tutorCam} className="w-full h-full object-cover" />
+          {/* object-contain mirrors the slide panel's fit-mode, so the camera and
+              slide areas show their full content without cropping. */}
+          <VideoTrack trackRef={tutorCam} className="w-full h-full object-contain" />
           {/* BSL visibility badge */}
           <div className="absolute top-2 left-2 bg-amber-500/80 text-black text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
             BSL · {name}
@@ -676,6 +679,13 @@ function ChatPanel({
 
 // ─── Tutor slide upload panel ─────────────────────────────────────────────────
 
+type UploadedSlides = {
+  url:      string
+  total:    number
+  mimeType: string
+  fileName: string
+}
+
 function SlideUploadPanel({
   sessionId,
   onSlidesReady,
@@ -683,9 +693,9 @@ function SlideUploadPanel({
   previousSlides,
 }: {
   sessionId: string
-  onSlidesReady: (url: string, total: number) => void
+  onSlidesReady: (data: UploadedSlides) => void
   onClose: () => void
-  previousSlides: { url: string; total: number } | null
+  previousSlides: UploadedSlides | null
 }) {
   const [uploading, setUploading]   = useState(false)
   const [progress, setProgress]     = useState("")
@@ -760,7 +770,7 @@ function SlideUploadPanel({
         total = slideFiles.length || 1
       }
 
-      onSlidesReady(fileUrl, total)
+      onSlidesReady({ url: fileUrl, total, mimeType: file.type, fileName: file.name })
     } catch (err: unknown) {
       setError((err as Error).message ?? "Upload failed")
     } finally {
@@ -822,7 +832,7 @@ function SlideUploadPanel({
 
             {previousSlides && (
               <button
-                onClick={() => onSlidesReady(previousSlides.url, previousSlides.total)}
+                onClick={() => onSlidesReady(previousSlides)}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 transition-all text-sm font-medium mt-3"
               >
                 <Presentation className="size-4" />
@@ -845,10 +855,13 @@ function ControlsBar({
   onLeave,
   // PPT controls (tutor only)
   pptActive,
-  pptCurrentPage,
-  pptTotalPages,
+  // Position within the tutor's chosen subset of slides (0-based)
+  presentationIdx,
+  // Count of slides the tutor selected to present
+  selectedCount,
   onShowUpload,
-  onPptNavigate,
+  onPptNext,
+  onPptPrev,
   onPptStop,
   // Pointer (tutor only, active during slide presentation)
   pointerMode,
@@ -859,10 +872,11 @@ function ControlsBar({
   onToggleHand: () => void
   onLeave: () => void
   pptActive: boolean
-  pptCurrentPage: number
-  pptTotalPages: number
+  presentationIdx: number
+  selectedCount: number
   onShowUpload: () => void
-  onPptNavigate: (page: number) => void
+  onPptNext: () => void
+  onPptPrev: () => void
   onPptStop: () => void
   pointerMode: boolean
   onTogglePointer: () => void
@@ -905,25 +919,28 @@ function ControlsBar({
 
       {isTutor && pptActive && (
         <>
-          {/* Prev slide */}
+          {/* Prev slide — moves back in the tutor's chosen subset */}
           <button
-            onClick={() => onPptNavigate(pptCurrentPage - 1)}
-            disabled={pptCurrentPage <= 1}
+            onClick={onPptPrev}
+            disabled={presentationIdx <= 0}
             className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Previous slide"
           >
             <ChevronLeft className="size-4" />
           </button>
 
-          {/* Slide counter */}
-          <span className="text-xs text-zinc-400 bg-zinc-800 px-2.5 h-9 flex items-center rounded-xl whitespace-nowrap font-mono">
-            {pptCurrentPage} / {pptTotalPages}
+          {/* Slide counter — position within the selected subset */}
+          <span
+            className="text-xs text-zinc-400 bg-zinc-800 px-2.5 h-9 flex items-center rounded-xl whitespace-nowrap font-mono"
+            title="Position within the slides you selected"
+          >
+            {presentationIdx + 1} / {selectedCount}
           </span>
 
           {/* Next slide */}
           <button
-            onClick={() => onPptNavigate(pptCurrentPage + 1)}
-            disabled={pptCurrentPage >= pptTotalPages}
+            onClick={onPptNext}
+            disabled={presentationIdx >= selectedCount - 1}
             className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Next slide"
           >
@@ -939,9 +956,9 @@ function ControlsBar({
                 ? "bg-amber-500/25 text-amber-300 border-amber-500/50 animate-pulse"
                 : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
             )}
-            title={pointerMode ? "Turn off finger pointer" : "Point at things on the slide — students will see a 👆 follow your cursor"}
+            title={pointerMode ? "Turn off pen pointer" : "Point at things on the slide — students will see a pen follow your cursor"}
           >
-            <MousePointer2 className="size-3.5" />
+            <Pen className="size-3.5" />
             {pointerMode ? "Pointing" : "Pointer"}
           </button>
 
@@ -1232,6 +1249,15 @@ export function ClassroomRoom({
   const [pptCurrentPage, setPptCurrentPage] = useState(1)
   const [pptTotalPages,  setPptTotalPages]  = useState(0)
   const [showUpload,     setShowUpload]     = useState(false)
+  // Slide picker appears after upload. While non-null, the tutor hasn't yet
+  // chosen which slides to include in the presentation.
+  const [pickerData,     setPickerData]     = useState<UploadedSlides | null>(null)
+  // Tutor-only: the 1-based slide numbers in the order they'll be navigated.
+  // Broadcast protocol doesn't need to know about this — students just receive
+  // actual page numbers in the underlying deck.
+  const [selectedSlides, setSelectedSlides] = useState<number[]>([])
+  // Tutor-only: position within `selectedSlides`.
+  const [presentationIdx, setPresentationIdx] = useState(0)
 
   // ── Finger pointer state ───────────────────────────────────────────────────
   // Tutor toggles pointer mode; coords are normalized (0-1) against the slide area.
@@ -1246,7 +1272,7 @@ export function ClassroomRoom({
   const [spotlightedId, setSpotlightedId] = useState<string | null>(null)
   const spotlightRef = useRef<string | null>(null)
   // Remember uploaded slides so tutor can resume without re-uploading
-  const uploadedSlidesRef = useRef<{ url: string; total: number } | null>(null)
+  const uploadedSlidesRef = useRef<UploadedSlides | null>(null)
 
   // Refs used for sync_response when participants join late
   const pptStateRef = useRef({ active: false, url: "", total: 0, page: 1 })
@@ -1525,34 +1551,63 @@ export function ClassroomRoom({
     }
   }, [connectionState, sendPpt])
 
-  const handleSlidesReady = useCallback((url: string, total: number) => {
+  // Upload complete — remember the file and open the slide picker.
+  const handleSlidesUploaded = useCallback((data: UploadedSlides) => {
     setShowUpload(false)
-    uploadedSlidesRef.current = { url, total }
+    uploadedSlidesRef.current = data
+    setPickerData(data)
+  }, [])
+
+  // Tutor confirmed which slides to present — start the presentation.
+  const handleSlidesPicked = useCallback((selected: number[]) => {
+    if (!pickerData || selected.length === 0) return
+
+    const { url, total } = pickerData
+    const firstPage = selected[0]
+
+    setPickerData(null)
+    setSelectedSlides(selected)
+    setPresentationIdx(0)
     setPptUrl(url)
     setPptTotalPages(total)
-    setPptCurrentPage(1)
+    setPptCurrentPage(firstPage)
     setPptActive(true)
     setParticipantsOpen(false)
 
-    safeSendPpt({ action: "start", url, total, page: 1 })
+    safeSendPpt({ action: "start", url, total, page: firstPage })
 
     setMessages((prev) => [
       ...prev,
       {
         id: `sys-ppt-${Date.now()}`,
         from: "system",
-        text: "Tutor started a slide presentation 📊",
+        text: `Tutor started presenting ${selected.length} slide${selected.length !== 1 ? "s" : ""} 📊`,
         ts: Date.now(),
         type: "system",
       },
     ])
-  }, [safeSendPpt])
+  }, [pickerData, safeSendPpt])
 
-  const handlePptNavigate = useCallback((page: number) => {
-    if (page < 1 || page > pptTotalPages) return
+  // Step forward through the selected subset.
+  const handlePptNext = useCallback(() => {
+    if (!selectedSlides.length) return
+    const nextIdx = Math.min(presentationIdx + 1, selectedSlides.length - 1)
+    if (nextIdx === presentationIdx) return
+    const page = selectedSlides[nextIdx]
+    setPresentationIdx(nextIdx)
     setPptCurrentPage(page)
     safeSendPpt({ action: "navigate", page })
-  }, [pptTotalPages, safeSendPpt])
+  }, [presentationIdx, selectedSlides, safeSendPpt])
+
+  const handlePptPrev = useCallback(() => {
+    if (!selectedSlides.length) return
+    const prevIdx = Math.max(presentationIdx - 1, 0)
+    if (prevIdx === presentationIdx) return
+    const page = selectedSlides[prevIdx]
+    setPresentationIdx(prevIdx)
+    setPptCurrentPage(page)
+    safeSendPpt({ action: "navigate", page })
+  }, [presentationIdx, selectedSlides, safeSendPpt])
 
   // ── Finger pointer handlers (tutor only) ───────────────────────────────────
 
@@ -1639,6 +1694,8 @@ export function ClassroomRoom({
   const handlePptStop = useCallback(() => {
     setPptActive(false)
     setPptCurrentPage(1)
+    setPresentationIdx(0)
+    setSelectedSlides([])
     setParticipantsOpen(true)
 
     safeSendPpt({ action: "stop" })
@@ -1661,14 +1718,14 @@ export function ClassroomRoom({
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return
       if (e.key === "ArrowRight" || e.key === "PageDown") {
-        handlePptNavigate(pptCurrentPage + 1)
+        handlePptNext()
       } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-        handlePptNavigate(pptCurrentPage - 1)
+        handlePptPrev()
       }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [isTutor, pptActive, pptCurrentPage, handlePptNavigate])
+  }, [isTutor, pptActive, handlePptNext, handlePptPrev])
 
   const studentCount = participants.filter((p) => p.metadata !== "tutor").length
 
@@ -1682,9 +1739,21 @@ export function ClassroomRoom({
       {showUpload && isTutor && (
         <SlideUploadPanel
           sessionId={sessionId}
-          onSlidesReady={handleSlidesReady}
+          onSlidesReady={handleSlidesUploaded}
           onClose={() => setShowUpload(false)}
           previousSlides={uploadedSlidesRef.current}
+        />
+      )}
+
+      {/* ── Slide picker overlay (tutor only, after upload) ── */}
+      {pickerData && isTutor && (
+        <SlidePicker
+          fileUrl={pickerData.url}
+          mimeType={pickerData.mimeType}
+          fileName={pickerData.fileName}
+          totalPages={pickerData.total}
+          onConfirm={handleSlidesPicked}
+          onCancel={() => setPickerData(null)}
         />
       )}
 
@@ -1787,20 +1856,27 @@ export function ClassroomRoom({
                   }}
                 />
 
-                {/* Finger pointer overlay — shown to everyone while tutor is pointing */}
+                {/* Pen pointer overlay — shown to everyone while tutor is pointing.
+                    lucide's Pen icon has its tip at the bottom-left (24×24 viewBox, tip ≈ (3, 21)),
+                    so we place that corner at the reported coordinate via the transform. */}
                 {livePointer && (
                   <div
                     className="absolute pointer-events-none z-40"
                     style={{
                       left: `${livePointer.x * 100}%`,
                       top:  `${livePointer.y * 100}%`,
-                      transform: "translate(-18%, -6%)",
-                      filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.85))",
+                      // tip of the pen ≈ (3, 21) of a 24-unit icon
+                      transform: "translate(-12.5%, -87.5%)",
+                      filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.9))",
                       transition: isTutor ? "none" : "left 60ms linear, top 60ms linear",
                     }}
                     aria-hidden
                   >
-                    <span className="text-5xl leading-none select-none">👆</span>
+                    <Pen
+                      className="size-5 text-amber-400"
+                      strokeWidth={2.5}
+                      style={{ fill: "rgb(251 191 36 / 0.3)" }}
+                    />
                   </div>
                 )}
 
@@ -1878,10 +1954,11 @@ export function ClassroomRoom({
           onToggleHand={handleToggleHand}
           onLeave={onLeave}
           pptActive={pptActive}
-          pptCurrentPage={pptCurrentPage}
-          pptTotalPages={pptTotalPages}
+          presentationIdx={presentationIdx}
+          selectedCount={selectedSlides.length}
           onShowUpload={() => setShowUpload(true)}
-          onPptNavigate={handlePptNavigate}
+          onPptNext={handlePptNext}
+          onPptPrev={handlePptPrev}
           onPptStop={handlePptStop}
           pointerMode={pointerMode}
           onTogglePointer={handleTogglePointer}
