@@ -95,7 +95,7 @@ export default function TutorDashboardPage() {
               <p className="text-[11px] text-violet-600/80 mt-0.5 truncate">Students enrol and follow you automatically</p>
             </div>
             <Button asChild size="sm" className="shrink-0 relative gap-1.5 bg-violet-600 hover:bg-violet-700 text-white border-0 shadow-sm">
-              <Link href="/tutor/courses/new">
+              <Link href="/tutor/courses?new=1">
                 <span className="absolute -inset-1 rounded-lg animate-ping bg-violet-400/50 pointer-events-none" />
                 <span className="absolute -inset-0.5 rounded-md animate-ping bg-violet-300/30 pointer-events-none [animation-delay:150ms]" />
                 <Plus className="size-3.5" /> Create
@@ -152,7 +152,7 @@ export default function TutorDashboardPage() {
                   </Link>
                 </Button>
                 <Button asChild size="sm" className="bg-white/15 hover:bg-white/25 text-primary-foreground border-0">
-                  <Link href="/tutor/courses/new">
+                  <Link href="/tutor/courses?new=1">
                     <Plus className="size-4 mr-1.5" />
                     New Course
                   </Link>
@@ -274,7 +274,7 @@ export default function TutorDashboardPage() {
               ) : (
                 <div className="px-6 py-8 text-center text-sm text-muted-foreground">
                   No courses yet.{" "}
-                  <Link href="/tutor/courses/new" className="text-primary underline underline-offset-2">
+                  <Link href="/tutor/courses?new=1" className="text-primary underline underline-offset-2">
                     Create one
                   </Link>
                 </div>

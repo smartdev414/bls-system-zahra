@@ -152,11 +152,21 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
             <Radio className="size-3 animate-pulse" />
             <span className="text-xs font-bold uppercase tracking-wide">Happening now</span>
           </div>
-          <Button asChild size="sm" className="h-6 text-[11px] px-3 bg-white text-emerald-700 hover:bg-white/90 gap-1">
-            <Link href={`/student/classroom/${session.id}`}>
-              <Radio className="size-2.5" /> Join
-            </Link>
-          </Button>
+          {canJoin ? (
+            <Button asChild size="sm" className="h-6 text-[11px] px-3 bg-white text-emerald-700 hover:bg-white/90 gap-1">
+              <Link href={`/student/classroom/${session.id}`}>
+                <Radio className="size-2.5" /> Join
+              </Link>
+            </Button>
+          ) : hasPending ? (
+            <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">Request Pending</span>
+          ) : wasRejected ? (
+            <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">Request Declined</span>
+          ) : (
+            <Button size="sm" className="h-6 text-[11px] px-3 bg-white text-emerald-700 hover:bg-white/90 gap-1" onClick={() => setRequestOpen(true)}>
+              <Send className="size-2.5" /> Request to Join
+            </Button>
+          )}
         </div>
       )}
 

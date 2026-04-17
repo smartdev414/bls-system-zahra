@@ -23,157 +23,46 @@ function isPptxUrl(url: string) {
   }
 }
 
-// ── Types for pptxtojson output ──────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PptxSlide = { elements: any[]; layoutElements?: any[]; fill?: any }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PptxResult = { slides: PptxSlide[]; size: { width: number; height: number } }
+// ── PPTX viewer (@aiden0z/pptx-renderer) ─────────────────────────────────────
+// Parses the PPTX in the browser and renders slides as DOM (HTML + SVG) with
+// high fidelity: preset shapes, numbered/bulleted lists, gradients, tables,
+// groups, charts (via ECharts), SmartArt (via a pdfjs fallback the lib bundles).
+//
+// Tunable parameters (all passed through to the library):
+//   fitMode         : "contain" fits slide within host (keeps full slide visible);
+//                     "none" draws at intrinsic size.
+//   zoomPercent     : 10–400. Runtime zoom multiplier on top of fit.
+//   initialWidthHint: px width hint the library uses before its own ResizeObserver
+//                     kicks in. We feed it the host's current clientWidth.
+//
+// A ResizeObserver on the host forces a re-render when the panel is resized
+// (e.g. the chat sidebar toggled, or the tutor switched pinning).
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+const PPTX_FIT_MODE: "contain" | "none" = "contain"
+const PPTX_ZOOM_PERCENT              = 100  // 10-400
+const PPTX_RESIZE_DEBOUNCE_MS        = 80
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fillToStyle(fill: any): React.CSSProperties {
-  if (!fill) return {}
-  if (fill.type === "color") return { backgroundColor: fill.value }
-  if (fill.type === "image") {
-    const src = fill.value?.base64 || fill.value?.blob
-    if (src) return { backgroundImage: `url(${src})`, backgroundSize: "cover", backgroundPosition: "center" }
-  }
-  if (fill.type === "gradient" && fill.value?.colors?.length) {
-    const colors = fill.value.colors
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((c: any) => `${c.color} ${c.pos}`)
-      .join(", ")
-    const rot = fill.value.rot ?? 0
-    return { background: `linear-gradient(${rot}deg, ${colors})` }
-  }
-  if (fill.type === "pattern" && fill.value?.backgroundColor) {
-    return { backgroundColor: fill.value.backgroundColor }
-  }
-  return {}
+// Minimal structural type for the bits of the library we touch. The library's
+// own type surface is large; we narrow here so the component is easy to reason
+// about and avoids any `any` leaks.
+type PptxViewerLike = {
+  load: (presentation: unknown) => void
+  renderSlide: (index: number) => Promise<void>
+  destroy: () => void
+  setZoom?: (pct: number) => Promise<void>
+  setFitMode?: (mode: "contain" | "none") => Promise<void>
 }
-
-// ── Render a single slide element to HTML ────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function SlideElement({ el }: { el: any }) {
-  const base: React.CSSProperties = {
-    position: "absolute",
-    left: `${el.left}pt`,
-    top: `${el.top}pt`,
-    width: `${el.width}pt`,
-    height: `${el.height}pt`,
-    transform: el.rotate ? `rotate(${el.rotate}deg)` : undefined,
-  }
-
-  if (el.type === "group" && el.elements) {
-    return (
-      <div style={base}>
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        {el.elements.map((child: any, i: number) => (
-          <SlideElement key={i} el={child} />
-        ))}
-      </div>
-    )
-  }
-
-  if (el.type === "text" || el.type === "shape") {
-    return (
-      <div
-        style={{
-          ...base,
-          ...fillToStyle(el.fill),
-          borderColor: el.borderColor || undefined,
-          borderWidth: el.borderWidth ? `${el.borderWidth}pt` : undefined,
-          borderStyle: el.borderWidth ? "solid" : undefined,
-          overflow: "hidden",
-          wordWrap: "break-word",
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {el.content && (
-          <div
-            className="pptx-text-content"
-            style={{
-              width: "100%",
-              height: "100%",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: el.vAlign === "mid" ? "center" : el.vAlign === "bottom" ? "flex-end" : "flex-start",
-            }}
-            dangerouslySetInnerHTML={{ __html: el.content }}
-          />
-        )}
-      </div>
-    )
-  }
-
-  if (el.type === "image") {
-    const src = el.base64 || el.blob || ""
-    if (!src) return null
-    return (
-      <img
-        src={src}
-        alt=""
-        style={{ ...base, objectFit: "contain" }}
-      />
-    )
-  }
-
-  if (el.type === "diagram" && el.elements) {
-    return (
-      <div style={base}>
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        {el.elements.map((child: any, i: number) => (
-          <SlideElement key={i} el={child} />
-        ))}
-      </div>
-    )
-  }
-
-  if (el.type === "math" && (el.picBase64 || el.picBlob)) {
-    return <img src={el.picBase64 || el.picBlob} alt="" style={{ ...base, objectFit: "contain" }} />
-  }
-
-  if (el.type === "table" && el.data) {
-    return (
-      <div style={base}>
-        <table style={{ width: "100%", height: "100%", borderCollapse: "collapse", fontSize: "10pt" }}>
-          <tbody>
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {el.data.map((row: any[], ri: number) => (
-              <tr key={ri}>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {row.map((cell: any, ci: number) => (
-                  <td
-                    key={ci}
-                    style={{
-                      border: "0.5pt solid #ccc",
-                      padding: "2pt 4pt",
-                      backgroundColor: cell.fillColor,
-                      verticalAlign: "middle",
-                    }}
-                    dangerouslySetInnerHTML={cell.text ? { __html: cell.text } : undefined}
-                  />
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-
-  return null
-}
-
-// ── PPTX viewer (pptxtojson + HTML rendering) ────────────────────────────────
 
 function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading")
-  const [errorMsg, setErrorMsg] = useState("")
-  const [pptxData, setPptxData] = useState<PptxResult | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const hostRef    = useRef<HTMLDivElement>(null)
+  const viewerRef  = useRef<PptxViewerLike | null>(null)
+  const slideCount = useRef(0)
+  const currentIdx = useRef(0)
 
+  const [status,   setStatus]   = useState<"loading" | "ready" | "error">("loading")
+  const [errorMsg, setErrorMsg] = useState("")
+
+  // Load the deck once per fileUrl
   useEffect(() => {
     if (!fileUrl) return
     let cancelled = false
@@ -181,20 +70,50 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
     async function load() {
       try {
         setStatus("loading")
-        const res = await fetch(fileUrl)
-        if (!res.ok) throw new Error("Failed to fetch PPTX")
-        const arrayBuffer = await res.arrayBuffer()
 
-        const { parse } = await import("pptxtojson")
-        const result = await parse(arrayBuffer, {
-          imageMode: "base64",
-          videoMode: "none",
-          audioMode: "none",
-        }) as PptxResult
+        const [{ PptxViewer: PptxViewerClass, parseZip, buildPresentation }, res] = await Promise.all([
+          import("@aiden0z/pptx-renderer"),
+          fetch(fileUrl),
+        ])
+        if (!res.ok) throw new Error(`Failed to fetch PPTX (HTTP ${res.status})`)
+        const arrayBuffer = await res.arrayBuffer()
+        if (cancelled) return
+
+        const files = await parseZip(arrayBuffer)
+        const presentation = buildPresentation(files)
+        if (cancelled) return
+
+        // Clear any previous viewer state attached to the same host
+        if (viewerRef.current) {
+          viewerRef.current.destroy()
+          viewerRef.current = null
+        }
+
+        const host = hostRef.current
+        if (!host) return
+
+        const initialWidthHint = Math.max(host.clientWidth, 320)
+
+        const viewer = new PptxViewerClass(host, {
+          fitMode:     PPTX_FIT_MODE,
+          zoomPercent: PPTX_ZOOM_PERCENT,
+          width:       initialWidthHint,
+        }) as unknown as PptxViewerLike
+        viewer.load(presentation)
+        viewerRef.current = viewer
+
+        // Presentation shape is documented by the library as `{ slides: [...] }`.
+        // Guard defensively in case the structural type ever changes.
+        const total =
+          (presentation as { slides?: unknown[] })?.slides?.length ?? 0
+        slideCount.current = total
+        onTotalPages(total)
+
+        const safeIndex = Math.max(0, Math.min(currentPage - 1, Math.max(0, total - 1)))
+        currentIdx.current = safeIndex
+        await viewer.renderSlide(safeIndex)
 
         if (cancelled) return
-        setPptxData(result)
-        onTotalPages(result.slides.length)
         setStatus("ready")
       } catch (err) {
         if (cancelled) return
@@ -205,92 +124,71 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
     }
 
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      if (viewerRef.current) {
+        try { viewerRef.current.destroy() } catch { /* ignore */ }
+        viewerRef.current = null
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileUrl])
 
-  if (status === "loading") {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-zinc-500 bg-zinc-950">
-        <Loader2 className="size-8 animate-spin text-primary" />
-        <span className="text-sm">Loading presentation…</span>
-      </div>
-    )
-  }
+  // Navigate whenever currentPage changes after initial render
+  useEffect(() => {
+    if (status !== "ready") return
+    const viewer = viewerRef.current
+    if (!viewer) return
+    const total = slideCount.current
+    const safeIndex = Math.max(0, Math.min(currentPage - 1, Math.max(0, total - 1)))
+    currentIdx.current = safeIndex
+    viewer.renderSlide(safeIndex).catch((err) => {
+      console.error("[PptxViewer] renderSlide failed", err)
+    })
+  }, [currentPage, status])
 
-  if (status === "error" || !pptxData) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-zinc-500 bg-zinc-950 px-8 text-center">
-        <AlertCircle className="size-10 text-rose-500 opacity-70" />
-        <p className="text-sm text-rose-400">{errorMsg}</p>
-      </div>
-    )
-  }
+  // Re-render on host resize so fitMode picks up the new panel dimensions.
+  // Debounced so dragging the chat sidebar doesn't thrash.
+  useEffect(() => {
+    if (status !== "ready") return
+    const host = hostRef.current
+    if (!host) return
 
-  const slideIndex = Math.max(0, Math.min(currentPage - 1, pptxData.slides.length - 1))
-  const slide = pptxData.slides[slideIndex]
-  const { width: slideW, height: slideH } = pptxData.size
-
-  // Slide background — default to white
-  const bgStyle: React.CSSProperties = slide.fill?.type
-    ? fillToStyle(slide.fill)
-    : { backgroundColor: "#fff" }
-
-  // Merge layout (master slide) elements behind the slide's own elements
-  const layoutEls = slide.layoutElements ?? []
-  const allElements = [...layoutEls, ...slide.elements]
-
-  // Convert pt dimensions to px for consistent scaling (1pt = 4/3 px)
-  const slideWpx = slideW * (4 / 3)
-  const slideHpx = slideH * (4 / 3)
+    let t: ReturnType<typeof setTimeout> | null = null
+    const obs = new ResizeObserver(() => {
+      if (t) clearTimeout(t)
+      t = setTimeout(() => {
+        const viewer = viewerRef.current
+        if (!viewer) return
+        // Re-rendering the current slide is enough to make the library re-measure.
+        viewer.renderSlide(currentIdx.current).catch(() => { /* ignore */ })
+      }, PPTX_RESIZE_DEBOUNCE_MS)
+    })
+    obs.observe(host)
+    return () => {
+      if (t) clearTimeout(t)
+      obs.disconnect()
+    }
+  }, [status])
 
   return (
-    <div ref={containerRef} className="w-full mt-4 h-[calc(100%-4.6rem)] flex items-center justify-center bg-white overflow-hidden p-2">
-      <div
-        className="relative rounded overflow-hidden"
-        style={{
-          width: "100%",
-          maxWidth: "100%",
-          aspectRatio: `${slideWpx} / ${slideHpx}`,
-          backgroundColor: "#fff",
-          ...bgStyle,
-        }}
-      >
-        {/*
-          Inner div uses px dimensions matching the original slide.
-          CSS transform scales it to fit the container.
-          All child element positions are in pt, which the browser converts to px at 4/3 ratio,
-          matching our slideWpx/slideHpx coordinate space.
-        */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: `${slideW}pt`,
-            height: `${slideH}pt`,
-            transformOrigin: "top left",
-          }}
-          ref={(el) => {
-            if (!el) return
-            const parent = el.parentElement
-            if (!parent) return
-            // Watch for size changes and recompute scale
-            const update = () => {
-              // parent.clientWidth is in px; el's width is slideW pt = slideWpx px
-              const scale = parent.clientWidth / slideWpx
-              el.style.transform = `scale(${scale})`
-            }
-            const observer = new ResizeObserver(update)
-            observer.observe(parent)
-            update()
-          }}
-        >
-          {allElements.map((el, i) => (
-            <SlideElement key={i} el={el} />
-          ))}
+    <div className="w-full h-full flex items-center justify-center bg-white overflow-hidden p-2 relative">
+      {/* Host element the library paints into — always mounted so the ref is live during load */}
+      <div ref={hostRef} className="relative w-full h-full overflow-hidden flex items-center justify-center" />
+
+      {status === "loading" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-500 bg-white">
+          <Loader2 className="size-8 animate-spin text-primary" />
+          <span className="text-sm">Loading presentation…</span>
         </div>
-      </div>
+      )}
+
+      {status === "error" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-500 bg-white px-8 text-center">
+          <AlertCircle className="size-10 text-rose-500 opacity-70" />
+          <p className="text-sm text-rose-400">{errorMsg}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -357,13 +255,25 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
       const container = canvas.parentElement
       if (!container) return
 
-      const containerWidth = container.clientWidth || 800
+      const containerWidth  = container.clientWidth  || 800
+      const containerHeight = container.clientHeight || 600
+
       const unscaled = page.getViewport({ scale: 1 })
-      const scale    = containerWidth / unscaled.width
-      const viewport = page.getViewport({ scale })
+      // Fit the whole page — `object-fit: contain` semantics — so nothing is cut off
+      // whether the slide is wider or taller than the container.
+      const fitScale = Math.min(
+        containerWidth  / unscaled.width,
+        containerHeight / unscaled.height,
+      )
+      // Render at a higher pixel density so the downscaled canvas stays crisp
+      const dpr        = (typeof window !== "undefined" && window.devicePixelRatio) || 1
+      const renderScale = fitScale * dpr
+      const viewport   = page.getViewport({ scale: renderScale })
 
       canvas.width  = viewport.width
       canvas.height = viewport.height
+      canvas.style.width  = `${unscaled.width  * fitScale}px`
+      canvas.style.height = `${unscaled.height * fitScale}px`
 
       const ctx = canvas.getContext("2d")!
       const task = page.render({ canvasContext: ctx, viewport })
@@ -411,11 +321,11 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
 
   return (
     <div className="w-full h-full flex items-center justify-center bg-zinc-950 overflow-hidden relative">
-      <div className="relative max-w-full max-h-full overflow-auto flex items-center justify-center p-2">
+      <div className="relative w-full h-full flex items-center justify-center p-2 overflow-hidden">
         <canvas
           ref={canvasRef}
-          className="block max-w-full shadow-2xl rounded"
-          style={{ background: "#fff" }}
+          className="block shadow-2xl rounded"
+          style={{ background: "#fff", maxWidth: "100%", maxHeight: "100%" }}
         />
       </div>
     </div>
