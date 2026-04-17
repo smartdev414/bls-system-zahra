@@ -23,6 +23,29 @@ async function handlePOST(
       return NextResponse.json({ message: "Session is no longer active" }, { status: 410 })
     }
 
+    // Gate invite-only sessions: students must be invited or have an approved join request
+    if (
+      session.role === "STUDENT" &&
+      liveSession.visibility === "INVITE_ONLY"
+    ) {
+      const [invite, approvedRequest] = await Promise.all([
+        prisma.liveSessionInvite.findUnique({
+          where: { sessionId_studentId: { sessionId: id, studentId: session.sub } },
+          select: { id: true },
+        }),
+        prisma.sessionJoinRequest.findFirst({
+          where: { sessionId: id, studentId: session.sub, status: "APPROVED" },
+          select: { id: true },
+        }),
+      ])
+      if (!invite && !approvedRequest) {
+        return NextResponse.json(
+          { message: "This session is invite-only. Your request to join must be approved by the tutor first." },
+          { status: 403 }
+        )
+      }
+    }
+
     const apiKey = process.env.LIVEKIT_API_KEY
     const apiSecret = process.env.LIVEKIT_API_SECRET
     const wsUrl = process.env.LIVEKIT_WS_URL

@@ -32,7 +32,8 @@
       "Bash(npx next:*)",
       "Bash(npm search:*)",
       "Bash(npm view:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(npx eslint *)"
     ]
   }
 }

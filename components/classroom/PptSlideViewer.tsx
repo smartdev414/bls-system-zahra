@@ -245,23 +245,37 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
   const slideHpx = slideH * (4 / 3)
 
   return (
-    <div ref={containerRef} className="w-full mt-4 h-[calc(100%-4.6rem)] flex items-center justify-center bg-white overflow-hidden p-2">
+    <div ref={containerRef} className="w-full h-full flex items-center justify-center bg-white overflow-hidden p-2">
+      {/*
+        The slide frame is sized to the largest box that fits BOTH the container width
+        and height while preserving the slide's aspect ratio — i.e. `object-fit: contain`
+        semantics. The inner div holds original pt-based child positions and is transformed
+        by the matching scale so nothing is cropped.
+      */}
       <div
-        className="relative rounded overflow-hidden"
-        style={{
-          width: "100%",
-          maxWidth: "100%",
-          aspectRatio: `${slideWpx} / ${slideHpx}`,
-          backgroundColor: "#fff",
-          ...bgStyle,
+        className="relative rounded overflow-hidden shadow-lg"
+        style={{ backgroundColor: "#fff", ...bgStyle }}
+        ref={(el) => {
+          if (!el) return
+          const host = el.parentElement
+          if (!host) return
+          const inner = el.firstElementChild as HTMLElement | null
+
+          const update = () => {
+            const availW = host.clientWidth
+            const availH = host.clientHeight
+            if (availW <= 0 || availH <= 0) return
+            const scale = Math.min(availW / slideWpx, availH / slideHpx)
+            el.style.width  = `${slideWpx * scale}px`
+            el.style.height = `${slideHpx * scale}px`
+            if (inner) inner.style.transform = `scale(${scale})`
+          }
+
+          const obs = new ResizeObserver(update)
+          obs.observe(host)
+          update()
         }}
       >
-        {/*
-          Inner div uses px dimensions matching the original slide.
-          CSS transform scales it to fit the container.
-          All child element positions are in pt, which the browser converts to px at 4/3 ratio,
-          matching our slideWpx/slideHpx coordinate space.
-        */}
         <div
           style={{
             position: "absolute",
@@ -270,20 +284,6 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
             width: `${slideW}pt`,
             height: `${slideH}pt`,
             transformOrigin: "top left",
-          }}
-          ref={(el) => {
-            if (!el) return
-            const parent = el.parentElement
-            if (!parent) return
-            // Watch for size changes and recompute scale
-            const update = () => {
-              // parent.clientWidth is in px; el's width is slideW pt = slideWpx px
-              const scale = parent.clientWidth / slideWpx
-              el.style.transform = `scale(${scale})`
-            }
-            const observer = new ResizeObserver(update)
-            observer.observe(parent)
-            update()
           }}
         >
           {allElements.map((el, i) => (
@@ -357,13 +357,25 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
       const container = canvas.parentElement
       if (!container) return
 
-      const containerWidth = container.clientWidth || 800
+      const containerWidth  = container.clientWidth  || 800
+      const containerHeight = container.clientHeight || 600
+
       const unscaled = page.getViewport({ scale: 1 })
-      const scale    = containerWidth / unscaled.width
-      const viewport = page.getViewport({ scale })
+      // Fit the whole page — `object-fit: contain` semantics — so nothing is cut off
+      // whether the slide is wider or taller than the container.
+      const fitScale = Math.min(
+        containerWidth  / unscaled.width,
+        containerHeight / unscaled.height,
+      )
+      // Render at a higher pixel density so the downscaled canvas stays crisp
+      const dpr        = (typeof window !== "undefined" && window.devicePixelRatio) || 1
+      const renderScale = fitScale * dpr
+      const viewport   = page.getViewport({ scale: renderScale })
 
       canvas.width  = viewport.width
       canvas.height = viewport.height
+      canvas.style.width  = `${unscaled.width  * fitScale}px`
+      canvas.style.height = `${unscaled.height * fitScale}px`
 
       const ctx = canvas.getContext("2d")!
       const task = page.render({ canvasContext: ctx, viewport })
@@ -411,11 +423,11 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
 
   return (
     <div className="w-full h-full flex items-center justify-center bg-zinc-950 overflow-hidden relative">
-      <div className="relative max-w-full max-h-full overflow-auto flex items-center justify-center p-2">
+      <div className="relative w-full h-full flex items-center justify-center p-2 overflow-hidden">
         <canvas
           ref={canvasRef}
-          className="block max-w-full shadow-2xl rounded"
-          style={{ background: "#fff" }}
+          className="block shadow-2xl rounded"
+          style={{ background: "#fff", maxWidth: "100%", maxHeight: "100%" }}
         />
       </div>
     </div>

@@ -26,8 +26,8 @@ async function handlePOST(
     if (liveSession.visibility !== "INVITE_ONLY") {
       return NextResponse.json({ message: "This session is public — no request needed" }, { status: 400 })
     }
-    if (liveSession.status !== "SCHEDULED") {
-      return NextResponse.json({ message: "Can only request to join scheduled sessions" }, { status: 400 })
+    if (liveSession.status !== "SCHEDULED" && liveSession.status !== "LIVE") {
+      return NextResponse.json({ message: "This session is no longer accepting join requests" }, { status: 400 })
     }
 
     // Check if already invited

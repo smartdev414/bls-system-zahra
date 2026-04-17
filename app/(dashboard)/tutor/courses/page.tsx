@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
   BookOpen, Plus, Users, Layers, FileText,
@@ -70,6 +70,7 @@ const PAGE_SIZE = 12
 
 export default function TutorCoursesPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { data, loading } = useFetch<CoursesData>("/api/tutor/courses", {
     errorMessage: "Could not load courses",
   })
@@ -79,6 +80,16 @@ export default function TutorCoursesPage() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [level, setLevel] = useState<CourseBody["level"]>("BEGINNER")
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setTitle("")
+      setDescription("")
+      setLevel("BEGINNER")
+      setOpen(true)
+      router.replace("/tutor/courses", { scroll: false })
+    }
+  }, [searchParams, router])
 
   const { execute: createCourse, loading: creating } = usePostCallback<{ course: { id: string } }, CourseBody>(
     "/api/tutor/courses",
