@@ -5,7 +5,7 @@ import { sendEmail } from "@/lib/email"
 import { tutorInviteEmail } from "@/lib/email-templates"
 import { withAudit } from "@/lib/audit"
 
-const INVITE_EXPIRY_DAYS = 7
+const INVITE_EXPIRY_DAYS = 365
 
 // POST /api/tutor/invites — send invitation emails to a list of addresses
 async function handlePOST(req: NextRequest) {
@@ -70,7 +70,7 @@ async function handlePOST(req: NextRequest) {
     void Promise.all(
       invites.map((invite) => {
         const inviteUrl = `${appUrl}/invite/${invite.token}`
-        const { subject, html } = tutorInviteEmail(tutorName, inviteUrl, INVITE_EXPIRY_DAYS)
+        const { subject, html } = tutorInviteEmail(tutorName, inviteUrl, INVITE_EXPIRY_DAYS, 12)
         return sendEmail(invite.email, subject, html).catch((e) =>
           console.error("[tutor/invites] email send failed", invite.email, e),
         )

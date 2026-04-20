@@ -374,6 +374,13 @@ function LeftScreen() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// A tutor-triggered "refresh all" sets this flag in sessionStorage right before
+// calling reload(). On next mount, the page reads it once and skips the lobby so
+// the student rejoins automatically. Flag is scoped per-session, per-tab, and
+// expires quickly so a stale leftover can't silently auto-join the next visit.
+const AUTO_REJOIN_KEY = (id: string) => `classroom:auto-rejoin:${id}`
+const AUTO_REJOIN_MAX_AGE_MS = 30_000
+
 export default function ClassroomRoomPage({
   params,
 }: {
@@ -382,10 +389,42 @@ export default function ClassroomRoomPage({
   const { id } = use(params)
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
   const [disconnected, setDisconnected] = useState(false)
+  const [autoRejoin, setAutoRejoin] = useState(false)
 
   const { data, loading: infoLoading } = useFetch<SessionInfo>(`/api/sessions/${id}/info`, {
     errorMessage: false,
   })
+
+  // Parallel token fetch used only for auto-rejoin. EntryScreen still runs its
+  // own getToken for the manual path; the two never fire together because
+  // autoRejoin gates the bypass.
+  const { execute: autoGetToken } = usePostCallback<TokenData, Record<string, never>>(
+    `/api/sessions/${id}/token`,
+    { successMessage: false, errorMessage: false, onSuccess: setTokenData }
+  )
+
+  // Read the one-shot flag on mount. Using an effect (not lazy initial state)
+  // avoids any server/client hydration mismatch — sessionStorage is client-only.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const key = AUTO_REJOIN_KEY(id)
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return
+    sessionStorage.removeItem(key)
+    const ts = parseInt(raw, 10)
+    if (Number.isFinite(ts) && Date.now() - ts < AUTO_REJOIN_MAX_AGE_MS) {
+      setAutoRejoin(true)
+    }
+  }, [id])
+
+  // Fire the token request as soon as session info is loaded.
+  useEffect(() => {
+    if (!autoRejoin) return
+    if (!data?.session) return
+    if (tokenData) return
+    autoGetToken({})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRejoin, data, tokenData])
 
   if (disconnected) return <LeftScreen />
 
@@ -399,6 +438,14 @@ export default function ClassroomRoomPage({
 
   if (!tokenData) {
     if (!data?.session) return null
+    if (autoRejoin) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
+          <Loader2 className="size-8 animate-spin text-primary" />
+          <p className="text-muted-foreground text-sm">Reconnecting to the classroom…</p>
+        </div>
+      )
+    }
     return (
       <EntryScreen
         sessionId={id}

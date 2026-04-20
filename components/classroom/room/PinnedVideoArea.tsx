@@ -1,0 +1,131 @@
+"use client"
+
+import {
+  useParticipants,
+  useTracks,
+  VideoTrack,
+  isTrackReference,
+} from "@livekit/components-react"
+import { Track } from "livekit-client"
+import {
+  ArrowLeft, Megaphone, Info, Maximize2, Minimize2,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+
+export function PinnedVideoArea({
+  identity,
+  containerRef,
+  isFullscreen,
+  onToggleFullscreen,
+  onUnpin,
+  showSpotlight,
+  spotlightActive,
+  onToggleSpotlight,
+}: {
+  identity: string
+  containerRef: React.RefObject<HTMLDivElement | null>
+  isFullscreen: boolean
+  onToggleFullscreen: () => void
+  onUnpin: () => void
+  showSpotlight?: boolean
+  spotlightActive?: boolean
+  onToggleSpotlight?: () => void
+}) {
+  const allParticipants = useParticipants()
+  const camTracks       = useTracks([Track.Source.Camera])
+  const screenTracks    = useTracks([Track.Source.ScreenShare])
+
+  const participant = allParticipants.find((p) => p.identity === identity)
+  const camRef      = camTracks.find(
+    (t) => t.participant.identity === identity && isTrackReference(t)
+  )
+  const screenRef   = screenTracks.find(
+    (t) => t.participant.identity === identity && isTrackReference(t)
+  )
+  const active      = screenRef ?? camRef
+  const displayName = participant?.name ?? identity
+
+  return (
+    <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden group">
+      {active ? (
+        <VideoTrack trackRef={active} className="w-full h-full object-contain" />
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
+          <div className="size-20 rounded-full bg-primary/10 flex items-center justify-center text-primary text-3xl font-bold">
+            {displayName[0]?.toUpperCase()}
+          </div>
+          <span className="text-sm">{displayName} · Camera off</span>
+        </div>
+      )}
+
+      <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
+        <button
+          onClick={onUnpin}
+          className="flex items-center gap-1.5 bg-black/70 hover:bg-black/90 text-white text-xs font-semibold px-3 py-2 rounded-full backdrop-blur-sm transition-colors shadow-lg ring-1 ring-white/10"
+          title="Back to tutor — return to the tutor's camera view"
+          aria-label="Unpin and return to tutor view"
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to tutor
+        </button>
+
+        {showSpotlight && (
+          <button
+            onClick={onToggleSpotlight}
+            className={cn(
+              "flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full backdrop-blur-sm transition-colors shadow-lg ring-1",
+              spotlightActive
+                ? "bg-amber-400 hover:bg-amber-300 text-black ring-amber-200/60 animate-pulse"
+                : "bg-primary/90 hover:bg-primary text-primary-foreground ring-white/10"
+            )}
+            title={
+              spotlightActive
+                ? "Click to stop — every student will return to the tutor view"
+                : "Click to show this camera on every student's screen"
+            }
+            aria-label={spotlightActive ? "Stop broadcasting to class" : "Broadcast this camera to the whole class"}
+            aria-pressed={spotlightActive}
+          >
+            {spotlightActive ? (
+              <>
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-600 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-rose-600" />
+                </span>
+                Sharing with class — click to stop
+              </>
+            ) : (
+              <>
+                <Megaphone className="size-3.5" />
+                Show to whole class
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Discoverability hint: only shown when spotlight is available but not active */}
+        {showSpotlight && !spotlightActive && (
+          <span
+            className="hidden md:flex items-center gap-1 text-[10px] text-white/70 bg-black/40 px-2 py-1 rounded-full backdrop-blur-sm pointer-events-none"
+            aria-hidden
+          >
+            <Info className="size-3" />
+            Only you see this camera until you click &ldquo;Show to whole class&rdquo;
+          </span>
+        )}
+      </div>
+
+      <div className="absolute bottom-10 left-3 bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
+        {displayName}
+      </div>
+
+      <button
+        onClick={onToggleFullscreen}
+        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white rounded-lg p-1.5 backdrop-blur-sm"
+        title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+      >
+        {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+      </button>
+    </div>
+  )
+}

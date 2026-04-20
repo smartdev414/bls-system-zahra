@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   Video, Clock, Users, Radio,
   BookOpen, Loader2, Sparkles, Lock,
-  CalendarDays, List, Download, CheckCircle2,
+  CalendarDays, List, Play, CheckCircle2,
   XCircle, ChevronLeft, ChevronRight, Send,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -16,8 +16,6 @@ import {
 } from "@/components/ui/dialog"
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type LiveSession = {
   id: string
@@ -124,6 +122,22 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
   const scheduled = new Date(session.scheduledAt)
   const [requestOpen, setRequestOpen] = useState(false)
   const [requestMsg, setRequestMsg] = useState("")
+  const [recordingOpen, setRecordingOpen] = useState(false)
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
+  const [recordingLoading, setRecordingLoading] = useState(false)
+
+  // Fetch a fresh signed playback URL and open the in-page viewer.
+  // We deliberately don't expose a download path — students can rewatch but not save.
+  async function openRecording() {
+    setRecordingLoading(true)
+    try {
+      const res  = await fetch(`/api/sessions/${session.id}/recording`)
+      const data = await res.json() as { url?: string }
+      if (data.url) { setRecordingUrl(data.url); setRecordingOpen(true) }
+    } finally {
+      setRecordingLoading(false)
+    }
+  }
 
   const isPrivate = session.visibility === "INVITE_ONLY"
   const canJoin = !isPrivate || session.isInvited || session.joinRequest?.status === "APPROVED"
@@ -237,10 +251,17 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
 
           <div className="flex items-center gap-2">
             {session.status === "COMPLETED" && session.recordingUrl && (
-              <Button asChild size="sm" variant="outline" className="gap-1.5 h-8">
-                <a href={session.recordingUrl} download target="_blank" rel="noopener noreferrer">
-                  <Download className="size-3.5" /> Download Recording
-                </a>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 h-8"
+                disabled={recordingLoading}
+                onClick={openRecording}
+              >
+                {recordingLoading
+                  ? <Loader2 className="size-3.5 animate-spin" />
+                  : <Play className="size-3.5" />}
+                Watch Recording
               </Button>
             )}
             {session.status === "COMPLETED" && !session.recordingUrl && (
@@ -272,6 +293,27 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
         </div>
       </div>
     </div>
+
+    {/* Recording viewer — watch-only; the video element is configured to discourage downloads.
+        Browsers still allow saving the stream in theory, so treat this as a deterrent, not DRM. */}
+    <Dialog open={recordingOpen} onOpenChange={setRecordingOpen}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{session.title} — Recording</DialogTitle>
+        </DialogHeader>
+        {recordingUrl && (
+          <video
+            src={recordingUrl}
+            controls
+            controlsList="nodownload noplaybackrate"
+            disablePictureInPicture
+            onContextMenu={(e) => e.preventDefault()}
+            className="w-full rounded-lg bg-black"
+            style={{ maxHeight: "60vh" }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
 
     {/* Request to join dialog */}
     <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
@@ -700,7 +742,7 @@ function ListView({ sessions, onMutated }: { sessions: LiveSession[]; onMutated:
         </div>
 
         {/* Sessions list with scroll */}
-        <div ref={scrollRef} className="flex flex-col gap-3 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+        <div ref={scrollRef} className="flex flex-col gap-3 overflow-y-auto pr-1">
           {visible.length > 0 ? (
             <>
               {visible.map((s) => (

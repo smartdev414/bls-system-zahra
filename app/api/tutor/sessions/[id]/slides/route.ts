@@ -3,11 +3,16 @@ import { getSession } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { withAudit } from "@/lib/audit"
 
-// Mime types that identify a slide presentation resource
+// Mime types that identify a presentation resource (slides or video). The
+// classroom viewer dispatches on the mime when rendering, so the API just
+// needs to allow every format the upload flow accepts.
 const PPT_MIME_TYPES = [
   "application/pdf",
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
 ]
 
 // ─── GET /api/tutor/sessions/[id]/slides ─────────────────────────────────────

@@ -34,7 +34,11 @@
       "Bash(npm view:*)",
       "Bash(npm uninstall:*)",
       "Bash(npx eslint *)",
-      "WebFetch(domain:registry.npmjs.org)"
+      "WebFetch(domain:registry.npmjs.org)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(git -C \"D:/2026-projects/BSL/bsl-system\" diff components/classroom/ClassroomRoom.tsx)",
+      "Bash(git -C \"D:/2026-projects/BSL/bsl-system\" show HEAD:components/classroom/ClassroomRoom.tsx)",
+      "Read(//tmp/**)"
     ]
   }
 }

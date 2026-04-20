@@ -311,6 +311,7 @@ export function tutorInviteEmail(
   tutorName: string,
   inviteUrl: string,
   expiresInDays: number,
+  expiresInMonths: number,
 ): { subject: string; html: string } {
   const content = `
     <div style="margin-bottom:16px">${badge("You're Invited!", PRIMARY)}</div>
@@ -320,7 +321,7 @@ export function tutorInviteEmail(
     ${divider()}
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
       ${infoRow("Invited by", tutorName)}
-      ${infoRow("Expires in", `${expiresInDays} days`)}
+      ${infoRow("Expires in", `${expiresInMonths} months`)}
       ${infoRow("Role", "Student")}
     </table>
     ${divider()}

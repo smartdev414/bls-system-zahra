@@ -8,7 +8,21 @@ const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
 ]
+
+// Mime → storage extension. Keyed on the full mime so the classroom viewer can
+// sniff the URL and pick the right renderer (slides vs. video).
+const MIME_EXTENSIONS: Record<string, string> = {
+  "application/pdf": "pdf",
+  "application/vnd.ms-powerpoint": "pptx",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm",
+}
 
 async function handlePOST(
   req: NextRequest,
@@ -36,12 +50,12 @@ async function handlePOST(
 
     if (!ALLOWED_MIME_TYPES.includes(body.mimeType)) {
       return NextResponse.json(
-        { message: "Only PDF and PowerPoint files are allowed" },
+        { message: "Only PDF, PowerPoint, and video files (MP4/MOV/WebM) are allowed" },
         { status: 400 }
       )
     }
 
-    const ext = body.mimeType === "application/pdf" ? "pdf" : "pptx"
+    const ext = MIME_EXTENSIONS[body.mimeType]
     const key = `slides/${id}/presentation.${ext}`
 
     const uploadUrl = await getPresignedUploadUrl(key, body.mimeType)

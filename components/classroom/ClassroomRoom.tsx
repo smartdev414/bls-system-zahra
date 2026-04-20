@@ -4,1176 +4,46 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
   useParticipants,
   useLocalParticipant,
-  useTracks,
   useDataChannel,
-  useRoomContext,
   useConnectionState,
-  VideoTrack,
-  AudioTrack,
-  TrackToggle,
-  isTrackReference,
 } from "@livekit/components-react"
-import { Track, RoomEvent, ConnectionState } from "livekit-client"
+import { ConnectionState } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
-  Mic, Camera, Monitor, Hand, PhoneOff, Send, Radio, Users,
-  Maximize2, Minimize2, ChevronDown, MessageSquare,
-  HandMetal, Presentation, ChevronLeft, ChevronRight,
-  Upload, X, Loader2, UserPlus, Check, XCircle,
-  ArrowLeft, Megaphone, Info, Pen,
+  Radio, Users, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { PptSlideViewer } from "./PptSlideViewer"
 import { SlidePicker } from "./SlidePicker"
 
-// ─── Data channel topics ──────────────────────────────────────────────────────
-
-const CHAT_TOPIC      = "cls-chat"
-const HAND_TOPIC      = "cls-hand"
-const PPT_TOPIC       = "cls-ppt"
-const POINTER_TOPIC   = "cls-pointer"
-const SPOTLIGHT_TOPIC = "cls-spotlight"
-
-const POINTER_SEND_INTERVAL_MS = 50  // throttle pointer moves to ~20 fps
-const POINTER_AUTO_HIDE_MS     = 1500
-
-const enc = new TextEncoder()
-const dec = new TextDecoder()
-
-const QUICK_REACTIONS = ["👍", "✋", "❓", "👏", "😮", "❤️"]
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type MsgType = "text" | "reaction" | "system"
-
-type ChatMsg = {
-  id: string
-  from: string
-  text: string
-  ts: number
-  type: MsgType
-}
-
-type RaisedHand = {
-  identity: string
-  name: string
-}
-
-type JoinRequest = {
-  id: string
-  student: { id: string; name: string; email: string; avatarUrl: string | null }
-  message: string | null
-  status: "PENDING" | "APPROVED" | "REJECTED"
-  responseMessage: string | null
-  createdAt: string
-  respondedAt: string | null
-}
-
-type PptAction =
-  | { action: "start";   url: string; total: number; page: number }
-  | { action: "navigate"; page: number }
-  | { action: "stop" }
-  | { action: "sync_request" }
-  | { action: "sync_response"; url: string; total: number; page: number }
-
-type PointerAction =
-  | { action: "move"; x: number; y: number }  // x,y are 0-1 normalized slide coords
-  | { action: "hide" }
-
-type SpotlightAction =
-  | { action: "set"; identity: string }  // tutor broadcasts: everyone pins this participant
-  | { action: "clear" }                  // tutor broadcasts: everyone unpins
-  | { action: "sync_request" }           // late-joining student asks the tutor
-  | { action: "sync_response"; identity: string | null }
-
-// ─── Audio renderer ───────────────────────────────────────────────────────────
-
-function AudioRenderer() {
-  const tracks = useTracks([Track.Source.Microphone], { onlySubscribed: true })
-  const { localParticipant } = useLocalParticipant()
-  return (
-    <>
-      {tracks
-        .filter((t) => t.participant.identity !== localParticipant.identity)
-        .map((t) => (
-          <AudioTrack key={t.participant.identity} trackRef={t} />
-        ))}
-    </>
-  )
-}
-
-// ─── Tutor video (normal mode main area, fullscreen-capable) ──────────────────
-
-function TutorVideoArea({
-  containerRef,
-  isFullscreen,
-  onToggleFullscreen,
-}: {
-  containerRef: React.RefObject<HTMLDivElement | null>
-  isFullscreen: boolean
-  onToggleFullscreen: () => void
-}) {
-  const camTracks    = useTracks([Track.Source.Camera],      { onlySubscribed: false })
-  const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
-
-  const tutorCam    = camTracks.find((t) => t.participant.metadata === "tutor")
-  const tutorScreen = screenTracks.find((t) => t.participant.metadata === "tutor")
-  const active      = tutorScreen ?? tutorCam
-
-  return (
-    <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden group">
-      {active ? (
-        <VideoTrack trackRef={active} className="w-full h-full object-contain" />
-      ) : (
-        <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-700">
-          <Camera className="size-14 opacity-20" />
-          <span className="text-sm opacity-60">Waiting for tutor camera…</span>
-        </div>
-      )}
-
-      {active && (
-        <div className="absolute bottom-12 left-3 bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
-          {active.participant.name ?? active.participant.identity}
-        </div>
-      )}
-
-      <button
-        onClick={onToggleFullscreen}
-        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white rounded-lg p-1.5 backdrop-blur-sm"
-        title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-      >
-        {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-      </button>
-    </div>
-  )
-}
-
-// ─── Tutor camera inset (PPT split-screen mode only) ─────────────────────────
-// Shows just the tutor's camera feed so students can read BSL signs alongside slides
-
-function TutorCameraInset() {
-  const camTracks = useTracks([Track.Source.Camera], { onlySubscribed: false })
-  const tutorCam  = camTracks.find((t) => t.participant.metadata === "tutor")
-  const name      = tutorCam?.participant.name ?? tutorCam?.participant.identity ?? "Tutor"
-
-  return (
-    <div className="relative w-full h-full bg-zinc-900 overflow-hidden">
-      {tutorCam ? (
-        <>
-          {/* object-contain mirrors the slide panel's fit-mode, so the camera and
-              slide areas show their full content without cropping. */}
-          <VideoTrack trackRef={tutorCam} className="w-full h-full object-contain" />
-          {/* BSL visibility badge */}
-          <div className="absolute top-2 left-2 bg-amber-500/80 text-black text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
-            BSL · {name}
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-600">
-          <Camera className="size-8 opacity-20" />
-          <span className="text-xs opacity-50 text-center px-2">Tutor camera off</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Participants panel (right sidebar, sorted camera-on first) ───────────────
-
-function ParticipantsPanel({
-  pinnedId,
-  onPin,
-  collapsed,
-  onToggleCollapse,
-}: {
-  pinnedId: string | null
-  onPin: (identity: string | null) => void
-  collapsed: boolean
-  onToggleCollapse: () => void
-}) {
-  const { localParticipant } = useLocalParticipant()
-  const allParticipants      = useParticipants()
-  const camTracks            = useTracks([Track.Source.Camera])
-
-  const withTracks = allParticipants.map((p) => {
-    const trackRef = camTracks.find(
-      (t) => t.participant.identity === p.identity && isTrackReference(t)
-    )
-    return { p, trackRef, camOn: !!trackRef }
-  })
-
-  const sorted = [...withTracks].sort((a, b) => {
-    if (a.camOn !== b.camOn) return a.camOn ? -1 : 1
-    if (a.p.metadata === "tutor" && b.p.metadata !== "tutor") return -1
-    if (b.p.metadata === "tutor" && a.p.metadata !== "tutor") return 1
-    return 0
-  })
-
-  if (collapsed) {
-    return (
-      <button
-        onClick={onToggleCollapse}
-        className="h-full w-full flex items-center justify-start gap-2 bg-zinc-900 hover:bg-zinc-800/60 transition-colors px-4 text-left"
-        title="Expand Participants"
-      >
-        <Users className="size-3.5 text-primary shrink-0" />
-        <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
-          Participants · {allParticipants.length}
-        </span>
-        <ChevronDown className="size-3 text-zinc-500 rotate-180 ml-1" />
-      </button>
-    )
-  }
-
-  return (
-    <div className="flex items-stretch h-full min-w-0 overflow-hidden bg-zinc-900">
-      <button
-        onClick={onToggleCollapse}
-        className="shrink-0 w-36 px-3 flex flex-col justify-center border-r border-zinc-800 hover:bg-zinc-800/60 transition-colors text-left"
-      >
-        <div className="flex items-center gap-1.5">
-          <Users className="size-3.5 text-primary shrink-0" />
-          <span className="text-xs font-bold text-white">Participants</span>
-        </div>
-        <div className="flex items-center gap-1 mt-0.5 text-zinc-400">
-          <span className="text-[10px]">{allParticipants.length} in room</span>
-          <ChevronDown className="size-3 text-zinc-500 ml-auto" />
-        </div>
-      </button>
-
-      <div className="overflow-x-auto flex items-center gap-2 px-2 py-2 min-w-0 flex-1">
-        {sorted.map(({ p, trackRef, camOn }) => {
-          const isLocal     = p.identity === localParticipant.identity
-          const isPinned    = pinnedId === p.identity
-          const isTutor     = p.metadata === "tutor"
-          const displayName = p.name ?? p.identity
-
-          return (
-            <div
-              key={p.identity}
-              className={cn(
-                "relative rounded-xl overflow-hidden transition-all h-full aspect-square bg-zinc-800 border shrink-0 group",
-                isTutor
-                  ? "border-amber-500/30 cursor-default"
-                  : isPinned
-                  ? "border-primary ring-1 ring-primary/30 cursor-pointer"
-                  : "border-zinc-700 hover:border-zinc-500 cursor-pointer"
-              )}
-            >
-              {camOn && trackRef ? (
-                <>
-                  <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-1.5 pb-0.5 pointer-events-none">
-                    <p className="text-[9px] text-white truncate font-medium">
-                      {isLocal ? "You" : displayName}
-                      {isTutor && <span className="ml-0.5 text-amber-400">•</span>}
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-1 px-1">
-                  <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                    {displayName[0]?.toUpperCase()}
-                  </div>
-                  <p className="text-[9px] font-semibold text-white truncate max-w-full px-1">
-                    {isLocal ? "You" : displayName}
-                  </p>
-                </div>
-              )}
-
-              {!isTutor && (
-                <div
-                  className={cn(
-                    "absolute inset-0 z-10 flex items-center justify-center transition-opacity",
-                    camOn ? "opacity-0 group-hover:opacity-100 bg-black/30" : "opacity-0"
-                  )}
-                  onClick={() => onPin(isPinned ? null : p.identity)}
-                  title={isPinned ? "Click to unpin" : "Click to pin to main view"}
-                >
-                  {!isPinned && camOn && <Maximize2 className="size-3.5 text-white" />}
-                </div>
-              )}
-
-              {isPinned && (
-                <div className="absolute top-1 right-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold">
-                  Pinned
-                </div>
-              )}
-
-              {isTutor && (
-                <div className="absolute top-1 left-1 text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30">
-                  Tutor
-                </div>
-              )}
-            </div>
-          )
-        })}
-
-        {allParticipants.length === 0 && (
-          <p className="text-xs text-zinc-600 px-3 whitespace-nowrap">No one else here yet</p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Pinned student video (fills center area in normal mode) ──────────────────
-
-function PinnedVideoArea({
-  identity,
-  containerRef,
-  isFullscreen,
-  onToggleFullscreen,
-  onUnpin,
-  // Tutor-only spotlight controls
-  showSpotlight,
-  spotlightActive,
-  onToggleSpotlight,
-}: {
-  identity: string
-  containerRef: React.RefObject<HTMLDivElement | null>
-  isFullscreen: boolean
-  onToggleFullscreen: () => void
-  onUnpin: () => void
-  showSpotlight?: boolean
-  spotlightActive?: boolean
-  onToggleSpotlight?: () => void
-}) {
-  const allParticipants = useParticipants()
-  const camTracks       = useTracks([Track.Source.Camera])
-  const screenTracks    = useTracks([Track.Source.ScreenShare])
-
-  const participant = allParticipants.find((p) => p.identity === identity)
-  const camRef      = camTracks.find(
-    (t) => t.participant.identity === identity && isTrackReference(t)
-  )
-  const screenRef   = screenTracks.find(
-    (t) => t.participant.identity === identity && isTrackReference(t)
-  )
-  const active      = screenRef ?? camRef
-  const displayName = participant?.name ?? identity
-
-  return (
-    <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden group">
-      {active ? (
-        <VideoTrack trackRef={active} className="w-full h-full object-contain" />
-      ) : (
-        <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
-          <div className="size-20 rounded-full bg-primary/10 flex items-center justify-center text-primary text-3xl font-bold">
-            {displayName[0]?.toUpperCase()}
-          </div>
-          <span className="text-sm">{displayName} · Camera off</span>
-        </div>
-      )}
-
-      <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
-        <button
-          onClick={onUnpin}
-          className="flex items-center gap-1.5 bg-black/70 hover:bg-black/90 text-white text-xs font-semibold px-3 py-2 rounded-full backdrop-blur-sm transition-colors shadow-lg ring-1 ring-white/10"
-          title="Back to tutor — return to the tutor's camera view"
-          aria-label="Unpin and return to tutor view"
-        >
-          <ArrowLeft className="size-3.5" />
-          Back to tutor
-        </button>
-
-        {showSpotlight && (
-          <button
-            onClick={onToggleSpotlight}
-            className={cn(
-              "flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full backdrop-blur-sm transition-colors shadow-lg ring-1",
-              spotlightActive
-                ? "bg-amber-400 hover:bg-amber-300 text-black ring-amber-200/60 animate-pulse"
-                : "bg-primary/90 hover:bg-primary text-primary-foreground ring-white/10"
-            )}
-            title={
-              spotlightActive
-                ? "Click to stop — every student will return to the tutor view"
-                : "Click to show this camera on every student's screen"
-            }
-            aria-label={spotlightActive ? "Stop broadcasting to class" : "Broadcast this camera to the whole class"}
-            aria-pressed={spotlightActive}
-          >
-            {spotlightActive ? (
-              <>
-                <span className="relative flex size-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-600 opacity-75" />
-                  <span className="relative inline-flex size-2 rounded-full bg-rose-600" />
-                </span>
-                Sharing with class — click to stop
-              </>
-            ) : (
-              <>
-                <Megaphone className="size-3.5" />
-                Show to whole class
-              </>
-            )}
-          </button>
-        )}
-
-        {/* Discoverability hint: only shown when spotlight is available but not active */}
-        {showSpotlight && !spotlightActive && (
-          <span
-            className="hidden md:flex items-center gap-1 text-[10px] text-white/70 bg-black/40 px-2 py-1 rounded-full backdrop-blur-sm pointer-events-none"
-            aria-hidden
-          >
-            <Info className="size-3" />
-            Only you see this camera until you click &ldquo;Show to whole class&rdquo;
-          </span>
-        )}
-      </div>
-
-      <div className="absolute bottom-10 left-3 bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
-        {displayName}
-      </div>
-
-      <button
-        onClick={onToggleFullscreen}
-        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white rounded-lg p-1.5 backdrop-blur-sm"
-        title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-      >
-        {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-      </button>
-    </div>
-  )
-}
-
-// ─── Message bubble ───────────────────────────────────────────────────────────
-
-function MessageBubble({ msg, isOwn }: { msg: ChatMsg; isOwn: boolean }) {
-  const time = new Date(msg.ts).toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-
-  if (msg.type === "reaction") {
-    return (
-      <div className="flex flex-col items-center gap-0.5 my-1">
-        <span className="text-2xl">{msg.text}</span>
-        <span className="text-[10px] text-zinc-600">{msg.from} · {time}</span>
-      </div>
-    )
-  }
-
-  if (msg.type === "system") {
-    return (
-      <div className="flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 py-0.5">
-        <Hand className="size-3" />
-        <span>{msg.text}</span>
-        <span className="text-zinc-700">· {time}</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className={cn("flex flex-col gap-0.5", isOwn ? "items-end self-end" : "items-start self-start", "max-w-[88%]")}>
-      {!isOwn && (
-        <span className="text-[11px] font-semibold text-amber-400 px-1 leading-none">{msg.from}</span>
-      )}
-      <div
-        className={cn(
-          "px-3 py-2 text-sm leading-snug wrap-break-word",
-          isOwn
-            ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm"
-            : "bg-zinc-800 text-zinc-100 rounded-2xl rounded-bl-sm"
-        )}
-      >
-        {msg.text}
-      </div>
-      <span className="text-[10px] text-zinc-600 px-1">{time}</span>
-    </div>
-  )
-}
-
-function ChatPanel({
-  messages,
-  localName,
-  raisedHands,
-  onSend,
-  flash,
-  collapsed,
-  onToggleCollapse,
-}: {
-  messages: ChatMsg[]
-  localName: string
-  raisedHands: RaisedHand[]
-  onSend: (text: string, type: MsgType) => void
-  flash: boolean
-  collapsed: boolean
-  onToggleCollapse: () => void
-}) {
-  const [input, setInput]   = useState("")
-  const [unread, setUnread] = useState(0)
-  const [atBottom, setAtBottom] = useState(true)
-  const listRef  = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    const el = listRef.current
-    if (!el) return
-    if (atBottom) {
-      el.scrollTop = el.scrollHeight
-      setUnread(0)
-    } else {
-      const last = messages[messages.length - 1]
-      if (last && last.from !== localName) setUnread((n) => n + 1)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages])
-
-  const handleScroll = () => {
-    const el = listRef.current
-    if (!el) return
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 60
-    setAtBottom(near)
-    if (near) setUnread(0)
-  }
-
-  const scrollToBottom = () => {
-    const el = listRef.current
-    if (el) el.scrollTop = el.scrollHeight
-    setAtBottom(true)
-    setUnread(0)
-  }
-
-  const handleSend = () => {
-    const text = input.trim()
-    if (!text) return
-    onSend(text, "text")
-    setInput("")
-    inputRef.current?.focus()
-  }
-
-  if (collapsed) {
-    return (
-      <div className="flex flex-col items-center h-full bg-zinc-900">
-        <button
-          onClick={onToggleCollapse}
-          className="w-full flex items-center justify-center py-3 hover:bg-zinc-800 transition-colors relative"
-          title="Expand Chat"
-        >
-          <MessageSquare className="size-4 text-primary" />
-          {unread > 0 && (
-            <span className="absolute top-1.5 right-1 size-3.5 rounded-full bg-primary text-primary-foreground text-[8px] font-bold flex items-center justify-center">
-              {unread}
-            </span>
-          )}
-        </button>
-        <div className="flex-1 flex items-center justify-center">
-          <span
-            className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest"
-            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-          >
-            Live Chat{unread > 0 ? ` · ${unread} new` : ""}
-          </span>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className={cn(
-        "flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300",
-        flash && "shadow-[inset_1px_0_0_hsl(var(--primary)/0.6)]"
-      )}
-    >
-      <button
-        onClick={onToggleCollapse}
-        className="shrink-0 px-4 py-3 border-b border-zinc-800 flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800/60 transition-colors w-full text-left"
-      >
-        <MessageSquare className="size-4 text-primary shrink-0" />
-        <span className="font-bold text-sm text-white">Live Chat</span>
-        {unread > 0 && (
-          <span className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-bounce">
-            {unread}
-          </span>
-        )}
-        <ChevronDown className={cn("size-3.5 text-zinc-500 ml-auto transition-transform duration-200", collapsed && "-rotate-90")} />
-      </button>
-
-      {raisedHands.length > 0 && (
-        <div className="shrink-0 px-3 py-2 bg-amber-500/15 border-b border-amber-500/30 flex items-center gap-2 flex-wrap">
-          <Hand className="size-3.5 text-amber-400 shrink-0 animate-bounce" />
-          <span className="text-[11px] font-semibold text-amber-400">Raised:</span>
-          {raisedHands.map((h) => (
-            <span key={h.identity} className="text-[11px] text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full">
-              {h.name}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div
-        ref={listRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2 min-h-0"
-      >
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-700 select-none">
-            <MessageSquare className="size-8 opacity-30" />
-            <p className="text-xs text-center opacity-70 max-w-48">
-              Chat is how everyone communicates here. Say hello! 👋
-            </p>
-          </div>
-        ) : (
-          messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} isOwn={m.from === localName} />
-          ))
-        )}
-      </div>
-
-      {!atBottom && (
-        <div className="absolute bottom-38 left-1/2 -translate-x-1/2 z-10 right-panel-anchor">
-          <button
-            onClick={scrollToBottom}
-            className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg hover:bg-primary/90 transition-colors"
-          >
-            <ChevronDown className="size-3.5" />
-            {unread > 0 ? `${unread} new message${unread > 1 ? "s" : ""}` : "Scroll to latest"}
-          </button>
-        </div>
-      )}
-
-      <div className="shrink-0 flex items-center gap-1 px-3 py-2 border-t border-zinc-800/60 bg-zinc-900/60">
-        {QUICK_REACTIONS.map((emoji) => (
-          <button
-            key={emoji}
-            onClick={() => onSend(emoji, "reaction")}
-            className="text-lg hover:scale-125 active:scale-110 transition-transform leading-none p-1 rounded-lg hover:bg-zinc-800"
-            title={`React with ${emoji}`}
-          >
-            {emoji}
-          </button>
-        ))}
-      </div>
-
-      <div className="shrink-0 p-3 border-t border-zinc-800 bg-zinc-900/80 flex gap-2 items-end">
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault()
-              handleSend()
-            }
-          }}
-          rows={1}
-          placeholder="Type a message… (Enter to send)"
-          className="flex-1 resize-none rounded-xl bg-zinc-800 border border-zinc-700 text-sm text-white placeholder:text-zinc-600 px-3 py-2 outline-none focus:border-primary/60 transition-colors max-h-24 overflow-y-auto leading-snug"
-          style={{ fieldSizing: "content" } as React.CSSProperties}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim()}
-          className="shrink-0 size-9 rounded-xl bg-primary flex items-center justify-center hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-        >
-          <Send className="size-4 text-white" />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─── Tutor slide upload panel ─────────────────────────────────────────────────
-
-type UploadedSlides = {
-  url:      string
-  total:    number
-  mimeType: string
-  fileName: string
-}
-
-function SlideUploadPanel({
-  sessionId,
-  onSlidesReady,
-  onClose,
-  previousSlides,
-}: {
-  sessionId: string
-  onSlidesReady: (data: UploadedSlides) => void
-  onClose: () => void
-  previousSlides: UploadedSlides | null
-}) {
-  const [uploading, setUploading]   = useState(false)
-  const [progress, setProgress]     = useState("")
-  const [error, setError]           = useState("")
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const handleFile = async (file: File) => {
-    setError("")
-
-    setUploading(true)
-    setProgress("Getting upload URL…")
-
-    try {
-      // 1. Get presigned URL
-      const presignRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/presign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, mimeType: file.type }),
-      })
-      if (!presignRes.ok) {
-        const err = await presignRes.json()
-        throw new Error(err.message ?? "Could not get upload URL")
-      }
-      const { uploadUrl, fileUrl } = await presignRes.json()
-
-      // 2. Upload directly to S3
-      setProgress("Uploading file…")
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      })
-      if (!uploadRes.ok) throw new Error("Upload to storage failed")
-
-      // 3. Register the file in the session
-      setProgress("Registering slides…")
-      const registerRes = await fetch(`/api/tutor/sessions/${sessionId}/slides`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileUrl,
-          fileName: file.name,
-          mimeType: file.type,
-          fileSize: file.size,
-        }),
-      })
-      if (!registerRes.ok) {
-        const err = await registerRes.json()
-        throw new Error(err.message ?? "Could not save slides")
-      }
-
-      // 4. Determine slide/page count
-      setProgress("Reading slide count…")
-      const isPdf = file.type === "application/pdf"
-      let total: number
-
-      if (isPdf) {
-        const pdfjsLib = await import("pdfjs-dist")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-          `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-        const arrayBuffer = await file.arrayBuffer()
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-        total = pdf.numPages
-      } else {
-        // PPTX: count slides by inspecting the ZIP structure
-        const JSZip = (await import("jszip")).default
-        const zip = await JSZip.loadAsync(file)
-        const slideFiles = Object.keys(zip.files).filter(
-          (name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)
-        )
-        total = slideFiles.length || 1
-      }
-
-      onSlidesReady({ url: fileUrl, total, mimeType: file.type, fileName: file.name })
-    } catch (err: unknown) {
-      setError((err as Error).message ?? "Upload failed")
-    } finally {
-      setUploading(false)
-      setProgress("")
-    }
-  }
-
-  return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl mx-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Presentation className="size-4 text-primary" />
-            <h3 className="font-bold text-sm text-white">Upload Slides</h3>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-zinc-500 hover:text-white transition-colors"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        <p className="text-xs text-zinc-400 mb-4">
-          Upload a PDF or PowerPoint file. Students will see your slides alongside your camera.
-        </p>
-
-        {error && (
-          <p className="text-xs text-rose-400 bg-rose-900/20 border border-rose-800/40 rounded-lg px-3 py-2 mb-4">
-            {error}
-          </p>
-        )}
-
-        {uploading ? (
-          <div className="flex items-center gap-3 py-4 justify-center text-zinc-400">
-            <Loader2 className="size-5 animate-spin text-primary" />
-            <span className="text-sm">{progress}</span>
-          </div>
-        ) : (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) handleFile(file)
-              }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-zinc-700 hover:border-primary/60 hover:bg-primary/5 text-zinc-400 hover:text-primary transition-all text-sm font-medium"
-            >
-              <Upload className="size-4" />
-              Choose PDF or PPTX file
-            </button>
-
-            {previousSlides && (
-              <button
-                onClick={() => onSlidesReady(previousSlides)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 transition-all text-sm font-medium mt-3"
-              >
-                <Presentation className="size-4" />
-                Resume previous slides
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Bottom controls bar ──────────────────────────────────────────────────────
-
-function ControlsBar({
-  isTutor,
-  handRaised,
-  onToggleHand,
-  onLeave,
-  // PPT controls (tutor only)
-  pptActive,
-  // Position within the tutor's chosen subset of slides (0-based)
-  presentationIdx,
-  // Count of slides the tutor selected to present
-  selectedCount,
-  onShowUpload,
-  onPptNext,
-  onPptPrev,
-  onPptStop,
-  // Pointer (tutor only, active during slide presentation)
-  pointerMode,
-  onTogglePointer,
-}: {
-  isTutor: boolean
-  handRaised: boolean
-  onToggleHand: () => void
-  onLeave: () => void
-  pptActive: boolean
-  presentationIdx: number
-  selectedCount: number
-  onShowUpload: () => void
-  onPptNext: () => void
-  onPptPrev: () => void
-  onPptStop: () => void
-  pointerMode: boolean
-  onTogglePointer: () => void
-}) {
-  return (
-    <div className="flex items-center gap-2 shrink-0 px-3 flex-wrap">
-      <TrackToggle
-        source={Track.Source.Microphone}
-        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=false]:bg-rose-900/50 data-[enabled=false]:text-rose-400 whitespace-nowrap"
-      >
-        <Mic className="size-3.5" /> Mic
-      </TrackToggle>
-
-      <TrackToggle
-        source={Track.Source.Camera}
-        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=false]:bg-rose-900/50 data-[enabled=false]:text-rose-400 whitespace-nowrap"
-      >
-        <Camera className="size-3.5" /> Camera
-      </TrackToggle>
-
-      {isTutor && (
-        <TrackToggle
-          source={Track.Source.ScreenShare}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=true]:bg-emerald-900/50 data-[enabled=true]:text-emerald-400 whitespace-nowrap"
-        >
-          <Monitor className="size-3.5" /> Screen
-        </TrackToggle>
-      )}
-
-      {/* ── PPT controls (tutor only) ── */}
-      {isTutor && !pptActive && (
-        <button
-          onClick={onShowUpload}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"
-          title="Upload and present slides"
-        >
-          <Presentation className="size-3.5" /> Slides
-        </button>
-      )}
-
-      {isTutor && pptActive && (
-        <>
-          {/* Prev slide — moves back in the tutor's chosen subset */}
-          <button
-            onClick={onPptPrev}
-            disabled={presentationIdx <= 0}
-            className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Previous slide"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-
-          {/* Slide counter — position within the selected subset */}
-          <span
-            className="text-xs text-zinc-400 bg-zinc-800 px-2.5 h-9 flex items-center rounded-xl whitespace-nowrap font-mono"
-            title="Position within the slides you selected"
-          >
-            {presentationIdx + 1} / {selectedCount}
-          </span>
-
-          {/* Next slide */}
-          <button
-            onClick={onPptNext}
-            disabled={presentationIdx >= selectedCount - 1}
-            className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Next slide"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-
-          {/* Finger pointer toggle */}
-          <button
-            onClick={onTogglePointer}
-            className={cn(
-              "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-              pointerMode
-                ? "bg-amber-500/25 text-amber-300 border-amber-500/50 animate-pulse"
-                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
-            )}
-            title={pointerMode ? "Turn off pen pointer" : "Point at things on the slide — students will see a pen follow your cursor"}
-          >
-            <Pen className="size-3.5" />
-            {pointerMode ? "Pointing" : "Pointer"}
-          </button>
-
-          {/* Stop presentation */}
-          <button
-            onClick={onPptStop}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-amber-900/40 hover:bg-amber-900/70 text-amber-400 border border-amber-700/40 transition-colors whitespace-nowrap"
-            title="Stop presenting slides"
-          >
-            <X className="size-3.5" /> End Slides
-          </button>
-        </>
-      )}
-
-      {!isTutor && (
-        <button
-          onClick={onToggleHand}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
-            handRaised
-              ? "bg-amber-500/30 text-amber-400 border border-amber-500/50 animate-pulse"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-          )}
-        >
-          <HandMetal className="size-3.5" />
-          {handRaised ? "Lower Hand" : "Raise Hand"}
-        </button>
-      )}
-
-      <button
-        onClick={onLeave}
-        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors whitespace-nowrap ml-auto"
-      >
-        <PhoneOff className="size-3.5" /> Leave
-      </button>
-    </div>
-  )
-}
-
-// ─── Live Captions Overlay ────────────────────────────────────────────────────
-
-type CaptionEntry = {
-  id: string
-  speakerName: string
-  text: string
-  final: boolean
-}
-
-function CaptionsOverlay() {
-  const room = useRoomContext()
-  const [captions, setCaptions] = useState<CaptionEntry[]>([])
-  const clearTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handler = (segments: any[], participant: any) => {
-      segments.forEach((seg) => {
-        if (!seg.text?.trim()) return
-        setCaptions((prev) => {
-          const idx = prev.findIndex((c) => c.id === seg.id)
-          const entry: CaptionEntry = {
-            id: seg.id,
-            speakerName: participant?.name ?? participant?.identity ?? "Unknown",
-            text: seg.text,
-            final: seg.final,
-          }
-          if (idx >= 0) {
-            const next = [...prev]; next[idx] = entry; return next
-          }
-          return [...prev.slice(-1), entry]
-        })
-        if (seg.final) {
-          const existing = clearTimers.current.get(seg.id)
-          if (existing) clearTimeout(existing)
-          clearTimers.current.set(seg.id, setTimeout(() => {
-            setCaptions((prev) => prev.filter((c) => c.id !== seg.id))
-            clearTimers.current.delete(seg.id)
-          }, 4000))
-        }
-      })
-    }
-
-    room.on(RoomEvent.TranscriptionReceived, handler)
-    return () => {
-      room.off(RoomEvent.TranscriptionReceived, handler)
-      clearTimers.current.forEach(clearTimeout)
-    }
-  }, [room])
-
-  const visible = captions.filter((c) => c.text.trim())
-  if (visible.length === 0) return null
-
-  return (
-    <div className="absolute bottom-4 inset-x-0 flex justify-center pointer-events-none z-20 px-6">
-      <div className="bg-black/80 backdrop-blur-sm rounded-2xl px-5 py-3 max-w-2xl w-full flex flex-col gap-1.5">
-        {visible.map((c) => (
-          <p key={c.id} className="text-sm leading-snug text-white">
-            <span className="font-semibold text-amber-400 mr-1.5">{c.speakerName}:</span>
-            {c.text}
-          </p>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ─── Join Requests Popover (tutor only) ───────────────────────────────────────
-
-function JoinRequestsPopover({
-  requests,
-  loading,
-  onAction,
-  onClose,
-}: {
-  requests: JoinRequest[]
-  loading: boolean
-  onAction: (requestId: string, action: "approve" | "reject", message?: string) => void
-  onClose: () => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [onClose])
-
-  return (
-    <div
-      ref={ref}
-      className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl z-50 flex flex-col"
-    >
-      <div className="px-4 py-2.5 border-b border-zinc-800 flex items-center justify-between shrink-0">
-        <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-          <UserPlus className="size-3.5 text-amber-400" />
-          Join Requests {requests.length > 0 && (
-            <span className="text-amber-400">({requests.length})</span>
-          )}
-        </span>
-        <button
-          onClick={onClose}
-          className="text-zinc-500 hover:text-zinc-200 transition-colors"
-          aria-label="Close"
-        >
-          <X className="size-3.5" />
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        {requests.length === 0 ? (
-          <div className="py-10 px-4 text-center text-xs text-zinc-500">
-            No pending requests.
-          </div>
-        ) : (
-          <div className="divide-y divide-zinc-800">
-            {requests.map((r) => (
-              <JoinRequestRow key={r.id} request={r} disabled={loading} onAction={onAction} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function JoinRequestRow({
-  request,
-  disabled,
-  onAction,
-}: {
-  request: JoinRequest
-  disabled: boolean
-  onAction: (requestId: string, action: "approve" | "reject", message?: string) => void
-}) {
-  const initials = request.student.name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2)
-  return (
-    <div className="px-4 py-3 flex flex-col gap-2">
-      <div className="flex items-start gap-2.5">
-        <div className="size-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0">
-          {initials}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-zinc-100 truncate">{request.student.name}</p>
-          <p className="text-[10px] text-zinc-500 truncate">{request.student.email}</p>
-          {request.message && (
-            <p className="mt-1.5 text-[11px] text-zinc-300 bg-zinc-800/60 rounded-md px-2 py-1.5 leading-snug">
-              &ldquo;{request.message}&rdquo;
-            </p>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-1.5 justify-end">
-        <button
-          disabled={disabled}
-          onClick={() => onAction(request.id, "reject")}
-          className="h-6 px-2 text-[11px] rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 flex items-center gap-1"
-        >
-          <XCircle className="size-3" /> Decline
-        </button>
-        <button
-          disabled={disabled}
-          onClick={() => onAction(request.id, "approve")}
-          className="h-6 px-2 text-[11px] rounded-md bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 flex items-center gap-1"
-        >
-          <Check className="size-3" /> Approve
-        </button>
-      </div>
-    </div>
-  )
-}
+import {
+  CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC,
+  POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS,
+  enc, dec,
+} from "./room/constants"
+import type {
+  ChatMsg, MsgType, RaisedHand, JoinRequest,
+  PptAction, PointerAction, SpotlightAction, MuteAction, SessionControlAction,
+  UploadedSlides,
+} from "./room/types"
+import { AudioRenderer }        from "./room/AudioRenderer"
+import { TutorVideoArea }       from "./room/TutorVideoArea"
+import { TutorCameraInset }     from "./room/TutorCameraInset"
+import { ParticipantsPanel }    from "./room/ParticipantsPanel"
+import { PinnedVideoArea }      from "./room/PinnedVideoArea"
+import { FloatingVideoWindow }  from "./room/FloatingVideoWindow"
+import { ChatPanel }            from "./room/ChatPanel"
+import { SlideUploadPanel }     from "./room/SlideUploadPanel"
+import { SlideTray }            from "./room/SlideTray"
+import { VideoPlayer }          from "./room/VideoPlayer"
+import { ControlsBar }          from "./room/ControlsBar"
+import { CaptionsOverlay }      from "./room/CaptionsOverlay"
+import { JoinRequestsPopover }  from "./room/JoinRequestsPopover"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 
 // ─── Main ClassroomRoom ───────────────────────────────────────────────────────
 
@@ -1204,6 +74,15 @@ export function ClassroomRoom({
   const [participantsOpen, setParticipantsOpen] = useState(true)
   const [chatOpen,         setChatOpen]         = useState(true)
   const [requestsOpen,     setRequestsOpen]     = useState(false)
+
+  // ── Popped-out floating video windows ──────────────────────────────────────
+  // Each entry is a participant identity the tutor has popped out into a
+  // draggable, resizable window so they can keep an eye on that student
+  // regardless of who's pinned in the main view.
+  const [poppedOutIds, setPoppedOutIds] = useState<string[]>([])
+
+  // ── Remove-participant confirmation (tutor only) ───────────────────────────
+  const [pendingRemoval, setPendingRemoval] = useState<{ identity: string; name: string } | null>(null)
 
   // ── Join requests (tutor only) ─────────────────────────────────────────────
   const { data: requestsData, refetch: refetchRequests } = useFetch<{ requests: JoinRequest[] }>(
@@ -1243,24 +122,53 @@ export function ClassroomRoom({
     onSuccess: () => refetchRequests(),
   })
 
-  // ── PPT state ──────────────────────────────────────────────────────────────
+  // ── Presentation state ─────────────────────────────────────────────────────
+  // `pptActive` is TRUE for both slide- and video-mode presentations; `presentKind`
+  // says which. We reuse the PPT_TOPIC + a single "what's on the screen now"
+  // flag so only one resource can be live at a time.
   const [pptActive,      setPptActive]      = useState(false)
   const [pptUrl,         setPptUrl]         = useState<string | null>(null)
   const [pptCurrentPage, setPptCurrentPage] = useState(1)
   const [pptTotalPages,  setPptTotalPages]  = useState(0)
+  const [presentKind,    setPresentKind]    = useState<"slides" | "video" | null>(null)
   const [showUpload,     setShowUpload]     = useState(false)
   // Slide picker appears after upload. While non-null, the tutor hasn't yet
-  // chosen which slides to include in the presentation.
-  const [pickerData,     setPickerData]     = useState<UploadedSlides | null>(null)
+  // chosen which slides to include. Videos bypass the picker entirely, so the
+  // state is narrowed to the slide-deck variant.
+  type SlidesUpload = Extract<UploadedSlides, { kind: "slides" }>
+  const [pickerData,     setPickerData]     = useState<SlidesUpload | null>(null)
   // Tutor-only: the 1-based slide numbers in the order they'll be navigated.
   // Broadcast protocol doesn't need to know about this — students just receive
   // actual page numbers in the underlying deck.
   const [selectedSlides, setSelectedSlides] = useState<number[]>([])
-  // Tutor-only: position within `selectedSlides`.
-  const [presentationIdx, setPresentationIdx] = useState(0)
+  // Tutor-only: show/hide the live slide-thumbnail sidebar (shown only in PPT mode)
+  const [slideTrayOpen,  setSlideTrayOpen]  = useState(true)
+
+  // Position of the currently-shown page within the tutor-selected subset.
+  // -1 if the tutor has live-excluded the current slide from the sequence.
+  const presentationIdx = useMemo(
+    () => selectedSlides.indexOf(pptCurrentPage),
+    [selectedSlides, pptCurrentPage]
+  )
+  const hasNextSlide = useMemo(
+    () => selectedSlides.some((p) => p > pptCurrentPage),
+    [selectedSlides, pptCurrentPage]
+  )
+  const hasPrevSlide = useMemo(
+    () => selectedSlides.some((p) => p < pptCurrentPage),
+    [selectedSlides, pptCurrentPage]
+  )
+
+  // ── Video playback state (tutor-authoritative, mirrored by students) ───────
+  // The tutor's VideoPlayer ignores these props — they only exist so students
+  // can mirror. The tutor updates `videoStateRef` on every play/pause/seek so
+  // late-joining students get the right answer from video_sync_response.
+  const [videoPlaying,     setVideoPlaying]     = useState(false)
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0)
+  const [videoAsOf,        setVideoAsOf]        = useState(() => Date.now())
+  const videoStateRef = useRef({ url: "", playing: false, currentTime: 0, ts: 0 })
 
   // ── Finger pointer state ───────────────────────────────────────────────────
-  // Tutor toggles pointer mode; coords are normalized (0-1) against the slide area.
   const [pointerMode,   setPointerMode]   = useState(false)
   const [livePointer,   setLivePointer]   = useState<{ x: number; y: number } | null>(null)
   const slideAreaRef    = useRef<HTMLDivElement>(null)
@@ -1268,7 +176,6 @@ export function ClassroomRoom({
   const pointerHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Spotlight state (tutor-initiated, seen by everyone) ───────────────────
-  // When non-null, all students auto-pin this participant. Independent from local pinning.
   const [spotlightedId, setSpotlightedId] = useState<string | null>(null)
   const spotlightRef = useRef<string | null>(null)
   // Remember uploaded slides so tutor can resume without re-uploading
@@ -1320,7 +227,9 @@ export function ClassroomRoom({
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as PptAction
 
+      // ── Slides ───────────────────────────────────────────────────────────
       if (data.action === "start") {
+        setPresentKind("slides")
         setPptUrl(data.url)
         setPptTotalPages(data.total)
         setPptCurrentPage(data.page)
@@ -1337,6 +246,7 @@ export function ClassroomRoom({
 
       if (data.action === "stop") {
         setPptActive(false)
+        setPresentKind(null)
         setPptUrl(null)
         setPptCurrentPage(1)
         setPptTotalPages(0)
@@ -1344,33 +254,88 @@ export function ClassroomRoom({
         return
       }
 
-      // Student joined late and is requesting the current slide state
-      if (data.action === "sync_request" && isTutor) {
-        const state = pptStateRef.current
-        if (!state.active) return
-        const response: PptAction = {
-          action: "sync_response",
-          url: state.url,
-          total: state.total,
-          page: state.page,
-        }
-        sendPpt(enc.encode(JSON.stringify(response)), { reliable: true })
+      // ── Video ────────────────────────────────────────────────────────────
+      if (data.action === "video_start") {
+        setPresentKind("video")
+        setPptUrl(data.url)
+        setPptActive(true)
+        setVideoPlaying(false)
+        setVideoCurrentTime(0)
+        setVideoAsOf(Date.now())
+        setParticipantsOpen(false)
         return
       }
 
-      // Tutor responded to our sync request
+      if (data.action === "video_state" && !isTutor) {
+        // Students mirror whatever the tutor just broadcast. The tutor's own
+        // echo is ignored to avoid fighting their native <video> controls.
+        setVideoPlaying(data.playing)
+        setVideoCurrentTime(data.currentTime)
+        setVideoAsOf(data.ts)
+        return
+      }
+
+      if (data.action === "video_stop") {
+        setPptActive(false)
+        setPresentKind(null)
+        setPptUrl(null)
+        setVideoPlaying(false)
+        setVideoCurrentTime(0)
+        setParticipantsOpen(true)
+        return
+      }
+
+      // ── Sync for late joiners ────────────────────────────────────────────
+      if (data.action === "sync_request" && isTutor) {
+        const state = pptStateRef.current
+        if (state.active) {
+          const response: PptAction = {
+            action: "sync_response",
+            url: state.url,
+            total: state.total,
+            page: state.page,
+          }
+          sendPpt(enc.encode(JSON.stringify(response)), { reliable: true })
+          return
+        }
+        const v = videoStateRef.current
+        if (v.url) {
+          const response: PptAction = {
+            action: "video_sync_response",
+            url: v.url,
+            playing: v.playing,
+            currentTime: v.currentTime,
+            ts: v.ts,
+          }
+          sendPpt(enc.encode(JSON.stringify(response)), { reliable: true })
+        }
+        return
+      }
+
       if (data.action === "sync_response" && !isTutor) {
+        setPresentKind("slides")
         setPptUrl(data.url)
         setPptTotalPages(data.total)
         setPptCurrentPage(data.page)
         setPptActive(true)
         setParticipantsOpen(false)
+        return
+      }
+
+      if (data.action === "video_sync_response" && !isTutor) {
+        setPresentKind("video")
+        setPptUrl(data.url)
+        setPptActive(true)
+        setVideoPlaying(data.playing)
+        setVideoCurrentTime(data.currentTime)
+        setVideoAsOf(data.ts)
+        setParticipantsOpen(false)
+        return
       }
     } catch { /* ignore malformed */ }
   })
 
   // ── Data channel: finger pointer ───────────────────────────────────────────
-  // Tutor broadcasts cursor position over the slide; everyone else renders it.
 
   const { send: sendPointer } = useDataChannel(POINTER_TOPIC, (msg) => {
     if (isTutor) return  // tutor drives the pointer, no need to react to own echoes
@@ -1378,7 +343,6 @@ export function ClassroomRoom({
       const data = JSON.parse(dec.decode(msg.payload)) as PointerAction
       if (data.action === "move") {
         setLivePointer({ x: data.x, y: data.y })
-        // Auto-hide if the tutor's "hide" packet is dropped (e.g. tab switch)
         if (pointerHideTimer.current) clearTimeout(pointerHideTimer.current)
         pointerHideTimer.current = setTimeout(() => setLivePointer(null), POINTER_AUTO_HIDE_MS)
       } else if (data.action === "hide") {
@@ -1395,7 +359,6 @@ export function ClassroomRoom({
   }, [pptActive, pointerMode])
 
   // ── Data channel: spotlight ─────────────────────────────────────────────────
-  // Tutor can force every student to pin a particular participant.
 
   const { send: sendSpotlight } = useDataChannel(SPOTLIGHT_TOPIC, (msg) => {
     try {
@@ -1427,6 +390,49 @@ export function ClassroomRoom({
           setPinnedId(data.identity)
         }
         return
+      }
+    } catch { /* ignore malformed */ }
+  })
+
+  // ── Data channel: mute-all ─────────────────────────────────────────────────
+  // Tutor broadcasts `mute-all`; every student self-mutes their own mic on receipt
+  // and gets a toast so they know *why* their mic just cut out.
+
+  const { send: sendMuteAll } = useDataChannel(MUTE_TOPIC, (msg) => {
+    // Tutors originate this signal, so skip their own echo.
+    if (isTutor) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as MuteAction
+      if (data.action !== "mute-all") return
+      // Only do anything if the mic is currently live — avoids surprise toasts
+      // for students who were already muted.
+      if (!localParticipant.isMicrophoneEnabled) return
+      localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
+      toast.info(`${data.from} muted everyone's microphone`, {
+        description: "You can unmute yourself again whenever you need to speak.",
+      })
+    } catch { /* ignore malformed */ }
+  })
+
+  // ── Data channel: session-level admin actions ─────────────────────────────
+  // Tutor broadcasts `refresh`. Students react on receipt; the tutor performs
+  // the same action locally in the click handler to stay in sync — we don't
+  // rely on the tutor's own data-channel echo here.
+
+  const { send: sendControl } = useDataChannel(CONTROL_TOPIC, (msg) => {
+    if (isTutor) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as SessionControlAction
+      if (data.action === "refresh") {
+        toast.info(`${data.from} is refreshing the classroom`, {
+          description: "Your page will reload in a moment…",
+        })
+        // Leave a one-shot flag so the page skips the lobby and auto-rejoins
+        // after the reload. Scoped to this session + tab via sessionStorage.
+        try {
+          sessionStorage.setItem(`classroom:auto-rejoin:${sessionId}`, String(Date.now()))
+        } catch { /* storage may be disabled */ }
+        setTimeout(() => window.location.reload(), 1500)
       }
     } catch { /* ignore malformed */ }
   })
@@ -1463,18 +469,19 @@ export function ClassroomRoom({
     }
   }, [participants, spotlightedId, isTutor])
 
-  // Keep pptStateRef in sync so sync_response handler has current values
+  // Keep pptStateRef in sync so sync_response handler has current values.
+  // `active` is scoped to SLIDES only — when video is playing the handler
+  // consults videoStateRef instead and this ref stays inert.
   useEffect(() => {
     pptStateRef.current = {
-      active: pptActive,
+      active: pptActive && presentKind === "slides",
       url: pptUrl ?? "",
       total: pptTotalPages,
       page: pptCurrentPage,
     }
-  }, [pptActive, pptUrl, pptTotalPages, pptCurrentPage])
+  }, [pptActive, presentKind, pptUrl, pptTotalPages, pptCurrentPage])
 
   // ── Student: request sync when first joining ───────────────────────────────
-  // Sends a sync_request after a short delay so the tutor's data channel listener is ready
   const hasSentSyncRequest = useRef(false)
   useEffect(() => {
     if (isTutor || hasSentSyncRequest.current) return
@@ -1485,7 +492,6 @@ export function ClassroomRoom({
       try {
         sendPpt(enc.encode(JSON.stringify(req)), { reliable: true })
       } catch {
-        // Data channel not ready yet — will sync on next PPT action from tutor
         hasSentSyncRequest.current = false
       }
     }, 2000)
@@ -1551,14 +557,46 @@ export function ClassroomRoom({
     }
   }, [connectionState, sendPpt])
 
-  // Upload complete — remember the file and open the slide picker.
+  // Kicks off a video presentation. Broadcasts `video_start`, flips the
+  // classroom into video mode, and seeds videoStateRef so late joiners can
+  // sync. Separate from slide-start because there's no picker step.
+  const handleVideoStart = useCallback((url: string) => {
+    const now = Date.now()
+    setPresentKind("video")
+    setPptUrl(url)
+    setPptTotalPages(0)
+    setPptCurrentPage(1)
+    setPptActive(true)
+    setVideoPlaying(false)
+    setVideoCurrentTime(0)
+    setVideoAsOf(now)
+    setParticipantsOpen(false)
+    videoStateRef.current = { url, playing: false, currentTime: 0, ts: now }
+
+    safeSendPpt({ action: "video_start", url })
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-vid-${Date.now()}`,
+        from: "system",
+        text: "Tutor started playing a video 🎥",
+        ts: Date.now(),
+        type: "system",
+      },
+    ])
+  }, [safeSendPpt])
+
   const handleSlidesUploaded = useCallback((data: UploadedSlides) => {
     setShowUpload(false)
     uploadedSlidesRef.current = data
+    if (data.kind === "video") {
+      handleVideoStart(data.url)
+      return
+    }
     setPickerData(data)
-  }, [])
+  }, [handleVideoStart])
 
-  // Tutor confirmed which slides to present — start the presentation.
   const handleSlidesPicked = useCallback((selected: number[]) => {
     if (!pickerData || selected.length === 0) return
 
@@ -1566,13 +604,14 @@ export function ClassroomRoom({
     const firstPage = selected[0]
 
     setPickerData(null)
+    setPresentKind("slides")
     setSelectedSlides(selected)
-    setPresentationIdx(0)
     setPptUrl(url)
     setPptTotalPages(total)
     setPptCurrentPage(firstPage)
     setPptActive(true)
     setParticipantsOpen(false)
+    setSlideTrayOpen(true)
 
     safeSendPpt({ action: "start", url, total, page: firstPage })
 
@@ -1588,26 +627,71 @@ export function ClassroomRoom({
     ])
   }, [pickerData, safeSendPpt])
 
-  // Step forward through the selected subset.
+  // Next/prev walk through the selected subset relative to the page currently
+  // on screen. Deriving position from `pptCurrentPage` (rather than tracking a
+  // separate index) keeps navigation coherent when the tutor live-excludes or
+  // jumps to a slide via the tray.
   const handlePptNext = useCallback(() => {
     if (!selectedSlides.length) return
-    const nextIdx = Math.min(presentationIdx + 1, selectedSlides.length - 1)
-    if (nextIdx === presentationIdx) return
-    const page = selectedSlides[nextIdx]
-    setPresentationIdx(nextIdx)
-    setPptCurrentPage(page)
-    safeSendPpt({ action: "navigate", page })
-  }, [presentationIdx, selectedSlides, safeSendPpt])
+    const next = selectedSlides.find((p) => p > pptCurrentPage)
+    if (next === undefined) return
+    setPptCurrentPage(next)
+    safeSendPpt({ action: "navigate", page: next })
+  }, [pptCurrentPage, selectedSlides, safeSendPpt])
 
   const handlePptPrev = useCallback(() => {
     if (!selectedSlides.length) return
-    const prevIdx = Math.max(presentationIdx - 1, 0)
-    if (prevIdx === presentationIdx) return
-    const page = selectedSlides[prevIdx]
-    setPresentationIdx(prevIdx)
+    let prev: number | undefined
+    for (const p of selectedSlides) {
+      if (p < pptCurrentPage) prev = p
+      else break
+    }
+    if (prev === undefined) return
+    setPptCurrentPage(prev)
+    safeSendPpt({ action: "navigate", page: prev })
+  }, [pptCurrentPage, selectedSlides, safeSendPpt])
+
+  // Jump to an arbitrary slide from the live tray. Doesn't change the
+  // included/excluded set — the tutor toggles that separately.
+  const handlePptJump = useCallback((page: number) => {
+    if (!pptActive || page < 1 || page > pptTotalPages) return
+    if (page === pptCurrentPage) return
     setPptCurrentPage(page)
     safeSendPpt({ action: "navigate", page })
-  }, [presentationIdx, selectedSlides, safeSendPpt])
+  }, [pptActive, pptTotalPages, pptCurrentPage, safeSendPpt])
+
+  // Add/remove a slide from the navigation sequence mid-lesson. Preserves
+  // ascending order so next/prev remain monotonic.
+  const handleToggleSelected = useCallback((page: number) => {
+    setSelectedSlides((prev) => {
+      if (prev.includes(page)) return prev.filter((p) => p !== page)
+      const next = [...prev, page]
+      next.sort((a, b) => a - b)
+      return next
+    })
+  }, [])
+
+  // ── Video handlers (tutor only) ────────────────────────────────────────────
+  // Each DOM event on the tutor's <video> broadcasts the new playback state so
+  // students can mirror. We also stash the latest snapshot so sync_request from
+  // late joiners returns the current position + play/pause.
+  const broadcastVideoState = useCallback((playing: boolean, currentTime: number) => {
+    if (!isTutor) return
+    const ts = Date.now()
+    const url = videoStateRef.current.url || pptUrl || ""
+    videoStateRef.current = { url, playing, currentTime, ts }
+    safeSendPpt({ action: "video_state", playing, currentTime, ts })
+  }, [isTutor, pptUrl, safeSendPpt])
+
+  const handleVideoPlayPause = useCallback((playing: boolean, currentTime: number) => {
+    broadcastVideoState(playing, currentTime)
+  }, [broadcastVideoState])
+
+  const handleVideoSeek = useCallback((currentTime: number) => {
+    // Preserve whatever the tutor's player is actually doing (it may still be
+    // playing through the seek) — we read it from the ref rather than flipping.
+    broadcastVideoState(videoStateRef.current.playing, currentTime)
+  }, [broadcastVideoState])
 
   // ── Finger pointer handlers (tutor only) ───────────────────────────────────
 
@@ -1615,7 +699,6 @@ export function ClassroomRoom({
     if (connectionState !== ConnectionState.Connected) return
     if (typeof sendPointer !== "function") return
     try {
-      // sendPointer returns a Promise — swallow both sync throws and async rejections.
       const result = sendPointer(enc.encode(JSON.stringify(data)), {
         reliable: data.action === "hide",
       }) as unknown as Promise<void> | void
@@ -1682,6 +765,75 @@ export function ClassroomRoom({
     }
   }, [isTutor, pinnedId, spotlightedId, safeSendSpotlight])
 
+  // Spotlight directly on a specific identity (used from the right-click
+  // context menu, where we act on the clicked participant rather than on
+  // whoever happens to be pinned).
+  const handleToggleSpotlightFor = useCallback((identity: string) => {
+    if (!isTutor) return
+    if (spotlightedId === identity) {
+      setSpotlightedId(null)
+      safeSendSpotlight({ action: "clear" })
+    } else {
+      setSpotlightedId(identity)
+      safeSendSpotlight({ action: "set", identity })
+    }
+  }, [isTutor, spotlightedId, safeSendSpotlight])
+
+  // ── Pop-out handlers ───────────────────────────────────────────────────────
+  // Participants popped out render as draggable/resizable floating windows so
+  // the tutor can watch several students at once without pinning each.
+
+  const handlePopOut = useCallback((identity: string) => {
+    setPoppedOutIds((prev) => (prev.includes(identity) ? prev : [...prev, identity]))
+  }, [])
+
+  const handleClosePopOut = useCallback((identity: string) => {
+    setPoppedOutIds((prev) => prev.filter((id) => id !== identity))
+  }, [])
+
+  // ── Remove-participant handlers (tutor only) ───────────────────────────────
+
+  const handleRequestRemove = useCallback((identity: string, name: string) => {
+    if (!isTutor) return
+    setPendingRemoval({ identity, name })
+  }, [isTutor])
+
+  const [removingParticipant, setRemovingParticipant] = useState(false)
+  const confirmRemoveParticipant = useCallback(async () => {
+    if (!pendingRemoval) return
+    setRemovingParticipant(true)
+    try {
+      const res = await fetch(
+        `/api/tutor/sessions/${sessionId}/participants/${encodeURIComponent(pendingRemoval.identity)}`,
+        { method: "DELETE" },
+      )
+      const data = await res.json().catch(() => ({})) as { message?: string }
+      if (!res.ok) {
+        toast.error(data.message ?? "Could not remove participant.")
+        return
+      }
+      toast.success(`${pendingRemoval.name} was removed from the session.`)
+      // Also close any floating window showing them, and unpin if needed.
+      setPoppedOutIds((prev) => prev.filter((id) => id !== pendingRemoval.identity))
+      setPinnedId((prev) => (prev === pendingRemoval.identity ? null : prev))
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `sys-remove-${Date.now()}`,
+          from: "system",
+          text: `${pendingRemoval.name} was removed from the session`,
+          ts: Date.now(),
+          type: "system",
+        },
+      ])
+      setPendingRemoval(null)
+    } catch {
+      toast.error("Could not remove participant — network error.")
+    } finally {
+      setRemovingParticipant(false)
+    }
+  }, [pendingRemoval, sessionId])
+
   // If the tutor unpins locally, stop any spotlight they were running
   useEffect(() => {
     if (!isTutor) return
@@ -1692,29 +844,100 @@ export function ClassroomRoom({
   }, [isTutor, pinnedId, spotlightedId, safeSendSpotlight])
 
   const handlePptStop = useCallback(() => {
+    const wasVideo = presentKind === "video"
+
     setPptActive(false)
+    setPresentKind(null)
+    setPptUrl(null)
     setPptCurrentPage(1)
-    setPresentationIdx(0)
+    setPptTotalPages(0)
     setSelectedSlides([])
     setParticipantsOpen(true)
+    setVideoPlaying(false)
+    setVideoCurrentTime(0)
+    videoStateRef.current = { url: "", playing: false, currentTime: 0, ts: 0 }
 
-    safeSendPpt({ action: "stop" })
+    safeSendPpt(wasVideo ? { action: "video_stop" } : { action: "stop" })
 
     setMessages((prev) => [
       ...prev,
       {
         id: `sys-ppt-end-${Date.now()}`,
         from: "system",
-        text: "Slide presentation ended",
+        text: wasVideo ? "Video ended" : "Slide presentation ended",
         ts: Date.now(),
         type: "system",
       },
     ])
-  }, [safeSendPpt])
+  }, [presentKind, safeSendPpt])
+
+  // ── Mute-all handler (tutor only) ──────────────────────────────────────────
+  // Broadcasts a single data-channel message; every student self-mutes on receipt.
+  // Posts a system chat line so it's visible in history.
+
+  const handleMuteAll = useCallback(() => {
+    if (!isTutor) return
+    if (connectionState !== ConnectionState.Connected) return
+    try {
+      const payload: MuteAction = { action: "mute-all", from: localName }
+      sendMuteAll(enc.encode(JSON.stringify(payload)), { reliable: true })
+    } catch {
+      toast.error("Couldn't send the mute signal — please try again.")
+      return
+    }
+    toast.success("Every student's microphone has been muted.")
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-mute-${Date.now()}`,
+        from: "system",
+        text: "Tutor muted everyone's microphone 🔇",
+        ts: Date.now(),
+        type: "system",
+      },
+    ])
+  }, [isTutor, connectionState, localName, sendMuteAll])
+
+  // ── Refresh-for-everyone flow (tutor only) ────────────────────────────────
+  // Two-step: button opens a shadcn Dialog; user confirms inside the dialog,
+  // which broadcasts and then reloads the tutor after a short delay so the
+  // signal has time to leave the wire before the tutor's page unmounts.
+
+  const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false)
+
+  const handleRefreshAll = useCallback(() => {
+    if (!isTutor) return
+    if (connectionState !== ConnectionState.Connected) {
+      toast.error("Not connected to the room yet — try again in a moment.")
+      return
+    }
+    setRefreshConfirmOpen(true)
+  }, [isTutor, connectionState])
+
+  const confirmRefreshAll = useCallback(() => {
+    if (!isTutor) return
+    if (connectionState !== ConnectionState.Connected) {
+      toast.error("Not connected to the room yet — try again in a moment.")
+      setRefreshConfirmOpen(false)
+      return
+    }
+    try {
+      const payload: SessionControlAction = { action: "refresh", from: localName }
+      sendControl(enc.encode(JSON.stringify(payload)), { reliable: true })
+    } catch {
+      toast.error("Couldn't send the refresh signal — try again.")
+      return
+    }
+    setRefreshConfirmOpen(false)
+    toast.info("Refreshing the classroom for everyone…")
+    setTimeout(() => window.location.reload(), 800)
+  }, [isTutor, connectionState, localName, sendControl])
 
   // ── Keyboard shortcuts for slide navigation ────────────────────────────────
+  // Video mode owns its own keyboard (native <video> controls handle seek/space),
+  // so we only attach this listener when slides are on screen.
   useEffect(() => {
-    if (!isTutor || !pptActive) return
+    if (!isTutor || !pptActive || presentKind !== "slides") return
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return
       if (e.key === "ArrowRight" || e.key === "PageDown") {
@@ -1725,7 +948,7 @@ export function ClassroomRoom({
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [isTutor, pptActive, handlePptNext, handlePptPrev])
+  }, [isTutor, pptActive, presentKind, handlePptNext, handlePptPrev])
 
   const studentCount = participants.filter((p) => p.metadata !== "tutor").length
 
@@ -1818,9 +1041,6 @@ export function ClassroomRoom({
 
           {pptActive && pptUrl ? (
             // ── PPT mode: Deaf-culture convention — signer on the LEFT, content on the RIGHT.
-            // Both panels are 50% width and identical height (no extra footer rows).
-            // When a student is pinned, their camera takes over the LEFT panel;
-            // unpin returns to the tutor camera for BSL signing.
             <>
               {/* Camera panel — LEFT. Pinned student if set, otherwise tutor for BSL */}
               <div className="flex-1 min-w-0 basis-0 overflow-hidden bg-zinc-900 relative">
@@ -1840,7 +1060,7 @@ export function ClassroomRoom({
                 )}
               </div>
 
-              {/* Slide viewer — RIGHT */}
+              {/* Presentation column — RIGHT. Slides or video, decided by `presentKind`. */}
               <div
                 ref={slideAreaRef}
                 className="flex-1 min-w-0 basis-0 overflow-hidden relative border-l border-zinc-800"
@@ -1848,46 +1068,75 @@ export function ClassroomRoom({
                 onPointerLeave={handleSlidePointerLeave}
                 style={isTutor && pointerMode ? { cursor: "none" } : undefined}
               >
-                <PptSlideViewer
-                  fileUrl={pptUrl}
-                  currentPage={pptCurrentPage}
-                  onTotalPages={(total) => {
-                    if (total !== pptTotalPages) setPptTotalPages(total)
-                  }}
-                />
+                {presentKind === "video" ? (
+                  <VideoPlayer
+                    isTutor={isTutor}
+                    url={pptUrl}
+                    playing={videoPlaying}
+                    currentTime={videoCurrentTime}
+                    asOf={videoAsOf}
+                    onPlayPause={handleVideoPlayPause}
+                    onSeek={handleVideoSeek}
+                  />
+                ) : (
+                  <PptSlideViewer
+                    fileUrl={pptUrl}
+                    currentPage={pptCurrentPage}
+                    onTotalPages={(total) => {
+                      if (total !== pptTotalPages) setPptTotalPages(total)
+                    }}
+                  />
+                )}
 
-                {/* Pen pointer overlay — shown to everyone while tutor is pointing.
-                    lucide's Pen icon has its tip at the bottom-left (24×24 viewBox, tip ≈ (3, 21)),
-                    so we place that corner at the reported coordinate via the transform. */}
+                {/* Hand pointer overlay — shown to everyone while tutor is pointing.
+                    lucide's Pointer icon is a hand with the index fingertip near the
+                    top of the 24×24 viewBox (≈ (4, 2)), so we anchor that spot at
+                    the reported coordinate via the transform. */}
                 {livePointer && (
                   <div
                     className="absolute pointer-events-none z-40"
                     style={{
                       left: `${livePointer.x * 100}%`,
                       top:  `${livePointer.y * 100}%`,
-                      // tip of the pen ≈ (3, 21) of a 24-unit icon
-                      transform: "translate(-12.5%, -87.5%)",
+                      transform: "translate(-16.7%, -8.3%)",
                       filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.9))",
                       transition: isTutor ? "none" : "left 60ms linear, top 60ms linear",
                     }}
                     aria-hidden
                   >
-                    <Pen
-                      className="size-5 text-amber-400"
+                    <Pointer
+                      className="size-6 text-amber-400"
                       strokeWidth={2.5}
                       style={{ fill: "rgb(251 191 36 / 0.3)" }}
                     />
                   </div>
                 )}
 
-                {/* Slide number badge */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full font-medium pointer-events-none">
-                  Slide {pptCurrentPage} of {pptTotalPages}
-                </div>
-                {/* Captions in PPT mode */}
+                {/* Slide number badge — slides only */}
+                {presentKind === "slides" && (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full font-medium pointer-events-none">
+                    Slide {pptCurrentPage} of {pptTotalPages}
+                  </div>
+                )}
+                {/* Captions during presentation */}
                 <CaptionsOverlay />
               </div>
+
+              {/* Live thumbnail tray — slides only, tutor-only */}
+              {isTutor && presentKind === "slides" && pptUrl && pptTotalPages > 0 && (
+                <SlideTray
+                  fileUrl={pptUrl}
+                  totalPages={pptTotalPages}
+                  selectedSlides={selectedSlides}
+                  currentPage={pptCurrentPage}
+                  onJump={handlePptJump}
+                  onToggleSelected={handleToggleSelected}
+                  collapsed={!slideTrayOpen}
+                  onToggleCollapse={() => setSlideTrayOpen((v) => !v)}
+                />
+              )}
             </>
+
           ) : (
             // ── Normal mode: full tutor video / pinned student ────────────────
             <div className="flex-1 flex flex-col overflow-hidden relative">
@@ -1942,9 +1191,88 @@ export function ClassroomRoom({
             onPin={setPinnedId}
             collapsed={!participantsOpen}
             onToggleCollapse={() => setParticipantsOpen((v) => !v)}
+            isLocalTutor={isTutor}
+            spotlightedId={spotlightedId}
+            onToggleSpotlight={handleToggleSpotlightFor}
+            onPopOut={handlePopOut}
+            poppedOutIds={poppedOutIds}
+            onRemoveParticipant={handleRequestRemove}
           />
         </div>
       </div>
+
+      {/* ── Floating, draggable, resizable video pop-outs ── */}
+      {poppedOutIds.map((id, i) => (
+        <FloatingVideoWindow
+          key={id}
+          identity={id}
+          initial={{ x: 80 + i * 28, y: 80 + i * 28 }}
+          onClose={() => handleClosePopOut(id)}
+        />
+      ))}
+
+      {/* ── Refresh-everyone confirmation (tutor only, shadcn Dialog) ── */}
+      <Dialog open={refreshConfirmOpen} onOpenChange={setRefreshConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="size-4 text-amber-500" />
+              Refresh the classroom for everyone?
+            </DialogTitle>
+            <DialogDescription>
+              Every student&rsquo;s page will reload, and so will yours. Use this
+              only if the session has frozen — it takes a few seconds for
+              everyone to reconnect.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefreshConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmRefreshAll}>
+              <RefreshCw className="size-3.5" />
+              Refresh everyone
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Remove-participant confirmation (tutor only) ── */}
+      {pendingRemoval && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="size-10 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0">
+                <AlertTriangle className="size-5 text-rose-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-bold text-white">Remove from session?</h2>
+                <p className="text-sm text-zinc-400 mt-1 leading-relaxed">
+                  <span className="font-semibold text-zinc-200">{pendingRemoval.name}</span> will be
+                  disconnected immediately. They can rejoin unless you also cancel their access.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                onClick={() => setPendingRemoval(null)}
+                disabled={removingParticipant}
+                className="px-4 h-9 rounded-lg text-sm font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemoveParticipant}
+                disabled={removingParticipant}
+                className="px-4 h-9 rounded-lg text-sm font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <UserMinus className="size-3.5" />
+                {removingParticipant ? "Removing…" : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Bottom controls row ── */}
       <div className="h-12 bg-zinc-950 border-t border-zinc-800/60 shrink-0 flex items-center px-3 gap-2">
@@ -1953,9 +1281,15 @@ export function ClassroomRoom({
           handRaised={handRaised}
           onToggleHand={handleToggleHand}
           onLeave={onLeave}
+          studentCount={studentCount}
+          onMuteAll={handleMuteAll}
+          onRefreshAll={handleRefreshAll}
           pptActive={pptActive}
+          presentKind={presentKind}
           presentationIdx={presentationIdx}
           selectedCount={selectedSlides.length}
+          hasNextSlide={hasNextSlide}
+          hasPrevSlide={hasPrevSlide}
           onShowUpload={() => setShowUpload(true)}
           onPptNext={handlePptNext}
           onPptPrev={handlePptPrev}
