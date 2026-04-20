@@ -19,7 +19,7 @@ import { SlidePicker } from "./SlidePicker"
 
 import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
-  BREAKOUT_TOPIC,
+  BREAKOUT_TOPIC, NUDGE_TOPIC,
   POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS,
   enc, dec,
 } from "./room/constants"
@@ -27,7 +27,7 @@ import type {
   ChatMsg, MsgType, RaisedHand, JoinRequest,
   PptAction, PointerAction, SpotlightAction, MuteAction, SessionControlAction,
   UploadedSlides, WhiteboardAction, WhiteboardShape,
-  BreakoutAction, BreakoutGroup,
+  BreakoutAction, BreakoutGroup, NudgeAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
@@ -46,6 +46,7 @@ import { WhiteboardPanel }      from "./room/WhiteboardPanel"
 import { BreakoutsPanel }       from "./room/BreakoutsPanel"
 import { BreakoutMonitor }      from "./room/BreakoutMonitor"
 import { BreakoutBanner }       from "./room/BreakoutBanner"
+import { NudgeOverlay }          from "./room/NudgeOverlay"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -684,6 +685,26 @@ export function ClassroomRoom({
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTutor, connectionState])
+
+  // ── Data channel: attention nudge ──────────────────────────────────────────
+  // Tutor pings the class (or a single breakout group). Receivers render a
+  // short visual flash overlay — the key UX for BSL, where audio cues miss.
+
+  const [activeNudge, setActiveNudge] = useState<{ id: number; from: string; message: string | null } | null>(null)
+
+  const { send: sendNudge } = useDataChannel(NUDGE_TOPIC, (msg) => {
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as NudgeAction
+      if (data.action !== "nudge") return
+      // Respect a targeted nudge: only show it to members of that group. The
+      // tutor always sees their own nudge echo so they know it fired.
+      if (data.groupId && !isTutor) {
+        const own = breakoutStateRef.current.groups.find((g) => g.memberIds.includes(localParticipant.identity))
+        if (!own || own.id !== data.groupId) return
+      }
+      setActiveNudge({ id: Date.now(), from: data.from, message: data.message ?? null })
+    } catch { /* ignore malformed */ }
+  })
 
   // Keep spotlightRef in sync so data channel handler sees current value
   useEffect(() => {
@@ -1397,6 +1418,38 @@ export function ClassroomRoom({
     ])
   }, [isTutor, safeSendBreakout])
 
+  // ── Nudge handler (tutor only) ─────────────────────────────────────────────
+  // Sends a short attention signal to the whole class, or to a specific
+  // breakout group when `groupId` is provided. Also echoes locally so the
+  // tutor visually confirms the ping went out.
+  const handleNudge = useCallback((opts?: { groupId?: string | null; message?: string }) => {
+    if (!isTutor) return
+    if (connectionState !== ConnectionState.Connected) {
+      toast.error("Not connected yet — try again in a second.")
+      return
+    }
+    const payload: NudgeAction = {
+      action: "nudge",
+      from: localName,
+      groupId: opts?.groupId ?? null,
+      message: opts?.message ?? null,
+    }
+    try {
+      sendNudge(enc.encode(JSON.stringify(payload)), { reliable: true })
+    } catch {
+      toast.error("Couldn't send the nudge — please try again.")
+      return
+    }
+    // Local echo so the tutor sees the same flash their students will.
+    setActiveNudge({ id: Date.now(), from: localName, message: opts?.message ?? null })
+    if (opts?.groupId) {
+      const g = breakoutStateRef.current.groups.find((x) => x.id === opts.groupId)
+      toast.success(g ? `Nudged ${g.name}` : "Nudge sent")
+    } else {
+      toast.success("Nudged the whole class")
+    }
+  }, [isTutor, connectionState, localName, sendNudge])
+
   // ── Breakout-derived filters (everyone) ────────────────────────────────────
   // Used to gate audio + participant tiles. The tutor identity is resolved via
   // metadata so we don't need a separate prop plumbing.
@@ -1518,6 +1571,16 @@ export function ClassroomRoom({
     <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col overflow-hidden z-50">
       <AudioRenderer audibleIdentities={audibleIdentities} />
 
+      {/* ── Attention nudge overlay (everyone, triggered by tutor) ── */}
+      {activeNudge && (
+        <NudgeOverlay
+          key={activeNudge.id}
+          from={activeNudge.from}
+          message={activeNudge.message}
+          onDismiss={() => setActiveNudge(null)}
+        />
+      )}
+
       {/* ── Breakouts manager (tutor only) ── */}
       {isTutor && breakoutsPanelOpen && (
         <BreakoutsPanel
@@ -1541,6 +1604,7 @@ export function ClassroomRoom({
           visitingGroupId={visitingGroupId}
           onVisit={handleVisitBreakout}
           onClose={() => setBreakoutMonitorOpen(false)}
+          onNudgeGroup={(groupId) => handleNudge({ groupId })}
           endsAt={breakoutEndsAt}
         />
       )}
@@ -1948,6 +2012,7 @@ export function ClassroomRoom({
           breakoutsActive={breakoutsActive}
           onOpenBreakoutsPanel={() => setBreakoutsPanelOpen(true)}
           onOpenBreakoutMonitor={() => setBreakoutMonitorOpen(true)}
+          onNudgeClass={() => handleNudge()}
         />
       </div>
     </div>

@@ -9,28 +9,24 @@ import {
   isTrackReference,
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { X, Eye, LogIn, LogOut, Focus, Minimize2, Mic, MicOff, Users2 } from "lucide-react"
+import { X, Eye, LogIn, LogOut, Focus, Minimize2, Mic, MicOff, Users2, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { BreakoutGroup } from "./types"
 import { BreakoutCountdown } from "./BreakoutCountdown"
-
-// Full-screen overlay that shows every student's camera tile, organised by
-// breakout group. Designed for BSL — tutors need a clear, side-by-side read
-// of each student's hands/face while each group works independently. Tiles
-// play audio only when the tutor is focused on a single student, so the grid
-// itself stays quiet and scannable.
 
 export function BreakoutMonitor({
   groups,
   visitingGroupId,
   onVisit,
   onClose,
+  onNudgeGroup,
   endsAt,
 }: {
   groups: BreakoutGroup[]
   visitingGroupId: string | null
   onVisit: (groupId: string | null) => void
   onClose: () => void
+  onNudgeGroup: (groupId: string) => void
   endsAt: number | null
 }) {
   const participants = useParticipants()
@@ -165,7 +161,15 @@ export function BreakoutMonitor({
                         You&rsquo;re in this group
                       </span>
                     )}
-                    <div className="ml-auto">
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button
+                        onClick={() => onNudgeGroup(g.id)}
+                        disabled={members.length === 0}
+                        className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Flash a short attention alert on this group's screens"
+                      >
+                        <Bell className="size-3" /> Nudge
+                      </button>
                       {isVisiting ? (
                         <button
                           onClick={() => onVisit(null)}

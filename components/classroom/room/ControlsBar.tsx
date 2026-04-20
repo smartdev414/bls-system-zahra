@@ -5,7 +5,7 @@ import { Track } from "livekit-client"
 import {
   Mic, MicOff, Camera, Monitor, PhoneOff,
   HandMetal, Presentation, ChevronLeft, ChevronRight,
-  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye,
+  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, Bell,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -48,6 +48,8 @@ export function ControlsBar({
   breakoutsActive,
   onOpenBreakoutsPanel,
   onOpenBreakoutMonitor,
+  // Attention nudge (tutor only)
+  onNudgeClass,
 }: {
   isTutor: boolean
   handRaised: boolean
@@ -73,6 +75,7 @@ export function ControlsBar({
   breakoutsActive: boolean
   onOpenBreakoutsPanel: () => void
   onOpenBreakoutMonitor: () => void
+  onNudgeClass: () => void
 }) {
   return (
     <div className="flex items-center gap-2 shrink-0 px-3 flex-wrap">
@@ -130,6 +133,22 @@ export function ControlsBar({
         >
           <RefreshCw className="size-3.5" />
           Refresh all
+        </button>
+      )}
+
+      {/* Tutor-only: ping every student's screen with a visual flash. BSL
+          classrooms can't rely on sound, so the flash is the attention cue.
+          Hooked up to the class by default; per-group nudges live in the
+          breakout monitor. */}
+      {isTutor && (
+        <button
+          onClick={onNudgeClass}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
+          title="Flash a short visual attention alert on every student's screen"
+          aria-label="Nudge the whole class"
+        >
+          <Bell className="size-3.5" />
+          Nudge class
         </button>
       )}
 

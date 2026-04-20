@@ -119,6 +119,23 @@ export type BreakoutGroup = {
   memberIds: string[]   // participant identities assigned to this group
 }
 
+// ─── Attention nudge ──────────────────────────────────────────────────────────
+// Tutor pings everyone (or a specific breakout group) with a short visual
+// flash + toast. Targeted at BSL classrooms where audio cues are unreliable —
+// a screen-wide flash is far more likely to land than a chime.
+
+export type NudgeAction =
+  | {
+      action: "nudge"
+      from: string
+      // When set, only clients in that group render the alert. `null` or
+      // undefined → broadcast to everyone in the room.
+      groupId?: string | null
+      // Optional custom message shown below "Heads up"; defaults to a generic
+      // attention prompt tuned for the room context.
+      message?: string | null
+    }
+
 export type BreakoutAction =
   | { action: "start"; groups: BreakoutGroup[]; visitingGroupId: string | null; startedAt: number; durationMin?: number | null }
   | { action: "update"; groups: BreakoutGroup[] }                     // tutor edits assignments live
