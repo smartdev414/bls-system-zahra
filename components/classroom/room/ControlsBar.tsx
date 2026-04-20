@@ -5,7 +5,7 @@ import { Track } from "livekit-client"
 import {
   Mic, MicOff, Camera, Monitor, PhoneOff,
   HandMetal, Presentation, ChevronLeft, ChevronRight,
-  X, Pointer, RefreshCw, Film, PencilLine,
+  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -44,6 +44,10 @@ export function ControlsBar({
   // Whiteboard (tutor toggles on/off; both roles interact once open)
   whiteboardActive,
   onToggleWhiteboard,
+  // Breakout rooms (tutor only)
+  breakoutsActive,
+  onOpenBreakoutsPanel,
+  onOpenBreakoutMonitor,
 }: {
   isTutor: boolean
   handRaised: boolean
@@ -66,6 +70,9 @@ export function ControlsBar({
   onTogglePointer: () => void
   whiteboardActive: boolean
   onToggleWhiteboard: () => void
+  breakoutsActive: boolean
+  onOpenBreakoutsPanel: () => void
+  onOpenBreakoutMonitor: () => void
 }) {
   return (
     <div className="flex items-center gap-2 shrink-0 px-3 flex-wrap">
@@ -150,6 +157,40 @@ export function ControlsBar({
         >
           <PencilLine className="size-3.5" />
           {whiteboardActive ? "Close Board" : "Whiteboard"}
+        </button>
+      )}
+
+      {/* Breakouts — tutor opens/edits group assignments. Once live, a second
+          button reveals the monitor grid so the tutor can observe every
+          student's signing across all groups at once. */}
+      {isTutor && (
+        <button
+          onClick={onOpenBreakoutsPanel}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            breakoutsActive
+              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
+          )}
+          title={
+            breakoutsActive
+              ? "Edit, visit, or end the active breakouts"
+              : "Split students into small groups for pair or group work"
+          }
+        >
+          <Users2 className="size-3.5" />
+          {breakoutsActive ? "Breakouts live" : "Breakouts"}
+        </button>
+      )}
+
+      {isTutor && breakoutsActive && (
+        <button
+          onClick={onOpenBreakoutMonitor}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 transition-colors whitespace-nowrap"
+          title="Open the monitor grid — watch every student's signing across all groups"
+        >
+          <Eye className="size-3.5" />
+          Monitor
         </button>
       )}
 

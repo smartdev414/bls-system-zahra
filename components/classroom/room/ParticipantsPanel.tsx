@@ -37,6 +37,8 @@ export function ParticipantsPanel({
   onRemoveParticipant,
   raisedHandIds,
   onLowerHand,
+  visibleIdentities,
+  groupLabels,
 }: {
   pinnedId: string | null
   onPin: (identity: string | null) => void
@@ -50,6 +52,13 @@ export function ParticipantsPanel({
   onRemoveParticipant: (identity: string, name: string) => void
   raisedHandIds: Set<string>
   onLowerHand?: (identity: string) => void
+  // Breakout-aware: when provided, only tiles whose identity is in the set are
+  // rendered. Tutors normally pass `null` (see everyone); students during
+  // breakouts pass the set of group-mates + tutor.
+  visibleIdentities?: Set<string> | null
+  // Small colour-coded group label per identity — shown as a chip on the tile
+  // so tutors can see which group anyone is in at a glance.
+  groupLabels?: Map<string, { name: string; color: string }> | null
 }) {
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
@@ -84,13 +93,21 @@ export function ParticipantsPanel({
 
   const withTracks = useMemo(
     () =>
-      allParticipants.map((p) => {
-        const trackRef = camTracks.find(
-          (t) => t.participant.identity === p.identity && isTrackReference(t),
-        )
-        return { p, trackRef, camOn: !!trackRef }
-      }),
-    [allParticipants, camTracks],
+      allParticipants
+        .filter((p) => {
+          if (!visibleIdentities) return true
+          // Always show the local participant so a student doesn't lose their
+          // own tile even if they weren't placed in any group.
+          if (p.identity === localParticipant.identity) return true
+          return visibleIdentities.has(p.identity)
+        })
+        .map((p) => {
+          const trackRef = camTracks.find(
+            (t) => t.participant.identity === p.identity && isTrackReference(t),
+          )
+          return { p, trackRef, camOn: !!trackRef }
+        }),
+    [allParticipants, camTracks, visibleIdentities, localParticipant.identity],
   )
 
   // Keep manualOrder in sync with the live participant list: drop anyone who
@@ -292,6 +309,22 @@ export function ParticipantsPanel({
               {isTutor && (
                 <div className="absolute top-1 left-1 text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30">
                   Tutor
+                </div>
+              )}
+
+              {/* Breakout-group chip — tiny colour tag so a tutor can tell which
+                  breakout a student is in without opening the manager. */}
+              {!isTutor && groupLabels?.get(p.identity) && (
+                <div
+                  className="absolute top-1 left-1 text-[8px] px-1.5 py-0.5 rounded-full font-bold border max-w-[80%] truncate"
+                  style={{
+                    background:   `${groupLabels.get(p.identity)!.color}33`,
+                    color:        groupLabels.get(p.identity)!.color,
+                    borderColor:  `${groupLabels.get(p.identity)!.color}66`,
+                  }}
+                  title={`In ${groupLabels.get(p.identity)!.name}`}
+                >
+                  {groupLabels.get(p.identity)!.name}
                 </div>
               )}
 

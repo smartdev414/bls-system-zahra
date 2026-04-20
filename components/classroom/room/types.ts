@@ -105,3 +105,30 @@ export type CaptionEntry = {
   text: string
   final: boolean
 }
+
+// ─── Breakout rooms ───────────────────────────────────────────────────────────
+// Simulated breakouts: everyone stays in the same LiveKit room, but each client
+// filters what it renders and hears based on group membership. The tutor
+// orchestrates groups and can "visit" (join audio of) one at a time. This is
+// sufficient for a trusted classroom context — a real privacy-isolated
+// breakout would require separate LiveKit rooms + token refresh.
+
+export type BreakoutGroup = {
+  id: string
+  name: string
+  memberIds: string[]   // participant identities assigned to this group
+}
+
+export type BreakoutAction =
+  | { action: "start"; groups: BreakoutGroup[]; visitingGroupId: string | null; startedAt: number; durationMin?: number | null }
+  | { action: "update"; groups: BreakoutGroup[] }                     // tutor edits assignments live
+  | { action: "visit"; groupId: string | null }                       // tutor enters/leaves a group (audio bridge)
+  | { action: "stop" }
+  | { action: "sync_request" }
+  | { action: "sync_response"
+      active: boolean
+      groups: BreakoutGroup[]
+      visitingGroupId: string | null
+      startedAt: number | null
+      durationMin: number | null
+    }
