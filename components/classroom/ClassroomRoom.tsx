@@ -18,14 +18,14 @@ import { PptSlideViewer } from "./PptSlideViewer"
 import { SlidePicker } from "./SlidePicker"
 
 import {
-  CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC,
+  CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
   POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS,
   enc, dec,
 } from "./room/constants"
 import type {
   ChatMsg, MsgType, RaisedHand, JoinRequest,
   PptAction, PointerAction, SpotlightAction, MuteAction, SessionControlAction,
-  UploadedSlides,
+  UploadedSlides, WhiteboardAction, WhiteboardShape,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
@@ -40,6 +40,7 @@ import { VideoPlayer }          from "./room/VideoPlayer"
 import { ControlsBar }          from "./room/ControlsBar"
 import { CaptionsOverlay }      from "./room/CaptionsOverlay"
 import { JoinRequestsPopover }  from "./room/JoinRequestsPopover"
+import { WhiteboardPanel }      from "./room/WhiteboardPanel"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -68,6 +69,11 @@ export function ClassroomRoom({
   const [messages,         setMessages]         = useState<ChatMsg[]>([])
   const [raisedHands,      setRaisedHands]      = useState<RaisedHand[]>([])
   const [handRaised,       setHandRaised]       = useState(false)
+  // Fast O(1) membership lookup for tile/overlay badges.
+  const raisedHandIds = useMemo(
+    () => new Set(raisedHands.map((h) => h.identity)),
+    [raisedHands]
+  )
   const [chatFlash,        setChatFlash]        = useState(false)
   const [isFullscreen,     setIsFullscreen]     = useState(false)
   const [pinnedId,         setPinnedId]         = useState<string | null>(null)
@@ -168,6 +174,19 @@ export function ClassroomRoom({
   const [videoAsOf,        setVideoAsOf]        = useState(() => Date.now())
   const videoStateRef = useRef({ url: "", playing: false, currentTime: 0, ts: 0 })
 
+  // ── Whiteboard state ───────────────────────────────────────────────────────
+  // `whiteboardActive` toggles the shared drawing surface for everyone.
+  // `whiteboardShapes` is the whole surface — strokes + text, in order.
+  // Mutually exclusive with slides/video: only one "main area" resource runs
+  // at a time, handled in the render branch below.
+  const [whiteboardActive, setWhiteboardActive] = useState(false)
+  const [whiteboardShapes, setWhiteboardShapes] = useState<WhiteboardShape[]>([])
+  // Ref mirrors for the sync_response handler so it always sees latest values.
+  const whiteboardStateRef = useRef({ active: false, shapes: [] as WhiteboardShape[] })
+  useEffect(() => {
+    whiteboardStateRef.current = { active: whiteboardActive, shapes: whiteboardShapes }
+  }, [whiteboardActive, whiteboardShapes])
+
   // ── Finger pointer state ───────────────────────────────────────────────────
   const [pointerMode,   setPointerMode]   = useState(false)
   const [livePointer,   setLivePointer]   = useState<{ x: number; y: number } | null>(null)
@@ -209,6 +228,13 @@ export function ClassroomRoom({
         }
         return prev.filter((h) => h.identity !== data.identity)
       })
+      // Keep the local `handRaised` button state in sync with any inbound event
+      // that targets the local participant — covers the case where the tutor
+      // force-lowers a student, so the student's own button flips back to
+      // "Raise Hand" without them having to click it.
+      if (data.identity === localParticipant.identity) {
+        setHandRaised(data.raised)
+      }
       if (isTutor) {
         if (data.raised) setPinnedId(data.identity)
         else setPinnedId((prev) => prev === data.identity ? null : prev)
@@ -437,6 +463,60 @@ export function ClassroomRoom({
     } catch { /* ignore malformed */ }
   })
 
+  // ── Data channel: whiteboard ───────────────────────────────────────────────
+  // All participants can add/update/delete shapes; only the tutor can start,
+  // stop, or clear. Everyone echoes their own actions locally first, so we
+  // de-dupe here by only applying shapes we don't already have.
+
+  const { send: sendWhiteboard } = useDataChannel(WHITEBOARD_TOPIC, (msg) => {
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as WhiteboardAction
+
+      if (data.action === "start") {
+        setWhiteboardActive(true)
+        return
+      }
+      if (data.action === "stop") {
+        setWhiteboardActive(false)
+        setWhiteboardShapes([])
+        return
+      }
+      if (data.action === "clear") {
+        setWhiteboardShapes([])
+        return
+      }
+      if (data.action === "add") {
+        setWhiteboardShapes((prev) =>
+          prev.some((s) => s.id === data.shape.id) ? prev : [...prev, data.shape]
+        )
+        return
+      }
+      if (data.action === "delete") {
+        setWhiteboardShapes((prev) => prev.filter((s) => s.id !== data.id))
+        return
+      }
+
+      // Late joiner asked the tutor for current state
+      if (data.action === "sync_request" && isTutor) {
+        const snapshot = whiteboardStateRef.current
+        const response: WhiteboardAction = {
+          action: "sync_response",
+          active: snapshot.active,
+          shapes: snapshot.shapes,
+        }
+        try {
+          sendWhiteboard(enc.encode(JSON.stringify(response)), { reliable: true })
+        } catch { /* ignore */ }
+        return
+      }
+      if (data.action === "sync_response" && !isTutor) {
+        setWhiteboardActive(data.active)
+        setWhiteboardShapes(data.shapes)
+        return
+      }
+    } catch { /* ignore malformed */ }
+  })
+
   // Keep spotlightRef in sync so data channel handler sees current value
   useEffect(() => {
     spotlightRef.current = spotlightedId
@@ -541,6 +621,31 @@ export function ClassroomRoom({
       return prev.filter((h) => h.identity !== localParticipant.identity)
     })
   }, [handRaised, localParticipant.identity, localName, sendHand])
+
+  // ── Tutor: lower a raised hand on behalf of a student ──────────────────────
+  // Broadcasts the same shape the student would send, so every client (including
+  // the target student) applies it via the HAND_TOPIC receiver above — which
+  // also flips the student's local `handRaised` so their button resets.
+  const handleLowerHand = useCallback((identity: string) => {
+    if (!isTutor) return
+    const entry = raisedHands.find((h) => h.identity === identity)
+    if (!entry) return
+    const evt = { identity, name: entry.name, raised: false }
+    sendHand(enc.encode(JSON.stringify(evt)), { reliable: true })
+    setRaisedHands((prev) => prev.filter((h) => h.identity !== identity))
+    setPinnedId((prev) => (prev === identity ? null : prev))
+  }, [isTutor, raisedHands, sendHand])
+
+  const handleLowerAllHands = useCallback(() => {
+    if (!isTutor || raisedHands.length === 0) return
+    for (const h of raisedHands) {
+      const evt = { identity: h.identity, name: h.name, raised: false }
+      sendHand(enc.encode(JSON.stringify(evt)), { reliable: true })
+    }
+    setRaisedHands([])
+    // If the currently-pinned participant had a raised hand, drop the pin too.
+    setPinnedId((prev) => (prev && raisedHands.some((h) => h.identity === prev) ? null : prev))
+  }, [isTutor, raisedHands, sendHand])
 
   // ── PPT handlers (tutor only) ──────────────────────────────────────────────
 
@@ -933,6 +1038,97 @@ export function ClassroomRoom({
     setTimeout(() => window.location.reload(), 800)
   }, [isTutor, connectionState, localName, sendControl])
 
+  // ── Whiteboard handlers (start/stop tutor-only; add/update/delete for all) ─
+  // Each action applies optimistically to the local state and then broadcasts.
+  // The receive handler de-dupes by id so echoes don't duplicate shapes.
+
+  const safeSendWhiteboard = useCallback((data: WhiteboardAction) => {
+    if (connectionState !== ConnectionState.Connected) return
+    if (typeof sendWhiteboard !== "function") return
+    try {
+      const result = sendWhiteboard(enc.encode(JSON.stringify(data)), { reliable: true }) as unknown as Promise<void> | void
+      if (result && typeof (result as Promise<void>).catch === "function") {
+        ;(result as Promise<void>).catch(() => { /* ignore transient LiveKit errors */ })
+      }
+    } catch { /* ignore */ }
+  }, [connectionState, sendWhiteboard])
+
+  const handleToggleWhiteboard = useCallback(() => {
+    if (!isTutor) return
+    if (whiteboardActive) {
+      setWhiteboardActive(false)
+      setWhiteboardShapes([])
+      safeSendWhiteboard({ action: "stop" })
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `sys-wb-stop-${Date.now()}`,
+          from: "system",
+          text: "Whiteboard closed",
+          ts: Date.now(),
+          type: "system",
+        },
+      ])
+    } else {
+      // Close any active presentation first — mutually exclusive surfaces.
+      if (pptActive) {
+        setPptActive(false)
+        setPptUrl(null)
+        setPresentKind(null)
+        safeSendPpt({ action: "stop" })
+      }
+      setWhiteboardActive(true)
+      safeSendWhiteboard({ action: "start" })
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `sys-wb-start-${Date.now()}`,
+          from: "system",
+          text: "Tutor opened the whiteboard ✏️ — everyone can draw and type.",
+          ts: Date.now(),
+          type: "system",
+        },
+      ])
+    }
+    // safeSendPpt lives above — adding it to deps keeps useCallback coherent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTutor, whiteboardActive, pptActive, safeSendWhiteboard])
+
+  const handleAddShape = useCallback((shape: WhiteboardShape) => {
+    setWhiteboardShapes((prev) =>
+      prev.some((s) => s.id === shape.id) ? prev : [...prev, shape]
+    )
+    safeSendWhiteboard({ action: "add", shape })
+  }, [safeSendWhiteboard])
+
+  const handleDeleteShape = useCallback((id: string) => {
+    setWhiteboardShapes((prev) => prev.filter((s) => s.id !== id))
+    safeSendWhiteboard({ action: "delete", id })
+  }, [safeSendWhiteboard])
+
+  const handleClearBoard = useCallback(() => {
+    if (!isTutor) return
+    setWhiteboardShapes([])
+    safeSendWhiteboard({ action: "clear" })
+  }, [isTutor, safeSendWhiteboard])
+
+  // Late-joining student asks the tutor for the current whiteboard state.
+  const hasSentWhiteboardSync = useRef(false)
+  useEffect(() => {
+    if (isTutor || hasSentWhiteboardSync.current) return
+    if (connectionState !== ConnectionState.Connected) return
+    const timer = setTimeout(() => {
+      hasSentWhiteboardSync.current = true
+      try {
+        sendWhiteboard(enc.encode(JSON.stringify({ action: "sync_request" })), { reliable: true })
+      } catch {
+        hasSentWhiteboardSync.current = false
+      }
+    }, 2000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTutor, connectionState])
+
   // ── Keyboard shortcuts for slide navigation ────────────────────────────────
   // Video mode owns its own keyboard (native <video> controls handle seek/space),
   // so we only attach this listener when slides are on screen.
@@ -1036,10 +1232,47 @@ export function ClassroomRoom({
       {/* ── Main body ── */}
       <div className="flex flex-1 overflow-hidden flex-col min-h-0">
 
-        {/* Top row: slides / video + chat sidebar */}
+        {/* Top row: slides / video / whiteboard + chat sidebar */}
         <div className="flex flex-1 overflow-hidden min-h-0">
 
-          {pptActive && pptUrl ? (
+          {whiteboardActive ? (
+            // ── Whiteboard mode: same deaf-first layout as PPT. Tutor camera on
+            // the LEFT so signing stays visible while everyone draws on the RIGHT.
+            <>
+              <div className="flex-1 min-w-0 basis-0 overflow-hidden bg-zinc-900 relative">
+                {pinnedId ? (
+                  <PinnedVideoArea
+                    identity={pinnedId}
+                    containerRef={videoContainerRef}
+                    isFullscreen={isFullscreen}
+                    onToggleFullscreen={toggleFullscreen}
+                    onUnpin={() => setPinnedId(null)}
+                    showSpotlight={isTutor && pinnedId !== localParticipant.identity}
+                    spotlightActive={spotlightedId === pinnedId}
+                    onToggleSpotlight={handleToggleSpotlight}
+                    handRaised={raisedHandIds.has(pinnedId)}
+                    onLowerHand={isTutor ? handleLowerHand : undefined}
+                  />
+                ) : (
+                  <TutorCameraInset />
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0 basis-0 overflow-hidden relative border-l border-zinc-800">
+                <WhiteboardPanel
+                  isTutor={isTutor}
+                  localIdentity={localParticipant.identity}
+                  shapes={whiteboardShapes}
+                  onAdd={handleAddShape}
+                  onDelete={handleDeleteShape}
+                  onClear={handleClearBoard}
+                  onStop={handleToggleWhiteboard}
+                />
+                <CaptionsOverlay />
+              </div>
+            </>
+
+          ) : pptActive && pptUrl ? (
             // ── PPT mode: Deaf-culture convention — signer on the LEFT, content on the RIGHT.
             <>
               {/* Camera panel — LEFT. Pinned student if set, otherwise tutor for BSL */}
@@ -1054,6 +1287,8 @@ export function ClassroomRoom({
                     showSpotlight={isTutor && pinnedId !== localParticipant.identity}
                     spotlightActive={spotlightedId === pinnedId}
                     onToggleSpotlight={handleToggleSpotlight}
+                    handRaised={raisedHandIds.has(pinnedId)}
+                    onLowerHand={isTutor ? handleLowerHand : undefined}
                   />
                 ) : (
                   <TutorCameraInset />
@@ -1151,6 +1386,8 @@ export function ClassroomRoom({
                     showSpotlight={isTutor && pinnedId !== localParticipant.identity}
                     spotlightActive={spotlightedId === pinnedId}
                     onToggleSpotlight={handleToggleSpotlight}
+                    handRaised={raisedHandIds.has(pinnedId)}
+                    onLowerHand={isTutor ? handleLowerHand : undefined}
                   />
                 ) : (
                   <TutorVideoArea
@@ -1177,6 +1414,9 @@ export function ClassroomRoom({
               flash={chatFlash}
               collapsed={!chatOpen}
               onToggleCollapse={() => setChatOpen((v) => !v)}
+              isTutor={isTutor}
+              onLowerHand={isTutor ? handleLowerHand : undefined}
+              onLowerAllHands={isTutor ? handleLowerAllHands : undefined}
             />
           </div>
         </div>
@@ -1197,6 +1437,8 @@ export function ClassroomRoom({
             onPopOut={handlePopOut}
             poppedOutIds={poppedOutIds}
             onRemoveParticipant={handleRequestRemove}
+            raisedHandIds={raisedHandIds}
+            onLowerHand={isTutor ? handleLowerHand : undefined}
           />
         </div>
       </div>
@@ -1208,6 +1450,8 @@ export function ClassroomRoom({
           identity={id}
           initial={{ x: 80 + i * 28, y: 80 + i * 28 }}
           onClose={() => handleClosePopOut(id)}
+          handRaised={raisedHandIds.has(id)}
+          onLowerHand={isTutor ? handleLowerHand : undefined}
         />
       ))}
 
@@ -1296,6 +1540,8 @@ export function ClassroomRoom({
           onPptStop={handlePptStop}
           pointerMode={pointerMode}
           onTogglePointer={handleTogglePointer}
+          whiteboardActive={whiteboardActive}
+          onToggleWhiteboard={handleToggleWhiteboard}
         />
       </div>
     </div>

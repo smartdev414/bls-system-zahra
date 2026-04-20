@@ -61,6 +61,36 @@ export type MuteAction =
 export type SessionControlAction =
   | { action: "refresh"; from: string }
 
+// ─── Whiteboard ───────────────────────────────────────────────────────────────
+// Collaborative drawing surface. Coordinates are normalised to [0,1] against
+// the board's rendered rect so everyone sees the same layout regardless of
+// their screen size/aspect.
+//
+// Shape identity persists from client to client so deletes can target a
+// specific shape rather than diff-ing whole lists. The union is kept as a
+// single-member discriminated union so additional kinds can be added later
+// without churn in consumers.
+
+export type WhiteboardStroke = {
+  id: string
+  kind: "stroke"
+  author: string           // participant identity of the person who drew it
+  color: string            // CSS color (e.g. "#ef4444")
+  width: number            // stroke width in normalised board units (×1000 for px-feel)
+  points: [number, number][]
+}
+
+export type WhiteboardShape = WhiteboardStroke
+
+export type WhiteboardAction =
+  | { action: "start" }                                            // tutor opens the board for everyone
+  | { action: "stop" }                                             // tutor closes the board
+  | { action: "add";    shape: WhiteboardShape }                   // any participant adds a shape
+  | { action: "delete"; id: string }                               // any participant erases a shape
+  | { action: "clear" }                                            // tutor wipes everything
+  | { action: "sync_request" }                                     // late joiner asks the tutor
+  | { action: "sync_response"; active: boolean; shapes: WhiteboardShape[] }
+
 // Discriminates on `kind` so the classroom can branch after upload:
 //   - "slides" goes through SlidePicker, PptSlideViewer, next/prev, SlideTray.
 //   - "video" skips the picker entirely; broadcast URL and mirror playback.

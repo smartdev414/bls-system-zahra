@@ -8,7 +8,7 @@ import {
   isTrackReference,
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { X, Move, Camera } from "lucide-react"
+import { X, Move, Camera, HandMetal } from "lucide-react"
 
 const MIN_W = 200
 const MIN_H = 150
@@ -21,10 +21,14 @@ export function FloatingVideoWindow({
   identity,
   initial,
   onClose,
+  handRaised,
+  onLowerHand,
 }: {
   identity: string
   initial: { x: number; y: number }
   onClose: () => void
+  handRaised?: boolean
+  onLowerHand?: (identity: string) => void
 }) {
   const [box, setBox] = useState<Box>(() => {
     // Keep the window fully on-screen on first paint.
@@ -152,6 +156,27 @@ export function FloatingVideoWindow({
               Camera off
             </span>
           </div>
+        )}
+
+        {handRaised && (
+          onLowerHand ? (
+            <button
+              onClick={() => onLowerHand(identity)}
+              className="absolute top-2 right-2 flex items-center justify-center size-7 rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors"
+              title={`Click to lower ${displayName}'s hand`}
+              aria-label={`Lower ${displayName}'s hand`}
+            >
+              <HandMetal className="size-4" />
+            </button>
+          ) : (
+            <span
+              className="absolute top-2 right-2 flex items-center justify-center size-7 rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none"
+              title={`${displayName} raised their hand`}
+              aria-label={`${displayName} has their hand raised`}
+            >
+              <HandMetal className="size-4" />
+            </span>
+          )
         )}
       </div>
 

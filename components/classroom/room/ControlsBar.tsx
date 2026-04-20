@@ -5,7 +5,7 @@ import { Track } from "livekit-client"
 import {
   Mic, MicOff, Camera, Monitor, PhoneOff,
   HandMetal, Presentation, ChevronLeft, ChevronRight,
-  X, Pointer, RefreshCw, Film,
+  X, Pointer, RefreshCw, Film, PencilLine,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -41,6 +41,9 @@ export function ControlsBar({
   // Pointer (tutor only, active during slide presentation)
   pointerMode,
   onTogglePointer,
+  // Whiteboard (tutor toggles on/off; both roles interact once open)
+  whiteboardActive,
+  onToggleWhiteboard,
 }: {
   isTutor: boolean
   handRaised: boolean
@@ -61,6 +64,8 @@ export function ControlsBar({
   onPptStop: () => void
   pointerMode: boolean
   onTogglePointer: () => void
+  whiteboardActive: boolean
+  onToggleWhiteboard: () => void
 }) {
   return (
     <div className="flex items-center gap-2 shrink-0 px-3 flex-wrap">
@@ -121,8 +126,35 @@ export function ControlsBar({
         </button>
       )}
 
+      {/* Tutor-only: open/close the shared whiteboard. Once open, students and
+          tutor can draw + type on the same surface. Disabled while another
+          presentation (slides/video) is live — one shared surface at a time. */}
+      {isTutor && (
+        <button
+          onClick={onToggleWhiteboard}
+          disabled={pptActive && !whiteboardActive}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            whiteboardActive
+              ? "bg-amber-500/25 text-amber-300 border-amber-500/50"
+              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+            pptActive && !whiteboardActive && "opacity-40 cursor-not-allowed"
+          )}
+          title={
+            pptActive && !whiteboardActive
+              ? "Stop presenting before opening the whiteboard"
+              : whiteboardActive
+                ? "Close the whiteboard for everyone"
+                : "Open a shared whiteboard — everyone can draw and type"
+          }
+        >
+          <PencilLine className="size-3.5" />
+          {whiteboardActive ? "Close Board" : "Whiteboard"}
+        </button>
+      )}
+
       {/* ── Presentation controls (tutor only) ── */}
-      {isTutor && !pptActive && (
+      {isTutor && !pptActive && !whiteboardActive && (
         <button
           onClick={onShowUpload}
           className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"

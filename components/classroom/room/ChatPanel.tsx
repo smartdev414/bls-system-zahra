@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Hand, MessageSquare, ChevronDown } from "lucide-react"
+import { Send, Hand, MessageSquare, ChevronDown, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { QUICK_REACTIONS } from "./constants"
 import type { ChatMsg, MsgType, RaisedHand } from "./types"
@@ -59,6 +59,9 @@ export function ChatPanel({
   flash,
   collapsed,
   onToggleCollapse,
+  isTutor,
+  onLowerHand,
+  onLowerAllHands,
 }: {
   messages: ChatMsg[]
   localName: string
@@ -67,6 +70,10 @@ export function ChatPanel({
   flash: boolean
   collapsed: boolean
   onToggleCollapse: () => void
+  // Tutor-only controls for dismissing raised hands from the chat strip.
+  isTutor?: boolean
+  onLowerHand?: (identity: string) => void
+  onLowerAllHands?: () => void
 }) {
   const [input, setInput]   = useState("")
   const [unread, setUnread] = useState(0)
@@ -163,10 +170,35 @@ export function ChatPanel({
           <Hand className="size-3.5 text-amber-400 shrink-0 animate-bounce" />
           <span className="text-[11px] font-semibold text-amber-400">Raised:</span>
           {raisedHands.map((h) => (
-            <span key={h.identity} className="text-[11px] text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full">
+            <span
+              key={h.identity}
+              className={cn(
+                "flex items-center gap-1 text-[11px] text-amber-300 bg-amber-500/20 rounded-full",
+                isTutor && onLowerHand ? "pl-2 pr-0.5 py-0.5" : "px-2 py-0.5",
+              )}
+            >
               {h.name}
+              {isTutor && onLowerHand && (
+                <button
+                  onClick={() => onLowerHand(h.identity)}
+                  className="flex items-center justify-center size-4 rounded-full hover:bg-amber-500/40 text-amber-200 hover:text-white transition-colors"
+                  title={`Lower ${h.name}'s hand`}
+                  aria-label={`Lower ${h.name}'s hand`}
+                >
+                  <X className="size-3" />
+                </button>
+              )}
             </span>
           ))}
+          {isTutor && onLowerAllHands && raisedHands.length > 1 && (
+            <button
+              onClick={onLowerAllHands}
+              className="text-[11px] font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/30 border border-amber-500/40 px-2 py-0.5 rounded-full transition-colors ml-auto"
+              title="Lower every raised hand"
+            >
+              Lower all
+            </button>
+          )}
         </div>
       )}
 

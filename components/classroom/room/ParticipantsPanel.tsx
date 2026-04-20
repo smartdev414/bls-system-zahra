@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import {
   useParticipants,
   useLocalParticipant,
@@ -11,7 +11,7 @@ import {
 import { Track } from "livekit-client"
 import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
-  Megaphone, UserMinus,
+  Megaphone, UserMinus, GripVertical, HandMetal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -35,6 +35,8 @@ export function ParticipantsPanel({
   onPopOut,
   poppedOutIds,
   onRemoveParticipant,
+  raisedHandIds,
+  onLowerHand,
 }: {
   pinnedId: string | null
   onPin: (identity: string | null) => void
@@ -46,6 +48,8 @@ export function ParticipantsPanel({
   onPopOut: (identity: string) => void
   poppedOutIds: string[]
   onRemoveParticipant: (identity: string, name: string) => void
+  raisedHandIds: Set<string>
+  onLowerHand?: (identity: string) => void
 }) {
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
@@ -53,6 +57,13 @@ export function ParticipantsPanel({
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Tutor-only: manual display order established by drag-and-drop. When
+  // populated, this takes precedence over the default (camera-on first) sort.
+  // New participants fall to the end; leavers are pruned on next effect tick.
+  const [manualOrder, setManualOrder] = useState<string[] | null>(null)
+  const [draggingId,  setDraggingId]  = useState<string | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
   // Dismiss the context menu on outside click / escape.
   useEffect(() => {
@@ -71,19 +82,62 @@ export function ParticipantsPanel({
     }
   }, [menu])
 
-  const withTracks = allParticipants.map((p) => {
-    const trackRef = camTracks.find(
-      (t) => t.participant.identity === p.identity && isTrackReference(t)
-    )
-    return { p, trackRef, camOn: !!trackRef }
-  })
+  const withTracks = useMemo(
+    () =>
+      allParticipants.map((p) => {
+        const trackRef = camTracks.find(
+          (t) => t.participant.identity === p.identity && isTrackReference(t),
+        )
+        return { p, trackRef, camOn: !!trackRef }
+      }),
+    [allParticipants, camTracks],
+  )
 
-  const sorted = [...withTracks].sort((a, b) => {
-    if (a.camOn !== b.camOn) return a.camOn ? -1 : 1
-    if (a.p.metadata === "tutor" && b.p.metadata !== "tutor") return -1
-    if (b.p.metadata === "tutor" && a.p.metadata !== "tutor") return 1
-    return 0
-  })
+  // Keep manualOrder in sync with the live participant list: drop anyone who
+  // left, append any newcomer to the end of the manual ordering.
+  useEffect(() => {
+    if (!manualOrder) return
+    const liveIds = new Set(allParticipants.map((p) => p.identity))
+    const filtered = manualOrder.filter((id) => liveIds.has(id))
+    const appended = allParticipants
+      .map((p) => p.identity)
+      .filter((id) => !filtered.includes(id))
+    if (filtered.length !== manualOrder.length || appended.length > 0) {
+      setManualOrder([...filtered, ...appended])
+    }
+  }, [allParticipants, manualOrder])
+
+  const sorted = useMemo(() => {
+    if (manualOrder) {
+      const byId = new Map(withTracks.map((w) => [w.p.identity, w]))
+      const ordered = manualOrder
+        .map((id) => byId.get(id))
+        .filter((w): w is NonNullable<typeof w> => !!w)
+      // Safety net: include any tile that isn't in the manual order yet
+      // (e.g., between a newcomer joining and the sync effect running).
+      const seen = new Set(ordered.map((w) => w.p.identity))
+      withTracks.forEach((w) => {
+        if (!seen.has(w.p.identity)) ordered.push(w)
+      })
+      return ordered
+    }
+    return [...withTracks].sort((a, b) => {
+      if (a.camOn !== b.camOn) return a.camOn ? -1 : 1
+      if (a.p.metadata === "tutor" && b.p.metadata !== "tutor") return -1
+      if (b.p.metadata === "tutor" && a.p.metadata !== "tutor") return 1
+      return 0
+    })
+  }, [manualOrder, withTracks])
+
+  function reorder(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return
+    const baseOrder = manualOrder ?? sorted.map((w) => w.p.identity)
+    const without = baseOrder.filter((id) => id !== sourceId)
+    const targetIdx = without.indexOf(targetId)
+    if (targetIdx === -1) return
+    const next = [...without.slice(0, targetIdx), sourceId, ...without.slice(targetIdx)]
+    setManualOrder(next)
+  }
 
   if (collapsed) {
     return (
@@ -122,18 +176,55 @@ export function ParticipantsPanel({
           const isLocal     = p.identity === localParticipant.identity
           const isPinned    = pinnedId === p.identity
           const isTutor     = p.metadata === "tutor"
+          const handRaised  = raisedHandIds.has(p.identity)
           const displayName = p.name ?? p.identity
+          // Only the local tutor can drag, and only student tiles can be
+          // dragged or used as a drop target — the tutor tile stays put.
+          const canDrag = isLocalTutor && !isTutor
+          const isDragging = draggingId === p.identity
+          const isDropTarget = dropTargetId === p.identity && draggingId && draggingId !== p.identity
 
           return (
             <div
               key={p.identity}
+              draggable={canDrag}
+              onDragStart={(e) => {
+                if (!canDrag) return
+                setDraggingId(p.identity)
+                e.dataTransfer.effectAllowed = "move"
+                // Some browsers need a payload set or onDrop won't fire.
+                try { e.dataTransfer.setData("text/plain", p.identity) } catch {}
+              }}
+              onDragEnd={() => {
+                setDraggingId(null)
+                setDropTargetId(null)
+              }}
+              onDragOver={(e) => {
+                if (!isLocalTutor || isTutor || !draggingId || draggingId === p.identity) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = "move"
+                if (dropTargetId !== p.identity) setDropTargetId(p.identity)
+              }}
+              onDragLeave={() => {
+                setDropTargetId((prev) => (prev === p.identity ? null : prev))
+              }}
+              onDrop={(e) => {
+                if (!isLocalTutor || isTutor) return
+                e.preventDefault()
+                const source = draggingId ?? e.dataTransfer.getData("text/plain")
+                if (source) reorder(source, p.identity)
+                setDraggingId(null)
+                setDropTargetId(null)
+              }}
               className={cn(
                 "relative rounded-xl overflow-hidden transition-all h-full aspect-square bg-zinc-800 border shrink-0 group",
                 isTutor
                   ? "border-amber-500/30 cursor-default"
                   : isPinned
                   ? "border-primary ring-1 ring-primary/30 cursor-pointer"
-                  : "border-zinc-700 hover:border-zinc-500 cursor-pointer"
+                  : "border-zinc-700 hover:border-zinc-500 cursor-pointer",
+                isDragging && "opacity-40",
+                isDropTarget && "ring-2 ring-sky-400 border-sky-400",
               )}
               onContextMenu={(e) => {
                 e.preventDefault()
@@ -147,6 +238,17 @@ export function ParticipantsPanel({
                 })
               }}
             >
+              {canDrag && (
+                // Top-left hint; tutor tile occupies this slot, but student
+                // tiles (the only draggable ones) don't, so there's no clash.
+                <div
+                  className="absolute top-1 left-1 z-20 bg-black/50 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                  title="Drag to reorder"
+                  aria-hidden
+                >
+                  <GripVertical className="size-3 text-white/90" />
+                </div>
+              )}
               {camOn && trackRef ? (
                 <>
                   <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
@@ -191,6 +293,33 @@ export function ParticipantsPanel({
                 <div className="absolute top-1 left-1 text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30">
                   Tutor
                 </div>
+              )}
+
+              {/* Raised-hand badge — only students raise hands, so this never
+                  collides with the "Tutor" tag. Bottom-right corner so it's
+                  away from the pinned badge and drag-handle hint. For tutors
+                  the badge is a button that lowers the student's hand. */}
+              {handRaised && !isTutor && (
+                isLocalTutor && onLowerHand ? (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onLowerHand(p.identity) }}
+                    className="absolute bottom-1 right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand"
+                    title={`Click to lower ${displayName}'s hand`}
+                    aria-label={`Lower ${displayName}'s hand`}
+                  >
+                    <HandMetal className="size-3.5 group-hover/hand:hidden" />
+                    <span className="hidden group-hover/hand:block text-[10px] font-bold">✕</span>
+                  </button>
+                ) : (
+                  <div
+                    className="absolute bottom-1 right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none"
+                    title={`${displayName} raised their hand`}
+                    aria-label={`${displayName} has their hand raised`}
+                  >
+                    <HandMetal className="size-3.5" />
+                  </div>
+                )
               )}
             </div>
           )

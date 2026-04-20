@@ -7,6 +7,7 @@ export const POINTER_TOPIC   = "cls-pointer"
 export const SPOTLIGHT_TOPIC = "cls-spotlight"
 export const MUTE_TOPIC      = "cls-mute-all"
 export const CONTROL_TOPIC   = "cls-control"
+export const WHITEBOARD_TOPIC = "cls-whiteboard"
 
 export const POINTER_SEND_INTERVAL_MS = 50  // throttle pointer moves to ~20 fps
 export const POINTER_AUTO_HIDE_MS     = 1500

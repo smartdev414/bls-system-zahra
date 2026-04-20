@@ -8,7 +8,7 @@ import {
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import {
-  ArrowLeft, Megaphone, Info, Maximize2, Minimize2,
+  ArrowLeft, Megaphone, Info, Maximize2, Minimize2, HandMetal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -21,6 +21,8 @@ export function PinnedVideoArea({
   showSpotlight,
   spotlightActive,
   onToggleSpotlight,
+  handRaised,
+  onLowerHand,
 }: {
   identity: string
   containerRef: React.RefObject<HTMLDivElement | null>
@@ -30,6 +32,10 @@ export function PinnedVideoArea({
   showSpotlight?: boolean
   spotlightActive?: boolean
   onToggleSpotlight?: () => void
+  handRaised?: boolean
+  // When provided (tutor view), the "Hand raised" pill becomes a button that
+  // lowers the pinned participant's hand on click.
+  onLowerHand?: (identity: string) => void
 }) {
   const allParticipants = useParticipants()
   const camTracks       = useTracks([Track.Source.Camera])
@@ -115,8 +121,33 @@ export function PinnedVideoArea({
         )}
       </div>
 
-      <div className="absolute bottom-10 left-3 bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
-        {displayName}
+      <div className="absolute bottom-10 left-3 flex items-center gap-2">
+        <span className="bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
+          {displayName}
+        </span>
+        {handRaised && (
+          onLowerHand ? (
+            <button
+              onClick={() => onLowerHand(identity)}
+              className="group/hand flex items-center gap-1 bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-md ring-2 ring-amber-300/60 hover:ring-rose-300/60 animate-pulse hover:animate-none transition-colors"
+              title={`Click to lower ${displayName}'s hand`}
+              aria-label={`Lower ${displayName}'s hand`}
+            >
+              <HandMetal className="size-3.5" />
+              <span className="group-hover/hand:hidden">Hand raised</span>
+              <span className="hidden group-hover/hand:inline">Lower hand</span>
+            </button>
+          ) : (
+            <span
+              className="flex items-center gap-1 bg-amber-400 text-zinc-950 text-xs font-semibold px-2.5 py-1 rounded-full shadow-md ring-2 ring-amber-300/60 animate-pulse"
+              title={`${displayName} raised their hand`}
+              aria-label={`${displayName} has their hand raised`}
+            >
+              <HandMetal className="size-3.5" />
+              Hand raised
+            </span>
+          )
+        )}
       </div>
 
       <button
