@@ -6,11 +6,13 @@ import {
   useLocalParticipant,
   useDataChannel,
   useConnectionState,
+  useTracks,
+  VideoTrack,
 } from "@livekit/components-react"
-import { ConnectionState } from "livekit-client"
+import { ConnectionState, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
-  Radio, Users, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw,
+  Radio, Users, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
@@ -19,7 +21,7 @@ import { SlidePicker } from "./SlidePicker"
 
 import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
-  BREAKOUT_TOPIC, NUDGE_TOPIC,
+  BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC,
   POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS,
   enc, dec,
 } from "./room/constants"
@@ -27,7 +29,7 @@ import type {
   ChatMsg, MsgType, RaisedHand, JoinRequest,
   PptAction, PointerAction, SpotlightAction, MuteAction, SessionControlAction,
   UploadedSlides, WhiteboardAction, WhiteboardShape,
-  BreakoutAction, BreakoutGroup, NudgeAction,
+  BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
@@ -68,6 +70,12 @@ export function ClassroomRoom({
   const { localParticipant } = useLocalParticipant()
   const participants          = useParticipants()
   const connectionState       = useConnectionState()
+
+  // Reactive screen share state — works for both tutor and student clients.
+  // `onlySubscribed: false` includes the tutor's own locally-published track.
+  const allScreenTracks  = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
+  const tutorScreenTrack = allScreenTracks.find((t) => t.participant.metadata === "tutor") ?? null
+  const screenSharing    = !!tutorScreenTrack
 
   const localName = localParticipant.name ?? localParticipant.identity
 
@@ -692,6 +700,16 @@ export function ClassroomRoom({
 
   const [activeNudge, setActiveNudge] = useState<{ id: number; from: string; message: string | null } | null>(null)
 
+  // ── Screen share privacy state ─────────────────────────────────────────────
+  const [screenPrivate, setScreenPrivate] = useState(false)
+  const screenPrivateRef = useRef(false)
+  useEffect(() => { screenPrivateRef.current = screenPrivate }, [screenPrivate])
+
+  // Reset privacy whenever screen sharing stops so the next session starts public
+  useEffect(() => {
+    if (!screenSharing) setScreenPrivate(false)
+  }, [screenSharing])
+
   const { send: sendNudge } = useDataChannel(NUDGE_TOPIC, (msg) => {
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as NudgeAction
@@ -703,6 +721,31 @@ export function ClassroomRoom({
         if (!own || own.id !== data.groupId) return
       }
       setActiveNudge({ id: Date.now(), from: data.from, message: data.message ?? null })
+    } catch { /* ignore malformed */ }
+  })
+
+  // ── Data channel: screen share privacy ────────────────────────────────────
+  // Tutor toggles a "private" flag; students see a placeholder until it's lifted.
+  // The track still flows (soft privacy) — no start/stop lag when revealing.
+
+  const { send: sendScreen } = useDataChannel(SCREEN_TOPIC, (msg) => {
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as ScreenAction
+      if (data.action === "privacy") {
+        if (!isTutor) setScreenPrivate(data.private)
+        return
+      }
+      if (data.action === "sync_request" && isTutor) {
+        const response: ScreenAction = { action: "sync_response", private: screenPrivateRef.current }
+        try {
+          sendScreen(enc.encode(JSON.stringify(response)), { reliable: true })
+        } catch { /* ignore */ }
+        return
+      }
+      if (data.action === "sync_response" && !isTutor) {
+        setScreenPrivate(data.private)
+        return
+      }
     } catch { /* ignore malformed */ }
   })
 
@@ -1450,6 +1493,48 @@ export function ClassroomRoom({
     }
   }, [isTutor, connectionState, localName, sendNudge])
 
+  // ── Screen share privacy handlers ─────────────────────────────────────────
+
+  const safeSendScreen = useCallback((data: ScreenAction) => {
+    if (connectionState !== ConnectionState.Connected) return
+    if (typeof sendScreen !== "function") return
+    try {
+      const result = sendScreen(enc.encode(JSON.stringify(data)), { reliable: true }) as unknown as Promise<void> | void
+      if (result && typeof (result as Promise<void>).catch === "function") {
+        ;(result as Promise<void>).catch(() => { /* ignore */ })
+      }
+    } catch { /* ignore */ }
+  }, [connectionState, sendScreen])
+
+  const handleToggleScreenPrivacy = useCallback(() => {
+    if (!isTutor) return
+    const next = !screenPrivate
+    setScreenPrivate(next)
+    safeSendScreen({ action: "privacy", private: next })
+    toast.info(
+      next
+        ? "Screen is now private — students see a placeholder."
+        : "Screen is now visible to students."
+    )
+  }, [isTutor, screenPrivate, safeSendScreen])
+
+  // Student: ask for current privacy state when joining while screen share is live
+  const hasSentScreenSync = useRef(false)
+  useEffect(() => {
+    if (isTutor || hasSentScreenSync.current) return
+    if (connectionState !== ConnectionState.Connected) return
+    const timer = setTimeout(() => {
+      hasSentScreenSync.current = true
+      try {
+        sendScreen(enc.encode(JSON.stringify({ action: "sync_request" })), { reliable: true })
+      } catch {
+        hasSentScreenSync.current = false
+      }
+    }, 2000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTutor, connectionState])
+
   // ── Breakout-derived filters (everyone) ────────────────────────────────────
   // Used to gate audio + participant tiles. The tutor identity is resolved via
   // metadata so we don't need a separate prop plumbing.
@@ -1837,6 +1922,42 @@ export function ClassroomRoom({
               )}
             </>
 
+          ) : screenSharing ? (
+            // ── Screen share mode: camera LEFT so the tutor can keep signing,
+            // screen content RIGHT. Students see a placeholder when private.
+            <>
+              <div className="flex-1 min-w-0 basis-0 overflow-hidden bg-zinc-900 relative">
+                {pinnedId ? (
+                  <PinnedVideoArea
+                    identity={pinnedId}
+                    containerRef={videoContainerRef}
+                    isFullscreen={isFullscreen}
+                    onToggleFullscreen={toggleFullscreen}
+                    onUnpin={() => setPinnedId(null)}
+                    showSpotlight={isTutor && pinnedId !== localParticipant.identity}
+                    spotlightActive={spotlightedId === pinnedId}
+                    onToggleSpotlight={handleToggleSpotlight}
+                    handRaised={raisedHandIds.has(pinnedId)}
+                    onLowerHand={isTutor ? handleLowerHand : undefined}
+                  />
+                ) : (
+                  <TutorCameraInset />
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0 basis-0 overflow-hidden relative border-l border-zinc-800 bg-zinc-950">
+                {!isTutor && screenPrivate ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
+                    <Monitor className="size-12 opacity-20" />
+                    <span className="text-sm opacity-60">Tutor is preparing content…</span>
+                  </div>
+                ) : tutorScreenTrack ? (
+                  <VideoTrack trackRef={tutorScreenTrack} className="w-full h-full object-contain" />
+                ) : null}
+                <CaptionsOverlay />
+              </div>
+            </>
+
           ) : (
             // ── Normal mode: full tutor video / pinned student ────────────────
             <div className="flex-1 flex flex-col overflow-hidden relative">
@@ -2013,6 +2134,9 @@ export function ClassroomRoom({
           onOpenBreakoutsPanel={() => setBreakoutsPanelOpen(true)}
           onOpenBreakoutMonitor={() => setBreakoutMonitorOpen(true)}
           onNudgeClass={() => handleNudge()}
+          screenSharing={screenSharing}
+          screenPrivate={screenPrivate}
+          onToggleScreenPrivacy={handleToggleScreenPrivacy}
         />
       </div>
     </div>

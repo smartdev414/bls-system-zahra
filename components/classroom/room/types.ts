@@ -149,3 +149,12 @@ export type BreakoutAction =
       startedAt: number | null
       durationMin: number | null
     }
+
+// ─── Screen share privacy ─────────────────────────────────────────────────────
+// Tutor can mark their shared screen as private; students see a placeholder
+// instead of the live feed. Privacy state resets when screen sharing stops.
+
+export type ScreenAction =
+  | { action: "privacy"; private: boolean }
+  | { action: "sync_request" }
+  | { action: "sync_response"; private: boolean }

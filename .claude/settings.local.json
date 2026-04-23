@@ -38,7 +38,8 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(git -C \"D:/2026-projects/BSL/bsl-system\" diff components/classroom/ClassroomRoom.tsx)",
       "Bash(git -C \"D:/2026-projects/BSL/bsl-system\" show HEAD:components/classroom/ClassroomRoom.tsx)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")"
     ]
   }
 }

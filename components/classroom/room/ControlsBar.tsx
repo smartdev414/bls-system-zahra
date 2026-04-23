@@ -5,7 +5,7 @@ import { Track } from "livekit-client"
 import {
   Mic, MicOff, Camera, Monitor, PhoneOff,
   HandMetal, Presentation, ChevronLeft, ChevronRight,
-  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, Bell,
+  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -50,6 +50,10 @@ export function ControlsBar({
   onOpenBreakoutMonitor,
   // Attention nudge (tutor only)
   onNudgeClass,
+  // Screen share privacy (tutor only)
+  screenSharing,
+  screenPrivate,
+  onToggleScreenPrivacy,
 }: {
   isTutor: boolean
   handRaised: boolean
@@ -76,6 +80,9 @@ export function ControlsBar({
   onOpenBreakoutsPanel: () => void
   onOpenBreakoutMonitor: () => void
   onNudgeClass: () => void
+  screenSharing: boolean
+  screenPrivate: boolean
+  onToggleScreenPrivacy: () => void
 }) {
   return (
     <div className="flex items-center gap-2 shrink-0 px-3 flex-wrap">
@@ -100,6 +107,30 @@ export function ControlsBar({
         >
           <Monitor className="size-3.5" /> Screen
         </TrackToggle>
+      )}
+
+      {/* Privacy toggle — only shown while the tutor is actively screen-sharing.
+          "Private" hides the feed from students (they see a placeholder) without
+          stopping the underlying track, so the tutor can switch without any
+          start/stop lag. */}
+      {isTutor && screenSharing && (
+        <button
+          onClick={onToggleScreenPrivacy}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            screenPrivate
+              ? "bg-zinc-700 text-zinc-200 border-zinc-500"
+              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
+          )}
+          title={
+            screenPrivate
+              ? "Screen is private — students see a placeholder. Click to make it visible."
+              : "Click to hide your screen from students while you prepare."
+          }
+        >
+          {screenPrivate ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+          {screenPrivate ? "Private" : "Visible"}
+        </button>
       )}
 
       {/* Tutor-only: ask every student to mute their mic. LiveKit clients can't
