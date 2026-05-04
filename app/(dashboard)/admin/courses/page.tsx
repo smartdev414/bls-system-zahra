@@ -15,6 +15,7 @@ import {
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
+import { levelColorSolid, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ type CourseItem = {
   id: string
   title: string
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
-  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+  level: CourseLevel
   tutor: { id: string; name: string }
   category: { name: string } | null
   enrollmentCount: number
@@ -38,12 +39,6 @@ const statusConfig = {
   PUBLISHED: { label: "Published", icon: Globe, className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   DRAFT:     { label: "Draft",     icon: Lock,  className: "bg-amber-100 text-amber-700 border-amber-200" },
   ARCHIVED:  { label: "Archived",  icon: Archive, className: "bg-muted text-muted-foreground" },
-}
-
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-50 text-emerald-700",
-  INTERMEDIATE: "bg-amber-50 text-amber-700",
-  ADVANCED: "bg-rose-50 text-rose-700",
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -163,8 +158,8 @@ function CourseRow({ course, onMutated }: { course: CourseItem; onMutated: () =>
                 <Badge variant="outline" className={`text-[10px] gap-1 ${cfg.className}`}>
                   <StatusIcon className="size-2.5" /> {cfg.label}
                 </Badge>
-                <Badge variant="outline" className={`text-[10px] ${levelColor[course.level]}`}>
-                  {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
+                <Badge variant="outline" className={`text-[10px] ${levelColorSolid[course.level]}`}>
+                  {course.level}
                 </Badge>
                 {course.category && (
                   <Badge variant="secondary" className="text-[10px]">{course.category.name}</Badge>

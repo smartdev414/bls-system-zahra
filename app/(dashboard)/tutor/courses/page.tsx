@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog"
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
+import { COURSE_LEVELS, levelColorSolid, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ type CourseItem = {
   description: string
   thumbnailUrl: string | null
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
-  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+  level: CourseLevel
   category: { id: string; name: string } | null
   enrollmentCount: number
   sectionCount: number
@@ -48,7 +49,7 @@ type CourseItem = {
 }
 
 type CoursesData = { courses: CourseItem[] }
-type CourseBody = { title: string; description: string; level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" }
+type CourseBody = { title: string; description: string; level: CourseLevel }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -57,11 +58,6 @@ const statusColor: Record<string, string> = {
   PUBLISHED: "bg-emerald-100 text-emerald-700 border-emerald-200",
   DRAFT: "bg-amber-100 text-amber-700 border-amber-200",
   ARCHIVED: "bg-muted text-muted-foreground",
-}
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-50 text-emerald-700",
-  INTERMEDIATE: "bg-amber-50 text-amber-700",
-  ADVANCED: "bg-rose-50 text-rose-700",
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -79,13 +75,13 @@ export default function TutorCoursesPage() {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [level, setLevel] = useState<CourseBody["level"]>("BEGINNER")
+  const [level, setLevel] = useState<CourseBody["level"]>("L1")
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
       setTitle("")
       setDescription("")
-      setLevel("BEGINNER")
+      setLevel("L1")
       setOpen(true)
       router.replace("/tutor/courses", { scroll: false })
     }
@@ -106,7 +102,7 @@ export default function TutorCoursesPage() {
   function openDialog() {
     setTitle("")
     setDescription("")
-    setLevel("BEGINNER")
+    setLevel("L1")
     setOpen(true)
   }
 
@@ -160,8 +156,8 @@ export default function TutorCoursesPage() {
                       <CardTitle className="text-base leading-snug group-hover:text-primary transition-colors">
                         {course.title}
                       </CardTitle>
-                      <Badge variant="outline" className={`text-[10px] shrink-0 ${levelColor[course.level]}`}>
-                        {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
+                      <Badge variant="outline" className={`text-[10px] shrink-0 ${levelColorSolid[course.level]}`}>
+                        {course.level}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
@@ -258,9 +254,9 @@ export default function TutorCoursesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BEGINNER">Beginner</SelectItem>
-                  <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
-                  <SelectItem value="ADVANCED">Advanced</SelectItem>
+                  {COURSE_LEVELS.map((l) => (
+                    <SelectItem key={l} value={l}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

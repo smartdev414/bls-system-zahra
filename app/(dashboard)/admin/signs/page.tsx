@@ -21,6 +21,7 @@ import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { useFetch, usePostCallback, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
+import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ type Sign = {
   id: string
   word: string
   category: string
-  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+  level: CourseLevel
   description: string
   handshape: string
   usage: string
@@ -38,14 +39,8 @@ type Sign = {
 
 type SignsData = { signs: Sign[]; total: number; totalPages: number; page: number; categories: string[] }
 
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  INTERMEDIATE: "bg-amber-100 text-amber-700 border-amber-200",
-  ADVANCED: "bg-rose-100 text-rose-700 border-rose-200",
-}
-
 const blank = (): Omit<Sign, "id"> => ({
-  word: "", category: "", level: "BEGINNER", description: "",
+  word: "", category: "", level: "L1", description: "",
   handshape: "", usage: "", videoUrl: null, imageUrl: null,
 })
 
@@ -152,9 +147,9 @@ export default function AdminSignsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All levels</SelectItem>
-            <SelectItem value="BEGINNER">Beginner</SelectItem>
-            <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
-            <SelectItem value="ADVANCED">Advanced</SelectItem>
+            {COURSE_LEVELS.map((l) => (
+              <SelectItem key={l} value={l}>{l}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -246,7 +241,7 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
               <div className="flex items-center gap-2 flex-wrap mb-0.5">
                 <p className="font-semibold">{sign.word}</p>
                 <Badge variant="outline" className={`text-[10px] ${levelColor[sign.level]}`}>
-                  {sign.level.charAt(0) + sign.level.slice(1).toLowerCase()}
+                  {sign.level}
                 </Badge>
                 <Badge variant="secondary" className="text-[10px]">{sign.category}</Badge>
                 {sign.videoUrl && (
@@ -345,9 +340,9 @@ function SignDialog({
               <Select value={form.level} onValueChange={(v) => set("level", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BEGINNER">Beginner</SelectItem>
-                  <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
-                  <SelectItem value="ADVANCED">Advanced</SelectItem>
+                  {COURSE_LEVELS.map((l) => (
+                    <SelectItem key={l} value={l}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

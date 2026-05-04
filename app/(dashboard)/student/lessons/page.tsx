@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { useState } from "react"
 import { useFetch } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
+import { levelColor, type CourseLevel } from "@/lib/levels"
 
 type LessonItem = {
   id: string
@@ -40,7 +41,7 @@ type CourseEnrollment = {
     title: string
     description: string
     thumbnailUrl: string | null
-    level: string
+    level: CourseLevel
     tutor: { name: string; avatarUrl: string | null }
   }
   stats: { totalLessons: number; completedLessons: number; completion: number }
@@ -56,11 +57,6 @@ const typeIcon = {
   QUIZ: FlaskConical,
 }
 
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-100 text-emerald-700",
-  INTERMEDIATE: "bg-amber-100 text-amber-700",
-  ADVANCED: "bg-rose-100 text-rose-700",
-}
 
 function formatDuration(secs: number) {
   const m = Math.floor(secs / 60)

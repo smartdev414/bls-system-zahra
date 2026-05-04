@@ -24,6 +24,7 @@ import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { useFetch, usePostCallback, usePutCallback, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { FileUpload } from "@/components/ui/file-upload"
 import { Textarea } from "@/components/ui/textarea"
+import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ type CourseDetail = {
   title: string
   description: string
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
-  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+  level: CourseLevel
   thumbnailUrl: string | null
   sections: SectionItem[]
   _count: { enrollments: number }
@@ -171,12 +172,12 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
   const [editCourseOpen, setEditCourseOpen] = useState(false)
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
-  const [editLevel, setEditLevel] = useState<"BEGINNER" | "INTERMEDIATE" | "ADVANCED">("BEGINNER")
+  const [editLevel, setEditLevel] = useState<CourseLevel>("L1")
   const [editThumbnail, setEditThumbnail] = useState("")
 
   const { execute: updateCourseInfo, loading: updatingInfo } = usePutCallback<
     { course: CourseDetail },
-    { title?: string; description?: string; level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"; thumbnailUrl?: string | null }
+    { title?: string; description?: string; level?: CourseLevel; thumbnailUrl?: string | null }
   >(`/api/tutor/courses/${id}`, {
     successMessage: "Course updated",
     errorMessage: "Could not update course",
@@ -361,9 +362,9 @@ return (
               <Select value={editLevel} onValueChange={(v) => setEditLevel(v as typeof editLevel)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BEGINNER">Beginner</SelectItem>
-                  <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
-                  <SelectItem value="ADVANCED">Advanced</SelectItem>
+                  {COURSE_LEVELS.map((l) => (
+                    <SelectItem key={l} value={l}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

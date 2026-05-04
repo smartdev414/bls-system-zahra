@@ -9,12 +9,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { useFetch } from "@/hooks/use-fetch"
+import { levelColor, type CourseLevel } from "@/lib/levels"
 
 type CertProgram = {
   id: string
   title: string
   description: string | null
-  level: string
+  level: CourseLevel
   price: number
   imageUrl: string | null
   stepCount: number
@@ -29,12 +30,6 @@ type CertProgram = {
     progress: number
     certificate: { token: string; issuedAt: string; expiresAt: string | null } | null
   } | null
-}
-
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  INTERMEDIATE: "bg-amber-50 text-amber-700 border-amber-200",
-  ADVANCED: "bg-rose-50 text-rose-700 border-rose-200",
 }
 
 const stepIcon: Record<string, React.ElementType> = {
@@ -140,7 +135,7 @@ function CertCard({ program: p }: { program: CertProgram }) {
         <div className="flex items-start justify-between gap-2">
           <div>
             <Badge variant="outline" className={`text-[10px] mb-1.5 ${levelColor[p.level]}`}>
-              {p.level.charAt(0) + p.level.slice(1).toLowerCase()}
+              {p.level}
             </Badge>
             <h3 className="font-bold text-sm leading-snug">{p.title}</h3>
           </div>

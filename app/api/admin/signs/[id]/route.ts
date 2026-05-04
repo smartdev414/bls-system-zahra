@@ -16,7 +16,7 @@ async function handlePATCH(
     const body = await req.json() as {
       word?: string
       category?: string
-      level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+      level?: import("@/app/generated/prisma/client").CourseLevel
       description?: string
       handshape?: string
       usage?: string

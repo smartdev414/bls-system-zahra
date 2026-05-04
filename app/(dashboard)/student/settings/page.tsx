@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useFetch, usePutCallback } from "@/hooks/use-fetch"
+import { COURSE_LEVELS, levelColor, levelDot, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,21 +29,9 @@ type UserData = {
     email: string
     role: string
     avatarUrl: string | null
-    bslLevel: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null
+    bslLevel: CourseLevel | null
     createdAt: string
   }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const levelColor: Record<string, string> = {
-  BEGINNER:     "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300",
-  INTERMEDIATE: "bg-amber-100  text-amber-700  border-amber-200  dark:bg-amber-950  dark:text-amber-300",
-  ADVANCED:     "bg-rose-100   text-rose-700   border-rose-200   dark:bg-rose-950   dark:text-rose-300",
-}
-
-const levelDot: Record<string, string> = {
-  BEGINNER: "bg-emerald-500", INTERMEDIATE: "bg-amber-500", ADVANCED: "bg-rose-500",
 }
 
 type PwStrength = { score: 0|1|2|3|4; label: string; color: string }
@@ -213,7 +202,7 @@ export default function StudentSettingsPage() {
                         <Badge variant="secondary" className="text-xs capitalize">{user?.role.toLowerCase()}</Badge>
                         {user?.bslLevel && (
                           <Badge variant="outline" className={cn("text-xs", levelColor[user.bslLevel])}>
-                            {user.bslLevel.charAt(0) + user.bslLevel.slice(1).toLowerCase()}
+                            {user.bslLevel}
                           </Badge>
                         )}
                       </div>
@@ -264,11 +253,11 @@ export default function StudentSettingsPage() {
                         <SelectTrigger id="bslLevel"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Not specified</SelectItem>
-                          {(["BEGINNER", "INTERMEDIATE", "ADVANCED"] as const).map((l) => (
+                          {COURSE_LEVELS.map((l) => (
                             <SelectItem key={l} value={l}>
                               <span className="flex items-center gap-2">
                                 <span className={cn("size-2 rounded-full inline-block", levelDot[l])} />
-                                {l.charAt(0) + l.slice(1).toLowerCase()}
+                                {l}
                               </span>
                             </SelectItem>
                           ))}
@@ -421,7 +410,7 @@ export default function StudentSettingsPage() {
                   { icon: User,         label: "Account Type",   value: <Badge variant="secondary" className="capitalize">{user?.role.toLowerCase()}</Badge> },
                   { icon: Mail,         label: "Email Address",  value: <span className="flex items-center gap-2 text-sm">{user?.email}<Badge variant="outline" className="gap-1 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
                   { icon: Calendar,     label: "Member Since",   value: <span className="text-sm">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—"}</span> },
-                  ...(user?.bslLevel ? [{ icon: GraduationCap, label: "BSL Level", value: <Badge variant="outline" className={cn("text-xs", levelColor[user.bslLevel])}>{user.bslLevel.charAt(0)+user.bslLevel.slice(1).toLowerCase()}</Badge> }] : []),
+                  ...(user?.bslLevel ? [{ icon: GraduationCap, label: "BSL Level", value: <Badge variant="outline" className={cn("text-xs", levelColor[user.bslLevel])}>{user.bslLevel}</Badge> }] : []),
                 ].map(({ icon: Icon, label, value }) => (
                   <div key={label} className="flex items-center justify-between px-4 py-3.5 bg-card">
                     <div className="flex items-center gap-3 text-sm text-muted-foreground">

@@ -21,6 +21,7 @@ import {
 import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
+import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ type Sign = {
   id: string
   word: string
   category: string
-  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+  level: CourseLevel
   description: string
   videoUrl: string | null
   imageUrl: string | null
@@ -42,14 +43,6 @@ type DictionaryData = {
   totalPages: number
   page: number
   categories: string[]
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  INTERMEDIATE: "bg-amber-100 text-amber-700 border-amber-200",
-  ADVANCED: "bg-rose-100 text-rose-700 border-rose-200",
 }
 
 function buildUrl(q: string, category: string, level: string, page: number) {
@@ -78,7 +71,13 @@ function SignThumbnail({ sign, size = "md" }: { sign: Sign; size?: "md" | "lg" }
   if (sign.imageUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={sign.imageUrl} alt={sign.word} className={cls} />
+      <img
+        src={sign.imageUrl}
+        alt={sign.word}
+        className={`${cls} select-none pointer-events-none`}
+        draggable={false}
+        onContextMenu={(e) => e.preventDefault()}
+      />
     )
   }
   return (
@@ -159,9 +158,9 @@ export default function DictionaryPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All levels</SelectItem>
-              <SelectItem value="BEGINNER">Beginner</SelectItem>
-              <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
-              <SelectItem value="ADVANCED">Advanced</SelectItem>
+              {COURSE_LEVELS.map((l) => (
+                <SelectItem key={l} value={l}>{l}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -201,7 +200,7 @@ export default function DictionaryPage() {
                     variant="outline"
                     className={`text-[10px] h-4 px-1.5 ${levelColor[sign.level]}`}
                   >
-                    {sign.level.charAt(0) + sign.level.slice(1).toLowerCase()}
+                    {sign.level}
                   </Badge>
                   {sign.videoUrl && (
                     <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-1 bg-violet-50 text-violet-700 border-violet-200">
@@ -263,15 +262,20 @@ export default function DictionaryPage() {
                   <video
                     src={selectedSign.videoUrl}
                     controls
+                    controlsList="nodownload noremoteplayback"
+                    disablePictureInPicture
                     className="w-full rounded-xl"
                     poster={selectedSign.imageUrl ?? undefined}
+                    onContextMenu={(e) => e.preventDefault()}
                   />
                 ) : selectedSign.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={selectedSign.imageUrl}
                     alt={selectedSign.word}
-                    className="w-full rounded-xl object-contain max-h-64"
+                    className="w-full rounded-xl object-contain max-h-64 select-none pointer-events-none"
+                    draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
                   />
                 ) : (
                   <div className="aspect-video flex flex-col items-center justify-center gap-2 text-primary">
@@ -285,7 +289,7 @@ export default function DictionaryPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline">{selectedSign.category}</Badge>
                 <Badge variant="outline" className={levelColor[selectedSign.level]}>
-                  {selectedSign.level.charAt(0) + selectedSign.level.slice(1).toLowerCase()}
+                  {selectedSign.level}
                 </Badge>
               </div>
 

@@ -24,7 +24,7 @@ async function handleGET(req: NextRequest) {
           { tutor: { name: { contains: q, mode: "insensitive" as const } } },
         ],
       } : {}),
-      ...(level ? { level: level as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" } : {}),
+      ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel } : {}),
       ...(tutorId ? { tutorId } : {}),
     }
 

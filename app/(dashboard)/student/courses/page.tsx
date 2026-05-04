@@ -24,6 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
+import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
 
 type CourseProgress = {
   completedLessons: number
@@ -37,7 +38,7 @@ type Course = {
   title: string
   description: string
   thumbnailUrl: string | null
-  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+  level: CourseLevel
   tutor: { id: string; name: string; avatarUrl: string | null }
   category: { id: string; name: string } | null
   enrollmentCount: number
@@ -58,11 +59,6 @@ type CoursesData = {
   invitedByTutor: { id: string; name: string; avatarUrl: string | null } | null
 }
 
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  INTERMEDIATE: "bg-amber-100 text-amber-700 border-amber-200",
-  ADVANCED: "bg-rose-100 text-rose-700 border-rose-200",
-}
 
 export default function StudentCoursesPage() {
   const searchParams = useSearchParams()
@@ -126,9 +122,9 @@ export default function StudentCoursesPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All levels</SelectItem>
-            <SelectItem value="BEGINNER">Beginner</SelectItem>
-            <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
-            <SelectItem value="ADVANCED">Advanced</SelectItem>
+            {COURSE_LEVELS.map((l) => (
+              <SelectItem key={l} value={l}>{l}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -293,7 +289,7 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
             <div className="absolute inset-0 bg-linear-to-t from-black/30 via-transparent to-transparent" />
             <div className="absolute bottom-2 left-2">
               <Badge className={`text-[10px] border backdrop-blur-sm bg-white/90 shadow-sm ${levelColor[course.level]}`}>
-                {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
+                {course.level}
               </Badge>
             </div>
             <div className="absolute top-2 right-2">

@@ -70,7 +70,7 @@ async function handlePUT(
       data: {
         ...(body.title?.trim() && { title: body.title.trim() }),
         ...(body.description !== undefined && { description: body.description }),
-        ...(body.level && { level: body.level as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" }),
+        ...(body.level && { level: body.level as import("@/app/generated/prisma/client").CourseLevel }),
         ...(body.status && { status: body.status as "DRAFT" | "PUBLISHED" | "ARCHIVED" }),
         ...(body.price !== undefined && { price: body.price }),
         ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl }),

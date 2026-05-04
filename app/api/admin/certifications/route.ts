@@ -69,7 +69,7 @@ async function handlePOST(req: NextRequest) {
       data: {
         title: title.trim(),
         description: description?.trim() || null,
-        level: (level as "BEGINNER" | "INTERMEDIATE" | "ADVANCED") || "BEGINNER",
+        level: (level as import("@/app/generated/prisma/client").CourseLevel) || "L1",
         price: price ?? 0,
         imageUrl: imageUrl || null,
         validityMonths: validityMonths ?? null,

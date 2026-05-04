@@ -6,6 +6,7 @@ import {
   Video, Mic, MicOff, VideoOff, PhoneOff,
   ChevronLeft, Loader2, AlertCircle, Clock,
   Camera, CheckCircle2, Download, FileText, Paperclip,
+  WifiOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -337,12 +338,11 @@ function EntryScreen({
   )
 }
 
-// ─── Left session screen ──────────────────────────────────────────────────────
+// ─── After leaving / disconnect ───────────────────────────────────────────────
 
-function LeftScreen() {
+function SessionEndedScreen() {
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center gap-8 text-center">
-      {/* Icon */}
       <div className="relative">
         <div className="size-24 rounded-full bg-primary/8 flex items-center justify-center">
           <PhoneOff className="size-10 text-primary/40" />
@@ -353,19 +353,49 @@ function LeftScreen() {
       </div>
 
       <div className="max-w-xs">
-        <h2 className="text-2xl font-black">Session ended</h2>
+        <h2 className="text-2xl font-black">You left the session</h2>
         <p className="text-muted-foreground mt-2 text-sm">
           Thanks for joining! Keep practising your BSL skills.
         </p>
       </div>
 
-      {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3">
         <Button asChild size="lg">
           <Link href="/student/classroom">Back to Classroom</Link>
         </Button>
         <Button asChild variant="outline" size="lg">
           <Link href="/student/courses">Browse Courses</Link>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** LiveKit disconnected without an explicit Leave tap — offer reconnect steps (student-side crash / network protocol). */
+function ConnectionLostScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center gap-6 text-center px-4">
+      <div className="size-24 rounded-full bg-amber-500/15 flex items-center justify-center">
+        <WifiOff className="size-10 text-amber-600" />
+      </div>
+
+      <div className="max-w-md">
+        <h2 className="text-2xl font-black">Connection lost</h2>
+        <p className="text-muted-foreground mt-2 text-sm">
+          The live room dropped unexpectedly. That usually means a network blip, browser sleep, or the session closing — not something you did wrong.
+        </p>
+        <ol className="text-left text-sm text-muted-foreground mt-4 space-y-2 list-decimal list-inside">
+          <li>Check your internet connection.</li>
+          <li>Disable VPNs or other tabs that might interrupt video calling.</li>
+          <li>Confirm with your tutor that the session is still live.</li>
+          <li>Use &quot;Try reconnecting&quot; below, or refresh this page.</li>
+        </ol>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button size="lg" onClick={onRetry}>Try reconnecting</Button>
+        <Button asChild variant="outline" size="lg">
+          <Link href="/student/classroom">Back to Classroom</Link>
         </Button>
       </div>
     </div>
@@ -388,7 +418,8 @@ export default function ClassroomRoomPage({
 }) {
   const { id } = use(params)
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
-  const [disconnected, setDisconnected] = useState(false)
+  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost">(null)
+  const leaveClickedRef = useRef(false)
   const [autoRejoin, setAutoRejoin] = useState(false)
 
   const { data, loading: infoLoading } = useFetch<SessionInfo>(`/api/sessions/${id}/info`, {
@@ -426,7 +457,26 @@ export default function ClassroomRoomPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRejoin, data, tokenData])
 
-  if (disconnected) return <LeftScreen />
+  const handleLeaveRoom = () => {
+    leaveClickedRef.current = true
+    setDisconnectKind("left")
+  }
+
+  const handleLiveKitDisconnected = () => {
+    setDisconnectKind((prev) => {
+      if (prev !== null) return prev
+      return leaveClickedRef.current ? "left" : "lost"
+    })
+  }
+
+  const handleRetryAfterDrop = () => {
+    leaveClickedRef.current = false
+    setDisconnectKind(null)
+    setTokenData(null)
+  }
+
+  if (disconnectKind === "left") return <SessionEndedScreen />
+  if (disconnectKind === "lost") return <ConnectionLostScreen onRetry={handleRetryAfterDrop} />
 
   if (infoLoading && !data) {
     return (
@@ -462,13 +512,13 @@ export default function ClassroomRoomPage({
       connect={true}
       video={false}
       audio={true}
-      onDisconnected={() => setDisconnected(true)}
+      onDisconnected={handleLiveKitDisconnected}
     >
       <ClassroomRoom
         isTutor={false}
         sessionId={id}
         sessionTitle={data?.session?.title ?? "Live Session"}
-        onLeave={() => setDisconnected(true)}
+        onLeave={handleLeaveRoom}
       />
     </LiveKitRoom>
   )

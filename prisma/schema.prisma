@@ -20,9 +20,12 @@ enum CourseStatus {
 }
 
 enum CourseLevel {
-  BEGINNER
-  INTERMEDIATE
-  ADVANCED
+  L1
+  L2
+  L3
+  L4
+  L5
+  L6
 }
 
 enum LessonType {
@@ -198,7 +201,7 @@ model Sign {
   id          String      @id @default(cuid())
   word        String      @unique
   category    String
-  level       CourseLevel @default(BEGINNER)
+  level       CourseLevel @default(L1)
   description String
   videoUrl    String?
   imageUrl    String?
@@ -220,7 +223,7 @@ model Course {
   description  String
   thumbnailUrl String?
   status       CourseStatus @default(DRAFT)
-  level        CourseLevel  @default(BEGINNER)
+  level        CourseLevel  @default(L1)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -683,7 +686,7 @@ model CertProgram {
   id          String            @id @default(cuid())
   title       String
   description String?
-  level       CourseLevel       @default(BEGINNER)
+  level       CourseLevel       @default(L1)
   status      CertProgramStatus @default(DRAFT)
   price       Int               @default(0)        // in pence (0 = free)
   imageUrl    String?

@@ -24,7 +24,7 @@ async function handleGET(req: NextRequest) {
         ],
       } : {}),
       ...(category ? { category: { equals: category, mode: "insensitive" as const } } : {}),
-      ...(level ? { level: level as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" } : {}),
+      ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel } : {}),
     }
 
     const [total, signs, allCategories] = await Promise.all([
@@ -64,7 +64,7 @@ async function handlePOST(req: NextRequest) {
     const body = await req.json() as {
       word: string
       category: string
-      level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+      level: import("@/app/generated/prisma/client").CourseLevel
       description: string
       handshape: string
       usage: string
@@ -82,7 +82,7 @@ async function handlePOST(req: NextRequest) {
       data: {
         word: body.word.trim(),
         category: body.category.trim(),
-        level: body.level ?? "BEGINNER",
+        level: body.level ?? "L1",
         description: body.description.trim(),
         handshape: body.handshape.trim(),
         usage: body.usage.trim(),

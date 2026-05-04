@@ -31,6 +31,7 @@ import { Pagination } from "@/components/ui/pagination"
 import { ManageGroupsModal } from "@/components/classroom/ManageGroupsModal"
 import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
 import { toast } from "sonner"
+import { levelColor, type CourseLevel } from "@/lib/levels"
 
 type CourseProgress = {
   id: string
@@ -65,18 +66,6 @@ type LiveSession = {
 type SessionsData = { sessions: LiveSession[] }
 
 const PAGE_SIZE = 50
-
-const LEVEL_LABELS: Record<string, string> = {
-  BEGINNER: "Beginner",
-  INTERMEDIATE: "Intermediate",
-  ADVANCED: "Advanced",
-}
-
-const LEVEL_COLORS: Record<string, string> = {
-  BEGINNER: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  INTERMEDIATE: "bg-amber-100 text-amber-700 border-amber-200",
-  ADVANCED: "bg-rose-100 text-rose-700 border-rose-200",
-}
 
 type SortKey = "name-asc" | "name-desc" | "joined-desc" | "joined-asc" | "progress-desc" | "progress-asc"
 
@@ -283,16 +272,16 @@ export default function TutorStudentsPage() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
                 <Filter className="size-3" />
-                {levelFilter === "ALL" ? "All Levels" : LEVEL_LABELS[levelFilter]}
+                {levelFilter === "ALL" ? "All Levels" : levelFilter}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => { setLevelFilter("ALL"); setPage(1) }}>
                 All Levels {levelFilter === "ALL" && <Check className="ml-auto size-3" />}
               </DropdownMenuItem>
-              {Object.entries(LEVEL_LABELS).map(([key, label]) => (
-                <DropdownMenuItem key={key} onClick={() => { setLevelFilter(key); setPage(1) }}>
-                  {label} {levelFilter === key && <Check className="ml-auto size-3" />}
+              {(["L1","L2","L3","L4","L5","L6"] as CourseLevel[]).map((l) => (
+                <DropdownMenuItem key={l} onClick={() => { setLevelFilter(l); setPage(1) }}>
+                  {l} {levelFilter === l && <Check className="ml-auto size-3" />}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -376,8 +365,8 @@ export default function TutorStudentsPage() {
                     {/* Level */}
                     <div className="hidden sm:flex">
                       {student.bslLevel ? (
-                        <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${LEVEL_COLORS[student.bslLevel] ?? ""}`}>
-                          {LEVEL_LABELS[student.bslLevel] ?? student.bslLevel}
+                        <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${levelColor[student.bslLevel as CourseLevel] ?? ""}`}>
+                          {student.bslLevel}
                         </Badge>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>

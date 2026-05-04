@@ -23,12 +23,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
 import { toast } from "sonner"
+import { COURSE_LEVELS, levelColorSolid, type CourseLevel } from "@/lib/levels"
 
 type Program = {
   id: string
   title: string
   description: string | null
-  level: string
+  level: CourseLevel
   status: string
   price: number
   imageUrl: string | null
@@ -46,12 +47,6 @@ const statusColor: Record<string, string> = {
   ARCHIVED: "bg-muted text-muted-foreground",
 }
 
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-50 text-emerald-700",
-  INTERMEDIATE: "bg-amber-50 text-amber-700",
-  ADVANCED: "bg-rose-50 text-rose-700",
-}
-
 export default function AdminCertificationsPage() {
   const { data, loading, refetch } = useFetch<ProgramsData>("/api/admin/certifications", {
     errorMessage: "Could not load certifications",
@@ -59,7 +54,7 @@ export default function AdminCertificationsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [level, setLevel] = useState("BEGINNER")
+  const [level, setLevel] = useState<CourseLevel>("L1")
   const [price, setPrice] = useState("0")
 
   const { execute: createProgram, loading: creating } = usePostCallback<
@@ -121,8 +116,8 @@ export default function AdminCertificationsPage() {
                       <Badge variant="outline" className={`text-[10px] ${statusColor[p.status]}`}>
                         {p.status.charAt(0) + p.status.slice(1).toLowerCase()}
                       </Badge>
-                      <Badge variant="secondary" className={`text-[10px] ${levelColor[p.level]}`}>
-                        {p.level.charAt(0) + p.level.slice(1).toLowerCase()}
+                      <Badge variant="secondary" className={`text-[10px] ${levelColorSolid[p.level]}`}>
+                        {p.level}
                       </Badge>
                     </div>
                     <Link href={`/admin/certifications/${p.id}`} className="font-bold text-sm hover:text-primary transition-colors">
@@ -210,12 +205,12 @@ export default function AdminCertificationsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label>Level</Label>
-                <Select value={level} onValueChange={setLevel}>
+                <Select value={level} onValueChange={(v) => setLevel(v as CourseLevel)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="BEGINNER">Beginner</SelectItem>
-                    <SelectItem value="INTERMEDIATE">Intermediate</SelectItem>
-                    <SelectItem value="ADVANCED">Advanced</SelectItem>
+                    {COURSE_LEVELS.map((l) => (
+                      <SelectItem key={l} value={l}>{l}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -59,7 +59,7 @@ async function handlePOST(req: NextRequest) {
     const body = await req.json() as {
       title: string
       description: string
-      level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+      level: import("@/app/generated/prisma/client").CourseLevel
       categoryId?: string
       thumbnailUrl?: string
     }

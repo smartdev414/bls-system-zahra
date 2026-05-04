@@ -20,6 +20,7 @@ import { useFetch, usePostCallback } from "@/hooks/use-fetch"
 import { FileUpload, UploadedFile } from "@/components/ui/file-upload"
 import { CertQuizTaker } from "@/components/certification/CertQuizTaker"
 import { toast } from "sonner"
+import { levelColorSolid, type CourseLevel } from "@/lib/levels"
 
 const stepTypeIcon: Record<string, React.ElementType> = { COURSE_COMPLETION: GraduationCap, QUIZ: BookOpen, VIDEO_SUBMISSION: Video, LIVE_ASSESSMENT: Users }
 const stepTypeLabel: Record<string, string> = { COURSE_COMPLETION: "Course Completion", QUIZ: "Quiz", VIDEO_SUBMISSION: "Video Submission", LIVE_ASSESSMENT: "Live Assessment" }
@@ -31,12 +32,6 @@ const statusConfig: Record<string, { label: string; icon: React.ElementType; col
   UNDER_REVIEW: { label: "Under Review", icon: Clock, color: "bg-blue-100 text-blue-700" },
   PASSED: { label: "Passed", icon: CheckCircle2, color: "bg-emerald-100 text-emerald-700" },
   FAILED: { label: "Needs Revision", icon: XCircle, color: "bg-rose-100 text-rose-700" },
-}
-
-const levelColor: Record<string, string> = {
-  BEGINNER: "bg-emerald-50 text-emerald-700",
-  INTERMEDIATE: "bg-amber-50 text-amber-700",
-  ADVANCED: "bg-rose-50 text-rose-700",
 }
 
 type Step = {
@@ -113,7 +108,7 @@ export default function StudentCertDetailPage() {
           <div className="absolute -right-10 -top-10 size-48 rounded-full bg-white/5" />
           <div className="relative">
             <div className="flex items-center gap-2 mb-2">
-              <Badge className={`text-[10px] ${levelColor[program.level]} border`}>{program.level?.charAt(0) + program.level?.slice(1).toLowerCase()}</Badge>
+              <Badge className={`text-[10px] ${levelColorSolid[program.level as CourseLevel]} border`}>{program.level}</Badge>
               {isCompleted && <Badge className="bg-white/20 text-white border-0 text-[10px] gap-1"><CheckCircle2 className="size-2.5" /> Certified</Badge>}
             </div>
             <h1 className="text-2xl font-black tracking-tight">{program.title}</h1>

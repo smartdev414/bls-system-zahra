@@ -41,17 +41,23 @@ export default function AdminCategoriesPage() {
     <div className="max-w-2xl flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-          <Tag className="size-6 text-primary" /> Categories
+          <Tag className="size-6 text-primary" /> Course categories
         </h1>
-        <p className="text-muted-foreground mt-1">Organise courses into categories.</p>
+        <p className="text-muted-foreground mt-1 max-w-xl">
+          Labels used to group published courses in the catalogue (for example &quot;Everyday BSL&quot;, &quot;Workplace&quot;).
+          Tutors pick one when they create or edit a course. This is separate from dictionary sign tags — those are plain text on each sign in Admin → Dictionary.
+        </p>
       </div>
 
       {/* Create */}
       <Card className="shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Plus className="size-4 text-primary" /> New Category
+            <Plus className="size-4 text-primary" /> New course category
           </CardTitle>
+          <p className="text-sm text-muted-foreground font-normal pt-1">
+            Appears in course filters and on course cards for students.
+          </p>
         </CardHeader>
         <CardContent>
           <form
@@ -75,7 +81,7 @@ export default function AdminCategoriesPage() {
       <Card className="shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Tag className="size-4 text-primary" /> All Categories
+            <Tag className="size-4 text-primary" /> All course categories
             {data && (
               <Badge variant="secondary" className="ml-1">{data.categories.length}</Badge>
             )}

@@ -58,7 +58,7 @@ async function handlePUT(
     const body = await req.json() as {
       title?: string
       description?: string
-      level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+      level?: import("@/app/generated/prisma/client").CourseLevel
       status?: "DRAFT" | "PUBLISHED" | "ARCHIVED"
       categoryId?: string | null
       thumbnailUrl?: string | null

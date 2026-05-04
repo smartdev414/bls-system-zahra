@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
+import { levelColor, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ type Course = {
   title: string
   description: string
   thumbnailUrl: string | null
-  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+  level: CourseLevel
   category: { id: string; name: string } | null
   enrollmentCount: number
   sectionCount: number
@@ -70,12 +71,6 @@ type Course = {
 type MyReview = { id: string; rating: number; comment: string | null } | null
 
 type PageData = { tutor: TutorProfile; courses: Course[]; reviews: TutorReviewItem[]; myReview: MyReview }
-
-const levelColor: Record<string, string> = {
-  BEGINNER: "text-emerald-700 border-emerald-200 bg-emerald-50",
-  INTERMEDIATE: "text-amber-700 border-amber-200 bg-amber-50",
-  ADVANCED: "text-rose-700 border-rose-200 bg-rose-50",
-}
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -394,7 +389,7 @@ function ProfileCourseCard({
           <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
           <div className="absolute bottom-2 left-2">
             <Badge className={`text-[10px] border backdrop-blur-sm bg-white/90 ${levelColor[course.level]}`}>
-              {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
+              {course.level}
             </Badge>
           </div>
           {isCompleted && (

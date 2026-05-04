@@ -39,7 +39,7 @@ async function handlePUT(req: NextRequest) {
     const body = await req.json() as {
       name?: string
       avatarUrl?: string | null
-      bslLevel?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null
+      bslLevel?: import("@/app/generated/prisma/client").CourseLevel | null
       bio?: string
       qualifications?: string[]
     }

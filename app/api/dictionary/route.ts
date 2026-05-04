@@ -24,7 +24,7 @@ async function handleGET(req: NextRequest) {
         ],
       } : {}),
       ...(category ? { category: { equals: category, mode: "insensitive" as const } } : {}),
-      ...(level ? { level: level as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" } : {}),
+      ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel } : {}),
     }
 
     const [total, signs, allCategories] = await Promise.all([

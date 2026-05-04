@@ -29,11 +29,6 @@ const stepIcon: Record<string, React.ElementType> = {
   LIVE_ASSESSMENT: Users,
 }
 
-const levelLabel: Record<string, string> = {
-  BEGINNER: "Beginner",
-  INTERMEDIATE: "Intermediate",
-  ADVANCED: "Advanced",
-}
 
 export default function VerifyCertificatePage() {
   const { token } = useParams<{ token: string }>()
@@ -81,7 +76,7 @@ export default function VerifyCertificatePage() {
               <p className="text-xs font-bold uppercase tracking-widest text-white/60 mb-1">Certificate of Achievement</p>
               <h1 className="text-2xl font-black tracking-tight">{cert.programTitle}</h1>
               <Badge className="mt-3 bg-white/20 text-white border-0 text-xs">
-                {levelLabel[cert.level] ?? cert.level} Level
+                {cert.level} Level
               </Badge>
             </div>
           </div>
