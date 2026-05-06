@@ -1,18 +1,3 @@
-/**
- * prisma/seed.ts
- * Run with:  npx prisma db seed
- *
- * Creates the initial ADMIN account if it doesn't already exist.
- * Credentials are read from environment variables so they are never
- * hard-coded in source control.  Fall back to safe development defaults
- * only when NODE_ENV is not "production".
- *
- * Required env vars (or set in .env):
- *   ADMIN_EMAIL     – defaults to  admin@bslplatform.com
- *   ADMIN_PASSWORD  – defaults to  Admin@1234  (change immediately in prod!)
- *   ADMIN_NAME      – defaults to  BSL Admin
- */
-
 import { PrismaClient } from "../app/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import bcrypt from "bcryptjs"

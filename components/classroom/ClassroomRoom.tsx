@@ -13,6 +13,7 @@ import { ConnectionState, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Radio, Users, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
+  MessageSquare,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
@@ -94,6 +95,17 @@ export function ClassroomRoom({
   const [participantsOpen, setParticipantsOpen] = useState(true)
   const [chatOpen,         setChatOpen]         = useState(true)
   const [requestsOpen,     setRequestsOpen]     = useState(false)
+
+  // On small screens (phones), default chat + participants to collapsed so the
+  // camera/content area isn't covered by overlays / cramped strips. We do this
+  // once after mount via matchMedia to avoid SSR hydration mismatch.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      setChatOpen(false)
+      setParticipantsOpen(false)
+    }
+  }, [])
 
   // ── Popped-out floating video windows ──────────────────────────────────────
   // Each entry is a participant identity the tutor has popped out into a
@@ -1717,18 +1729,18 @@ export function ClassroomRoom({
       )}
 
       {/* ── Top bar ── */}
-      <header className="h-11 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
-        <div className="flex items-center gap-2.5">
+      <header className="h-11 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-2 sm:px-4 shrink-0 gap-2">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           <Radio className="size-3.5 text-rose-500 animate-pulse shrink-0" />
-          <span className="font-bold text-sm truncate max-w-xs">{sessionTitle}</span>
+          <span className="font-bold text-sm truncate max-w-[40vw] sm:max-w-xs">{sessionTitle}</span>
           {pptActive && (
-            <span className="flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">
+            <span className="hidden sm:flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap">
               <Presentation className="size-3" />
               Presenting
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {isTutor && (
             <div className="relative">
               <button
@@ -1782,14 +1794,17 @@ export function ClassroomRoom({
       {/* ── Main body ── */}
       <div className="flex flex-1 overflow-hidden flex-col min-h-0">
 
-        {/* Top row: slides / video / whiteboard + chat sidebar */}
-        <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* Top row: slides / video / whiteboard + chat sidebar.
+            On phones (default) we stack camera/content vertically; from md+
+            we revert to the side-by-side BSL layout. `relative` is required
+            so the mobile chat overlay can pin to this row. */}
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
 
           {whiteboardActive ? (
             // ── Whiteboard mode: same deaf-first layout as PPT. Tutor camera on
             // the LEFT so signing stays visible while everyone draws on the RIGHT.
             <>
-              <div className="flex-1 min-w-0 basis-0 overflow-hidden bg-zinc-900 relative">
+              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
                 {pinnedId ? (
                   <PinnedVideoArea
                     identity={pinnedId}
@@ -1808,7 +1823,7 @@ export function ClassroomRoom({
                 )}
               </div>
 
-              <div className="flex-1 min-w-0 basis-0 overflow-hidden relative border-l border-zinc-800">
+              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800">
                 <WhiteboardPanel
                   isTutor={isTutor}
                   localIdentity={localParticipant.identity}
@@ -1826,7 +1841,7 @@ export function ClassroomRoom({
             // ── PPT mode: Deaf-culture convention — signer on the LEFT, content on the RIGHT.
             <>
               {/* Camera panel — LEFT. Pinned student if set, otherwise tutor for BSL */}
-              <div className="flex-1 min-w-0 basis-0 overflow-hidden bg-zinc-900 relative">
+              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
                 {pinnedId ? (
                   <PinnedVideoArea
                     identity={pinnedId}
@@ -1848,7 +1863,7 @@ export function ClassroomRoom({
               {/* Presentation column — RIGHT. Slides or video, decided by `presentKind`. */}
               <div
                 ref={slideAreaRef}
-                className="flex-1 min-w-0 basis-0 overflow-hidden relative border-l border-zinc-800"
+                className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800"
                 onPointerMove={handleSlidePointerMove}
                 onPointerLeave={handleSlidePointerLeave}
                 style={isTutor && pointerMode ? { cursor: "none" } : undefined}
@@ -1926,7 +1941,7 @@ export function ClassroomRoom({
             // ── Screen share mode: camera LEFT so the tutor can keep signing,
             // screen content RIGHT. Students see a placeholder when private.
             <>
-              <div className="flex-1 min-w-0 basis-0 overflow-hidden bg-zinc-900 relative">
+              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
                 {pinnedId ? (
                   <PinnedVideoArea
                     identity={pinnedId}
@@ -1945,7 +1960,7 @@ export function ClassroomRoom({
                 )}
               </div>
 
-              <div className="flex-1 min-w-0 basis-0 overflow-hidden relative border-l border-zinc-800 bg-zinc-950">
+              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800 bg-zinc-950">
                 {!isTutor && screenPrivate ? (
                   <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
                     <Monitor className="size-12 opacity-20" />
@@ -1987,10 +2002,18 @@ export function ClassroomRoom({
             </div>
           )}
 
-          {/* Chat column — collapsible (right sidebar) */}
+          {/* Chat column — desktop sidebar; mobile full-screen overlay.
+              When closed on mobile we hide it entirely and surface a floating
+              chat-toggle button (below) so the camera/content stay unobstructed. */}
           <div className={cn(
-            "flex flex-col h-full overflow-hidden border-l border-zinc-800 transition-all duration-200",
-            chatOpen ? "w-72" : "w-10"
+            "flex flex-col overflow-hidden bg-zinc-900 transition-all duration-200 border-zinc-800",
+            // Desktop: inline sidebar, always part of layout
+            "md:relative md:h-full md:border-l md:flex",
+            chatOpen ? "md:w-72" : "md:w-10",
+            // Mobile: overlay when open, hidden when closed
+            chatOpen
+              ? "absolute inset-y-0 right-0 z-30 w-full shadow-2xl md:shadow-none"
+              : "hidden"
           )}>
             <ChatPanel
               messages={messages}
@@ -2005,12 +2028,27 @@ export function ClassroomRoom({
               onLowerAllHands={isTutor ? handleLowerAllHands : undefined}
             />
           </div>
+
+          {/* Mobile-only floating chat toggle — visible when chat is closed.
+              On desktop the collapsed w-10 strip handles this affordance. */}
+          {!chatOpen && (
+            <button
+              onClick={() => setChatOpen(true)}
+              className={cn(
+                "md:hidden absolute bottom-3 right-3 z-30 size-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center active:scale-95 transition-transform",
+                chatFlash && "animate-pulse"
+              )}
+              aria-label="Open chat"
+            >
+              <MessageSquare className="size-5" />
+            </button>
+          )}
         </div>
 
         {/* Bottom strip: participants row */}
         <div className={cn(
           "shrink-0 border-t border-zinc-800 bg-zinc-900 transition-[height] duration-200 overflow-hidden",
-          participantsOpen ? "h-28" : "h-9"
+          participantsOpen ? "h-24 sm:h-28" : "h-9"
         )}>
           <ParticipantsPanel
             pinnedId={pinnedId}
@@ -2107,7 +2145,9 @@ export function ClassroomRoom({
       )}
 
       {/* ── Bottom controls row ── */}
-      <div className="h-12 bg-zinc-950 border-t border-zinc-800/60 shrink-0 flex items-center px-3 gap-2">
+      {/* Single-row strip — ControlsBar handles horizontal scroll on narrow
+          screens so buttons stay on one line. */}
+      <div className="h-12 bg-zinc-950 border-t border-zinc-800/60 shrink-0 flex items-center px-2 sm:px-3">
         <ControlsBar
           isTutor={isTutor}
           handRaised={handRaised}

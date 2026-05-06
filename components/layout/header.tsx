@@ -2,10 +2,11 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { useState } from "react"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
-  Sun, Moon, Activity, Ticket, Star,
+  Sun, Moon, Activity, Ticket, Star, Menu, X,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -109,6 +110,9 @@ export function Header({ role, user }: HeaderProps) {
   const navItems = role === "TUTOR" ? tutorNav : role === "ADMIN" ? adminNav : studentNav
   const dropdownNavItems = role === "TUTOR" ? tutorDropdownNav : role === "ADMIN" ? adminDropdownNav : studentDropdownNav
 
+  // Mobile nav panel — closed by default; closes when the user taps a link.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
   const { execute: signOut, loading: signingOut } = useDeleteCallback("/api/auth/logout", {
     successMessage: "Signed out successfully",
     onSuccess: () => router.push("/login"),
@@ -123,10 +127,22 @@ export function Header({ role, user }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-6">
 
-        {/* Left: Logo + Nav */}
-        <div className="flex items-center gap-8">
+        {/* Left: hamburger (mobile) + Logo + Nav */}
+        <div className="flex items-center gap-2 sm:gap-4 md:gap-8 min-w-0">
+          {/* Mobile menu toggle — md:hidden so it disappears once the inline nav fits. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden shrink-0 -ml-1"
+            onClick={() => setMobileNavOpen((v) => !v)}
+            aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileNavOpen}
+          >
+            {mobileNavOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+          </Button>
+
           <Logo />
 
           <nav className="hidden md:flex items-center gap-1">
@@ -255,6 +271,39 @@ export function Header({ role, user }: HeaderProps) {
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Mobile nav panel — slides down below the top bar; md:hidden so it
+          disappears whenever the inline nav fits. Mirrors the same items
+          rendered desktop-side so users don't lose any destinations on phones. */}
+      {mobileNavOpen && (
+        <div className="md:hidden border-t bg-background/95 backdrop-blur-md">
+          <nav className="max-w-7xl mx-auto px-3 py-2 flex flex-col">
+            {[...navItems, ...dropdownNavItems].map(({ label, href, icon: Icon }) => {
+              const hasSubPaths = href.split("/").filter(Boolean).length > 1
+              const isActive = pathname === href || (hasSubPaths && pathname.startsWith(href + "/"))
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMobileNavOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" />
+                  {label}
+                  {label === "Messages" && isMessagesRole && user.id && (
+                    <MessagesBadge userId={user.id} />
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
+        </div>
+      )}
     </header>
   )
 }

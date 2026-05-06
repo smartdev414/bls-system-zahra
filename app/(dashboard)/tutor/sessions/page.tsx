@@ -873,9 +873,9 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
   })
 
   return (
-    <div className="flex gap-5 items-start">
+    <div className="flex flex-col md:flex-row gap-5 md:items-start">
       {/* ── Main grid ── */}
-      <div className="flex-1 min-w-0 flex flex-col gap-3">
+      <div className="w-full md:flex-1 md:min-w-0 flex flex-col gap-3">
         {/* Month nav */}
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold">{monthLabel}</h2>
@@ -978,7 +978,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
       </div>
 
       {/* ── Right sidebar ── */}
-      <div className="w-64 shrink-0 flex flex-col gap-4 mt-10">
+      <div className="w-full md:w-64 md:shrink-0 flex flex-col gap-4 md:mt-10">
         {/* Selected day panel */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className={cn(
@@ -1083,7 +1083,7 @@ function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onM
     .slice(0, 5)
 
   return (
-    <div className="w-64 shrink-0 flex flex-col gap-4 mt-10">
+    <div className="w-full md:w-64 md:shrink-0 flex flex-col gap-4 md:mt-10">
       {/* Today */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border bg-primary/5">
@@ -1178,9 +1178,9 @@ function ListView({ sessions, onMutated }: { sessions: SessionItem[]; onMutated:
   const pastPaged = past.slice((pastPage - 1) * PAST_PAGE_SIZE, pastPage * PAST_PAGE_SIZE)
 
   return (
-    <div className="flex gap-5 items-start">
+    <div className="flex flex-col md:flex-row gap-5 md:items-start">
       {/* Main list */}
-      <div className="flex-1 min-w-0 flex flex-col gap-8">
+      <div className="w-full md:flex-1 md:min-w-0 flex flex-col gap-8">
         {live.length > 0 && (
           <Section title="Live Now" dot>
             {live.map((s) => <SessionCard key={s.id} session={s} onMutated={onMutated} />)}

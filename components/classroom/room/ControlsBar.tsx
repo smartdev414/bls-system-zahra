@@ -85,7 +85,7 @@ export function ControlsBar({
   onToggleScreenPrivacy: () => void
 }) {
   return (
-    <div className="flex items-center gap-2 shrink-0 px-3 flex-wrap">
+    <div className="flex items-center gap-2 w-full min-w-0 overflow-x-auto overflow-y-hidden">
       <TrackToggle
         source={Track.Source.Microphone}
         className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=false]:bg-rose-900/50 data-[enabled=false]:text-rose-400 whitespace-nowrap"
@@ -350,7 +350,7 @@ export function ControlsBar({
 
       <button
         onClick={onLeave}
-        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors whitespace-nowrap ml-auto"
+        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors whitespace-nowrap ml-auto sticky right-0 shrink-0 shadow-[-12px_0_12px_-8px_rgb(9_9_11)]"
       >
         <PhoneOff className="size-3.5" /> Leave
       </button>
