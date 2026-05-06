@@ -379,9 +379,9 @@ function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutat
   const monthLabel = current.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
 
   return (
-    <div className="flex gap-5 items-start">
+    <div className="flex flex-col md:flex-row gap-5 md:items-start">
       {/* ── Main grid ── */}
-      <div className="flex-1 min-w-0 flex flex-col gap-3">
+      <div className="w-full md:flex-1 md:min-w-0 flex flex-col gap-3">
         {/* Month nav */}
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold">{monthLabel}</h2>
@@ -474,7 +474,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutat
       </div>
 
       {/* ── Right sidebar ── */}
-      <div className="w-60 shrink-0 flex flex-col gap-4">
+      <div className="w-full md:w-60 md:shrink-0 flex flex-col gap-4">
         {/* Selected day */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className={cn(
@@ -572,7 +572,7 @@ function SessionsSidebar({ sessions }: { sessions: LiveSession[] }) {
     .slice(0, 5)
 
   return (
-    <div className="w-64 shrink-0 flex flex-col gap-4">
+    <div className="w-full md:w-64 md:shrink-0 flex flex-col gap-4">
       {/* Today */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border bg-primary/5">
@@ -714,8 +714,8 @@ function ListView({ sessions, onMutated }: { sessions: LiveSession[]; onMutated:
   const counts = { invited: invited.length, public: publicSessions.length, private: privateSessions.length }
 
   return (
-    <div className="flex gap-5 items-start">
-      <div className="flex-1 min-w-0 flex flex-col gap-4">
+    <div className="flex flex-col md:flex-row gap-5 md:items-start">
+      <div className="w-full md:flex-1 md:min-w-0 flex flex-col gap-4">
         {/* Tabs */}
         <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1">
           {TAB_CONFIG.map(({ id, label, icon: Icon }) => (

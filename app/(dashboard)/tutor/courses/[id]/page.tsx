@@ -112,7 +112,7 @@ function ThumbnailEditor({
   }
 
   return (
-    <div className="relative w-44 aspect-video rounded-xl overflow-hidden border bg-muted shrink-0 group">
+    <div className="relative w-full sm:w-44 aspect-video rounded-xl overflow-hidden border bg-muted sm:shrink-0 group">
       {preview ? (
         <img src={preview} alt="thumbnail" className="w-full h-full object-cover" />
       ) : (
@@ -231,8 +231,10 @@ return (
         </Link>
       </Button>
 
-      {/* Course header */}
-      <div className="flex items-start gap-5">
+      {/* Course header — thumb stacks above the title block on phones, sits
+          beside it from sm+. The title row itself also stacks on phones so the
+          action buttons drop below the long title instead of crowding it. */}
+      <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-5">
         <ThumbnailEditor
           courseId={id}
           thumbnailUrl={course.thumbnailUrl}
@@ -242,9 +244,9 @@ return (
           }}
         />
 
-        <div className="flex-1 min-w-0 flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-start md:justify-between gap-3 md:gap-4">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Badge
                 variant="outline"
                 className={isPublished
@@ -255,11 +257,11 @@ return (
                 {course.status.charAt(0) + course.status.slice(1).toLowerCase()}
               </Badge>
             </div>
-            <h1 className="text-2xl font-black truncate">{course.title}</h1>
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{course.description}</p>
+            <h1 className="text-xl sm:text-2xl font-black break-words">{course.title}</h1>
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-3 sm:line-clamp-2">{course.description}</p>
           </div>
 
-          <div className="flex gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 md:shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -291,13 +293,17 @@ return (
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="flex gap-4 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">{course._count.enrollments}</span> students enrolled ·
-        <span className="font-medium text-foreground">{course.sections.length}</span> sections ·
-        <span className="font-medium text-foreground">
-          {course.sections.reduce((sum, s) => sum + s.lessons.length, 0)}
-        </span> lessons
+      {/* Stats — flex-wrap so the inline `·` separators wrap cleanly on phones. */}
+      <div className="flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted-foreground">
+        <span><span className="font-medium text-foreground">{course._count.enrollments}</span> students enrolled</span>
+        <span aria-hidden>·</span>
+        <span><span className="font-medium text-foreground">{course.sections.length}</span> sections</span>
+        <span aria-hidden>·</span>
+        <span>
+          <span className="font-medium text-foreground">
+            {course.sections.reduce((sum, s) => sum + s.lessons.length, 0)}
+          </span> lessons
+        </span>
       </div>
 
       <Separator />
@@ -513,15 +519,16 @@ function SectionBlock({
         ) : (
           <>
             <button
-              className="flex-1 flex items-center gap-3 px-5 py-3.5 text-left"
+              className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3.5 text-left"
               onClick={onToggle}
             >
-              <span className="text-xs font-bold text-muted-foreground">Section {section.order}</span>
-              <span className="font-semibold text-sm">{section.title}</span>
-              <Badge variant="outline" className="text-[10px]">{section.lessons.length} lessons</Badge>
-              {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronUp className="size-4 text-muted-foreground" />}
+              <span className="text-xs font-bold text-muted-foreground shrink-0">Section {section.order}</span>
+              <span className="font-semibold text-sm truncate">{section.title}</span>
+              <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">{section.lessons.length} lessons</Badge>
+              <Badge variant="outline" className="text-[10px] shrink-0 sm:hidden">{section.lessons.length}</Badge>
+              {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground shrink-0 ml-auto" /> : <ChevronUp className="size-4 text-muted-foreground shrink-0 ml-auto" />}
             </button>
-            <div className="flex items-center gap-0.5 pr-2">
+            <div className="flex items-center gap-0.5 pr-1 sm:pr-2 shrink-0">
               <Button
                 variant="ghost" size="icon" className="size-7"
                 onClick={() => { setRenameValue(section.title); setRenaming(true) }}
@@ -548,7 +555,7 @@ function SectionBlock({
           {section.lessons.map((lesson) => (
             <LessonRow key={lesson.id} lesson={lesson} courseId={courseId} onMutated={onMutated} />
           ))}
-          <div className="px-5 py-3 border-t">
+          <div className="px-3 sm:px-5 py-3 border-t">
             <Button
               variant="ghost" size="sm" className="text-primary hover:text-primary"
               onClick={onAddLesson}
@@ -577,12 +584,12 @@ function LessonRow({ lesson, courseId, onMutated }: { lesson: LessonItem; course
   )
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3 border-t hover:bg-muted/20 transition-colors">
+    <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-t hover:bg-muted/20 transition-colors">
       <div className="rounded-lg bg-primary/10 p-1.5 shrink-0">
         <Icon className="size-4 text-primary" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">{lesson.order}. {lesson.title}</p>
+        <p className="text-sm font-medium truncate">{lesson.order}. {lesson.title}</p>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
           <span>{lesson.type.charAt(0) + lesson.type.slice(1).toLowerCase()}</span>
           {lesson.isFree && <Badge variant="outline" className="text-[10px] h-4 px-1">Free</Badge>}

@@ -272,11 +272,11 @@ export function Header({ role, user }: HeaderProps) {
         </div>
       </div>
 
-      {/* Mobile nav panel — slides down below the top bar; md:hidden so it
-          disappears whenever the inline nav fits. Mirrors the same items
-          rendered desktop-side so users don't lose any destinations on phones. */}
+      {/* Mobile nav panel — overlays page content (absolute, not in flow) so
+          opening it doesn't shift the layout below. md:hidden hides it once the
+          inline desktop nav fits. */}
       {mobileNavOpen && (
-        <div className="md:hidden border-t bg-background/95 backdrop-blur-md">
+        <div className="md:hidden absolute top-16 inset-x-0 border-b border-t bg-background/95 backdrop-blur-md shadow-lg">
           <nav className="max-w-7xl mx-auto px-3 py-2 flex flex-col">
             {[...navItems, ...dropdownNavItems].map(({ label, href, icon: Icon }) => {
               const hasSubPaths = href.split("/").filter(Boolean).length > 1
