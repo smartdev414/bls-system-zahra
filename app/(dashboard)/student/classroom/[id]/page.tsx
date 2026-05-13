@@ -6,14 +6,16 @@ import {
   Video, Mic, MicOff, VideoOff, PhoneOff,
   ChevronLeft, Loader2, AlertCircle, Clock,
   Camera, CheckCircle2, Download, FileText, Paperclip,
-  WifiOff,
+  WifiOff, Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { usePostCallback, useFetch } from "@/hooks/use-fetch"
 import { LiveKitRoom } from "@livekit/components-react"
+import { createLocalVideoTrack, type LocalVideoTrack } from "livekit-client"
 import "@livekit/components-styles"
 import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
+import { BLUR_PREF_KEY } from "@/components/classroom/blurPreference"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,39 +43,73 @@ type SessionInfo = {
 }
 
 // ─── Camera preview hook ──────────────────────────────────────────────────────
+// Uses livekit-client's LocalVideoTrack rather than raw getUserMedia so the
+// SAME @livekit/track-processors background blur the room will use can be
+// applied to the preview. What the user sees in the lobby is exactly what
+// other participants will see after joining.
 
-function useCameraPreview(enabled: boolean) {
+function useCameraPreview(enabled: boolean, blurEnabled: boolean) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const trackRef = useRef<LocalVideoTrack | null>(null)
+  // Bumped every time a fresh track is created so the blur effect re-runs
+  // even when blurEnabled hasn't changed (e.g. user disables then re-enables
+  // the camera while blur is on).
+  const [trackVersion, setTrackVersion] = useState(0)
 
+  // Create / destroy the preview track as the camera toggle flips.
   useEffect(() => {
-    if (!enabled) {
-      streamRef.current?.getTracks().forEach((t) => t.stop())
-      streamRef.current = null
-      if (videoRef.current) videoRef.current.srcObject = null
-      return
-    }
+    if (!enabled) return
+    let cancelled = false
+    let track: LocalVideoTrack | null = null
 
-    // getUserMedia requires HTTPS or localhost; guard against unsupported environments
-    if (!navigator?.mediaDevices?.getUserMedia) return
-
-    navigator.mediaDevices
-      .getUserMedia({ video: true, audio: false })
-      .then((stream) => {
-        streamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          videoRef.current.play().catch(() => {})
-        }
+    createLocalVideoTrack()
+      .then((t) => {
+        if (cancelled) { try { t.stop() } catch { /* ignore */ } ; return }
+        track = t
+        trackRef.current = t
+        if (videoRef.current) t.attach(videoRef.current)
+        setTrackVersion((v) => v + 1)
       })
       .catch(() => {
         // Permission denied or device unavailable — silently degrade
       })
 
     return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop())
+      cancelled = true
+      if (track) {
+        try { track.detach() } catch { /* ignore */ }
+        try { track.stop() } catch { /* ignore */ }
+      }
+      if (trackRef.current === track) trackRef.current = null
     }
   }, [enabled])
+
+  // Apply / remove the background-blur processor on the live preview track.
+  // Track-processors is heavy (~1-2 MB MediaPipe model) so we only import it
+  // the first time the user actually flips the toggle on.
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+    let cancelled = false
+
+    if (blurEnabled) {
+      import("@livekit/track-processors").then(async (mod) => {
+        if (cancelled || trackRef.current !== track) return
+        if (!mod.supportsBackgroundProcessors()) return
+        const proc = mod.BackgroundProcessor({ mode: "background-blur", blurRadius: 12 })
+        if (cancelled || trackRef.current !== track) return
+        try {
+          await track.setProcessor(proc)
+        } catch {
+          // Hot-reload or track stop mid-attach — swallow.
+        }
+      }).catch(() => { /* ignore — preview falls back to unblurred */ })
+    } else {
+      track.stopProcessor().catch(() => { /* nothing to stop yet */ })
+    }
+
+    return () => { cancelled = true }
+  }, [blurEnabled, trackVersion])
 
   return videoRef
 }
@@ -122,7 +158,18 @@ function EntryScreen({
 }) {
   const [videoEnabled, setVideoEnabled] = useState(false)
   const [audioEnabled, setAudioEnabled] = useState(true)
-  const cameraRef = useCameraPreview(videoEnabled)
+  // Read the persisted blur preference so a returning user keeps their choice.
+  // The toggle writes through to localStorage so ClassroomRoom can pick it up
+  // on mount and auto-apply the processor when the room's camera publishes.
+  const [blurEnabled, setBlurEnabled] = useState(() => {
+    if (typeof window === "undefined") return false
+    try { return window.localStorage.getItem(BLUR_PREF_KEY) === "1" } catch { return false }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem(BLUR_PREF_KEY, blurEnabled ? "1" : "0") } catch { /* ignore */ }
+  }, [blurEnabled])
+
+  const cameraRef = useCameraPreview(videoEnabled, blurEnabled)
 
   const { execute: getToken, loading, error } = usePostCallback<TokenData, Record<string, never>>(
     `/api/sessions/${sessionId}/token`,
@@ -184,6 +231,16 @@ function EntryScreen({
               iconOn={<Video className="size-5" />}
               iconOff={<VideoOff className="size-5" />}
               label={videoEnabled ? "Cam On" : "Cam Off"}
+            />
+            {/* Background blur — preview matches what others will see after
+                joining. Disabled until the camera is on so the toggle's effect
+                is visible immediately. */}
+            <DeviceToggle
+              enabled={blurEnabled}
+              onToggle={() => setBlurEnabled((v) => !v)}
+              iconOn={<Sparkles className="size-5" />}
+              iconOff={<Sparkles className="size-5" />}
+              label={blurEnabled ? "Blur On" : "Blur Off"}
             />
           </div>
 

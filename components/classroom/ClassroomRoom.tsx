@@ -51,6 +51,7 @@ import { BreakoutMonitor }      from "./room/BreakoutMonitor"
 import { BreakoutBanner }       from "./room/BreakoutBanner"
 import { NudgeOverlay }          from "./room/NudgeOverlay"
 import { LogoWatermark }        from "@/components/layout/logo"
+import { readBlurPreference, writeBlurPreference } from "./blurPreference"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -254,9 +255,10 @@ export function ClassroomRoom({
   // ── Background blur state ──────────────────────────────────────────────────
   // The actual processor instance is heavy (bundles MediaPipe) so it's lazily
   // imported on first toggle. `blurEnabled` is the source of truth; the
-  // `cameraTrackVersion` effect below re-applies the processor whenever the
-  // local camera track is re-published (e.g. after the user toggles camera).
-  const [blurEnabled, setBlurEnabled] = useState(false)
+  // auto-apply effect below attaches the processor whenever the local camera
+  // track is (re-)published. Initial value comes from the pre-join lobby so
+  // a user who flipped blur on before joining doesn't have to click again.
+  const [blurEnabled, setBlurEnabled] = useState(() => readBlurPreference())
   const [blurBusy, setBlurBusy] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blurProcessorRef = useRef<any>(null)
@@ -1138,7 +1140,9 @@ export function ClassroomRoom({
   const handleToggleBlur = useCallback(async () => {
     if (blurBusy) return
     const track = getLocalCameraTrack()
-    if (!track) {
+    // Turning blur OFF doesn't need a camera — we just record the pref off and
+    // detach if there's a track. Turning it ON needs an active camera track.
+    if (!track && !blurEnabled) {
       toast.info("Turn your camera on first to blur the background")
       return
     }
@@ -1147,11 +1151,12 @@ export function ClassroomRoom({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const liveTrack = track as any
       if (blurEnabled) {
-        if (typeof liveTrack.stopProcessor === "function") {
+        if (liveTrack && typeof liveTrack.stopProcessor === "function") {
           await liveTrack.stopProcessor()
         }
         blurProcessorRef.current = null
         setBlurEnabled(false)
+        writeBlurPreference(false)
         return
       }
       const mod = await import("@livekit/track-processors")
@@ -1163,6 +1168,7 @@ export function ClassroomRoom({
       await liveTrack.setProcessor(proc)
       blurProcessorRef.current = proc
       setBlurEnabled(true)
+      writeBlurPreference(true)
     } catch (err) {
       console.error("[blur] toggle failed", err)
       toast.error("Couldn't toggle background blur")
@@ -1200,8 +1206,11 @@ export function ClassroomRoom({
     }
   }, [isTutor, recordingBusy, recordingPaused, sessionId])
 
-  // Re-apply the processor whenever the camera track is republished (e.g. the
-  // user turned the camera off and back on, which creates a fresh track).
+  // Attach the processor to the local camera track. One effect handles three
+  // cases: (a) first publish after joining when the lobby pref is on, (b)
+  // re-publish after a camera off/on cycle, (c) toggling blur on inside the
+  // room when the processor doesn't exist yet. The processor instance is
+  // cached so we don't pay the MediaPipe model fetch on every reattach.
   const localCameraTrack = useMemo(
     () => localParticipant?.getTrackPublication(Track.Source.Camera)?.track ?? null,
     // The participant object's identity is stable; LiveKit mutates it in place,
@@ -1210,15 +1219,29 @@ export function ClassroomRoom({
     [localParticipant, localParticipant?.getTrackPublication(Track.Source.Camera)?.track],
   )
   useEffect(() => {
-    if (!blurEnabled || !localCameraTrack || !blurProcessorRef.current) return
+    if (!blurEnabled || !localCameraTrack) return
+    let cancelled = false
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const liveTrack = localCameraTrack as any
-    // If the existing processor reference is already attached, setProcessor
-    // is idempotent. If the track is fresh, this attaches the existing
-    // processor instance to it.
-    liveTrack.setProcessor(blurProcessorRef.current).catch((err: unknown) => {
-      console.warn("[blur] re-apply on new track failed", err)
-    })
+
+    ;(async () => {
+      try {
+        if (!blurProcessorRef.current) {
+          const mod = await import("@livekit/track-processors")
+          if (cancelled || !mod.supportsBackgroundProcessors()) return
+          blurProcessorRef.current = mod.BackgroundProcessor({
+            mode: "background-blur",
+            blurRadius: 12,
+          })
+        }
+        if (cancelled) return
+        await liveTrack.setProcessor(blurProcessorRef.current)
+      } catch (err) {
+        console.warn("[blur] auto-apply failed", err)
+      }
+    })()
+
+    return () => { cancelled = true }
   }, [blurEnabled, localCameraTrack])
 
   // ── Spotlight handler (tutor only) ─────────────────────────────────────────
