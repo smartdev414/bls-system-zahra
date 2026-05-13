@@ -53,14 +53,28 @@ type PptxViewerLike = {
   setFitMode?: (mode: "contain" | "none") => Promise<void>
 }
 
+type PptxViewerOptions = {
+  fitMode: "contain" | "none"
+  zoomPercent: number
+  width: number
+  onSlideError?: (index: number, error: unknown) => void
+  onNodeError?: (nodeId: string, error: unknown) => void
+}
+
 function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
   const hostRef    = useRef<HTMLDivElement>(null)
   const viewerRef  = useRef<PptxViewerLike | null>(null)
   const slideCount = useRef(0)
   const currentIdx = useRef(0)
+  const nodeErrorCount = useRef(0)
 
   const [status,   setStatus]   = useState<"loading" | "ready" | "error">("loading")
   const [errorMsg, setErrorMsg] = useState("")
+  // Becomes true when at least one node (typically an image) failed to render
+  // on the current deck — usually an EMF/WMF picture the renderer can't
+  // decode. Surfaces a small hint so the tutor isn't left wondering why a
+  // slide looks empty.
+  const [hasNodeErrors, setHasNodeErrors] = useState(false)
 
   // Load the deck once per fileUrl
   useEffect(() => {
@@ -94,11 +108,26 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
 
         const initialWidthHint = Math.max(host.clientWidth, 320)
 
-        const viewer = new PptxViewerClass(host, {
+        nodeErrorCount.current = 0
+        setHasNodeErrors(false)
+
+        const viewerOptions: PptxViewerOptions = {
           fitMode:     PPTX_FIT_MODE,
           zoomPercent: PPTX_ZOOM_PERCENT,
           width:       initialWidthHint,
-        }) as unknown as PptxViewerLike
+          onSlideError: (index, err) => {
+            console.warn(`[PptxViewer] slide ${index + 1} render error:`, err)
+          },
+          onNodeError: (nodeId, err) => {
+            nodeErrorCount.current += 1
+            // Most common cause is EMF/WMF picture parts the renderer can't
+            // decode (it advertises this limitation in its README).
+            console.warn(`[PptxViewer] node "${nodeId}" failed to render:`, err)
+            setHasNodeErrors(true)
+          },
+        }
+
+        const viewer = new PptxViewerClass(host, viewerOptions) as unknown as PptxViewerLike
         viewer.load(presentation)
         viewerRef.current = viewer
 
@@ -187,6 +216,13 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-500 bg-white px-8 text-center">
           <AlertCircle className="size-10 text-rose-500 opacity-70" />
           <p className="text-sm text-rose-400">{errorMsg}</p>
+        </div>
+      )}
+
+      {status === "ready" && hasNodeErrors && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-amber-50 border border-amber-300 text-amber-900 text-[11px] px-3 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 max-w-[90%]">
+          <AlertCircle className="size-3.5 shrink-0" />
+          <span className="truncate">Some images couldn&apos;t be rendered (EMF/WMF graphics aren&apos;t supported). Export as PNG/JPG in PowerPoint and re-upload.</span>
         </div>
       )}
     </div>

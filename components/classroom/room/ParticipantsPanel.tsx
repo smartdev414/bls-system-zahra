@@ -11,7 +11,7 @@ import {
 import { Track } from "livekit-client"
 import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
-  Megaphone, UserMinus, GripVertical, HandMetal,
+  Megaphone, UserMinus, GripVertical, HandMetal, Minus, Plus,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -23,6 +23,9 @@ type MenuState = {
   x: number
   y: number
 }
+
+type TileSize = "sm" | "md" | "lg" | "xl"
+const TILE_SIZE_ORDER: TileSize[] = ["sm", "md", "lg", "xl"]
 
 export function ParticipantsPanel({
   pinnedId,
@@ -39,6 +42,8 @@ export function ParticipantsPanel({
   onLowerHand,
   visibleIdentities,
   groupLabels,
+  tileSize,
+  onTileSizeChange,
 }: {
   pinnedId: string | null
   onPin: (identity: string | null) => void
@@ -59,6 +64,10 @@ export function ParticipantsPanel({
   // Small colour-coded group label per identity — shown as a chip on the tile
   // so tutors can see which group anyone is in at a glance.
   groupLabels?: Map<string, { name: string; color: string }> | null
+  // Per-user persisted tile size. Drives both the strip height (set by the
+  // parent) and the in-tile chrome scaling here.
+  tileSize: TileSize
+  onTileSizeChange: (next: TileSize) => void
 }) {
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
@@ -174,19 +183,47 @@ export function ParticipantsPanel({
 
   return (
     <div className="flex items-stretch h-full min-w-0 overflow-hidden bg-zinc-900">
-      <button
-        onClick={onToggleCollapse}
-        className="shrink-0 w-36 px-3 flex flex-col justify-center border-r border-zinc-800 hover:bg-zinc-800/60 transition-colors text-left"
-      >
-        <div className="flex items-center gap-1.5">
-          <Users className="size-3.5 text-primary shrink-0" />
-          <span className="text-xs font-bold text-white">Participants</span>
+      <div className="shrink-0 w-36 border-r border-zinc-800 flex flex-col">
+        <button
+          onClick={onToggleCollapse}
+          className="flex-1 px-3 flex flex-col justify-center hover:bg-zinc-800/60 transition-colors text-left"
+        >
+          <div className="flex items-center gap-1.5">
+            <Users className="size-3.5 text-primary shrink-0" />
+            <span className="text-xs font-bold text-white">Participants</span>
+          </div>
+          <div className="flex items-center gap-1 mt-0.5 text-zinc-400">
+            <span className="text-[10px]">{allParticipants.length} in room</span>
+            <ChevronDown className="size-3 text-zinc-500 ml-auto" />
+          </div>
+        </button>
+
+        {/* Tile size selector — bigger / smaller. Persists per-user via the
+            parent. Disabled at the boundaries. */}
+        <div className="flex items-center gap-1 px-2 pb-1.5">
+          <TileSizeButton
+            label="Smaller"
+            disabled={tileSize === TILE_SIZE_ORDER[0]}
+            onClick={() => {
+              const i = TILE_SIZE_ORDER.indexOf(tileSize)
+              if (i > 0) onTileSizeChange(TILE_SIZE_ORDER[i - 1])
+            }}
+            icon={<Minus className="size-3" />}
+          />
+          <span className="text-[9px] text-zinc-500 font-mono uppercase flex-1 text-center">
+            {tileSize}
+          </span>
+          <TileSizeButton
+            label="Bigger"
+            disabled={tileSize === TILE_SIZE_ORDER[TILE_SIZE_ORDER.length - 1]}
+            onClick={() => {
+              const i = TILE_SIZE_ORDER.indexOf(tileSize)
+              if (i < TILE_SIZE_ORDER.length - 1) onTileSizeChange(TILE_SIZE_ORDER[i + 1])
+            }}
+            icon={<Plus className="size-3" />}
+          />
         </div>
-        <div className="flex items-center gap-1 mt-0.5 text-zinc-400">
-          <span className="text-[10px]">{allParticipants.length} in room</span>
-          <ChevronDown className="size-3 text-zinc-500 ml-auto" />
-        </div>
-      </button>
+      </div>
 
       <div className="overflow-x-auto flex items-center gap-2 px-2 py-2 min-w-0 flex-1">
         {sorted.map(({ p, trackRef, camOn }) => {
@@ -475,6 +512,36 @@ function ContextMenu({
         </>
       )}
     </div>
+  )
+}
+
+function TileSizeButton({
+  label,
+  disabled,
+  onClick,
+  icon,
+}: {
+  label: string
+  disabled: boolean
+  onClick: () => void
+  icon: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={cn(
+        "size-5 rounded flex items-center justify-center transition-colors",
+        disabled
+          ? "bg-zinc-800/50 text-zinc-600 cursor-not-allowed"
+          : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300",
+      )}
+    >
+      {icon}
+    </button>
   )
 }
 

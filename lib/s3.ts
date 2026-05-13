@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommandInput } from "@aws-sdk/client-s3"
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, type ListObjectsV2CommandOutput, type PutObjectCommandInput } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 const REGION = process.env.AWS_REGION ?? "eu-west-2"
@@ -37,6 +37,25 @@ export async function getPresignedDownloadUrl(key: string, expiresIn = 14400): P
 
 export async function deleteObject(key: string): Promise<void> {
   await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
+}
+
+/** List the S3 keys under a given prefix. Returns an array of keys (no leading slash). */
+export async function listObjectKeys(prefix: string): Promise<string[]> {
+  const out: string[] = []
+  let token: string | undefined = undefined
+  while (true) {
+    const res: ListObjectsV2CommandOutput = await s3.send(new ListObjectsV2Command({
+      Bucket: BUCKET,
+      Prefix: prefix,
+      ContinuationToken: token,
+    }))
+    for (const obj of res.Contents ?? []) {
+      if (obj.Key) out.push(obj.Key)
+    }
+    if (!res.NextContinuationToken) break
+    token = res.NextContinuationToken
+  }
+  return out
 }
 
 /** Upload a buffer directly to S3 */

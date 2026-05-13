@@ -26,6 +26,7 @@ import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { Pagination } from "@/components/ui/pagination"
+import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -612,7 +613,7 @@ function SessionCard({
   const [editOpen, setEditOpen] = useState(false)
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [recordingOpen, setRecordingOpen] = useState(false)
-  const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
+  const [recordingSegments, setRecordingSegments] = useState<string[]>([])
   const [recordingLoading, setRecordingLoading] = useState(false)
 
   const { execute: patch, loading: patching } = usePatchCallback<
@@ -629,8 +630,9 @@ function SessionCard({
     setRecordingLoading(true)
     try {
       const res  = await fetch(`/api/sessions/${session.id}/recording`)
-      const data = await res.json() as { url?: string }
-      if (data.url) { setRecordingUrl(data.url); setRecordingOpen(true) }
+      const data = await res.json() as { url?: string; segments?: string[] }
+      const segs = data.segments ?? (data.url ? [data.url] : [])
+      if (segs.length) { setRecordingSegments(segs); setRecordingOpen(true) }
     } finally {
       setRecordingLoading(false)
     }
@@ -750,13 +752,22 @@ function SessionCard({
                   setRecordingLoading(true)
                   try {
                     const res  = await fetch(`/api/sessions/${session.id}/recording`)
-                    const data = await res.json() as { url?: string }
-                    if (data.url) {
+                    const data = await res.json() as { url?: string; segments?: string[] }
+                    const segs = data.segments ?? (data.url ? [data.url] : [])
+                    // Multi-segment downloads: trigger one anchor per part so
+                    // the user gets each piece. Cross-origin downloads from a
+                    // signed S3 URL ignore the `download` attribute (it's only
+                    // honoured same-origin), but the browser still saves them.
+                    segs.forEach((url, i) => {
                       const a = document.createElement("a")
-                      a.href = data.url
-                      a.download = `${session.title}.mp4`
+                      a.href = url
+                      a.download = segs.length > 1
+                        ? `${session.title} - Part ${i + 1}.mp4`
+                        : `${session.title}.mp4`
+                      a.target = "_blank"
+                      a.rel = "noopener"
                       a.click()
-                    }
+                    })
                   } finally { setRecordingLoading(false) }
                 }}>
                 <Download className="size-3" /> Download
@@ -802,18 +813,19 @@ function SessionCard({
         showScheduleButton={false}
       />
 
-      {/* Recording viewer */}
+      {/* Recording viewer — segmented playback so pause/resume gaps don't
+          show up as awkward dead time. */}
       <Dialog open={recordingOpen} onOpenChange={setRecordingOpen}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{session.title} — Recording</DialogTitle>
           </DialogHeader>
-          {recordingUrl && (
-            <video
-              src={recordingUrl}
-              controls
+          {recordingSegments.length > 0 && (
+            <SegmentedVideoPlayer
+              segments={recordingSegments}
               className="w-full rounded-lg bg-black"
               style={{ maxHeight: "60vh" }}
+              autoPlay
             />
           )}
         </DialogContent>

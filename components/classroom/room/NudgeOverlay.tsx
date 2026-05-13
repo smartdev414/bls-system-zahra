@@ -3,10 +3,6 @@
 import { useEffect } from "react"
 import { Bell } from "lucide-react"
 
-// Full-screen attention flash. Sign-language learners can miss audio cues, so
-// we lean hard on motion + colour — three quick pulses, then fade. Parent owns
-// the `nudge` key so each trigger remounts the component cleanly.
-
 export function NudgeOverlay({
   from,
   message,
@@ -26,6 +22,21 @@ export function NudgeOverlay({
   useEffect(() => {
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
       try { navigator.vibrate([120, 80, 120]) } catch { /* ignore */ }
+    }
+  }, [])
+
+  // Room shake: briefly nudge the document body horizontally. Respects
+  // prefers-reduced-motion so motion-sensitive users aren't shaken.
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    if (reduce) return
+    const target = document.body
+    target.classList.add("nudge-shake")
+    const t = setTimeout(() => target.classList.remove("nudge-shake"), 550)
+    return () => {
+      clearTimeout(t)
+      target.classList.remove("nudge-shake")
     }
   }, [])
 
@@ -64,6 +75,20 @@ export function NudgeOverlay({
         }
         .animate-nudge-flash { animation: nudge-flash 2.2s ease-in-out forwards; }
         .animate-nudge-pop   { animation: nudge-pop 0.35s ease-out forwards; }
+
+        @keyframes nudge-shake {
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          15%      { transform: translate3d(-3px, 0, 0); }
+          30%      { transform: translate3d(3px, 0, 0); }
+          45%      { transform: translate3d(-3px, 0, 0); }
+          60%      { transform: translate3d(3px, 0, 0); }
+          75%      { transform: translate3d(-2px, 0, 0); }
+          90%      { transform: translate3d(2px, 0, 0); }
+        }
+        body.nudge-shake { animation: nudge-shake 0.5s ease-in-out 1; }
+        @media (prefers-reduced-motion: reduce) {
+          body.nudge-shake { animation: none; }
+        }
       `}</style>
     </div>
   )

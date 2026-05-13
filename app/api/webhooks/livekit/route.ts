@@ -32,10 +32,17 @@ async function handlePOST(req: NextRequest) {
       if (!failed) {
         const key = (liveSession as unknown as { recordingKey?: string }).recordingKey
           ?? `recordings/${liveSession.id}.mp4`
-        await prisma.liveSession.update({
-          where: { id: liveSession.id },
-          data: { recordingUrl: key },
-        })
+        // If the egress is still active (i.e. this is one segment of a
+        // multi-part recording and a new segment is already running), leave
+        // recordingUrl pointing at the latest started segment. Otherwise we'd
+        // briefly point students at an older segment.
+        const stillActive = liveSession.egressId && liveSession.egressId !== egressId
+        if (!stillActive) {
+          await prisma.liveSession.update({
+            where: { id: liveSession.id },
+            data: { recordingUrl: key },
+          })
+        }
       }
     }
 

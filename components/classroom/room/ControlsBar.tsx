@@ -5,7 +5,8 @@ import { Track } from "livekit-client"
 import {
   Mic, MicOff, Camera, Monitor, PhoneOff,
   HandMetal, Presentation, ChevronLeft, ChevronRight,
-  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell,
+  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles,
+  Circle, Pause,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -54,6 +55,14 @@ export function ControlsBar({
   screenSharing,
   screenPrivate,
   onToggleScreenPrivacy,
+  // Background blur (everyone — applies to the local camera track)
+  blurEnabled,
+  blurBusy,
+  onToggleBlur,
+  // Recording pause/resume (tutor only)
+  recordingPaused,
+  recordingBusy,
+  onToggleRecording,
 }: {
   isTutor: boolean
   handRaised: boolean
@@ -83,6 +92,12 @@ export function ControlsBar({
   screenSharing: boolean
   screenPrivate: boolean
   onToggleScreenPrivacy: () => void
+  blurEnabled: boolean
+  blurBusy: boolean
+  onToggleBlur: () => void
+  recordingPaused: boolean
+  recordingBusy: boolean
+  onToggleRecording: () => void
 }) {
   return (
     <div className="flex items-center gap-2 w-full min-w-0 overflow-x-auto overflow-y-hidden">
@@ -99,6 +114,29 @@ export function ControlsBar({
       >
         <Camera className="size-3.5" /> Camera
       </TrackToggle>
+
+      {/* Background blur — toggles a server-side blur processor on the local
+          camera track so other participants see the blurred background too.
+          First click lazy-loads the MediaPipe processor (~1-2 MB). */}
+      <button
+        onClick={onToggleBlur}
+        disabled={blurBusy}
+        className={cn(
+          "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+          blurEnabled
+            ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+          blurBusy && "opacity-60 cursor-wait",
+        )}
+        title={
+          blurEnabled
+            ? "Turn background blur off"
+            : "Blur your background — students and tutor see the blurred feed"
+        }
+      >
+        <Sparkles className="size-3.5" />
+        {blurEnabled ? "Blur on" : "Blur"}
+      </button>
 
       {isTutor && (
         <TrackToggle
@@ -164,6 +202,31 @@ export function ControlsBar({
         >
           <RefreshCw className="size-3.5" />
           Refresh all
+        </button>
+      )}
+
+      {/* Tutor-only: pause/resume the server-side recording. Each pause/resume
+          cycle produces a separate MP4 segment in S3, so breaks and private
+          chats don't end up in the saved recording. */}
+      {isTutor && (
+        <button
+          onClick={onToggleRecording}
+          disabled={recordingBusy}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            recordingPaused
+              ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
+              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+            recordingBusy && "opacity-60 cursor-wait",
+          )}
+          title={
+            recordingPaused
+              ? "Resume recording — starts a new segment"
+              : "Pause recording — the next break won't be saved"
+          }
+        >
+          {recordingPaused ? <Circle className="size-3.5 fill-current" /> : <Pause className="size-3.5" />}
+          {recordingPaused ? "Resume Rec" : "Pause Rec"}
         </button>
       )}
 

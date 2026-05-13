@@ -249,13 +249,13 @@ export default function DictionaryPage() {
 
       {/* Sign detail dialog */}
       <Dialog open={!!selectedSign} onOpenChange={(isOpen) => !isOpen && setSelectedSign(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black">{selectedSign?.word}</DialogTitle>
+            <DialogTitle className="text-2xl font-black pr-8">{selectedSign?.word}</DialogTitle>
           </DialogHeader>
 
           {selectedSign && (
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto -mx-1 px-1" style={{ maxHeight: "calc(90vh - 6rem)" }}>
               {/* Video or image */}
               <div className="rounded-xl overflow-hidden bg-primary/10">
                 {selectedSign.videoUrl ? (
@@ -264,7 +264,7 @@ export default function DictionaryPage() {
                     controls
                     controlsList="nodownload noremoteplayback"
                     disablePictureInPicture
-                    className="w-full rounded-xl"
+                    className="w-full rounded-xl max-h-[45vh] object-contain bg-black"
                     poster={selectedSign.imageUrl ?? undefined}
                     onContextMenu={(e) => e.preventDefault()}
                   />
@@ -273,7 +273,7 @@ export default function DictionaryPage() {
                   <img
                     src={selectedSign.imageUrl}
                     alt={selectedSign.word}
-                    className="w-full rounded-xl object-contain max-h-64 select-none pointer-events-none"
+                    className="w-full rounded-xl object-contain max-h-[45vh] select-none pointer-events-none"
                     draggable={false}
                     onContextMenu={(e) => e.preventDefault()}
                   />
@@ -310,6 +310,14 @@ export default function DictionaryPage() {
                 <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">Usage example</p>
                 <p className="text-sm text-muted-foreground">{selectedSign.usage}</p>
               </div>
+
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setSelectedSign(null)}
+              >
+                Close
+              </Button>
             </div>
           )}
         </DialogContent>

@@ -50,6 +50,7 @@ import { BreakoutsPanel }       from "./room/BreakoutsPanel"
 import { BreakoutMonitor }      from "./room/BreakoutMonitor"
 import { BreakoutBanner }       from "./room/BreakoutBanner"
 import { NudgeOverlay }          from "./room/NudgeOverlay"
+import { LogoWatermark }        from "@/components/layout/logo"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -249,6 +250,43 @@ export function ClassroomRoom({
   const slideAreaRef    = useRef<HTMLDivElement>(null)
   const lastPointerSent = useRef(0)
   const pointerHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Background blur state ──────────────────────────────────────────────────
+  // The actual processor instance is heavy (bundles MediaPipe) so it's lazily
+  // imported on first toggle. `blurEnabled` is the source of truth; the
+  // `cameraTrackVersion` effect below re-applies the processor whenever the
+  // local camera track is re-published (e.g. after the user toggles camera).
+  const [blurEnabled, setBlurEnabled] = useState(false)
+  const [blurBusy, setBlurBusy] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const blurProcessorRef = useRef<any>(null)
+
+  // ── Recording pause/resume (tutor only) ───────────────────────────────────
+  // Tracks whether the server-side egress is currently writing. Auto-start
+  // happens on connect (see the live page), so we start as "recording" and
+  // flip when the tutor pauses or resumes. Each pause/resume cycle creates a
+  // new MP4 segment in S3.
+  const [recordingPaused, setRecordingPaused] = useState(false)
+  const [recordingBusy, setRecordingBusy]     = useState(false)
+
+  // ── Participant tile size (persisted per-user) ─────────────────────────────
+  // Drives the height of the bottom participants strip and, transitively, the
+  // size of each tile (they keep an aspect-square). Each user gets their own
+  // preference — students can make their classmates' tiles bigger too.
+  type TileSize = "sm" | "md" | "lg" | "xl"
+  const [tileSize, setTileSize] = useState<TileSize>("md")
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("classroom:tileSize") as TileSize | null
+      if (stored === "sm" || stored === "md" || stored === "lg" || stored === "xl") {
+        setTileSize(stored)
+      }
+    } catch { /* ignore — private mode or quota */ }
+  }, [])
+  const handleTileSizeChange = useCallback((next: TileSize) => {
+    setTileSize(next)
+    try { window.localStorage.setItem("classroom:tileSize", next) } catch { /* ignore */ }
+  }, [])
 
   // ── Spotlight state (tutor-initiated, seen by everyone) ───────────────────
   const [spotlightedId, setSpotlightedId] = useState<string | null>(null)
@@ -1090,6 +1128,99 @@ export function ClassroomRoom({
     safeSendPointer({ action: "hide" })
   }, [isTutor, pointerMode, safeSendPointer])
 
+  // ── Background blur ────────────────────────────────────────────────────────
+  // Returns the LocalVideoTrack the user is currently publishing (or null).
+  const getLocalCameraTrack = useCallback(() => {
+    const pub = localParticipant?.getTrackPublication(Track.Source.Camera)
+    return pub?.track ?? null
+  }, [localParticipant])
+
+  const handleToggleBlur = useCallback(async () => {
+    if (blurBusy) return
+    const track = getLocalCameraTrack()
+    if (!track) {
+      toast.info("Turn your camera on first to blur the background")
+      return
+    }
+    setBlurBusy(true)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const liveTrack = track as any
+      if (blurEnabled) {
+        if (typeof liveTrack.stopProcessor === "function") {
+          await liveTrack.stopProcessor()
+        }
+        blurProcessorRef.current = null
+        setBlurEnabled(false)
+        return
+      }
+      const mod = await import("@livekit/track-processors")
+      if (!mod.supportsBackgroundProcessors()) {
+        toast.error("Background blur isn't supported on this browser")
+        return
+      }
+      const proc = mod.BackgroundProcessor({ mode: "background-blur", blurRadius: 12 })
+      await liveTrack.setProcessor(proc)
+      blurProcessorRef.current = proc
+      setBlurEnabled(true)
+    } catch (err) {
+      console.error("[blur] toggle failed", err)
+      toast.error("Couldn't toggle background blur")
+    } finally {
+      setBlurBusy(false)
+    }
+  }, [blurBusy, blurEnabled, getLocalCameraTrack])
+
+  // Tutor toggles recording pause/resume. Each cycle creates a separate MP4
+  // segment in S3 — stitching is a follow-up; for now the playback page reads
+  // the latest segment via `recordingUrl` set by the egress webhook.
+  const handleToggleRecording = useCallback(async () => {
+    if (!isTutor || recordingBusy) return
+    setRecordingBusy(true)
+    const wasPaused = recordingPaused
+    // Optimistic flip so the UI feels responsive
+    setRecordingPaused(!wasPaused)
+    try {
+      const endpoint = wasPaused
+        ? `/api/sessions/${sessionId}/recording/resume`
+        : `/api/sessions/${sessionId}/recording/pause`
+      const res = await fetch(endpoint, { method: "POST" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.message || "Recording control failed")
+      }
+      toast.success(wasPaused ? "Recording resumed" : "Recording paused")
+    } catch (err) {
+      console.error("[recording] toggle failed", err)
+      // Roll back
+      setRecordingPaused(wasPaused)
+      toast.error("Couldn't change recording state")
+    } finally {
+      setRecordingBusy(false)
+    }
+  }, [isTutor, recordingBusy, recordingPaused, sessionId])
+
+  // Re-apply the processor whenever the camera track is republished (e.g. the
+  // user turned the camera off and back on, which creates a fresh track).
+  const localCameraTrack = useMemo(
+    () => localParticipant?.getTrackPublication(Track.Source.Camera)?.track ?? null,
+    // The participant object's identity is stable; LiveKit mutates it in place,
+    // so we depend on the publication's underlying track via this ref read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [localParticipant, localParticipant?.getTrackPublication(Track.Source.Camera)?.track],
+  )
+  useEffect(() => {
+    if (!blurEnabled || !localCameraTrack || !blurProcessorRef.current) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const liveTrack = localCameraTrack as any
+    // If the existing processor reference is already attached, setProcessor
+    // is idempotent. If the track is fresh, this attaches the existing
+    // processor instance to it.
+    liveTrack.setProcessor(blurProcessorRef.current).catch((err: unknown) => {
+      console.warn("[blur] re-apply on new track failed", err)
+    })
+  }, [blurEnabled, localCameraTrack])
+
   // ── Spotlight handler (tutor only) ─────────────────────────────────────────
 
   const safeSendSpotlight = useCallback((data: SpotlightAction) => {
@@ -1668,6 +1799,29 @@ export function ClassroomRoom({
     <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col overflow-hidden z-50">
       <AudioRenderer audibleIdentities={audibleIdentities} />
 
+      {/* Brand watermark — visible to all participants. Top-left so it doesn't
+          collide with the controls bar at the bottom. */}
+      <LogoWatermark className="top-3 left-3" size={44} />
+
+      {/* Recording indicator — tutor only. Red dot = writing to S3, amber dot
+          = paused (egress stopped; resume starts a new segment). */}
+      {isTutor && (
+        <div
+          className="absolute top-3 right-3 z-30 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-sm border border-white/15 text-[11px] font-semibold text-white shadow"
+          aria-live="polite"
+        >
+          <span
+            className={cn(
+              "size-2 rounded-full",
+              recordingPaused
+                ? "bg-amber-400"
+                : "bg-rose-500 animate-pulse",
+            )}
+          />
+          {recordingPaused ? "Paused" : "Recording"}
+        </div>
+      )}
+
       {/* ── Attention nudge overlay (everyone, triggered by tutor) ── */}
       {activeNudge && (
         <NudgeOverlay
@@ -1899,15 +2053,15 @@ export function ClassroomRoom({
                       left: `${livePointer.x * 100}%`,
                       top:  `${livePointer.y * 100}%`,
                       transform: "translate(-16.7%, -8.3%)",
-                      filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.9))",
+                      filter: "drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000) drop-shadow(0 2px 6px rgba(0,0,0,0.85))",
                       transition: isTutor ? "none" : "left 60ms linear, top 60ms linear",
                     }}
                     aria-hidden
                   >
                     <Pointer
-                      className="size-6 text-amber-400"
-                      strokeWidth={2.5}
-                      style={{ fill: "rgb(251 191 36 / 0.3)" }}
+                      className="size-9 text-white"
+                      strokeWidth={2.25}
+                      style={{ fill: "rgb(255 255 255 / 0.95)", stroke: "#000" }}
                     />
                   </div>
                 )}
@@ -2045,10 +2199,15 @@ export function ClassroomRoom({
           )}
         </div>
 
-        {/* Bottom strip: participants row */}
+        {/* Bottom strip: participants row. Height grows with `tileSize` so the
+            tiles inside (aspect-square) scale with the strip. */}
         <div className={cn(
           "shrink-0 border-t border-zinc-800 bg-zinc-900 transition-[height] duration-200 overflow-hidden",
-          participantsOpen ? "h-24 sm:h-28" : "h-9"
+          !participantsOpen && "h-9",
+          participantsOpen && tileSize === "sm" && "h-20",
+          participantsOpen && tileSize === "md" && "h-28",
+          participantsOpen && tileSize === "lg" && "h-40",
+          participantsOpen && tileSize === "xl" && "h-56",
         )}>
           <ParticipantsPanel
             pinnedId={pinnedId}
@@ -2065,6 +2224,8 @@ export function ClassroomRoom({
             onLowerHand={isTutor ? handleLowerHand : undefined}
             visibleIdentities={visibleIdentities}
             groupLabels={groupLabels}
+            tileSize={tileSize}
+            onTileSizeChange={handleTileSizeChange}
           />
         </div>
       </div>
@@ -2144,9 +2305,6 @@ export function ClassroomRoom({
         </div>
       )}
 
-      {/* ── Bottom controls row ── */}
-      {/* Single-row strip — ControlsBar handles horizontal scroll on narrow
-          screens so buttons stay on one line. */}
       <div className="h-12 bg-zinc-950 border-t border-zinc-800/60 shrink-0 flex items-center px-2 sm:px-3">
         <ControlsBar
           isTutor={isTutor}
@@ -2177,6 +2335,12 @@ export function ClassroomRoom({
           screenSharing={screenSharing}
           screenPrivate={screenPrivate}
           onToggleScreenPrivacy={handleToggleScreenPrivacy}
+          blurEnabled={blurEnabled}
+          blurBusy={blurBusy}
+          onToggleBlur={handleToggleBlur}
+          recordingPaused={recordingPaused}
+          recordingBusy={recordingBusy}
+          onToggleRecording={handleToggleRecording}
         />
       </div>
     </div>

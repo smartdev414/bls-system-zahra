@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
+import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
 
 type LiveSession = {
@@ -123,17 +124,19 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
   const [requestOpen, setRequestOpen] = useState(false)
   const [requestMsg, setRequestMsg] = useState("")
   const [recordingOpen, setRecordingOpen] = useState(false)
-  const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
+  const [recordingSegments, setRecordingSegments] = useState<string[]>([])
   const [recordingLoading, setRecordingLoading] = useState(false)
 
-  // Fetch a fresh signed playback URL and open the in-page viewer.
-  // We deliberately don't expose a download path — students can rewatch but not save.
+  // Fetch fresh signed playback URLs (one per segment) and open the viewer.
+  // We deliberately don't expose a download path — students can rewatch but
+  // not save.
   async function openRecording() {
     setRecordingLoading(true)
     try {
       const res  = await fetch(`/api/sessions/${session.id}/recording`)
-      const data = await res.json() as { url?: string }
-      if (data.url) { setRecordingUrl(data.url); setRecordingOpen(true) }
+      const data = await res.json() as { url?: string; segments?: string[] }
+      const segs = data.segments ?? (data.url ? [data.url] : [])
+      if (segs.length) { setRecordingSegments(segs); setRecordingOpen(true) }
     } finally {
       setRecordingLoading(false)
     }
@@ -295,21 +298,21 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
     </div>
 
     {/* Recording viewer — watch-only; the video element is configured to discourage downloads.
-        Browsers still allow saving the stream in theory, so treat this as a deterrent, not DRM. */}
+        Browsers still allow saving the stream in theory, so treat this as a deterrent, not DRM.
+        Sessions with pause/resume produce multiple MP4 segments; the player
+        chains them transparently so the student sees a continuous recording
+        with the breaks elided. */}
     <Dialog open={recordingOpen} onOpenChange={setRecordingOpen}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{session.title} — Recording</DialogTitle>
         </DialogHeader>
-        {recordingUrl && (
-          <video
-            src={recordingUrl}
-            controls
-            controlsList="nodownload noplaybackrate"
-            disablePictureInPicture
-            onContextMenu={(e) => e.preventDefault()}
+        {recordingSegments.length > 0 && (
+          <SegmentedVideoPlayer
+            segments={recordingSegments}
             className="w-full rounded-lg bg-black"
             style={{ maxHeight: "60vh" }}
+            autoPlay
           />
         )}
       </DialogContent>
