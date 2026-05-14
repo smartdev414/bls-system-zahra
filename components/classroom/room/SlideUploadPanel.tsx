@@ -24,6 +24,9 @@ export function SlideUploadPanel({
     setError("")
 
     const isVideo = file.type.startsWith("video/")
+    const isPptx  =
+      file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+      file.type === "application/vnd.ms-powerpoint"
 
     setUploading(true)
     setProgress("Getting upload URL…")
@@ -39,7 +42,9 @@ export function SlideUploadPanel({
         const err = await presignRes.json()
         throw new Error(err.message ?? "Could not get upload URL")
       }
-      const { uploadUrl, fileUrl } = await presignRes.json()
+      const { uploadUrl, fileUrl: uploadedFileUrl, key: uploadedKey } = await presignRes.json() as {
+        uploadUrl: string; fileUrl: string; key: string
+      }
 
       // 2. Upload directly to S3
       setProgress(isVideo ? "Uploading video…" : "Uploading file…")
@@ -50,16 +55,45 @@ export function SlideUploadPanel({
       })
       if (!uploadRes.ok) throw new Error("Upload to storage failed")
 
+      // 2b. PPTX → PDF conversion via CloudConvert. The client-side PPTX
+      // renderer can't decode WMF/EMF images; converting to PDF first means
+      // the PDF viewer renders everything correctly. Pure PDF uploads skip
+      // this step.
+      let registerUrl      = uploadedFileUrl
+      let registerName     = file.name
+      let registerMime     = file.type
+      let registerSize: number | null = file.size
+
+      if (isPptx) {
+        setProgress("Converting slides to PDF…")
+        const convertRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/convert`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceKey: uploadedKey, sourceFileName: file.name }),
+        })
+        if (!convertRes.ok) {
+          const err = await convertRes.json().catch(() => ({}))
+          throw new Error(err.message ?? "Could not convert PPTX to PDF")
+        }
+        const converted = await convertRes.json() as {
+          fileUrl: string; fileName: string; mimeType: string; fileSize: number
+        }
+        registerUrl  = converted.fileUrl
+        registerName = converted.fileName
+        registerMime = converted.mimeType
+        registerSize = converted.fileSize
+      }
+
       // 3. Register the file in the session
       setProgress(isVideo ? "Registering video…" : "Registering slides…")
       const registerRes = await fetch(`/api/tutor/sessions/${sessionId}/slides`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileUrl,
-          fileName: file.name,
-          mimeType: file.type,
-          fileSize: file.size,
+          fileUrl:  registerUrl,
+          fileName: registerName,
+          mimeType: registerMime,
+          fileSize: registerSize,
         }),
       })
       if (!registerRes.ok) {
@@ -69,16 +103,24 @@ export function SlideUploadPanel({
 
       // Videos skip the slide-counting step — they're played, not paged.
       if (isVideo) {
-        onSlidesReady({ kind: "video", url: fileUrl, mimeType: file.type, fileName: file.name })
+        onSlidesReady({ kind: "video", url: registerUrl, mimeType: registerMime, fileName: registerName })
         return
       }
 
-      // 4. Determine slide/page count for slide decks
+      // 4. Determine slide/page count. After PPTX conversion the registered
+      // file is always a PDF, so the PDF branch handles it via the URL.
       setProgress("Reading slide count…")
-      const isPdf = file.type === "application/pdf"
       let total: number
 
-      if (isPdf) {
+      if (isPptx) {
+        // Fetch the converted PDF to count pages — the original PPTX is gone.
+        const pdfjsLib = await import("pdfjs-dist")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
+          `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+        const pdf = await pdfjsLib.getDocument({ url: registerUrl, withCredentials: false }).promise
+        total = pdf.numPages
+      } else if (file.type === "application/pdf") {
         const pdfjsLib = await import("pdfjs-dist")
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
@@ -87,7 +129,7 @@ export function SlideUploadPanel({
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
         total = pdf.numPages
       } else {
-        // PPTX: count slides by inspecting the ZIP structure
+        // Defensive fallback — shouldn't hit this path now that PPTX is converted.
         const JSZip = (await import("jszip")).default
         const zip = await JSZip.loadAsync(file)
         const slideFiles = Object.keys(zip.files).filter(
@@ -96,7 +138,7 @@ export function SlideUploadPanel({
         total = slideFiles.length || 1
       }
 
-      onSlidesReady({ kind: "slides", url: fileUrl, total, mimeType: file.type, fileName: file.name })
+      onSlidesReady({ kind: "slides", url: registerUrl, total, mimeType: registerMime, fileName: registerName })
     } catch (err: unknown) {
       setError((err as Error).message ?? "Upload failed")
     } finally {
