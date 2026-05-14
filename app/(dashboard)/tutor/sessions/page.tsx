@@ -8,8 +8,9 @@ import {
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
   Globe, Lock, X, Pencil, Play, Copy,
-  Paperclip, FileText, Trash2,
+  Paperclip, FileText, Trash2, Repeat,
 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -173,6 +174,8 @@ function ScheduleSessionDialog({
   const [visibility, setVisibility] = useState<"PUBLIC" | "INVITE_ONLY">("INVITE_ONLY")
   const [invitedStudents, setInvitedStudents] = useState<StudentResult[]>([])
   const [showPicker, setShowPicker] = useState(false)
+  const [repeatWeekly, setRepeatWeekly] = useState(false)
+  const [repeatWeeks, setRepeatWeeks] = useState(4)
 
   // Resources state
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([])
@@ -228,6 +231,7 @@ function ScheduleSessionDialog({
     setDurationMins(60); setMaxStudents(""); setCourseId("")
     setVisibility("PUBLIC"); setInvitedStudents([])
     setPendingFiles([]); setSavedResources([]); setSubmitError(null)
+    setRepeatWeekly(false); setRepeatWeeks(4)
   }
 
   async function attachResources(sessionId: string, files: UploadedFile[]) {
@@ -275,6 +279,7 @@ function ScheduleSessionDialog({
         setOpen(false)
         onCreated()
       } else {
+        const occurrences = repeatWeekly ? Math.min(Math.max(repeatWeeks, 2), 52) : 1
         const res = await fetch("/api/tutor/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -285,11 +290,15 @@ function ScheduleSessionDialog({
             courseId: courseId || undefined,
             visibility,
             invitedStudentIds: invitedStudents.map((s) => s.id),
+            repeatWeeks: occurrences,
           }),
         })
         if (!res.ok) throw new Error((await res.json() as { message?: string }).message ?? "Could not schedule session")
-        const data = await res.json() as { session: { id: string } }
-        if (pendingFiles.length > 0) await attachResources(data.session.id, pendingFiles)
+        const data = await res.json() as { session: { id: string }; sessions?: Array<{ id: string }> }
+        const created = data.sessions ?? [data.session]
+        if (pendingFiles.length > 0) {
+          await Promise.all(created.map((s) => attachResources(s.id, pendingFiles)))
+        }
         setOpen(false)
         resetForm()
         onCreated()
@@ -372,6 +381,36 @@ function ScheduleSessionDialog({
               <TimePicker value={time} onChange={setTime} />
             </div>
           </div>
+
+          {/* Repeat weekly — only when creating a new series, not editing */}
+          {!isEdit && (
+            <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/20 px-3 py-2.5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={repeatWeekly}
+                  onCheckedChange={(v) => setRepeatWeekly(v === true)}
+                />
+                <Repeat className="size-3.5 text-muted-foreground" />
+                <span className="text-sm font-medium">Repeat weekly</span>
+                <span className="text-xs text-muted-foreground">same day &amp; time each week</span>
+              </label>
+              {repeatWeekly && (
+                <div className="flex items-center gap-2 pl-6">
+                  <Label htmlFor="s-repeat" className="text-xs text-muted-foreground">for</Label>
+                  <Input
+                    id="s-repeat"
+                    type="number"
+                    min={2}
+                    max={52}
+                    value={repeatWeeks}
+                    onChange={(e) => setRepeatWeeks(parseInt(e.target.value) || 2)}
+                    className="h-8 w-20 text-sm"
+                  />
+                  <span className="text-xs text-muted-foreground">weeks</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Duration + Max students */}
           <div className="grid grid-cols-2 gap-3">
@@ -580,7 +619,13 @@ function ScheduleSessionDialog({
           >
             {loading
               ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />{isEdit ? "Saving…" : "Scheduling…"}</>
-              : isEdit ? "Save Changes" : isDuplicate ? "Schedule Duplicate" : "Schedule Session"
+              : isEdit
+              ? "Save Changes"
+              : isDuplicate
+              ? "Schedule Duplicate"
+              : repeatWeekly
+              ? `Schedule ${Math.min(Math.max(repeatWeeks, 2), 52)} Sessions`
+              : "Schedule Session"
             }
           </Button>
         </DialogFooter>

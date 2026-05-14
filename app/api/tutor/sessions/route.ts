@@ -65,9 +65,10 @@ async function handlePOST(req: NextRequest) {
       courseId?: string
       visibility?: "PUBLIC" | "INVITE_ONLY"
       invitedStudentIds?: string[]
+      repeatWeeks?: number
     }
 
-    const { title, description, scheduledAt, durationMins, maxStudents, courseId, visibility = "PUBLIC", invitedStudentIds = [] } = body
+    const { title, description, scheduledAt, durationMins, maxStudents, courseId, visibility = "PUBLIC", invitedStudentIds = [], repeatWeeks = 1 } = body
 
     if (!title?.trim()) return NextResponse.json({ message: "Title is required" }, { status: 400 })
     if (!scheduledAt) return NextResponse.json({ message: "scheduledAt is required" }, { status: 400 })
@@ -75,46 +76,51 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "durationMins must be at least 5" }, { status: 400 })
     }
 
-    // Generate a unique room name
-    const roomName = `bsl-${randomBytes(6).toString("hex")}`
+    const occurrences = Math.min(Math.max(Math.floor(repeatWeeks) || 1, 1), 52)
+    const baseDate = new Date(scheduledAt)
 
-    const liveSession = await prisma.liveSession.create({
-      data: {
-        tutorId: session.sub,
-        title: title.trim(),
-        description: description?.trim() ?? null,
-        scheduledAt: new Date(scheduledAt),
-        durationMins,
-        roomName,
-        maxStudents: maxStudents ?? null,
-        courseId: courseId ?? null,
-        status: "SCHEDULED",
-        visibility,
-        ...(visibility === "INVITE_ONLY" && invitedStudentIds.length > 0 && {
-          invites: {
-            create: invitedStudentIds.map((studentId) => ({ studentId })),
+    const created = await Promise.all(
+      Array.from({ length: occurrences }, (_, i) => {
+        const occursAt = new Date(baseDate)
+        occursAt.setDate(occursAt.getDate() + i * 7)
+        return prisma.liveSession.create({
+          data: {
+            tutorId: session.sub,
+            title: title.trim(),
+            description: description?.trim() ?? null,
+            scheduledAt: occursAt,
+            durationMins,
+            roomName: `bsl-${randomBytes(6).toString("hex")}`,
+            maxStudents: maxStudents ?? null,
+            courseId: courseId ?? null,
+            status: "SCHEDULED",
+            visibility,
+            ...(visibility === "INVITE_ONLY" && invitedStudentIds.length > 0 && {
+              invites: {
+                create: invitedStudentIds.map((studentId) => ({ studentId })),
+              },
+            }),
           },
-        }),
-      },
-    })
+        })
+      })
+    )
 
-    const scheduledDate = new Date(scheduledAt).toLocaleString("en-GB", {
+    const firstScheduledDate = baseDate.toLocaleString("en-GB", {
       dateStyle: "medium",
       timeStyle: "short",
     })
+    const seriesSuffix = occurrences > 1 ? ` (weekly series, ${occurrences} sessions)` : ""
     const sessionLink = `/student/classroom`
 
     if (visibility === "INVITE_ONLY" && invitedStudentIds.length > 0) {
-      // Notify only invited students
       void createNotifications(
         invitedStudentIds,
         "SESSION_INVITE",
-        "You've been invited to a live session",
-        `${session.name} invited you to "${title.trim()}" on ${scheduledDate}`,
+        occurrences > 1 ? "You've been invited to a weekly live session series" : "You've been invited to a live session",
+        `${session.name} invited you to "${title.trim()}" starting ${firstScheduledDate}${seriesSuffix}`,
         sessionLink,
       )
     } else if (visibility === "PUBLIC" && courseId) {
-      // Notify all students enrolled in the linked course
       const enrollments = await prisma.enrollment.findMany({
         where: { courseId },
         select: { studentId: true },
@@ -123,13 +129,13 @@ async function handlePOST(req: NextRequest) {
       void createNotifications(
         studentIds,
         "SESSION_SCHEDULED",
-        "New live session scheduled",
-        `${session.name} scheduled "${title.trim()}" on ${scheduledDate}`,
+        occurrences > 1 ? "New weekly live session series scheduled" : "New live session scheduled",
+        `${session.name} scheduled "${title.trim()}" starting ${firstScheduledDate}${seriesSuffix}`,
         sessionLink,
       )
     }
 
-    return NextResponse.json({ session: liveSession }, { status: 201 })
+    return NextResponse.json({ session: created[0], sessions: created }, { status: 201 })
   } catch (err) {
     console.error("[POST /api/tutor/sessions]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
