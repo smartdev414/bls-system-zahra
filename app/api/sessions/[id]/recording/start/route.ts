@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { EgressClient, EncodedFileOutput, S3Upload } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
+import { egressTemplateUrl } from "@/lib/publicUrl"
 
 function egressClient() {
   return new EgressClient(
@@ -48,7 +49,14 @@ async function handlePOST(
       output: { case: "s3", value: s3Upload },
     })
 
-    const info = await egressClient().startRoomCompositeEgress(liveSession.roomName, { file: fileOutput })
+    // `customBaseUrl` points LiveKit's headless-Chrome egress worker at our
+    // /egress template page, which composites the video grid + Deaf Signs
+    // logo watermark before capture. See app/egress/page.tsx.
+    const info = await egressClient().startRoomCompositeEgress(
+      liveSession.roomName,
+      { file: fileOutput },
+      { customBaseUrl: egressTemplateUrl() },
+    )
     console.log("[egress] started successfully, egressId:", info.egressId)
 
     await prisma.liveSession.update({

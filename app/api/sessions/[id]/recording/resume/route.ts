@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { EgressClient, EncodedFileOutput, S3Upload } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
 import { listObjectKeys } from "@/lib/s3"
+import { egressTemplateUrl } from "@/lib/publicUrl"
 
 function egressClient() {
   return new EgressClient(
@@ -61,7 +62,13 @@ async function handlePOST(
       output: { case: "s3", value: s3Upload },
     })
 
-    const info = await egressClient().startRoomCompositeEgress(liveSession.roomName, { file: fileOutput })
+    // Same custom template as `/recording/start` so the resumed segment
+    // carries the Deaf Signs logo watermark too.
+    const info = await egressClient().startRoomCompositeEgress(
+      liveSession.roomName,
+      { file: fileOutput },
+      { customBaseUrl: egressTemplateUrl() },
+    )
 
     await prisma.liveSession.update({
       where: { id },

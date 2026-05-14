@@ -120,9 +120,11 @@ export function ParticipantsPanel({
   )
 
   // Keep manualOrder in sync with the live participant list: drop anyone who
-  // left, append any newcomer to the end of the manual ordering.
-  useEffect(() => {
-    if (!manualOrder) return
+  // left, append any newcomer to the end of the manual ordering. Derived in
+  // render rather than in an effect — see React docs "Adjusting state when a
+  // prop changes". The bail-out condition ensures setState is called at most
+  // once per participant-set change, so we don't infinite-loop.
+  if (manualOrder) {
     const liveIds = new Set(allParticipants.map((p) => p.identity))
     const filtered = manualOrder.filter((id) => liveIds.has(id))
     const appended = allParticipants
@@ -131,7 +133,7 @@ export function ParticipantsPanel({
     if (filtered.length !== manualOrder.length || appended.length > 0) {
       setManualOrder([...filtered, ...appended])
     }
-  }, [allParticipants, manualOrder])
+  }
 
   const sorted = useMemo(() => {
     if (manualOrder) {

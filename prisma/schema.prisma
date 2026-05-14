@@ -126,7 +126,7 @@ enum TicketPriority {
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
-  passwordHash String?      // null for OAuth-only users
+  passwordHash String? // null for OAuth-only users
   googleId     String?      @unique
   name         String
   role         Role         @default(STUDENT)
@@ -135,32 +135,48 @@ model User {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  tutorProfile          TutorProfile?
-  courses               Course[]                @relation("TutorCourses")
-  quizAttempts          QuizAttempt[]
-  hostedSessions        LiveSession[]           @relation("TutorLiveSessions")
-  enrollments           Enrollment[]
-  attendances           LiveSessionAttendance[]
-  sessionInvites        LiveSessionInvite[]
-  reviews               Review[]
-  studentConversations  Conversation[]          @relation("StudentConversations")
-  tutorConversations    Conversation[]          @relation("TutorConversations")
-  sentMessages          Message[]               @relation("SentMessages")
-  notifications         Notification[]
-  studentGroups         StudentGroup[]          @relation("TutorStudentGroups")
-  groupMemberships      StudentGroupMember[]
-  sentInvites           TutorInvite[]           @relation("TutorInvites")
-  invitedStudents       User[]                  @relation("InvitedByTutor")
-  invitedBy             User?                   @relation("InvitedByTutor", fields: [invitedById], references: [id])
-  invitedById           String?
-  submittedTickets      Ticket[]                @relation("SubmittedTickets")
-  assignedTickets       Ticket[]                @relation("AssignedTickets")
-  ticketComments        TicketComment[]         @relation("TicketComments")
-  givenTutorReviews     TutorReview[]           @relation("StudentTutorReviews")
-  receivedTutorReviews  TutorReview[]           @relation("TutorReceivedReviews")
-  sessionJoinRequests   SessionJoinRequest[]
-  certEnrollments       CertEnrollment[]
-  certReviews           CertStepSubmission[]    @relation("CertReviewer")
+  tutorProfile         TutorProfile?
+  courses              Course[]                @relation("TutorCourses")
+  quizAttempts         QuizAttempt[]
+  hostedSessions       LiveSession[]           @relation("TutorLiveSessions")
+  enrollments          Enrollment[]
+  attendances          LiveSessionAttendance[]
+  sessionInvites       LiveSessionInvite[]
+  reviews              Review[]
+  studentConversations Conversation[]          @relation("StudentConversations")
+  tutorConversations   Conversation[]          @relation("TutorConversations")
+  sentMessages         Message[]               @relation("SentMessages")
+  notifications        Notification[]
+  studentGroups        StudentGroup[]          @relation("TutorStudentGroups")
+  groupMemberships     StudentGroupMember[]
+  sentInvites          TutorInvite[]           @relation("TutorInvites")
+  invitedStudents      User[]                  @relation("InvitedByTutor")
+  invitedBy            User?                   @relation("InvitedByTutor", fields: [invitedById], references: [id])
+  invitedById          String?
+  submittedTickets     Ticket[]                @relation("SubmittedTickets")
+  assignedTickets      Ticket[]                @relation("AssignedTickets")
+  ticketComments       TicketComment[]         @relation("TicketComments")
+  givenTutorReviews    TutorReview[]           @relation("StudentTutorReviews")
+  receivedTutorReviews TutorReview[]           @relation("TutorReceivedReviews")
+  sessionJoinRequests  SessionJoinRequest[]
+  certEnrollments      CertEnrollment[]
+  certReviews          CertStepSubmission[]    @relation("CertReviewer")
+  passwordResetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
 }
 
 model Notification {
@@ -319,27 +335,27 @@ model LessonProgress {
 }
 
 model LiveSession {
-  id           String                 @id @default(cuid())
+  id           String                @id @default(cuid())
   tutorId      String
   courseId     String?
   title        String
   description  String?
   scheduledAt  DateTime
   durationMins Int
-  roomName     String                 @unique
+  roomName     String                @unique
   maxStudents  Int?
-  status       LiveSessionStatus      @default(SCHEDULED)
-  visibility   LiveSessionVisibility  @default(PUBLIC)
+  status       LiveSessionStatus     @default(SCHEDULED)
+  visibility   LiveSessionVisibility @default(PUBLIC)
   startedAt    DateTime?
   endedAt      DateTime?
   egressId     String?
   recordingKey String?
   recordingUrl String?
-  createdAt    DateTime               @default(now())
+  createdAt    DateTime              @default(now())
 
-  tutor       User                    @relation("TutorLiveSessions", fields: [tutorId], references: [id])
-  course      Course?                 @relation(fields: [courseId], references: [id])
-  attendances LiveSessionAttendance[]
+  tutor        User                    @relation("TutorLiveSessions", fields: [tutorId], references: [id])
+  course       Course?                 @relation(fields: [courseId], references: [id])
+  attendances  LiveSessionAttendance[]
   invites      LiveSessionInvite[]
   joinRequests SessionJoinRequest[]
   resources    LiveSessionResource[]
@@ -378,14 +394,14 @@ model LiveSessionAttendance {
 }
 
 model SessionJoinRequest {
-  id             String            @id @default(cuid())
-  sessionId      String
-  studentId      String
-  message        String?
-  status         JoinRequestStatus @default(PENDING)
+  id              String            @id @default(cuid())
+  sessionId       String
+  studentId       String
+  message         String?
+  status          JoinRequestStatus @default(PENDING)
   responseMessage String?
-  createdAt      DateTime          @default(now())
-  respondedAt    DateTime?
+  createdAt       DateTime          @default(now())
+  respondedAt     DateTime?
 
   session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   student User        @relation(fields: [studentId], references: [id])
@@ -399,7 +415,7 @@ model Review {
   id        String   @id @default(cuid())
   studentId String
   courseId  String
-  rating    Int      // 1–5
+  rating    Int // 1–5
   comment   String?
   createdAt DateTime @default(now())
 
@@ -414,7 +430,7 @@ model TutorReview {
   id        String   @id @default(cuid())
   studentId String
   tutorId   String
-  rating    Int      // 1–5
+  rating    Int // 1–5
   comment   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -427,14 +443,14 @@ model TutorReview {
 }
 
 model Conversation {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   studentId     String
   tutorId       String
-  lastMessageAt DateTime  @default(now())
-  createdAt     DateTime  @default(now())
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   student  User      @relation("StudentConversations", fields: [studentId], references: [id])
-  tutor    User      @relation("TutorConversations",   fields: [tutorId],   references: [id])
+  tutor    User      @relation("TutorConversations", fields: [tutorId], references: [id])
   messages Message[]
 
   @@unique([studentId, tutorId])
@@ -541,12 +557,12 @@ model LiveSessionResource {
 }
 
 model QuizQuestion {
-  id        String       @id @default(cuid())
-  lessonId  String
-  question  String
-  imageUrl  String?      // optional image shown with the question
-  type      QuestionType @default(MULTIPLE_CHOICE)
-  order     Int
+  id       String       @id @default(cuid())
+  lessonId String
+  question String
+  imageUrl String? // optional image shown with the question
+  type     QuestionType @default(MULTIPLE_CHOICE)
+  order    Int
 
   lesson  Lesson              @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   options QuizOption[]
@@ -670,8 +686,8 @@ enum CertStepType {
 
 enum CertSubmissionStatus {
   NOT_STARTED
-  PENDING        // submitted, awaiting review
-  UNDER_REVIEW   // reviewer is looking at it
+  PENDING // submitted, awaiting review
+  UNDER_REVIEW // reviewer is looking at it
   PASSED
   FAILED
 }
@@ -683,16 +699,16 @@ enum CertEnrollmentStatus {
 }
 
 model CertProgram {
-  id          String            @id @default(cuid())
-  title       String
-  description String?
-  level       CourseLevel       @default(L1)
-  status      CertProgramStatus @default(DRAFT)
-  price       Int               @default(0)        // in pence (0 = free)
-  imageUrl    String?
-  validityMonths Int?                               // null = never expires
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id             String            @id @default(cuid())
+  title          String
+  description    String?
+  level          CourseLevel       @default(L1)
+  status         CertProgramStatus @default(DRAFT)
+  price          Int               @default(0) // in pence (0 = free)
+  imageUrl       String?
+  validityMonths Int? // null = never expires
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   steps       CertStep[]
   enrollments CertEnrollment[]
@@ -701,25 +717,25 @@ model CertProgram {
 }
 
 model CertStep {
-  id           String       @id @default(cuid())
-  programId    String
-  title        String
-  description  String?
-  type         CertStepType
-  sortOrder    Int          @default(0)
+  id          String       @id @default(cuid())
+  programId   String
+  title       String
+  description String?
+  type        CertStepType
+  sortOrder   Int          @default(0)
 
   // Type-specific config (JSON — keeps schema flexible for admin customisation)
   // COURSE_COMPLETION: { "courseId": "..." }
   // QUIZ:              { "passScore": 80, "questions": [...] }
   // VIDEO_SUBMISSION:  { "prompt": "Record yourself signing...", "maxDurationSecs": 120 }
   // LIVE_ASSESSMENT:   { "instructions": "You will be assessed on...", "durationMins": 30 }
-  config       Json         @default("{}")
+  config Json @default("{}")
 
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  program      CertProgram         @relation(fields: [programId], references: [id], onDelete: Cascade)
-  submissions  CertStepSubmission[]
+  program     CertProgram          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  submissions CertStepSubmission[]
 
   @@index([programId])
 }
@@ -732,8 +748,8 @@ model CertEnrollment {
   enrolledAt  DateTime             @default(now())
   completedAt DateTime?
 
-  student     User                  @relation(fields: [studentId], references: [id])
-  program     CertProgram           @relation(fields: [programId], references: [id])
+  student     User                 @relation(fields: [studentId], references: [id])
+  program     CertProgram          @relation(fields: [programId], references: [id])
   submissions CertStepSubmission[]
   certificate Certificate?
 
@@ -746,26 +762,26 @@ model CertStepSubmission {
   id           String               @id @default(cuid())
   enrollmentId String
   stepId       String
-  status       CertSubmissionStatus  @default(NOT_STARTED)
+  status       CertSubmissionStatus @default(NOT_STARTED)
 
   // Submission data (varies by step type)
   // QUIZ:             { "attemptId": "...", "score": 85 }
   // VIDEO_SUBMISSION: { "videoUrl": "...", "fileName": "..." }
   // LIVE_ASSESSMENT:  { "sessionDate": "...", "assessorId": "..." }
-  data         Json                  @default("{}")
+  data Json @default("{}")
 
   // Review fields (for VIDEO_SUBMISSION and LIVE_ASSESSMENT)
-  reviewerId   String?
-  reviewNote   String?
-  reviewedAt   DateTime?
+  reviewerId String?
+  reviewNote String?
+  reviewedAt DateTime?
 
-  submittedAt  DateTime?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  submittedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  enrollment   CertEnrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  step         CertStep              @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  reviewer     User?                 @relation("CertReviewer", fields: [reviewerId], references: [id])
+  enrollment CertEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  step       CertStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  reviewer   User?          @relation("CertReviewer", fields: [reviewerId], references: [id])
 
   @@unique([enrollmentId, stepId])
   @@index([enrollmentId])
@@ -773,16 +789,16 @@ model CertStepSubmission {
 }
 
 model Certificate {
-  id           String         @id @default(cuid())
-  enrollmentId String         @unique
-  token        String         @unique @default(cuid())  // public verification token
-  studentName  String                                    // snapshot at issue time
-  programTitle String                                    // snapshot at issue time
+  id           String    @id @default(cuid())
+  enrollmentId String    @unique
+  token        String    @unique @default(cuid()) // public verification token
+  studentName  String // snapshot at issue time
+  programTitle String // snapshot at issue time
   level        String
-  issuedAt     DateTime       @default(now())
+  issuedAt     DateTime  @default(now())
   expiresAt    DateTime?
 
-  enrollment   CertEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  enrollment CertEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
   @@index([token])
 }

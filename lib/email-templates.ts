@@ -307,6 +307,27 @@ function recordingReady(name: string, body: string, link?: string): string {
   return layout(content, body)
 }
 
+export function passwordResetEmail(
+  recipientName: string,
+  resetUrl: string,
+  expiresInMinutes: number,
+): { subject: string; html: string } {
+  const content = `
+    ${greeting(recipientName)}
+    <div style="margin-bottom:16px">${badge("Password Reset", PRIMARY)}</div>
+    <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:${TEXT_MAIN}">Reset your password</h2>
+    ${bodyText("We received a request to reset the password for your BSL Platform account. Click the button below to choose a new password.")}
+    ${ctaButton("Reset Password", resetUrl)}
+    ${divider()}
+    ${bodyText(`This link will expire in <strong>${expiresInMinutes} minutes</strong> and can only be used once. If you didn't request a password reset, you can safely ignore this email — your password will stay the same.`)}
+    ${bodyText(`If the button above doesn't work, copy and paste this URL into your browser:<br/><a href="${resetUrl}" style="color:${PRIMARY};word-break:break-all">${resetUrl}</a>`)}
+  `
+  return {
+    subject: "Reset your BSL Platform password",
+    html: layout(content, "Reset your BSL Platform password"),
+  }
+}
+
 export function tutorInviteEmail(
   tutorName: string,
   inviteUrl: string,
