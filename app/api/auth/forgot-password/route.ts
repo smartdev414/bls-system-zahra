@@ -19,12 +19,11 @@ async function handlePOST(req: NextRequest) {
       )
     }
 
-    const normalizedEmail = email.trim().toLowerCase()
     const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
+      where: { email },
       select: { id: true, name: true, email: true, passwordHash: true },
     })
-
+    console.log('user ============>', user);
     // Only issue a token for users with a password (skip OAuth-only accounts).
     if (user && user.passwordHash) {
       // Invalidate any outstanding tokens so only the latest one works.
