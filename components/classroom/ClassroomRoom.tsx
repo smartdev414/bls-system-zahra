@@ -1148,9 +1148,9 @@ export function ClassroomRoom({
     }
     setBlurBusy(true)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const liveTrack = track as any
       if (blurEnabled) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const liveTrack = track as any
         if (liveTrack && typeof liveTrack.stopProcessor === "function") {
           await liveTrack.stopProcessor()
         }
@@ -1164,9 +1164,10 @@ export function ClassroomRoom({
         toast.error("Background blur isn't supported on this browser")
         return
       }
-      const proc = mod.BackgroundProcessor({ mode: "background-blur", blurRadius: 12 })
-      await liveTrack.setProcessor(proc)
-      blurProcessorRef.current = proc
+      // Just flip state — the auto-apply effect below creates the processor
+      // and attaches it. Calling setProcessor here too would run it twice in
+      // a row and hang the main thread long enough to trigger Chrome's
+      // "Page Unresponsive" dialog mid-session.
       setBlurEnabled(true)
       writeBlurPreference(true)
     } catch (err) {
