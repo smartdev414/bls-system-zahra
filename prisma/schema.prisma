@@ -542,14 +542,16 @@ model ApiLog {
 }
 
 model LiveSessionResource {
-  id        String   @id @default(cuid())
-  sessionId String
-  title     String
-  fileUrl   String
-  fileName  String
-  fileSize  Int?
-  mimeType  String?
-  createdAt DateTime @default(now())
+  id                   String   @id @default(cuid())
+  sessionId            String
+  title                String
+  fileUrl              String   // original file — used for student downloads
+  fileName             String
+  fileSize             Int?
+  mimeType             String?
+  presentationUrl      String?  // pre-converted PDF for low-latency classroom use
+  presentationMimeType String?
+  createdAt            DateTime @default(now())
 
   session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 

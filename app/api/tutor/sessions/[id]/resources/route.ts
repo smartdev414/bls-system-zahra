@@ -22,7 +22,7 @@ async function handleGET(
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     const resources = await prisma.liveSessionResource.findMany({
-      where: { sessionId: id },
+      where: { sessionId: id, title: { not: "__presentation__" } },
       orderBy: { createdAt: "asc" },
     })
 
@@ -57,6 +57,8 @@ async function handlePOST(
       fileName: string
       fileSize?: number
       mimeType?: string
+      presentationUrl?: string
+      presentationMimeType?: string
     }
 
     if (!body.fileUrl || !body.fileName) {
@@ -71,6 +73,8 @@ async function handlePOST(
         fileName: body.fileName,
         fileSize: body.fileSize ?? null,
         mimeType: body.mimeType ?? null,
+        presentationUrl: body.presentationUrl ?? null,
+        presentationMimeType: body.presentationMimeType ?? null,
       },
     })
 

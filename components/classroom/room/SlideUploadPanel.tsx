@@ -1,8 +1,24 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { Presentation, Upload, X, Loader2 } from "lucide-react"
+import { useState, useRef, useEffect } from "react"
+import { Presentation, Upload, X, Loader2, FileText } from "lucide-react"
 import type { UploadedSlides } from "./types"
+
+type SessionMaterial = {
+  id: string
+  fileName: string
+  presentationUrl: string | null
+  presentationMimeType: string | null
+}
+
+async function countPdfPages(url: string): Promise<number> {
+  const pdfjsLib = await import("pdfjs-dist")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
+    `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+  const pdf = await pdfjsLib.getDocument({ url, withCredentials: false }).promise
+  return pdf.numPages
+}
 
 export function SlideUploadPanel({
   sessionId,
@@ -18,7 +34,43 @@ export function SlideUploadPanel({
   const [uploading, setUploading]   = useState(false)
   const [progress, setProgress]     = useState("")
   const [error, setError]           = useState("")
+  const [materials, setMaterials]   = useState<SessionMaterial[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch(`/api/tutor/sessions/${sessionId}/resources`)
+      .then((r) => r.json())
+      .then((d: { resources: SessionMaterial[] }) => {
+        setMaterials(
+          (d.resources ?? []).filter(
+            (r) => r.presentationUrl && r.presentationMimeType === "application/pdf",
+          ),
+        )
+      })
+      .catch(() => {})
+  }, [sessionId])
+
+  const presentFromMaterial = async (material: SessionMaterial) => {
+    setError("")
+    setUploading(true)
+    setProgress("Loading pre-converted slides…")
+    try {
+      const total = await countPdfPages(material.presentationUrl!)
+      const pdfName = material.fileName.replace(/\.pptx?$/i, "") + ".pdf"
+      onSlidesReady({
+        kind: "slides",
+        url: material.presentationUrl!,
+        total,
+        mimeType: "application/pdf",
+        fileName: pdfName,
+      })
+    } catch (err: unknown) {
+      setError((err as Error).message ?? "Could not load slides")
+    } finally {
+      setUploading(false)
+      setProgress("")
+    }
+  }
 
   const handleFile = async (file: File) => {
     setError("")
@@ -140,22 +192,8 @@ export function SlideUploadPanel({
       setProgress("Reading slide count…")
       let total: number
 
-      if (isPptx) {
-        // Fetch the converted PDF to count pages — the original PPTX is gone.
-        const pdfjsLib = await import("pdfjs-dist")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-          `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-        const pdf = await pdfjsLib.getDocument({ url: registerUrl, withCredentials: false }).promise
-        total = pdf.numPages
-      } else if (file.type === "application/pdf") {
-        const pdfjsLib = await import("pdfjs-dist")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-          `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-        const arrayBuffer = await file.arrayBuffer()
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-        total = pdf.numPages
+      if (isPptx || file.type === "application/pdf") {
+        total = await countPdfPages(registerUrl)
       } else {
         // Defensive fallback — shouldn't hit this path now that PPTX is converted.
         const JSZip = (await import("jszip")).default
@@ -225,6 +263,25 @@ export function SlideUploadPanel({
               <Upload className="size-4" />
               Choose file (PDF, PPTX, MP4, MOV, WebM)
             </button>
+
+            {materials.length > 0 && (
+              <div className="mt-3 flex flex-col gap-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Session materials (pre-converted)
+                </p>
+                {materials.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => presentFromMaterial(m)}
+                    className="w-full flex items-center gap-2 py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-left text-sm text-zinc-200 transition-colors"
+                  >
+                    <FileText className="size-4 text-primary shrink-0" />
+                    <span className="truncate">{m.fileName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {previousSlides && (
               <button

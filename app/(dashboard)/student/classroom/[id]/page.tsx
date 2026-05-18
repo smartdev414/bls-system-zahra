@@ -6,10 +6,14 @@ import {
   Video, Mic, MicOff, VideoOff, PhoneOff,
   ChevronLeft, Loader2, AlertCircle, Clock,
   Camera, CheckCircle2, Download, FileText, Paperclip,
-  WifiOff, Sparkles,
+  WifiOff, Sparkles, Send, Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import { usePostCallback, useFetch } from "@/hooks/use-fetch"
 import { LiveKitRoom } from "@livekit/components-react"
 import { createLocalVideoTrack, type LocalVideoTrack } from "livekit-client"
@@ -33,12 +37,15 @@ type SessionInfo = {
     title: string
     description: string | null
     status: string
+    visibility: "PUBLIC" | "INVITE_ONLY"
     durationMins: number
     scheduledAt: string
     tutor: { name: string }
     course: { title: string } | null
     resources: SessionResource[]
     _count?: { attendances: number }
+    isInvited?: boolean
+    joinRequest?: { id: string; status: "PENDING" | "APPROVED" | "REJECTED" } | null
   }
 }
 
@@ -147,17 +154,24 @@ function DeviceToggle({
 
 // ─── Entry Screen ─────────────────────────────────────────────────────────────
 
+const INVITE_ONLY_MSG =
+  "This session is invite-only. Your request to join must be approved by the tutor first."
+
 function EntryScreen({
   sessionId,
   session,
   onJoin,
+  onRequestSent,
 }: {
   sessionId: string
   session: NonNullable<SessionInfo["session"]>
   onJoin: (data: TokenData) => void
+  onRequestSent?: () => void
 }) {
   const [videoEnabled, setVideoEnabled] = useState(false)
   const [audioEnabled, setAudioEnabled] = useState(true)
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [requestMsg, setRequestMsg] = useState("")
   // Read the persisted blur preference so a returning user keeps their choice.
   // The toggle writes through to localStorage so ClassroomRoom can pick it up
   // on mount and auto-apply the processor when the room's camera publishes.
@@ -176,6 +190,25 @@ function EntryScreen({
     { successMessage: false, errorMessage: false, onSuccess: onJoin }
   )
 
+  const { execute: sendRequest, loading: requesting } = usePostCallback<
+    { request: object },
+    { message: string }
+  >(`/api/sessions/${sessionId}/request`, {
+    successMessage: "Request sent!",
+    errorMessage: "Could not send request",
+    onSuccess: () => {
+      setRequestOpen(false)
+      setRequestMsg("")
+      onRequestSent?.()
+    },
+  })
+
+  const isPrivate = session.visibility === "INVITE_ONLY"
+  const canJoin = !isPrivate || session.isInvited || session.joinRequest?.status === "APPROVED"
+  const hasPending = session.joinRequest?.status === "PENDING"
+  const wasRejected = session.joinRequest?.status === "REJECTED"
+  const showInviteAlert = !canJoin
+
   const scheduledTime = new Date(session.scheduledAt).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -187,6 +220,7 @@ function EntryScreen({
   })
 
   return (
+    <>
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-5 gap-0 rounded-2xl overflow-hidden shadow-2xl border border-border">
 
@@ -361,8 +395,20 @@ function EntryScreen({
             </div>
           </div>
 
-          {/* Error */}
-          {error && (
+          {/* Invite-only / access alerts */}
+          {showInviteAlert && (
+            <div className="flex items-start gap-2 text-destructive text-xs bg-destructive/10 rounded-xl px-3 py-3">
+              <AlertCircle className="size-4 shrink-0 mt-0.5" />
+              <span>
+                {hasPending
+                  ? "Your join request is pending. The tutor will notify you when it's approved."
+                  : wasRejected
+                    ? "Your request to join was declined. Contact your tutor if you believe this was a mistake."
+                    : INVITE_ONLY_MSG}
+              </span>
+            </div>
+          )}
+          {error && !showInviteAlert && (
             <div className="flex items-start gap-2 text-destructive text-xs bg-destructive/10 rounded-xl px-3 py-3">
               <AlertCircle className="size-4 shrink-0 mt-0.5" />
               <span>{error.message}</span>
@@ -371,18 +417,43 @@ function EntryScreen({
 
           {/* Actions */}
           <div className="flex flex-col gap-2 mt-auto">
-            <Button
-              onClick={() => getToken({})}
-              disabled={loading}
-              size="lg"
-              className="w-full font-semibold gap-2"
-            >
-              {loading ? (
-                <><Loader2 className="size-4 animate-spin" /> Connecting…</>
+            {!canJoin ? (
+              hasPending ? (
+                <Button size="lg" disabled className="w-full font-semibold gap-2">
+                  <Clock className="size-4" /> Request Pending
+                </Button>
+              ) : wasRejected ? (
+                <Button size="lg" disabled variant="outline" className="w-full font-semibold gap-2">
+                  Request Declined
+                </Button>
               ) : (
-                <><Video className="size-4" /> Join Session</>
-              )}
-            </Button>
+                <Button
+                  size="lg"
+                  className="w-full font-semibold gap-2"
+                  onClick={() => setRequestOpen(true)}
+                >
+                  <Send className="size-4" /> Send Request
+                </Button>
+              )
+            ) : (
+              <Button
+                onClick={() => getToken({})}
+                disabled={loading}
+                size="lg"
+                className="w-full font-semibold gap-2"
+              >
+                {loading ? (
+                  <><Loader2 className="size-4 animate-spin" /> Connecting…</>
+                ) : (
+                  <><Video className="size-4" /> Join Session</>
+                )}
+              </Button>
+            )}
+            {isPrivate && !canJoin && (
+              <p className="text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">
+                <Lock className="size-3" /> Invite-only session
+              </p>
+            )}
             <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
               <Link href="/student/classroom">
                 <ChevronLeft className="size-4 mr-1" /> Back to Classroom
@@ -392,6 +463,41 @@ function EntryScreen({
         </div>
       </div>
     </div>
+
+    <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Request to Join</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Send a message to{" "}
+          <span className="font-medium text-foreground">{session.tutor.name}</span> explaining why
+          you&apos;d like to join this session.
+        </p>
+        <Textarea
+          placeholder="I'd love to join because..."
+          value={requestMsg}
+          onChange={(e) => setRequestMsg(e.target.value)}
+          rows={3}
+          className="resize-none"
+        />
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setRequestOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={requesting}
+            onClick={() => sendRequest({ message: requestMsg })}
+            className="gap-1.5"
+          >
+            {requesting ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+            {requesting ? "Sending..." : "Send Request"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
@@ -479,7 +585,7 @@ export default function ClassroomRoomPage({
   const leaveClickedRef = useRef(false)
   const [autoRejoin, setAutoRejoin] = useState(false)
 
-  const { data, loading: infoLoading } = useFetch<SessionInfo>(`/api/sessions/${id}/info`, {
+  const { data, loading: infoLoading, refetch: refetchInfo } = useFetch<SessionInfo>(`/api/sessions/${id}/info`, {
     errorMessage: false,
   })
 
@@ -558,6 +664,7 @@ export default function ClassroomRoomPage({
         sessionId={id}
         session={data.session}
         onJoin={setTokenData}
+        onRequestSent={refetchInfo}
       />
     )
   }

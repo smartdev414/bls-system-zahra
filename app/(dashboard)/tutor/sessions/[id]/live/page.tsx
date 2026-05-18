@@ -328,16 +328,6 @@ export default function TutorLiveClassroomPage({
     }
   }
 
-  // Start recording once the tutor has connected to the room
-  const recordingStarted = useRef(false)
-  const startRecording = useCallback(() => {
-    if (recordingStarted.current) return
-    recordingStarted.current = true
-    fetch(`/api/sessions/${id}/recording/start`, { method: "POST" })
-      .then((r) => { if (!r.ok) console.error("[recording] failed to start") })
-      .catch((e) => console.error("[recording] error", e))
-  }, [id])
-
   // ── Loading / error states ──────────────────────────────────────────────────
 
   if (infoLoading) {
@@ -386,7 +376,6 @@ export default function TutorLiveClassroomPage({
       video={true}
       audio={true}
       onDisconnected={handleLeave}
-      onConnected={startRecording}
     >
       <ClassroomRoom
         isTutor={true}

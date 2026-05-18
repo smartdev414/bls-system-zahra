@@ -4,6 +4,7 @@ import { useRef, useState } from "react"
 import { Upload, X, Loader2, CheckCircle2, FileText, Video, Image, Music } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { isPowerPointMime, uploadPowerPointFile } from "@/lib/upload-powerpoint"
 
 export type UploadedFile = {
   fileUrl: string
@@ -11,6 +12,9 @@ export type UploadedFile = {
   fileSize: number
   mimeType: string
   assetType: string
+  /** Pre-converted PDF for classroom presentation (PowerPoint uploads only). */
+  presentationUrl?: string
+  presentationMimeType?: string
 }
 
 type Props = {
@@ -45,6 +49,20 @@ export function FileUpload({ accept, label = "Upload file", onUploaded, onRemove
     setUploading(true)
 
     try {
+      if (isPowerPointMime(file.type)) {
+        const result = await uploadPowerPointFile(file)
+        onUploaded({
+          fileUrl: result.fileUrl,
+          fileName: result.fileName,
+          fileSize: result.fileSize,
+          mimeType: result.mimeType,
+          assetType: result.assetType,
+          presentationUrl: result.presentationUrl,
+          presentationMimeType: result.presentationMimeType,
+        })
+        return
+      }
+
       let fileUrl: string
       let assetType: string
 

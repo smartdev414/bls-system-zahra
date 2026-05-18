@@ -134,6 +134,7 @@ type SessionBody = {
 type SessionResource = {
   id: string; title: string; fileUrl: string; fileName: string
   fileSize: number | null; mimeType: string | null
+  presentationUrl: string | null; presentationMimeType: string | null
 }
 
 function formatBytes(bytes: number | null) {
@@ -245,6 +246,8 @@ function ScheduleSessionDialog({
           fileName: f.fileName,
           fileSize: f.fileSize,
           mimeType: f.mimeType,
+          presentationUrl: f.presentationUrl,
+          presentationMimeType: f.presentationMimeType,
         }),
       })
     ))
@@ -581,7 +584,10 @@ function ScheduleSessionDialog({
                 <FileText className="size-4 text-emerald-600 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{f.fileName}</p>
-                  <p className="text-xs text-emerald-600">{formatBytes(f.fileSize)} · Ready to save</p>
+                  <p className="text-xs text-emerald-600">
+                    {formatBytes(f.fileSize)} · Ready to save
+                    {f.presentationUrl ? " · PDF ready for classroom" : ""}
+                  </p>
                 </div>
                 <Button
                   type="button" variant="ghost" size="icon" className="size-7 shrink-0"
@@ -594,8 +600,8 @@ function ScheduleSessionDialog({
 
             {/* Upload a new file — resets after each upload so user can keep adding */}
             <FileUpload
-              accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,video/*,audio/*"
-              label="Attach a file"
+              accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,.ppt,.pptx,image/*,video/*,audio/*"
+              label="Attach a file (PDF, Word, PowerPoint, image, video, audio)"
               uploaded={null}
               onUploaded={(f) => setPendingFiles((prev) => [...prev, f])}
             />

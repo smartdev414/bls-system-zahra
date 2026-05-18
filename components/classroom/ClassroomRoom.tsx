@@ -263,13 +263,13 @@ export function ClassroomRoom({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blurProcessorRef = useRef<any>(null)
 
-  // ── Recording pause/resume (tutor only) ───────────────────────────────────
-  // Tracks whether the server-side egress is currently writing. Auto-start
-  // happens on connect (see the live page), so we start as "recording" and
-  // flip when the tutor pauses or resumes. Each pause/resume cycle creates a
-  // new MP4 segment in S3.
-  const [recordingPaused, setRecordingPaused] = useState(false)
-  const [recordingBusy, setRecordingBusy]     = useState(false)
+  // ── Recording (tutor only) ────────────────────────────────────────────────
+  // Recording is manual: tutor clicks Start Rec, then can pause/resume. Each
+  // pause/resume cycle creates a new MP4 segment in S3.
+  const [recordingStarted, setRecordingStarted] = useState(false)
+  const [recordingPaused, setRecordingPaused]     = useState(false)
+  const [recordingBusy, setRecordingBusy]         = useState(false)
+  const recordingReminderShown = useRef(false)
 
   // ── Participant tile size (persisted per-user) ─────────────────────────────
   // Drives the height of the bottom participants strip and, transitively, the
@@ -1177,34 +1177,57 @@ export function ClassroomRoom({
     }
   }, [blurBusy, blurEnabled, getLocalCameraTrack])
 
-  // Tutor toggles recording pause/resume. Each cycle creates a separate MP4
-  // segment in S3 — stitching is a follow-up; for now the playback page reads
-  // the latest segment via `recordingUrl` set by the egress webhook.
+  // Remind tutor to start recording when they enter the classroom.
+  useEffect(() => {
+    if (!isTutor || recordingReminderShown.current) return
+    if (connectionState !== ConnectionState.Connected) return
+    recordingReminderShown.current = true
+    toast.info("Click Start Rec in the controls when you're ready to record this session.", {
+      duration: 12_000,
+    })
+  }, [isTutor, connectionState])
+
+  // Tutor starts, pauses, or resumes recording. Each pause/resume creates a
+  // separate MP4 segment in S3.
   const handleToggleRecording = useCallback(async () => {
     if (!isTutor || recordingBusy) return
     setRecordingBusy(true)
-    const wasPaused = recordingPaused
-    // Optimistic flip so the UI feels responsive
-    setRecordingPaused(!wasPaused)
+
+    const prevStarted = recordingStarted
+    const prevPaused = recordingPaused
+
+    if (!recordingStarted) {
+      setRecordingStarted(true)
+      setRecordingPaused(false)
+    } else {
+      setRecordingPaused(!recordingPaused)
+    }
+
     try {
-      const endpoint = wasPaused
-        ? `/api/sessions/${sessionId}/recording/resume`
-        : `/api/sessions/${sessionId}/recording/pause`
+      const endpoint = !prevStarted
+        ? `/api/sessions/${sessionId}/recording/start`
+        : prevPaused
+          ? `/api/sessions/${sessionId}/recording/resume`
+          : `/api/sessions/${sessionId}/recording/pause`
       const res = await fetch(endpoint, { method: "POST" })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body?.message || "Recording control failed")
       }
-      toast.success(wasPaused ? "Recording resumed" : "Recording paused")
+      if (!prevStarted) {
+        toast.success("Recording started")
+      } else {
+        toast.success(prevPaused ? "Recording resumed" : "Recording paused")
+      }
     } catch (err) {
       console.error("[recording] toggle failed", err)
-      // Roll back
-      setRecordingPaused(wasPaused)
+      setRecordingStarted(prevStarted)
+      setRecordingPaused(prevPaused)
       toast.error("Couldn't change recording state")
     } finally {
       setRecordingBusy(false)
     }
-  }, [isTutor, recordingBusy, recordingPaused, sessionId])
+  }, [isTutor, recordingBusy, recordingStarted, recordingPaused, sessionId])
 
   // Attach the processor to the local camera track. One effect handles three
   // cases: (a) first publish after joining when the lobby pref is on, (b)
@@ -1826,9 +1849,19 @@ export function ClassroomRoom({
           collide with the controls bar at the bottom. */}
       <LogoWatermark className="top-3 left-3" size={44} />
 
-      {/* Recording indicator — tutor only. Red dot = writing to S3, amber dot
-          = paused (egress stopped; resume starts a new segment). */}
-      {isTutor && (
+      {/* Recording reminder — tutor only, until they start recording. */}
+      {isTutor && !recordingStarted && (
+        <div
+          className="absolute top-3 right-3 z-30 flex items-center gap-2 max-w-xs px-3 py-2 rounded-xl bg-amber-500/15 backdrop-blur-sm border border-amber-400/40 text-[11px] font-medium text-amber-100 shadow"
+          role="status"
+        >
+          <span className="size-2 shrink-0 rounded-full bg-amber-400" />
+          Click <span className="font-semibold">Start Rec</span> below when you&apos;re ready to record this session.
+        </div>
+      )}
+
+      {/* Recording indicator — tutor only, after recording has started. */}
+      {isTutor && recordingStarted && (
         <div
           className="absolute top-3 right-3 z-30 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-sm border border-white/15 text-[11px] font-semibold text-white shadow"
           aria-live="polite"
@@ -2361,6 +2394,7 @@ export function ClassroomRoom({
           blurEnabled={blurEnabled}
           blurBusy={blurBusy}
           onToggleBlur={handleToggleBlur}
+          recordingStarted={recordingStarted}
           recordingPaused={recordingPaused}
           recordingBusy={recordingBusy}
           onToggleRecording={handleToggleRecording}

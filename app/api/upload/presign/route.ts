@@ -16,6 +16,8 @@ const ALLOWED: Record<string, { prefix: string; assetType: string }> = {
   "text/vtt":         { prefix: "subtitles", assetType: "SUBTITLE" },
   "application/msword":                                                       { prefix: "documents", assetType: "DOCUMENT" },
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document":  { prefix: "documents", assetType: "DOCUMENT" },
+  "application/vnd.ms-powerpoint":                                            { prefix: "documents", assetType: "DOCUMENT" },
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": { prefix: "documents", assetType: "DOCUMENT" },
 }
 
 async function handlePOST(req: NextRequest) {
@@ -47,12 +49,23 @@ async function handlePOST(req: NextRequest) {
     }
 
     const ext = fileName.split(".").pop() ?? "bin"
-    const key = `${allowed.prefix}/${session.sub}/${randomUUID()}.${ext}`
+    const isPowerPoint =
+      contentType === "application/vnd.ms-powerpoint" ||
+      contentType === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+    // PowerPoint files share a folder so we can store original + converted PDF together.
+    const folderId = randomUUID()
+    const key = isPowerPoint
+      ? `${allowed.prefix}/${session.sub}/${folderId}/original.${ext}`
+      : `${allowed.prefix}/${session.sub}/${randomUUID()}.${ext}`
+    const pdfKey = isPowerPoint
+      ? `${allowed.prefix}/${session.sub}/${folderId}/presentation.pdf`
+      : undefined
 
     const presignedUrl = await getPresignedUploadUrl(key, contentType)
     const fileUrl = publicUrl(key)
 
-    return NextResponse.json({ presignedUrl, fileUrl, key, assetType: allowed.assetType })
+    return NextResponse.json({ presignedUrl, fileUrl, key, pdfKey, assetType: allowed.assetType })
   } catch (err) {
     console.error("[POST /api/upload/presign]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

@@ -59,7 +59,8 @@ export function ControlsBar({
   blurEnabled,
   blurBusy,
   onToggleBlur,
-  // Recording pause/resume (tutor only)
+  // Recording start / pause / resume (tutor only)
+  recordingStarted,
   recordingPaused,
   recordingBusy,
   onToggleRecording,
@@ -95,6 +96,7 @@ export function ControlsBar({
   blurEnabled: boolean
   blurBusy: boolean
   onToggleBlur: () => void
+  recordingStarted: boolean
   recordingPaused: boolean
   recordingBusy: boolean
   onToggleRecording: () => void
@@ -205,7 +207,7 @@ export function ControlsBar({
         </button>
       )}
 
-      {/* Tutor-only: pause/resume the server-side recording. Each pause/resume
+      {/* Tutor-only: start, pause, or resume server-side recording. Each pause/resume
           cycle produces a separate MP4 segment in S3, so breaks and private
           chats don't end up in the saved recording. */}
       {isTutor && (
@@ -214,19 +216,37 @@ export function ControlsBar({
           disabled={recordingBusy}
           className={cn(
             "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            recordingPaused
+            !recordingStarted
               ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+              : recordingPaused
+                ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
+                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
             recordingBusy && "opacity-60 cursor-wait",
           )}
           title={
-            recordingPaused
-              ? "Resume recording — starts a new segment"
-              : "Pause recording — the next break won't be saved"
+            !recordingStarted
+              ? "Start recording this session"
+              : recordingPaused
+                ? "Resume recording — starts a new segment"
+                : "Pause recording — the next break won't be saved"
           }
         >
-          {recordingPaused ? <Circle className="size-3.5 fill-current" /> : <Pause className="size-3.5" />}
-          {recordingPaused ? "Resume Rec" : "Pause Rec"}
+          {!recordingStarted ? (
+            <>
+              <Circle className="size-3.5 fill-current" />
+              Start Rec
+            </>
+          ) : recordingPaused ? (
+            <>
+              <Circle className="size-3.5 fill-current" />
+              Resume Rec
+            </>
+          ) : (
+            <>
+              <Pause className="size-3.5" />
+              Pause Rec
+            </>
+          )}
         </button>
       )}
 
