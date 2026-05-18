@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import {
-  getPresignedDownloadUrl,
-  publicUrl,
-  uploadObject,
-  deleteObject,
-} from "@/lib/s3"
-import { convertPptxToPdf } from "@/lib/cloudconvert"
+import { publicUrl, uploadObject } from "@/lib/s3"
+import { finishPptxToPdfJob } from "@/lib/cloudconvert"
 import { withAudit } from "@/lib/audit"
 
 // Vercel function timeout — PPTX → PDF can take 20-60s on large decks.
@@ -32,31 +27,16 @@ async function handlePOST(
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
-    const body = (await req.json()) as { sourceKey?: string; sourceFileName?: string }
-    const { sourceKey, sourceFileName } = body
-    if (!sourceKey || !sourceFileName) {
-      return NextResponse.json({ message: "sourceKey and sourceFileName are required" }, { status: 400 })
+    const body = (await req.json()) as { jobId?: string; sourceFileName?: string }
+    const { jobId, sourceFileName } = body
+    if (!jobId || !sourceFileName) {
+      return NextResponse.json({ message: "jobId and sourceFileName are required" }, { status: 400 })
     }
 
-    // Constrain the source key to this session's slides folder so a tutor can't
-    // ask the server to convert arbitrary objects in the bucket.
-    if (!sourceKey.startsWith(`slides/${id}/`)) {
-      return NextResponse.json({ message: "Invalid sourceKey" }, { status: 400 })
-    }
-
-    // CloudConvert needs to fetch the source over HTTP. A short-lived presigned
-    // GET works whether the bucket is private or public.
-    const sourceUrl = await getPresignedDownloadUrl(sourceKey, 1800)
-    const pdfBuffer = await convertPptxToPdf(sourceUrl, sourceFileName)
+    const pdfBuffer = await finishPptxToPdfJob(jobId)
 
     const pdfKey = `slides/${id}/presentation.pdf`
     await uploadObject(pdfKey, pdfBuffer, "application/pdf")
-
-    // Drop the original PPTX so we don't keep duplicate storage. Failure to
-    // delete isn't fatal — the converted PDF is what the viewer will use.
-    if (sourceKey !== pdfKey) {
-      deleteObject(sourceKey).catch(() => { /* ignore */ })
-    }
 
     const pdfFileName = sourceFileName.replace(/\.pptx?$/i, "") + ".pdf"
 

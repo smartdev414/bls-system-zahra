@@ -29,47 +29,50 @@ export function SlideUploadPanel({
       file.type === "application/vnd.ms-powerpoint"
 
     setUploading(true)
-    setProgress("Getting upload URL…")
 
     try {
-      // 1. Get presigned URL
-      const presignRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/presign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, mimeType: file.type }),
-      })
-      if (!presignRes.ok) {
-        const err = await presignRes.json()
-        throw new Error(err.message ?? "Could not get upload URL")
-      }
-      const { uploadUrl, fileUrl: uploadedFileUrl, key: uploadedKey } = await presignRes.json() as {
-        uploadUrl: string; fileUrl: string; key: string
-      }
-
-      // 2. Upload directly to S3
-      setProgress(isVideo ? "Uploading video…" : "Uploading file…")
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      })
-      if (!uploadRes.ok) throw new Error("Upload to storage failed")
-
-      // 2b. PPTX → PDF conversion via CloudConvert. The client-side PPTX
-      // renderer can't decode WMF/EMF images; converting to PDF first means
-      // the PDF viewer renders everything correctly. Pure PDF uploads skip
-      // this step.
-      let registerUrl      = uploadedFileUrl
+      let registerUrl      = ""
       let registerName     = file.name
       let registerMime     = file.type
       let registerSize: number | null = file.size
 
       if (isPptx) {
+        // PowerPoint: upload straight to CloudConvert (no S3 hop for the deck).
+        // The server only mints upload credentials; the API key never leaves the backend.
+        setProgress("Preparing conversion…")
+        const presignRes = await fetch(
+          `/api/tutor/sessions/${sessionId}/slides/convert/presign`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sourceFileName: file.name }),
+          },
+        )
+        if (!presignRes.ok) {
+          const err = await presignRes.json().catch(() => ({}))
+          throw new Error(err.message ?? "Could not start conversion")
+        }
+        const { jobId, uploadUrl, uploadParameters } = await presignRes.json() as {
+          jobId: string
+          uploadUrl: string
+          uploadParameters: Record<string, string>
+        }
+
+        setProgress("Uploading slides…")
+        const ccForm = new FormData()
+        for (const [key, value] of Object.entries(uploadParameters)) {
+          ccForm.append(key, value)
+        }
+        ccForm.append("file", file)
+
+        const ccUploadRes = await fetch(uploadUrl, { method: "POST", body: ccForm })
+        if (!ccUploadRes.ok) throw new Error("Upload to conversion service failed")
+
         setProgress("Converting slides to PDF…")
         const convertRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/convert`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceKey: uploadedKey, sourceFileName: file.name }),
+          body: JSON.stringify({ jobId, sourceFileName: file.name }),
         })
         if (!convertRes.ok) {
           const err = await convertRes.json().catch(() => ({}))
@@ -82,6 +85,31 @@ export function SlideUploadPanel({
         registerName = converted.fileName
         registerMime = converted.mimeType
         registerSize = converted.fileSize
+      } else {
+        // PDF / video: presigned upload to S3, then register.
+        setProgress("Getting upload URL…")
+        const presignRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/presign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: file.name, mimeType: file.type }),
+        })
+        if (!presignRes.ok) {
+          const err = await presignRes.json()
+          throw new Error(err.message ?? "Could not get upload URL")
+        }
+        const { uploadUrl, fileUrl } = await presignRes.json() as {
+          uploadUrl: string; fileUrl: string
+        }
+
+        setProgress(isVideo ? "Uploading video…" : "Uploading file…")
+        const uploadRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        })
+        if (!uploadRes.ok) throw new Error("Upload to storage failed")
+
+        registerUrl = fileUrl
       }
 
       // 3. Register the file in the session

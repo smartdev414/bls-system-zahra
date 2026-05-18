@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, type ListObjectsV2CommandOutput, type PutObjectCommandInput } from "@aws-sdk/client-s3"
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, type ListObjectsV2CommandOutput, type PutObjectCommandInput } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 const REGION = process.env.AWS_REGION ?? "eu-west-2"
@@ -58,8 +58,28 @@ export async function listObjectKeys(prefix: string): Promise<string[]> {
   return out
 }
 
+/** Download an object into memory. Throws if the key does not exist. */
+export async function downloadObject(key: string): Promise<Buffer> {
+  const res = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }))
+  if (!res.Body) {
+    throw new Error(`Object not found in storage: ${key}`)
+  }
+  return Buffer.from(await res.Body.transformToByteArray())
+}
+
+/** Returns true when the object exists in the bucket. */
+export async function objectExists(key: string): Promise<boolean> {
+  try {
+    await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }))
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Upload a buffer directly to S3 */
 export async function uploadObject(
+  
   key: string,
   body: Buffer,
   contentType: string,
