@@ -13,7 +13,7 @@ import { ConnectionState, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Radio, Users, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
-  MessageSquare,
+  MessageSquare, X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
@@ -269,6 +269,7 @@ export function ClassroomRoom({
   const [recordingStarted, setRecordingStarted] = useState(false)
   const [recordingPaused, setRecordingPaused]     = useState(false)
   const [recordingBusy, setRecordingBusy]         = useState(false)
+  const [recordingReminderDismissed, setRecordingReminderDismissed] = useState(false)
   const recordingReminderShown = useRef(false)
 
   // ── Participant tile size (persisted per-user) ─────────────────────────────
@@ -1850,14 +1851,24 @@ export function ClassroomRoom({
           collide with the controls bar at the bottom. */}
       <LogoWatermark className="top-3 left-3" size={44} />
 
-      {/* Recording reminder — tutor only, until they start recording. */}
-      {isTutor && !recordingStarted && (
+      {/* Recording reminder — tutor only, until they start recording or dismiss it. */}
+      {isTutor && !recordingStarted && !recordingReminderDismissed && (
         <div
-          className="absolute top-3 right-3 z-30 flex items-center gap-2 max-w-xs px-3 py-2 rounded-xl bg-amber-500/15 backdrop-blur-sm border border-amber-400/40 text-[11px] font-medium text-amber-100 shadow"
+          className="absolute top-3 right-3 z-30 flex items-start gap-2 max-w-xs pl-3 pr-1.5 py-2 rounded-xl bg-amber-500/15 backdrop-blur-sm border border-amber-400/40 text-[11px] font-medium text-amber-100 shadow"
           role="status"
         >
-          <span className="size-2 shrink-0 rounded-full bg-amber-400" />
-          Click <span className="font-semibold">Start Rec</span> below when you&apos;re ready to record this session.
+          <span className="size-2 shrink-0 rounded-full bg-amber-400 mt-1" />
+          <span className="flex-1 min-w-0">
+            Click <span className="font-semibold">Start Rec</span> below when you&apos;re ready to record this session.
+          </span>
+          <button
+            type="button"
+            onClick={() => setRecordingReminderDismissed(true)}
+            className="shrink-0 rounded-md p-1 text-amber-200/80 hover:text-amber-50 hover:bg-amber-400/20 transition-colors"
+            aria-label="Dismiss recording reminder"
+          >
+            <X className="size-3.5" />
+          </button>
         </div>
       )}
 
