@@ -1,19 +1,23 @@
 "use client"
 
-import { useState, useRef, useCallback, useEffect } from "react"
+import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import {
-  Pen, Eraser, Trash2, X, PencilLine,
+  Pen, Eraser, Trash2, X, PencilLine, Type, GripVertical,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { WhiteboardShape, WhiteboardStroke } from "./types"
+import type { WhiteboardShape, WhiteboardStroke, WhiteboardText } from "./types"
 
 // Palette kept deliberately small so students don't get lost in options.
 const COLORS = ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#a855f7", "#111827"]
 const DEFAULT_COLOR  = "#ef4444"
 // Normalised stroke width — feels like ~4px on a 900px-wide canvas.
 const DEFAULT_WIDTH  = 0.004
+// Normalised font size — ~22px on a 600px-tall board.
+const DEFAULT_TEXT_SIZE = 0.037
 
-type Tool = "pen" | "eraser"
+type Tool = "pen" | "text" | "eraser"
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 
 // Segment-distance hit-test so a click anywhere within `tolerance` of a stroke
 // picks it up. Squared distances avoid sqrt per segment.
@@ -85,6 +89,7 @@ export function WhiteboardPanel({
   localIdentity,
   shapes,
   onAdd,
+  onUpdate,
   onDelete,
   onClear,
   onStop,
@@ -93,6 +98,7 @@ export function WhiteboardPanel({
   localIdentity: string
   shapes: WhiteboardShape[]
   onAdd:    (shape: WhiteboardShape) => void
+  onUpdate: (shape: WhiteboardShape) => void
   onDelete: (id: string) => void
   onClear:  () => void
   onStop:   () => void
@@ -107,6 +113,54 @@ export function WhiteboardPanel({
   const [tool, setTool]   = useState<Tool>("pen")
   const [color, setColor] = useState<string>(DEFAULT_COLOR)
 
+  // Board pixel size, kept in sync via resizeCanvas — used to size text in px
+  // from its normalised `size`.
+  const [boardSize, setBoardSize] = useState({ w: 0, h: 0 })
+
+  // ── Text editing / dragging state ──────────────────────────────────────────
+  // The text box currently being typed into, with its working buffer. We keep
+  // the draft local so each keystroke doesn't hit the data channel; Enter
+  // finalises (empty boxes are removed). Clicking away keeps typed text on the board.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft]         = useState("")
+  // Live drag position for the box being moved (normalised). Broadcast once on
+  // pointer-up; during the drag it only drives local rendering.
+  const [dragId, setDragId]   = useState<string | null>(null)
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null)
+  const dragOffsetRef = useRef<{ x: number; y: number } | null>(null)
+
+  // Shown immediately on click — parent `shapes` can land a frame later.
+  const [pendingText, setPendingText] = useState<WhiteboardText | null>(null)
+  const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const editingIdRef = useRef<string | null>(null)
+  // Ignore blur fired by the same click that created the box (pointer-up steals focus).
+  const textCreatedAtRef = useRef(0)
+
+  useEffect(() => {
+    editingIdRef.current = editingId
+  }, [editingId])
+
+  const textShapes = shapes.filter((s): s is WhiteboardText => s.kind === "text")
+  const displayTextShapes = useMemo(() => {
+    if (!pendingText || textShapes.some((s) => s.id === pendingText.id)) return textShapes
+    return [...textShapes, pendingText]
+  }, [textShapes, pendingText])
+
+  useEffect(() => {
+    if (pendingText && textShapes.some((s) => s.id === pendingText.id)) {
+      setPendingText(null)
+    }
+  }, [pendingText, textShapes])
+
+  // Focus the textarea after it mounts — autoFocus alone loses to pointer-up blur.
+  useEffect(() => {
+    if (!editingId) return
+    const id = requestAnimationFrame(() => {
+      editingTextareaRef.current?.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [editingId])
+
   // ── Canvas sizing: keep the backing store in sync with its CSS box ─────────
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -118,6 +172,9 @@ export function WhiteboardPanel({
     canvas.height = Math.floor(rect.height * dpr)
     canvas.style.width  = `${rect.width}px`
     canvas.style.height = `${rect.height}px`
+    setBoardSize((prev) =>
+      prev.w === rect.width && prev.h === rect.height ? prev : { w: rect.width, h: rect.height }
+    )
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -153,10 +210,48 @@ export function WhiteboardPanel({
     return { x, y, w: rect.width, h: rect.height }
   }
 
+  // Keep typed text on the board when focus leaves — never delete on click-away.
+  const persistDraft = useCallback((box: WhiteboardText) => {
+    const text = draft.trim()
+    if (text.length > 0 && text !== box.text) {
+      onUpdate({ ...box, text })
+    }
+    setEditingId(null)
+    setDraft("")
+  }, [draft, onUpdate])
+
+  // Enter finalises: save text, or remove a box that was left empty.
+  const commitDraft = useCallback((box: WhiteboardText) => {
+    const text = draft.trim()
+    if (text.length === 0) {
+      onDelete(box.id)
+      if (pendingText?.id === box.id) setPendingText(null)
+    } else if (text !== box.text) {
+      onUpdate({ ...box, text })
+    }
+    setEditingId(null)
+    setDraft("")
+  }, [draft, onDelete, onUpdate, pendingText])
+
+  const cancelEdit = useCallback((box: WhiteboardText) => {
+    if (!box.text.trim()) {
+      onDelete(box.id)
+      if (pendingText?.id === box.id) setPendingText(null)
+    }
+    setEditingId(null)
+    setDraft("")
+  }, [onDelete, pendingText])
+
   // ── Pointer: pen / eraser ──────────────────────────────────────────────────
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const norm = toNorm(e.clientX, e.clientY)
     if (!norm) return
+
+    // Leaving the text field for pen/eraser — keep what was typed on the board.
+    if (editingId && tool !== "text") {
+      const current = displayTextShapes.find((b) => b.id === editingId)
+      if (current) persistDraft(current)
+    }
 
     if (tool === "pen") {
       const stroke: WhiteboardStroke = {
@@ -173,6 +268,33 @@ export function WhiteboardPanel({
       return
     }
 
+    if (tool === "text") {
+      // If already typing in another box, save that draft first so it isn't lost.
+      e.preventDefault()
+      if (editingId) {
+        const current = displayTextShapes.find((b) => b.id === editingId)
+        if (current) persistDraft(current)
+      }
+
+      // Drop a fresh, empty text box where the user clicked and start editing it.
+      const box: WhiteboardText = {
+        id: uid(),
+        kind: "text",
+        author: localIdentity,
+        color,
+        x: clamp01(norm.x),
+        y: clamp01(norm.y),
+        text: "",
+        size: DEFAULT_TEXT_SIZE,
+      }
+      textCreatedAtRef.current = Date.now()
+      setPendingText(box)
+      setEditingId(box.id)
+      setDraft("")
+      onAdd(box)
+      return
+    }
+
     if (tool === "eraser") {
       // Walk strokes newest-first so the top-most gets erased.
       const tolerance = 0.025  // ~2.5% of board dimension — forgiving for fingers/mice
@@ -184,6 +306,35 @@ export function WhiteboardPanel({
         }
       }
       return
+    }
+  }
+
+  // ── Text box: drag to reposition ─────────────────────────────────────────────
+  const handleBoxDragDown = (e: React.PointerEvent, box: WhiteboardText) => {
+    e.stopPropagation()
+    const norm = toNorm(e.clientX, e.clientY)
+    if (!norm) return
+    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    dragOffsetRef.current = { x: norm.x - box.x, y: norm.y - box.y }
+    setDragId(box.id)
+    setDragPos({ x: box.x, y: box.y })
+  }
+
+  const handleBoxDragMove = (e: React.PointerEvent) => {
+    const offset = dragOffsetRef.current
+    if (!offset) return
+    const norm = toNorm(e.clientX, e.clientY)
+    if (!norm) return
+    setDragPos({ x: clamp01(norm.x - offset.x), y: clamp01(norm.y - offset.y) })
+  }
+
+  const handleBoxDragUp = (box: WhiteboardText) => {
+    const pos = dragPos
+    dragOffsetRef.current = null
+    setDragId(null)
+    setDragPos(null)
+    if (pos && (pos.x !== box.x || pos.y !== box.y)) {
+      onUpdate({ ...box, x: pos.x, y: pos.y })
     }
   }
 
@@ -226,6 +377,7 @@ export function WhiteboardPanel({
 
         {/* Tools */}
         <button
+          type="button"
           onClick={() => setTool("pen")}
           className={cn(
             "flex items-center gap-1 px-2.5 h-8 rounded-lg text-xs font-medium transition-colors",
@@ -238,6 +390,20 @@ export function WhiteboardPanel({
           <Pen className="size-3.5" /> Pen
         </button>
         <button
+          type="button"
+          onClick={() => setTool("text")}
+          className={cn(
+            "flex items-center gap-1 px-2.5 h-8 rounded-lg text-xs font-medium transition-colors",
+            tool === "text"
+              ? "bg-primary text-primary-foreground"
+              : "bg-zinc-700/60 text-zinc-300 hover:bg-zinc-700"
+          )}
+          title="Text — click the board to add a box; Enter to finish; click away keeps your text"
+        >
+          <Type className="size-3.5" /> Text
+        </button>
+        <button
+          type="button"
           onClick={() => setTool("eraser")}
           className={cn(
             "flex items-center gap-1 px-2.5 h-8 rounded-lg text-xs font-medium transition-colors",
@@ -303,13 +469,114 @@ export function WhiteboardPanel({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        className="flex-1 relative overflow-hidden bg-white cursor-crosshair"
+        className={cn(
+          "flex-1 relative overflow-hidden bg-white",
+          tool === "text" ? "cursor-text" : "cursor-crosshair"
+        )}
         style={{ touchAction: "none" }}
       >
         <canvas
           ref={canvasRef}
           className="absolute inset-0 pointer-events-none"
         />
+
+        {/* Text boxes — DOM overlay so they can be typed into and dragged. */}
+        {displayTextShapes.map((box) => {
+          const isEditing = editingId === box.id
+          const isDragging = dragId === box.id
+          const pos = isDragging && dragPos ? dragPos : { x: box.x, y: box.y }
+          const dim = Math.min(boardSize.w || 400, boardSize.h || 300)
+          const fontSize = Math.max(14, box.size * dim)
+          return (
+            <div
+              key={box.id}
+              className={cn(
+                "absolute z-10 group flex items-start gap-1",
+                isDragging && "opacity-90"
+              )}
+              style={{ left: `${pos.x * 100}%`, top: `${pos.y * 100}%`, maxWidth: "80%" }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {/* Drag handle */}
+              <button
+                type="button"
+                onPointerDown={(e) => handleBoxDragDown(e, box)}
+                onPointerMove={handleBoxDragMove}
+                onPointerUp={() => handleBoxDragUp(box)}
+                onPointerCancel={() => handleBoxDragUp(box)}
+                className="mt-0.5 shrink-0 cursor-move text-zinc-400 hover:text-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity touch-none"
+                title="Drag to move"
+                aria-label="Move text box"
+              >
+                <GripVertical className="size-4" />
+              </button>
+
+              {isEditing ? (
+                <textarea
+                  ref={isEditing ? editingTextareaRef : undefined}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => {
+                    if (Date.now() - textCreatedAtRef.current < 300) {
+                      requestAnimationFrame(() => {
+                        if (editingIdRef.current === box.id) {
+                          editingTextareaRef.current?.focus({ preventScroll: true })
+                        }
+                      })
+                      return
+                    }
+                    persistDraft(box)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault()
+                      textCreatedAtRef.current = 0
+                      cancelEdit(box)
+                    }
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      textCreatedAtRef.current = 0
+                      commitDraft(box)
+                    }
+                  }}
+                  rows={Math.max(2, Math.min(8, draft.split("\n").length + 1))}
+                  className="bg-white/90 outline-none resize-none border-2 border-dashed border-zinc-500 rounded px-1.5 py-0.5 leading-tight min-w-[120px] min-h-[28px] shadow-sm"
+                  style={{ color: box.color, fontSize, width: "22ch", maxWidth: "100%" }}
+                  placeholder="Type here…"
+                />
+              ) : (
+                <div
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    if (tool === "eraser") { onDelete(box.id); return }
+                    if (editingId && editingId !== box.id) {
+                      const current = displayTextShapes.find((b) => b.id === editingId)
+                      if (current) persistDraft(current)
+                    }
+                    textCreatedAtRef.current = 0
+                    setEditingId(box.id)
+                    setDraft(box.text)
+                  }}
+                  className="cursor-text whitespace-pre-wrap break-words leading-tight px-1"
+                  style={{ color: box.color, fontSize }}
+                >
+                  {box.text}
+                </div>
+              )}
+
+              {/* Delete this box */}
+              <button
+                type="button"
+                onPointerDown={(e) => { e.stopPropagation(); onDelete(box.id) }}
+                className="mt-0.5 shrink-0 text-zinc-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Delete text box"
+                aria-label="Delete text box"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

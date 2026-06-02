@@ -588,6 +588,12 @@ export function ClassroomRoom({
         )
         return
       }
+      if (data.action === "update") {
+        setWhiteboardShapes((prev) =>
+          prev.map((s) => (s.id === data.shape.id ? data.shape : s))
+        )
+        return
+      }
       if (data.action === "delete") {
         setWhiteboardShapes((prev) => prev.filter((s) => s.id !== data.id))
         return
@@ -1524,6 +1530,11 @@ export function ClassroomRoom({
     safeSendWhiteboard({ action: "add", shape })
   }, [safeSendWhiteboard])
 
+  const handleUpdateShape = useCallback((shape: WhiteboardShape) => {
+    setWhiteboardShapes((prev) => prev.map((s) => (s.id === shape.id ? shape : s)))
+    safeSendWhiteboard({ action: "update", shape })
+  }, [safeSendWhiteboard])
+
   const handleDeleteShape = useCallback((id: string) => {
     setWhiteboardShapes((prev) => prev.filter((s) => s.id !== id))
     safeSendWhiteboard({ action: "delete", id })
@@ -2051,6 +2062,7 @@ export function ClassroomRoom({
                   localIdentity={localParticipant.identity}
                   shapes={whiteboardShapes}
                   onAdd={handleAddShape}
+                  onUpdate={handleUpdateShape}
                   onDelete={handleDeleteShape}
                   onClear={handleClearBoard}
                   onStop={handleToggleWhiteboard}

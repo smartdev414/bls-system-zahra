@@ -727,7 +727,7 @@ function SessionCard({
           {/* Primary action — top-right for quick access */}
           {session.status === "LIVE" && (
             <Button asChild size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
-              <Link href={`/tutor/sessions/${session.id}/live`}>
+              <Link href={`/tutor/classroom/${session.id}`}>
                 <MonitorPlay className="size-3.5" /> Open Classroom
               </Link>
             </Button>

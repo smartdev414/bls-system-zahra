@@ -194,7 +194,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                   asChild
                   className="bg-emerald-600 hover:bg-emerald-700"
                 >
-                  <Link href={`/tutor/sessions/${session.id}/live`}>
+                  <Link href={`/tutor/classroom/${session.id}`}>
                     <MonitorPlay className="size-4 mr-1.5" /> Open Classroom
                   </Link>
                 </Button>
@@ -204,7 +204,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                   asChild
                   className="bg-emerald-600 hover:bg-emerald-700"
                 >
-                  <Link href={`/tutor/sessions/${session.id}/live`}>
+                  <Link href={`/tutor/classroom/${session.id}`}>
                     <MonitorPlay className="size-4 mr-1.5" /> Open Classroom
                   </Link>
                 </Button>

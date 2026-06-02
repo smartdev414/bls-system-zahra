@@ -80,12 +80,27 @@ export type WhiteboardStroke = {
   points: [number, number][]
 }
 
-export type WhiteboardShape = WhiteboardStroke
+// A free-floating text label. Position is the top-left corner, normalised to
+// [0,1] like strokes so it lands in the same place on every screen. `size` is
+// the font size in normalised board units (× the board's min dimension for px).
+export type WhiteboardText = {
+  id: string
+  kind: "text"
+  author: string
+  color: string
+  x: number
+  y: number
+  text: string
+  size: number
+}
+
+export type WhiteboardShape = WhiteboardStroke | WhiteboardText
 
 export type WhiteboardAction =
   | { action: "start" }                                            // tutor opens the board for everyone
   | { action: "stop" }                                             // tutor closes the board
   | { action: "add";    shape: WhiteboardShape }                   // any participant adds a shape
+  | { action: "update"; shape: WhiteboardShape }                   // any participant moves/edits a shape
   | { action: "delete"; id: string }                               // any participant erases a shape
   | { action: "clear" }                                            // tutor wipes everything
   | { action: "sync_request" }                                     // late joiner asks the tutor

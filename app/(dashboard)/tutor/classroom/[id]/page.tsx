@@ -274,7 +274,7 @@ function TutorEntryScreen({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function TutorLiveClassroomPage({
+export default function TutorClassroomPage({
   params,
 }: {
   params: Promise<{ id: string }>

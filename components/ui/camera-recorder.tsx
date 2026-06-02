@@ -212,7 +212,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
           ref={videoRef}
           muted
           playsInline
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover -scale-x-100"
         />
         {!ready && (
           <div className="absolute inset-0 flex items-center justify-center">
