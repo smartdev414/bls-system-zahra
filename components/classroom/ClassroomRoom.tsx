@@ -13,7 +13,7 @@ import { ConnectionState, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Radio, Users, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
-  MessageSquare, X,
+  MessageSquare, X, HandMetal,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
@@ -81,6 +81,9 @@ export function ClassroomRoom({
   const screenSharing    = !!tutorScreenTrack
 
   const localName = localParticipant.name ?? localParticipant.identity
+
+  // Students may only publish audio when the tutor enables their mic.
+  const micAllowedByTutorRef = useRef(false)
 
   // ── Chat / hand state ──────────────────────────────────────────────────────
   const [messages,         setMessages]         = useState<ChatMsg[]>([])
@@ -517,25 +520,47 @@ export function ClassroomRoom({
     } catch { /* ignore malformed */ }
   })
 
-  // ── Data channel: mute-all ─────────────────────────────────────────────────
-  // Tutor broadcasts `mute-all`; every student self-mutes their own mic on receipt
-  // and gets a toast so they know *why* their mic just cut out.
+  // ── Data channel: tutor-controlled microphones ─────────────────────────────
+  const applyLocalMic = useCallback((enabled: boolean) => {
+    micAllowedByTutorRef.current = enabled
+    if (enabled) {
+      localParticipant.setMicrophoneEnabled(true).catch(() => { /* ignore */ })
+    } else {
+      localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
+    }
+  }, [localParticipant])
 
   const { send: sendMuteAll } = useDataChannel(MUTE_TOPIC, (msg) => {
-    // Tutors originate this signal, so skip their own echo.
     if (isTutor) return
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as MuteAction
-      if (data.action !== "mute-all") return
-      // Only do anything if the mic is currently live — avoids surprise toasts
-      // for students who were already muted.
-      if (!localParticipant.isMicrophoneEnabled) return
-      localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
-      toast.info(`${data.from} muted everyone's microphone`, {
-        description: "You can unmute yourself again whenever you need to speak.",
-      })
+      if (data.action === "mute-all") {
+        applyLocalMic(false)
+        toast.info(`${data.from} muted everyone's microphone`, {
+          description: "Your tutor will turn your mic on when it's your turn to speak.",
+        })
+        return
+      }
+      if (data.action === "set-mic" && data.identity === localParticipant.identity) {
+        applyLocalMic(data.enabled)
+        if (data.enabled) {
+          toast.info(`${data.from} turned your microphone on`, {
+            description: "You can sign with audio until the tutor mutes you again.",
+          })
+        } else {
+          toast.info(`${data.from} turned your microphone off`)
+        }
+      }
     } catch { /* ignore malformed */ }
   })
+
+  // Join muted once per mount. Don't force-mute on later state changes,
+  // otherwise tutor-issued "set-mic on" gets immediately reverted.
+  useEffect(() => {
+    if (isTutor) return
+    micAllowedByTutorRef.current = false
+    localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
+  }, [isTutor, localParticipant])
 
   // ── Data channel: session-level admin actions ─────────────────────────────
   // Tutor broadcasts `refresh`. Students react on receipt; the tutor performs
@@ -1405,20 +1430,59 @@ export function ClassroomRoom({
     ])
   }, [presentKind, safeSendPpt])
 
-  // ── Mute-all handler (tutor only) ──────────────────────────────────────────
-  // Broadcasts a single data-channel message; every student self-mutes on receipt.
-  // Posts a system chat line so it's visible in history.
+  const broadcastMicControl = useCallback((payload: MuteAction) => {
+    if (connectionState !== ConnectionState.Connected) return false
+    try {
+      sendMuteAll(enc.encode(JSON.stringify(payload)), { reliable: true })
+      return true
+    } catch {
+      return false
+    }
+  }, [connectionState, sendMuteAll])
 
-  const handleMuteAll = useCallback(() => {
+  const patchParticipantMic = useCallback(async (identity: string, enabled: boolean) => {
+    const res = await fetch(
+      `/api/tutor/sessions/${sessionId}/participants/${encodeURIComponent(identity)}/mic`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { message?: string }
+      throw new Error(err.message ?? "Could not update microphone")
+    }
+  }, [sessionId])
+
+  const handleSetParticipantMic = useCallback(async (identity: string, name: string, enabled: boolean) => {
+    if (!isTutor) return
+    try {
+      await patchParticipantMic(identity, enabled)
+      const ok = broadcastMicControl({ action: "set-mic", identity, enabled, from: localName })
+      if (!ok) throw new Error("Could not notify the student")
+      toast.success(enabled ? `${name}'s microphone is on` : `${name}'s microphone is off`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update microphone")
+    }
+  }, [isTutor, patchParticipantMic, broadcastMicControl, localName])
+
+  // ── Mute-all handler (tutor only) ──────────────────────────────────────────
+  const handleMuteAll = useCallback(async () => {
     if (!isTutor) return
     if (connectionState !== ConnectionState.Connected) return
+
+    const students = participants.filter((p) => p.metadata !== "tutor")
     try {
-      const payload: MuteAction = { action: "mute-all", from: localName }
-      sendMuteAll(enc.encode(JSON.stringify(payload)), { reliable: true })
-    } catch {
-      toast.error("Couldn't send the mute signal — please try again.")
+      await Promise.all(students.map((p) => patchParticipantMic(p.identity, false)))
+      if (!broadcastMicControl({ action: "mute-all", from: localName })) {
+        throw new Error("Could not notify students")
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't mute all students")
       return
     }
+
     toast.success("Every student's microphone has been muted.")
     setMessages((prev) => [
       ...prev,
@@ -1430,7 +1494,37 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [isTutor, connectionState, localName, sendMuteAll])
+  }, [isTutor, connectionState, localName, participants, patchParticipantMic, broadcastMicControl])
+
+  const handleUnmuteAll = useCallback(async () => {
+    if (!isTutor) return
+    if (connectionState !== ConnectionState.Connected) return
+
+    const students = participants.filter((p) => p.metadata !== "tutor")
+    try {
+      await Promise.all(students.map((p) => patchParticipantMic(p.identity, true)))
+      const from = localName
+      const sent = students.every((p) =>
+        broadcastMicControl({ action: "set-mic", identity: p.identity, enabled: true, from })
+      )
+      if (!sent) throw new Error("Could not notify students")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't unmute all students")
+      return
+    }
+
+    toast.success("Every student's microphone has been turned on.")
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-unmute-${Date.now()}`,
+        from: "system",
+        text: "Tutor turned on everyone's microphone 🎙️",
+        ts: Date.now(),
+        type: "system",
+      },
+    ])
+  }, [isTutor, connectionState, localName, participants, patchParticipantMic, broadcastMicControl])
 
   // ── Refresh-for-everyone flow (tutor only) ────────────────────────────────
   // Two-step: button opens a shadcn Dialog; user confirms inside the dialog,
@@ -1974,6 +2068,23 @@ export function ClassroomRoom({
           )}
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {!isTutor && (
+            <button
+              type="button"
+              onClick={handleToggleHand}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 sm:px-3 h-8 rounded-xl text-xs font-medium transition-all shrink-0",
+                handRaised
+                  ? "bg-amber-500/30 text-amber-300 border border-amber-500/50 animate-pulse"
+                  : "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-transparent",
+              )}
+              title={handRaised ? "Lower your hand" : "Raise your hand — your tutor will be notified"}
+              aria-label={handRaised ? "Lower hand" : "Raise hand"}
+            >
+              <HandMetal className="size-3.5 shrink-0" />
+              <span className="hidden sm:inline">{handRaised ? "Lower Hand" : "Raise Hand"}</span>
+            </button>
+          )}
           {isTutor && (
             <div className="relative">
               <button
@@ -2300,6 +2411,7 @@ export function ClassroomRoom({
             onPopOut={handlePopOut}
             poppedOutIds={poppedOutIds}
             onRemoveParticipant={handleRequestRemove}
+            onToggleParticipantMic={isTutor ? handleSetParticipantMic : undefined}
             raisedHandIds={raisedHandIds}
             onLowerHand={isTutor ? handleLowerHand : undefined}
             visibleIdentities={visibleIdentities}
@@ -2388,11 +2500,10 @@ export function ClassroomRoom({
       <div className="h-12 bg-zinc-950 border-t border-zinc-800/60 shrink-0 flex items-center px-2 sm:px-3">
         <ControlsBar
           isTutor={isTutor}
-          handRaised={handRaised}
-          onToggleHand={handleToggleHand}
           onLeave={onLeave}
           studentCount={studentCount}
           onMuteAll={handleMuteAll}
+          onUnmuteAll={handleUnmuteAll}
           onRefreshAll={handleRefreshAll}
           pptActive={pptActive}
           presentKind={presentKind}

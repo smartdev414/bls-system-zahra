@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { AccessToken } from "livekit-server-sdk"
+import { AccessToken, TrackSource } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
 
 async function handlePOST(
@@ -66,13 +66,26 @@ async function handlePOST(
       metadata: isTutor ? "tutor" : "student",
     })
 
-    at.addGrant({
-      roomJoin: true,
-      room: liveSession.roomName,
-      canPublish: true,        // everyone can publish their own mic/camera
-      canSubscribe: true,
-      canPublishData: true,
-    })
+    // Tutors publish camera + mic. Students publish camera/screen only — the tutor
+    // enables each student's mic via the session controls when they may speak.
+    at.addGrant(
+      isTutor
+        ? {
+            roomJoin: true,
+            room: liveSession.roomName,
+            canPublish: true,
+            canSubscribe: true,
+            canPublishData: true,
+          }
+        : {
+            roomJoin: true,
+            room: liveSession.roomName,
+            canPublish: true,
+            canPublishSources: [TrackSource.CAMERA, TrackSource.SCREEN_SHARE],
+            canSubscribe: true,
+            canPublishData: true,
+          }
+    )
 
     const token = await at.toJwt()
 

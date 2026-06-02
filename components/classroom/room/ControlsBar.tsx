@@ -1,10 +1,10 @@
 "use client"
 
-import { TrackToggle } from "@livekit/components-react"
+import { TrackToggle, useLocalParticipant } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import {
   Mic, MicOff, Camera, Monitor, PhoneOff,
-  HandMetal, Presentation, ChevronLeft, ChevronRight,
+  Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles,
   Circle, Pause,
 } from "lucide-react"
@@ -12,12 +12,11 @@ import { cn } from "@/lib/utils"
 
 export function ControlsBar({
   isTutor,
-  handRaised,
-  onToggleHand,
   onLeave,
-  // Mute-all (tutor only)
+  // Tutor controls for student microphones
   studentCount,
   onMuteAll,
+  onUnmuteAll,
   // Session-level admin actions (tutor only)
   onRefreshAll,
   // PPT controls (tutor only)
@@ -66,11 +65,10 @@ export function ControlsBar({
   onToggleRecording,
 }: {
   isTutor: boolean
-  handRaised: boolean
-  onToggleHand: () => void
   onLeave: () => void
   studentCount: number
   onMuteAll: () => void
+  onUnmuteAll: () => void
   onRefreshAll: () => void
   pptActive: boolean
   presentKind?: "slides" | "video" | null
@@ -101,14 +99,32 @@ export function ControlsBar({
   recordingBusy: boolean
   onToggleRecording: () => void
 }) {
+  const { localParticipant } = useLocalParticipant()
+  const micEnabled = !!localParticipant.isMicrophoneEnabled
+
   return (
     <div className="flex items-center gap-2 w-full min-w-0 overflow-x-auto overflow-y-hidden">
-      <TrackToggle
-        source={Track.Source.Microphone}
-        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=false]:bg-rose-900/50 data-[enabled=false]:text-rose-400 whitespace-nowrap"
-      >
-        <Mic className="size-3.5" /> Mic
-      </TrackToggle>
+      {isTutor ? (
+        <TrackToggle
+          source={Track.Source.Microphone}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=false]:bg-rose-900/50 data-[enabled=false]:text-rose-400 whitespace-nowrap"
+        >
+          <Mic className="size-3.5" /> Mic
+        </TrackToggle>
+      ) : (
+        <div
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium border whitespace-nowrap cursor-not-allowed",
+            micEnabled
+              ? "bg-emerald-900/30 text-emerald-300 border-emerald-700/40"
+              : "bg-zinc-800/80 text-zinc-500 border-zinc-700/60",
+          )}
+          title={micEnabled ? "Microphone is ON (controlled by tutor)" : "Microphone is OFF (controlled by tutor)"}
+        >
+          {micEnabled ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
+          Mic ({micEnabled ? "on" : "off"} · tutor controlled)
+        </div>
+      )}
 
       <TrackToggle
         source={Track.Source.Camera}
@@ -173,24 +189,38 @@ export function ControlsBar({
         </button>
       )}
 
-      {/* Tutor-only: ask every student to mute their mic. LiveKit clients can't
-          force-mute another participant, so this broadcasts over the data channel
-          and each student self-mutes on receipt. */}
+      {/* Tutor-only: bulk mic controls for students. */}
       {isTutor && (
-        <button
-          onClick={onMuteAll}
-          disabled={studentCount === 0}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-rose-900/40 hover:text-rose-300 text-zinc-300 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:text-zinc-300"
-          title={
-            studentCount === 0
-              ? "No students in the room yet"
-              : "Mute every student's microphone. They'll see a notice and can unmute themselves."
-          }
-          aria-label="Mute all students"
-        >
-          <MicOff className="size-3.5" />
-          Mute all
-        </button>
+        <>
+          <button
+            onClick={onMuteAll}
+            disabled={studentCount === 0}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-rose-900/40 hover:text-rose-300 text-zinc-300 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:text-zinc-300"
+            title={
+              studentCount === 0
+                ? "No students in the room yet"
+                : "Turn off every student's microphone."
+            }
+            aria-label="Mute all students"
+          >
+            <MicOff className="size-3.5" />
+            Mute all
+          </button>
+          <button
+            onClick={onUnmuteAll}
+            disabled={studentCount === 0}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:text-zinc-300"
+            title={
+              studentCount === 0
+                ? "No students in the room yet"
+                : "Turn on every student's microphone."
+            }
+            aria-label="Unmute all students"
+          >
+            <Mic className="size-3.5" />
+            Unmute all
+          </button>
+        </>
       )}
 
       {/* Tutor-only recovery: refresh every client (including the tutor) — useful
@@ -414,21 +444,6 @@ export function ControlsBar({
             <X className="size-3.5" /> {presentKind === "video" ? "End Video" : "End Slides"}
           </button>
         </>
-      )}
-
-      {!isTutor && (
-        <button
-          onClick={onToggleHand}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
-            handRaised
-              ? "bg-amber-500/30 text-amber-400 border border-amber-500/50 animate-pulse"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-          )}
-        >
-          <HandMetal className="size-3.5" />
-          {handRaised ? "Lower Hand" : "Raise Hand"}
-        </button>
       )}
 
       <button

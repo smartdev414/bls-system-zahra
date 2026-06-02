@@ -11,7 +11,7 @@ import {
 import { Track } from "livekit-client"
 import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
-  Megaphone, UserMinus, GripVertical, HandMetal, Minus, Plus,
+  Megaphone, UserMinus, GripVertical, HandMetal, Minus, Plus, Mic, MicOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -20,6 +20,7 @@ type MenuState = {
   name: string
   isTutor: boolean
   isLocal: boolean
+  micEnabled: boolean
   x: number
   y: number
 }
@@ -38,6 +39,7 @@ export function ParticipantsPanel({
   onPopOut,
   poppedOutIds,
   onRemoveParticipant,
+  onToggleParticipantMic,
   raisedHandIds,
   onLowerHand,
   visibleIdentities,
@@ -55,6 +57,7 @@ export function ParticipantsPanel({
   onPopOut: (identity: string) => void
   poppedOutIds: string[]
   onRemoveParticipant: (identity: string, name: string) => void
+  onToggleParticipantMic?: (identity: string, name: string, enabled: boolean) => void
   raisedHandIds: Set<string>
   onLowerHand?: (identity: string) => void
   // Breakout-aware: when provided, only tiles whose identity is in the set are
@@ -289,6 +292,7 @@ export function ParticipantsPanel({
                   name: displayName,
                   isTutor,
                   isLocal,
+                  micEnabled: p.isMicrophoneEnabled,
                   x: e.clientX,
                   y: e.clientY,
                 })
@@ -367,16 +371,16 @@ export function ParticipantsPanel({
                 </div>
               )}
 
-              {/* Raised-hand badge — only students raise hands, so this never
-                  collides with the "Tutor" tag. Bottom-right corner so it's
-                  away from the pinned badge and drag-handle hint. For tutors
-                  the badge is a button that lowers the student's hand. */}
+              {/* Raised-hand badge — top-right; nudged below "Pinned" when both show. */}
               {handRaised && !isTutor && (
                 isLocalTutor && onLowerHand ? (
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onLowerHand(p.identity) }}
-                    className="absolute bottom-1 right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand"
+                    className={cn(
+                      "absolute right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand",
+                      isPinned ? "top-6" : "top-1",
+                    )}
                     title={`Click to lower ${displayName}'s hand`}
                     aria-label={`Lower ${displayName}'s hand`}
                   >
@@ -385,7 +389,10 @@ export function ParticipantsPanel({
                   </button>
                 ) : (
                   <div
-                    className="absolute bottom-1 right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none"
+                    className={cn(
+                      "absolute right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none",
+                      isPinned ? "top-6" : "top-1",
+                    )}
                     title={`${displayName} raised their hand`}
                     aria-label={`${displayName} has their hand raised`}
                   >
@@ -414,6 +421,14 @@ export function ParticipantsPanel({
           onUnpin={() => { onPin(null); setMenu(null) }}
           onPopOut={() => { onPopOut(menu.identity); setMenu(null) }}
           onToggleSpotlight={() => { onToggleSpotlight(menu.identity); setMenu(null) }}
+          onToggleMic={
+            onToggleParticipantMic
+              ? () => {
+                  onToggleParticipantMic(menu.identity, menu.name, !menu.micEnabled)
+                  setMenu(null)
+                }
+              : undefined
+          }
           onRemove={() => { onRemoveParticipant(menu.identity, menu.name); setMenu(null) }}
         />
       )}
@@ -432,6 +447,7 @@ function ContextMenu({
   onUnpin,
   onPopOut,
   onToggleSpotlight,
+  onToggleMic,
   onRemove,
 }: {
   menu: MenuState
@@ -444,6 +460,7 @@ function ContextMenu({
   onUnpin: () => void
   onPopOut: () => void
   onToggleSpotlight: () => void
+  onToggleMic?: () => void
   onRemove: () => void
 }) {
   // Show Remove / Spotlight only for tutors, and never on the tutor's own card
@@ -498,6 +515,15 @@ function ContextMenu({
           variant={isSpotlighted ? "warn" : "default"}
         >
           {isSpotlighted ? "Stop spotlighting" : "Spotlight for everyone"}
+        </MenuItem>
+      )}
+
+      {canManage && onToggleMic && (
+        <MenuItem
+          icon={menu.micEnabled ? <MicOff className="size-3.5" /> : <Mic className="size-3.5" />}
+          onClick={onToggleMic}
+        >
+          {menu.micEnabled ? "Turn microphone off" : "Turn microphone on"}
         </MenuItem>
       )}
 

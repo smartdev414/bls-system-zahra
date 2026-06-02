@@ -51,10 +51,12 @@ export type SpotlightAction =
   | { action: "sync_request" }
   | { action: "sync_response"; identity: string | null }
 
-// Tutor broadcasts a single action that asks every student to mute their own mic.
-// LiveKit clients can't force-mute another participant, so students self-mute on receipt.
+// Tutor-driven microphone control. Students cannot toggle their own mic in the UI;
+// they apply these commands locally and the tutor also updates LiveKit permissions
+// server-side so unmute can't be bypassed.
 export type MuteAction =
   | { action: "mute-all"; from: string }
+  | { action: "set-mic"; identity: string; enabled: boolean; from: string }
 
 // Session-level admin actions the tutor can issue to the whole room.
 //  - refresh: every client (including tutor) reloads its page — recovery for a frozen session.

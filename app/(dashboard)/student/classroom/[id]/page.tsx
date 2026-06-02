@@ -169,7 +169,6 @@ function EntryScreen({
   onRequestSent?: () => void
 }) {
   const [videoEnabled, setVideoEnabled] = useState(false)
-  const [audioEnabled, setAudioEnabled] = useState(true)
   const [requestOpen, setRequestOpen] = useState(false)
   const [requestMsg, setRequestMsg] = useState("")
   // Read the persisted blur preference so a returning user keeps their choice.
@@ -253,13 +252,6 @@ function EntryScreen({
           {/* Controls bar */}
           <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center gap-3 z-10">
             <DeviceToggle
-              enabled={audioEnabled}
-              onToggle={() => setAudioEnabled((v) => !v)}
-              iconOn={<Mic className="size-5" />}
-              iconOff={<MicOff className="size-5" />}
-              label={audioEnabled ? "Mic On" : "Mic Off"}
-            />
-            <DeviceToggle
               enabled={videoEnabled}
               onToggle={() => setVideoEnabled((v) => !v)}
               iconOn={<Video className="size-5" />}
@@ -278,13 +270,10 @@ function EntryScreen({
             />
           </div>
 
-          {/* Status indicators top-right */}
-          <div className="absolute top-4 right-4 flex gap-2 z-10">
-            {audioEnabled && (
-              <span className="flex items-center gap-1 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full">
-                <Mic className="size-2.5" /> Live
-              </span>
-            )}
+          <div className="absolute top-4 right-4 z-10">
+            <span className="flex items-center gap-1 bg-black/50 text-white/80 text-[10px] px-2 py-0.5 rounded-full">
+              <MicOff className="size-2.5" /> Mic controlled by tutor
+            </span>
           </div>
         </div>
 
@@ -379,14 +368,11 @@ function EntryScreen({
           )}
 
           {/* Ready label */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5">
-            <div className="flex gap-1">
-              <span className={cn("size-2 rounded-full mt-0.5 shrink-0", audioEnabled ? "bg-emerald-500" : "bg-zinc-400")} />
-              <span className={cn("text-xs", audioEnabled ? "text-foreground" : "text-muted-foreground")}>
-                Mic {audioEnabled ? "on" : "off"}
-              </span>
+          <div className="flex flex-col gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <MicOff className="size-3.5 shrink-0 text-zinc-500" />
+              <span>Microphone is controlled by your tutor during the session.</span>
             </div>
-            <span className="text-muted-foreground/50">·</span>
             <div className="flex gap-1">
               <span className={cn("size-2 rounded-full mt-0.5 shrink-0", videoEnabled ? "bg-emerald-500" : "bg-zinc-400")} />
               <span className={cn("text-xs", videoEnabled ? "text-foreground" : "text-muted-foreground")}>
@@ -675,7 +661,7 @@ export default function ClassroomRoomPage({
       serverUrl={tokenData.wsUrl}
       connect={true}
       video={false}
-      audio={true}
+      audio={false}
       onDisconnected={handleLiveKitDisconnected}
     >
       <ClassroomRoom
