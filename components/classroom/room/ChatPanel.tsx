@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import {
   Send, Hand, MessageSquare, ChevronDown, X,
-  Paperclip, Loader2, Image, Video, FileText, Trash2,
+  Paperclip, Loader2, Image, Video, FileText, Trash2, Download,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -51,16 +51,31 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
           preload="metadata"
         />
       )}
-      <a
-        href={attachment.fileUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-2 px-2.5 py-2 text-xs hover:bg-white/5 transition-colors"
-      >
+      <div className="flex items-center gap-2 px-2.5 py-2 text-xs border-t border-white/10">
         <Icon className="size-3.5 shrink-0 opacity-70" />
-        <span className="truncate flex-1">{attachment.fileName}</span>
+        <span className="truncate flex-1 min-w-0">{attachment.fileName}</span>
         <span className="text-[10px] opacity-60 shrink-0">{formatBytes(attachment.fileSize)}</span>
-      </a>
+      </div>
+      <div className="flex border-t border-white/10 divide-x divide-white/10">
+        <a
+          href={attachment.fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium hover:bg-white/5 transition-colors"
+        >
+          Open
+        </a>
+        <a
+          href={attachment.fileUrl}
+          download={attachment.fileName}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium hover:bg-white/5 transition-colors"
+        >
+          <Download className="size-3" />
+          Download
+        </a>
+      </div>
     </div>
   )
 }
@@ -232,7 +247,6 @@ export function ChatPanel({
     inputRef.current?.focus()
   }
 
-  const canAttach = !isTutor
   const canSend = !!input.trim() || !!pendingAttachment
 
   if (collapsed) {
@@ -331,11 +345,9 @@ export function ChatPanel({
             <p className="text-xs text-center opacity-70 max-w-48">
               Chat is how everyone communicates here. Say hello! 👋
             </p>
-            {canAttach && (
-              <p className="text-[11px] text-center opacity-50 max-w-52">
-                Use the paperclip to attach a photo, PDF, or video of your work.
-              </p>
-            )}
+            <p className="text-[11px] text-center opacity-50 max-w-52">
+              Use the paperclip to share a file — everyone can open or download it.
+            </p>
           </div>
         ) : (
           messages.map((m) => (
@@ -391,30 +403,26 @@ export function ChatPanel({
       )}
 
       <div className="shrink-0 p-3 border-t border-zinc-800 bg-zinc-900/80 flex gap-2 items-end">
-        {canAttach && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,application/pdf"
-              className="hidden"
-              onChange={(e) => void handleFileSelect(e.target.files)}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="shrink-0 size-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center hover:bg-zinc-700 disabled:opacity-40 transition-colors"
-              title="Attach a photo, PDF, or video of your work"
-              aria-label="Attach file"
-            >
-              {uploading ? (
-                <Loader2 className="size-4 text-zinc-300 animate-spin" />
-              ) : (
-                <Paperclip className="size-4 text-zinc-300" />
-              )}
-            </button>
-          </>
-        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,application/pdf"
+          className="hidden"
+          onChange={(e) => void handleFileSelect(e.target.files)}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="shrink-0 size-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center hover:bg-zinc-700 disabled:opacity-40 transition-colors"
+          title="Attach a file for everyone to open or download"
+          aria-label="Attach file"
+        >
+          {uploading ? (
+            <Loader2 className="size-4 text-zinc-300 animate-spin" />
+          ) : (
+            <Paperclip className="size-4 text-zinc-300" />
+          )}
+        </button>
         <textarea
           ref={inputRef}
           value={input}
@@ -426,7 +434,7 @@ export function ChatPanel({
             }
           }}
           rows={1}
-          placeholder={canAttach ? "Type a message or attach your work…" : "Type a message… (Enter to send)"}
+          placeholder="Type a message or attach a file…"
           className="flex-1 resize-none rounded-xl bg-zinc-800 border border-zinc-700 text-sm text-white placeholder:text-zinc-600 px-3 py-2 outline-none focus:border-primary/60 transition-colors max-h-24 overflow-y-auto leading-snug"
           style={{ fieldSizing: "content" } as React.CSSProperties}
         />
