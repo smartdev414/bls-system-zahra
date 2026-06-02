@@ -14,6 +14,14 @@ import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
 import { BLUR_PREF_KEY } from "@/components/classroom/blurPreference"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { useFetch, usePostCallback, usePatchCallback } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 
@@ -283,6 +291,8 @@ export default function TutorClassroomPage({
   const router = useRouter()
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
   const [ended, setEnded] = useState(false)
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
+  const [leavingBusy, setLeavingBusy] = useState(false)
 
   const { data, loading: infoLoading, error: infoError } = useFetch<SessionInfo>(
     `/api/sessions/${id}/info`,
@@ -312,18 +322,28 @@ export default function TutorClassroomPage({
     getToken({})
   }, [data, getToken, patchStatus])
 
-  const handleLeave = () => {
+  const handleDisconnected = () => {
     setEnded(true)
     router.replace(`/tutor/sessions/${id}`)
   }
 
-  const handleEndSession = async () => {
+  const handleLeaveForNow = () => {
+    setLeaveDialogOpen(false)
+    setEnded(true)
+    router.replace(`/tutor/sessions/${id}`)
+  }
+
+  const handleFinishSession = async () => {
+    if (leavingBusy) return
+    setLeavingBusy(true)
     try {
       await patchStatus({ status: "COMPLETED" })
     } catch {
       // Still navigate even if the patch fails
     } finally {
+      setLeaveDialogOpen(false)
       setEnded(true)
+      setLeavingBusy(false)
       router.replace(`/tutor/sessions/${id}`)
     }
   }
@@ -375,14 +395,50 @@ export default function TutorClassroomPage({
       connect={true}
       video={true}
       audio={true}
-      onDisconnected={handleLeave}
+      onDisconnected={handleDisconnected}
     >
       <ClassroomRoom
         isTutor={true}
         sessionId={id}
         sessionTitle={data?.session?.title ?? "Live Session"}
-        onLeave={handleEndSession}
+        onLeave={() => setLeaveDialogOpen(true)}
       />
+      <Dialog open={leaveDialogOpen} onOpenChange={(open) => !leavingBusy && setLeaveDialogOpen(open)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Leave live session?</DialogTitle>
+            <DialogDescription>
+              You can leave temporarily and come back later, or finish this session for everyone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLeaveDialogOpen(false)}
+              disabled={leavingBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleLeaveForNow}
+              disabled={leavingBusy}
+            >
+              Leave for now
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleFinishSession}
+              disabled={leavingBusy}
+            >
+              {leavingBusy ? "Finishing..." : "Finish session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </LiveKitRoom>
   )
 }
