@@ -212,11 +212,26 @@ export function ClassroomRoom({
   // at a time, handled in the render branch below.
   const [whiteboardActive, setWhiteboardActive] = useState(false)
   const [whiteboardShapes, setWhiteboardShapes] = useState<WhiteboardShape[]>([])
-  // Ref mirrors for the sync_response handler so it always sees latest values.
-  const whiteboardStateRef = useRef({ active: false, shapes: [] as WhiteboardShape[] })
+  // Students can draw only after the tutor presses "Let them write".
+  const [whiteboardStudentWrite, setWhiteboardStudentWrite] = useState(false)
+  const tutorIdentityRef = useRef<string | null>(null)
   useEffect(() => {
-    whiteboardStateRef.current = { active: whiteboardActive, shapes: whiteboardShapes }
-  }, [whiteboardActive, whiteboardShapes])
+    tutorIdentityRef.current =
+      participants.find((p) => p.metadata === "tutor")?.identity ?? null
+  }, [participants])
+  // Ref mirrors for the sync_response handler so it always sees latest values.
+  const whiteboardStateRef = useRef({
+    active: false,
+    studentWrite: false,
+    shapes: [] as WhiteboardShape[],
+  })
+  useEffect(() => {
+    whiteboardStateRef.current = {
+      active: whiteboardActive,
+      studentWrite: whiteboardStudentWrite,
+      shapes: whiteboardShapes,
+    }
+  }, [whiteboardActive, whiteboardStudentWrite, whiteboardShapes])
 
   // ── Breakout rooms state ───────────────────────────────────────────────────
   // Simulated breakouts — everyone stays in the same LiveKit room, but each
@@ -586,21 +601,34 @@ export function ClassroomRoom({
   })
 
   // ── Data channel: whiteboard ───────────────────────────────────────────────
-  // All participants can add/update/delete shapes; only the tutor can start,
-  // stop, or clear. Everyone echoes their own actions locally first, so we
-  // de-dupe here by only applying shapes we don't already have.
+  // Tutor controls start/stop/clear and whether students may draw. Students
+  // only add/update/delete when `student_write` is enabled. Everyone echoes
+  // locally first; receive handler de-dupes by id.
 
   const { send: sendWhiteboard } = useDataChannel(WHITEBOARD_TOPIC, (msg) => {
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as WhiteboardAction
+      const senderId = msg.from?.identity
+      const tutorId = tutorIdentityRef.current
+
+      const isFromTutor = !!(tutorId && senderId === tutorId)
+      const studentWriteAllowed = () => whiteboardStateRef.current.studentWrite
+
+      const allowStudentMutation = () => studentWriteAllowed() || isFromTutor
 
       if (data.action === "start") {
         setWhiteboardActive(true)
+        setWhiteboardStudentWrite(false)
         return
       }
       if (data.action === "stop") {
         setWhiteboardActive(false)
+        setWhiteboardStudentWrite(false)
         setWhiteboardShapes([])
+        return
+      }
+      if (data.action === "student_write") {
+        setWhiteboardStudentWrite(data.enabled)
         return
       }
       if (data.action === "clear") {
@@ -608,18 +636,21 @@ export function ClassroomRoom({
         return
       }
       if (data.action === "add") {
+        if (!allowStudentMutation() && data.shape.author !== tutorId) return
         setWhiteboardShapes((prev) =>
           prev.some((s) => s.id === data.shape.id) ? prev : [...prev, data.shape]
         )
         return
       }
       if (data.action === "update") {
+        if (!allowStudentMutation() && data.shape.author !== tutorId) return
         setWhiteboardShapes((prev) =>
           prev.map((s) => (s.id === data.shape.id ? data.shape : s))
         )
         return
       }
       if (data.action === "delete") {
+        if (!allowStudentMutation() && !isFromTutor) return
         setWhiteboardShapes((prev) => prev.filter((s) => s.id !== data.id))
         return
       }
@@ -630,6 +661,7 @@ export function ClassroomRoom({
         const response: WhiteboardAction = {
           action: "sync_response",
           active: snapshot.active,
+          studentWrite: snapshot.studentWrite,
           shapes: snapshot.shapes,
         }
         try {
@@ -639,6 +671,7 @@ export function ClassroomRoom({
       }
       if (data.action === "sync_response" && !isTutor) {
         setWhiteboardActive(data.active)
+        setWhiteboardStudentWrite(data.studentWrite)
         setWhiteboardShapes(data.shapes)
         return
       }
@@ -914,8 +947,8 @@ export function ClassroomRoom({
   // ── Chat handler ───────────────────────────────────────────────────────────
 
   const handleSend = useCallback(
-    (text: string, type: MsgType) => {
-      const msg: Omit<ChatMsg, "id"> = { from: localName, text, ts: Date.now(), type }
+    (text: string, type: MsgType, attachment?: ChatMsg["attachment"]) => {
+      const msg: Omit<ChatMsg, "id"> = { from: localName, text, ts: Date.now(), type, attachment }
       sendChat(enc.encode(JSON.stringify(msg)), { reliable: true })
       setMessages((prev) => [...prev, { ...msg, id: `local-${Date.now()}` }])
     },
@@ -1561,9 +1594,9 @@ export function ClassroomRoom({
     setTimeout(() => window.location.reload(), 800)
   }, [isTutor, connectionState, localName, sendControl])
 
-  // ── Whiteboard handlers (start/stop tutor-only; add/update/delete for all) ─
-  // Each action applies optimistically to the local state and then broadcasts.
-  // The receive handler de-dupes by id so echoes don't duplicate shapes.
+  // ── Whiteboard handlers (start/stop/clear tutor-only; draw when allowed) ───
+
+  const canWriteWhiteboard = isTutor || whiteboardStudentWrite
 
   const safeSendWhiteboard = useCallback((data: WhiteboardAction) => {
     if (connectionState !== ConnectionState.Connected) return
@@ -1580,6 +1613,7 @@ export function ClassroomRoom({
     if (!isTutor) return
     if (whiteboardActive) {
       setWhiteboardActive(false)
+      setWhiteboardStudentWrite(false)
       setWhiteboardShapes([])
       safeSendWhiteboard({ action: "stop" })
       setMessages((prev) => [
@@ -1601,13 +1635,14 @@ export function ClassroomRoom({
         safeSendPpt({ action: "stop" })
       }
       setWhiteboardActive(true)
+      setWhiteboardStudentWrite(false)
       safeSendWhiteboard({ action: "start" })
       setMessages((prev) => [
         ...prev,
         {
           id: `sys-wb-start-${Date.now()}`,
           from: "system",
-          text: "Tutor opened the whiteboard ✏️ — everyone can draw and type.",
+          text: "Tutor opened the whiteboard ✏️ — only the tutor can draw for now.",
           ts: Date.now(),
           type: "system",
         },
@@ -1617,22 +1652,44 @@ export function ClassroomRoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTutor, whiteboardActive, pptActive, safeSendWhiteboard])
 
+  const handleToggleStudentWrite = useCallback(() => {
+    if (!isTutor || !whiteboardActive) return
+    const enabled = !whiteboardStudentWrite
+    setWhiteboardStudentWrite(enabled)
+    safeSendWhiteboard({ action: "student_write", enabled })
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-wb-write-${Date.now()}`,
+        from: "system",
+        text: enabled
+          ? "Tutor let students write on the whiteboard ✏️"
+          : "Tutor took back whiteboard control — students can view only.",
+        ts: Date.now(),
+        type: "system",
+      },
+    ])
+  }, [isTutor, whiteboardActive, whiteboardStudentWrite, safeSendWhiteboard])
+
   const handleAddShape = useCallback((shape: WhiteboardShape) => {
+    if (!canWriteWhiteboard) return
     setWhiteboardShapes((prev) =>
       prev.some((s) => s.id === shape.id) ? prev : [...prev, shape]
     )
     safeSendWhiteboard({ action: "add", shape })
-  }, [safeSendWhiteboard])
+  }, [canWriteWhiteboard, safeSendWhiteboard])
 
   const handleUpdateShape = useCallback((shape: WhiteboardShape) => {
+    if (!canWriteWhiteboard) return
     setWhiteboardShapes((prev) => prev.map((s) => (s.id === shape.id ? shape : s)))
     safeSendWhiteboard({ action: "update", shape })
-  }, [safeSendWhiteboard])
+  }, [canWriteWhiteboard, safeSendWhiteboard])
 
   const handleDeleteShape = useCallback((id: string) => {
+    if (!canWriteWhiteboard) return
     setWhiteboardShapes((prev) => prev.filter((s) => s.id !== id))
     safeSendWhiteboard({ action: "delete", id })
-  }, [safeSendWhiteboard])
+  }, [canWriteWhiteboard, safeSendWhiteboard])
 
   const handleClearBoard = useCallback(() => {
     if (!isTutor) return
@@ -2170,6 +2227,9 @@ export function ClassroomRoom({
               <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800">
                 <WhiteboardPanel
                   isTutor={isTutor}
+                  canWrite={canWriteWhiteboard}
+                  studentsCanWrite={whiteboardStudentWrite}
+                  onToggleStudentWrite={handleToggleStudentWrite}
                   localIdentity={localParticipant.identity}
                   shapes={whiteboardShapes}
                   onAdd={handleAddShape}
@@ -2369,6 +2429,7 @@ export function ClassroomRoom({
               collapsed={!chatOpen}
               onToggleCollapse={() => setChatOpen((v) => !v)}
               isTutor={isTutor}
+              sessionId={sessionId}
               onLowerHand={isTutor ? handleLowerHand : undefined}
               onLowerAllHands={isTutor ? handleLowerAllHands : undefined}
             />

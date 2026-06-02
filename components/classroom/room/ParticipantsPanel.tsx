@@ -11,7 +11,7 @@ import {
 import { Track } from "livekit-client"
 import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
-  Megaphone, UserMinus, GripVertical, HandMetal, Minus, Plus, Mic, MicOff,
+  Megaphone, UserMinus, GripVertical, HandMetal, Minus, Plus, Mic, MicOff, Monitor,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -75,6 +75,7 @@ export function ParticipantsPanel({
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
   const camTracks            = useTracks([Track.Source.Camera])
+  const screenTracks         = useTracks([Track.Source.ScreenShare])
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -114,12 +115,17 @@ export function ParticipantsPanel({
           return visibleIdentities.has(p.identity)
         })
         .map((p) => {
-          const trackRef = camTracks.find(
+          const screenRef = screenTracks.find(
             (t) => t.participant.identity === p.identity && isTrackReference(t),
           )
-          return { p, trackRef, camOn: !!trackRef }
+          const camRef = camTracks.find(
+            (t) => t.participant.identity === p.identity && isTrackReference(t),
+          )
+          const trackRef = screenRef ?? camRef
+          const camOn = !!trackRef
+          return { p, trackRef, camOn, sharingScreen: !!screenRef }
         }),
-    [allParticipants, camTracks, visibleIdentities, localParticipant.identity],
+    [allParticipants, camTracks, screenTracks, visibleIdentities, localParticipant.identity],
   )
 
   // Keep manualOrder in sync with the live participant list: drop anyone who
@@ -231,7 +237,7 @@ export function ParticipantsPanel({
       </div>
 
       <div className="overflow-x-auto flex items-center gap-2 px-2 py-2 min-w-0 flex-1">
-        {sorted.map(({ p, trackRef, camOn }) => {
+        {sorted.map(({ p, trackRef, camOn, sharingScreen }) => {
           const isLocal     = p.identity === localParticipant.identity
           const isPinned    = pinnedId === p.identity
           const isTutor     = p.metadata === "tutor"
@@ -346,6 +352,13 @@ export function ParticipantsPanel({
               {isPinned && (
                 <div className="absolute top-1 right-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold">
                   Pinned
+                </div>
+              )}
+
+              {sharingScreen && !isTutor && (
+                <div className="absolute bottom-7 left-1 bg-emerald-600/90 text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 z-10">
+                  <Monitor className="size-2.5" />
+                  Screen
                 </div>
               )}
 

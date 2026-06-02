@@ -1,11 +1,19 @@
 export type MsgType = "text" | "reaction" | "system"
 
+export type ChatAttachment = {
+  fileUrl: string
+  fileName: string
+  fileSize: number
+  mimeType: string
+}
+
 export type ChatMsg = {
   id: string
   from: string
   text: string
   ts: number
   type: MsgType
+  attachment?: ChatAttachment
 }
 
 export type RaisedHand = {
@@ -101,12 +109,13 @@ export type WhiteboardShape = WhiteboardStroke | WhiteboardText
 export type WhiteboardAction =
   | { action: "start" }                                            // tutor opens the board for everyone
   | { action: "stop" }                                             // tutor closes the board
-  | { action: "add";    shape: WhiteboardShape }                   // any participant adds a shape
-  | { action: "update"; shape: WhiteboardShape }                   // any participant moves/edits a shape
-  | { action: "delete"; id: string }                               // any participant erases a shape
+  | { action: "student_write"; enabled: boolean }                  // tutor allows/revokes student drawing
+  | { action: "add";    shape: WhiteboardShape }                   // tutor (always) or students when enabled
+  | { action: "update"; shape: WhiteboardShape }                   // tutor (always) or students when enabled
+  | { action: "delete"; id: string }                               // tutor (always) or students when enabled
   | { action: "clear" }                                            // tutor wipes everything
   | { action: "sync_request" }                                     // late joiner asks the tutor
-  | { action: "sync_response"; active: boolean; shapes: WhiteboardShape[] }
+  | { action: "sync_response"; active: boolean; studentWrite: boolean; shapes: WhiteboardShape[] }
 
 // Discriminates on `kind` so the classroom can branch after upload:
 //   - "slides" goes through SlidePicker, PptSlideViewer, next/prev, SlideTray.

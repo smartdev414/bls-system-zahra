@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import {
-  Pen, Eraser, Trash2, X, PencilLine, Type, GripVertical,
+  Pen, Eraser, Trash2, X, PencilLine, Type, GripVertical, Users,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { WhiteboardShape, WhiteboardStroke, WhiteboardText } from "./types"
@@ -86,6 +86,9 @@ function uid() {
 
 export function WhiteboardPanel({
   isTutor,
+  canWrite,
+  studentsCanWrite,
+  onToggleStudentWrite,
   localIdentity,
   shapes,
   onAdd,
@@ -95,6 +98,9 @@ export function WhiteboardPanel({
   onStop,
 }: {
   isTutor: boolean
+  canWrite: boolean
+  studentsCanWrite: boolean
+  onToggleStudentWrite: () => void
   localIdentity: string
   shapes: WhiteboardShape[]
   onAdd:    (shape: WhiteboardShape) => void
@@ -244,6 +250,7 @@ export function WhiteboardPanel({
 
   // ── Pointer: pen / eraser ──────────────────────────────────────────────────
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canWrite) return
     const norm = toNorm(e.clientX, e.clientY)
     if (!norm) return
 
@@ -311,6 +318,7 @@ export function WhiteboardPanel({
 
   // ── Text box: drag to reposition ─────────────────────────────────────────────
   const handleBoxDragDown = (e: React.PointerEvent, box: WhiteboardText) => {
+    if (!canWrite) return
     e.stopPropagation()
     const norm = toNorm(e.clientX, e.clientY)
     if (!norm) return
@@ -371,8 +379,15 @@ export function WhiteboardPanel({
         <div className="flex items-center gap-1 mr-2">
           <PencilLine className="size-3.5 text-amber-400" />
           <span className="text-xs font-bold text-white">Whiteboard</span>
+          {!canWrite && (
+            <span className="text-[10px] font-medium text-zinc-400 bg-zinc-700/80 px-1.5 py-0.5 rounded-md ml-1">
+              View only
+            </span>
+          )}
         </div>
 
+        {canWrite && (
+          <>
         <div className="h-5 w-px bg-zinc-700 mx-1" />
 
         {/* Tools */}
@@ -435,8 +450,30 @@ export function WhiteboardPanel({
             />
           ))}
         </div>
+          </>
+        )}
 
         <div className="ml-auto flex items-center gap-1.5">
+          {isTutor && (
+            <button
+              type="button"
+              onClick={onToggleStudentWrite}
+              className={cn(
+                "flex items-center gap-1 px-2.5 h-8 rounded-lg text-xs font-medium transition-colors border",
+                studentsCanWrite
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30"
+                  : "bg-zinc-700/60 hover:bg-zinc-700 text-zinc-300 border-transparent"
+              )}
+              title={
+                studentsCanWrite
+                  ? "Take back control — students can view but not draw"
+                  : "Let students draw and type on the whiteboard"
+              }
+            >
+              <Users className="size-3.5" />
+              {studentsCanWrite ? "Take control" : "Let them write"}
+            </button>
+          )}
           {isTutor && (
             <button
               onClick={() => {
@@ -471,7 +508,11 @@ export function WhiteboardPanel({
         onPointerCancel={handlePointerUp}
         className={cn(
           "flex-1 relative overflow-hidden bg-white",
-          tool === "text" ? "cursor-text" : "cursor-crosshair"
+          !canWrite
+            ? "cursor-default"
+            : tool === "text"
+              ? "cursor-text"
+              : "cursor-crosshair"
         )}
         style={{ touchAction: "none" }}
       >
@@ -498,6 +539,7 @@ export function WhiteboardPanel({
               onPointerDown={(e) => e.stopPropagation()}
             >
               {/* Drag handle */}
+              {canWrite && (
               <button
                 type="button"
                 onPointerDown={(e) => handleBoxDragDown(e, box)}
@@ -510,6 +552,7 @@ export function WhiteboardPanel({
               >
                 <GripVertical className="size-4" />
               </button>
+              )}
 
               {isEditing ? (
                 <textarea
@@ -547,6 +590,7 @@ export function WhiteboardPanel({
               ) : (
                 <div
                   onPointerDown={(e) => {
+                    if (!canWrite) return
                     e.stopPropagation()
                     if (tool === "eraser") { onDelete(box.id); return }
                     if (editingId && editingId !== box.id) {
@@ -565,6 +609,7 @@ export function WhiteboardPanel({
               )}
 
               {/* Delete this box */}
+              {canWrite && (
               <button
                 type="button"
                 onPointerDown={(e) => { e.stopPropagation(); onDelete(box.id) }}
@@ -574,6 +619,7 @@ export function WhiteboardPanel({
               >
                 <X className="size-3.5" />
               </button>
+              )}
             </div>
           )
         })}

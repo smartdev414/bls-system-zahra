@@ -156,14 +156,17 @@ export function ControlsBar({
         {blurEnabled ? "Blur on" : "Blur"}
       </button>
 
-      {isTutor && (
-        <TrackToggle
-          source={Track.Source.ScreenShare}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=true]:bg-emerald-900/50 data-[enabled=true]:text-emerald-400 whitespace-nowrap"
-        >
-          <Monitor className="size-3.5" /> Screen
-        </TrackToggle>
-      )}
+      <TrackToggle
+        source={Track.Source.ScreenShare}
+        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=true]:bg-emerald-900/50 data-[enabled=true]:text-emerald-400 whitespace-nowrap"
+        title={
+          isTutor
+            ? "Share your screen with the class"
+            : "Share your screen — your tutor can pin and show it to everyone"
+        }
+      >
+        <Monitor className="size-3.5" /> Screen
+      </TrackToggle>
 
       {/* Privacy toggle — only shown while the tutor is actively screen-sharing.
           "Private" hides the feed from students (they see a placeholder) without
@@ -296,9 +299,9 @@ export function ControlsBar({
         </button>
       )}
 
-      {/* Tutor-only: open/close the shared whiteboard. Once open, students and
-          tutor can draw + type on the same surface. Disabled while another
-          presentation (slides/video) is live — one shared surface at a time. */}
+      {/* Tutor-only: open/close the shared whiteboard. Only the tutor draws by
+          default; use "Let them write" on the board to hand control to students.
+          Disabled while slides/video are live — one shared surface at a time. */}
       {isTutor && (
         <button
           onClick={onToggleWhiteboard}
@@ -315,7 +318,7 @@ export function ControlsBar({
               ? "Stop presenting before opening the whiteboard"
               : whiteboardActive
                 ? "Close the whiteboard for everyone"
-                : "Open a shared whiteboard — everyone can draw and type"
+                : "Open a shared whiteboard — tutor draws; students view until you let them write"
           }
         >
           <PencilLine className="size-3.5" />

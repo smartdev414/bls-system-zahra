@@ -1,10 +1,69 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Hand, MessageSquare, ChevronDown, X } from "lucide-react"
+import {
+  Send, Hand, MessageSquare, ChevronDown, X,
+  Paperclip, Loader2, Image, Video, FileText, Trash2,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import { QUICK_REACTIONS } from "./constants"
-import type { ChatMsg, MsgType, RaisedHand } from "./types"
+import type { ChatAttachment, ChatMsg, MsgType, RaisedHand } from "./types"
+
+const ALLOWED_MIME = new Set([
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "video/mp4", "video/webm", "video/quicktime",
+  "application/pdf",
+])
+
+function fileIcon(mimeType: string) {
+  if (mimeType.startsWith("video/")) return Video
+  if (mimeType.startsWith("image/")) return Image
+  return FileText
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
+  const Icon = fileIcon(attachment.mimeType)
+  const isImage = attachment.mimeType.startsWith("image/")
+  const isVideo = attachment.mimeType.startsWith("video/")
+
+  return (
+    <div className="mt-1.5 overflow-hidden rounded-xl border border-white/10 bg-black/20">
+      {isImage && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={attachment.fileUrl}
+          alt={attachment.fileName}
+          className="max-h-48 w-full object-contain bg-zinc-950"
+        />
+      )}
+      {isVideo && (
+        <video
+          src={attachment.fileUrl}
+          controls
+          playsInline
+          className="max-h-48 w-full bg-zinc-950"
+          preload="metadata"
+        />
+      )}
+      <a
+        href={attachment.fileUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 px-2.5 py-2 text-xs hover:bg-white/5 transition-colors"
+      >
+        <Icon className="size-3.5 shrink-0 opacity-70" />
+        <span className="truncate flex-1">{attachment.fileName}</span>
+        <span className="text-[10px] opacity-60 shrink-0">{formatBytes(attachment.fileSize)}</span>
+      </a>
+    </div>
+  )
+}
 
 function MessageBubble({ msg, isOwn }: { msg: ChatMsg; isOwn: boolean }) {
   const time = new Date(msg.ts).toLocaleTimeString("en-GB", {
@@ -44,7 +103,11 @@ function MessageBubble({ msg, isOwn }: { msg: ChatMsg; isOwn: boolean }) {
             : "bg-zinc-800 text-zinc-100 rounded-2xl rounded-bl-sm"
         )}
       >
-        {msg.text}
+        {msg.text && <p>{msg.text}</p>}
+        {msg.attachment && <AttachmentPreview attachment={msg.attachment} />}
+        {!msg.text && !msg.attachment && (
+          <span className="opacity-60 italic">Empty message</span>
+        )}
       </div>
       <span className="text-[10px] text-zinc-600 px-1">{time}</span>
     </div>
@@ -60,26 +123,30 @@ export function ChatPanel({
   collapsed,
   onToggleCollapse,
   isTutor,
+  sessionId,
   onLowerHand,
   onLowerAllHands,
 }: {
   messages: ChatMsg[]
   localName: string
   raisedHands: RaisedHand[]
-  onSend: (text: string, type: MsgType) => void
+  onSend: (text: string, type: MsgType, attachment?: ChatAttachment) => void
   flash: boolean
   collapsed: boolean
   onToggleCollapse: () => void
-  // Tutor-only controls for dismissing raised hands from the chat strip.
   isTutor?: boolean
+  sessionId: string
   onLowerHand?: (identity: string) => void
   onLowerAllHands?: () => void
 }) {
-  const [input, setInput]   = useState("")
-  const [unread, setUnread] = useState(0)
+  const [input, setInput]       = useState("")
+  const [unread, setUnread]     = useState(0)
   const [atBottom, setAtBottom] = useState(true)
-  const listRef  = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const listRef      = useRef<HTMLDivElement>(null)
+  const inputRef     = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const el = listRef.current
@@ -109,13 +176,64 @@ export function ChatPanel({
     setUnread(0)
   }
 
+  async function handleFileSelect(files: FileList | null) {
+    if (!files || files.length === 0) return
+    const file = files[0]
+
+    if (!ALLOWED_MIME.has(file.type)) {
+      toast.error(`"${file.name}" is not supported. Use images, PDF, or video.`)
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error(`"${file.name}" exceeds 15 MB`)
+      return
+    }
+
+    setUploading(true)
+    try {
+      const presignRes = await fetch(`/api/sessions/${sessionId}/chat-upload-presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, contentType: file.type, fileSize: file.size }),
+      })
+      if (!presignRes.ok) {
+        const err = await presignRes.json() as { message?: string }
+        throw new Error(err.message ?? "Could not get upload URL")
+      }
+      const { presignedUrl, fileUrl } = await presignRes.json() as { presignedUrl: string; fileUrl: string }
+
+      const uploadRes = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      })
+      if (!uploadRes.ok) throw new Error("Upload failed")
+
+      setPendingAttachment({
+        fileUrl,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+      })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Upload failed")
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
   const handleSend = () => {
     const text = input.trim()
-    if (!text) return
-    onSend(text, "text")
+    if (!text && !pendingAttachment) return
+    onSend(text, "text", pendingAttachment ?? undefined)
     setInput("")
+    setPendingAttachment(null)
     inputRef.current?.focus()
   }
+
+  const canAttach = !isTutor
+  const canSend = !!input.trim() || !!pendingAttachment
 
   if (collapsed) {
     return (
@@ -134,7 +252,7 @@ export function ChatPanel({
         </button>
         <div className="flex-1 flex items-center justify-center">
           <span
-            className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest"
+            className="text-[10px] font-bold text-white uppercase tracking-widest"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
           >
             Live Chat{unread > 0 ? ` · ${unread} new` : ""}
@@ -213,6 +331,11 @@ export function ChatPanel({
             <p className="text-xs text-center opacity-70 max-w-48">
               Chat is how everyone communicates here. Say hello! 👋
             </p>
+            {canAttach && (
+              <p className="text-[11px] text-center opacity-50 max-w-52">
+                Use the paperclip to attach a photo, PDF, or video of your work.
+              </p>
+            )}
           </div>
         ) : (
           messages.map((m) => (
@@ -246,7 +369,52 @@ export function ChatPanel({
         ))}
       </div>
 
+      {pendingAttachment && (
+        <div className="shrink-0 px-3 pt-2 flex items-center gap-2 bg-zinc-900/80">
+          <div className="flex items-center gap-2 flex-1 min-w-0 rounded-lg bg-zinc-800 border border-zinc-700 px-2.5 py-1.5">
+            {(() => {
+              const Icon = fileIcon(pendingAttachment.mimeType)
+              return <Icon className="size-3.5 shrink-0 text-zinc-400" />
+            })()}
+            <span className="text-xs text-zinc-200 truncate flex-1">{pendingAttachment.fileName}</span>
+            <span className="text-[10px] text-zinc-500 shrink-0">{formatBytes(pendingAttachment.fileSize)}</span>
+            <button
+              onClick={() => setPendingAttachment(null)}
+              className="shrink-0 text-zinc-500 hover:text-rose-400 transition-colors"
+              title="Remove attachment"
+              aria-label="Remove attachment"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="shrink-0 p-3 border-t border-zinc-800 bg-zinc-900/80 flex gap-2 items-end">
+        {canAttach && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,application/pdf"
+              className="hidden"
+              onChange={(e) => void handleFileSelect(e.target.files)}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="shrink-0 size-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center hover:bg-zinc-700 disabled:opacity-40 transition-colors"
+              title="Attach a photo, PDF, or video of your work"
+              aria-label="Attach file"
+            >
+              {uploading ? (
+                <Loader2 className="size-4 text-zinc-300 animate-spin" />
+              ) : (
+                <Paperclip className="size-4 text-zinc-300" />
+              )}
+            </button>
+          </>
+        )}
         <textarea
           ref={inputRef}
           value={input}
@@ -258,13 +426,13 @@ export function ChatPanel({
             }
           }}
           rows={1}
-          placeholder="Type a message… (Enter to send)"
+          placeholder={canAttach ? "Type a message or attach your work…" : "Type a message… (Enter to send)"}
           className="flex-1 resize-none rounded-xl bg-zinc-800 border border-zinc-700 text-sm text-white placeholder:text-zinc-600 px-3 py-2 outline-none focus:border-primary/60 transition-colors max-h-24 overflow-y-auto leading-snug"
           style={{ fieldSizing: "content" } as React.CSSProperties}
         />
         <button
           onClick={handleSend}
-          disabled={!input.trim()}
+          disabled={!canSend || uploading}
           className="shrink-0 size-9 rounded-xl bg-primary flex items-center justify-center hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
         >
           <Send className="size-4 text-white" />

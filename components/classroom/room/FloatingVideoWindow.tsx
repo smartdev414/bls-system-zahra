@@ -49,11 +49,16 @@ export function FloatingVideoWindow({
 
   const participants = useParticipants()
   const camTracks    = useTracks([Track.Source.Camera], { onlySubscribed: false })
+  const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
 
   const participant = participants.find((p) => p.identity === identity)
-  const trackRef    = camTracks.find(
+  const screenRef   = screenTracks.find(
     (t) => t.participant.identity === identity && isTrackReference(t),
   )
+  const camRef      = camTracks.find(
+    (t) => t.participant.identity === identity && isTrackReference(t),
+  )
+  const trackRef    = screenRef ?? camRef
   const displayName = participant?.name ?? identity
 
   useEffect(() => {
