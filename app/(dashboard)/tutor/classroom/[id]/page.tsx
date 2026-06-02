@@ -12,6 +12,7 @@ import { createLocalVideoTrack, type LocalVideoTrack } from "livekit-client"
 import "@livekit/components-styles"
 import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
 import { BLUR_PREF_KEY } from "@/components/classroom/blurPreference"
+import { localCameraClassName } from "@/components/classroom/localCameraView"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -157,14 +158,14 @@ function TutorEntryScreen({
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-5 gap-0 rounded-2xl overflow-hidden shadow-2xl border border-border">
 
-        {/* Camera preview */}
-        <div className="md:col-span-3 relative bg-zinc-900 min-h-[320px] flex items-center justify-center">
+        {/* Camera preview — right on desktop, mirrored for natural self-view */}
+        <div className="md:col-span-3 md:order-2 order-1 relative bg-zinc-900 aspect-video md:aspect-auto md:min-h-[320px] flex items-center justify-center">
           <video
             ref={cameraRef}
             muted
             playsInline
             className={cn(
-              "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+              localCameraClassName(true, "absolute inset-0 w-full h-full object-cover transition-opacity duration-300"),
               videoEnabled ? "opacity-100" : "opacity-0",
             )}
           />
@@ -205,8 +206,8 @@ function TutorEntryScreen({
           </div>
         </div>
 
-        {/* Session info + start */}
-        <div className="md:col-span-2 bg-card flex flex-col p-7 gap-5">
+        {/* Session info + start — left on desktop */}
+        <div className="md:col-span-2 md:order-1 order-2 bg-card flex flex-col p-7 gap-5">
           <div>
             <Badge
               variant="outline"

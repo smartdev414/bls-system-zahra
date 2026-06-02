@@ -8,7 +8,9 @@ export const SPOTLIGHT_TOPIC = "cls-spotlight"
 export const MUTE_TOPIC      = "cls-mute-all"
 export const CONTROL_TOPIC   = "cls-control"
 export const WHITEBOARD_TOPIC = "cls-whiteboard"
-export const BREAKOUT_TOPIC  = "cls-breakouts"
+export const BREAKOUT_TOPIC       = "cls-breakouts"
+/** Seconds shown to everyone after tutor clicks End breakouts before the room resets. */
+export const BREAKOUT_WRAP_UP_SEC = 30
 export const NUDGE_TOPIC     = "cls-nudge"
 export const SCREEN_TOPIC    = "cls-screen"
 

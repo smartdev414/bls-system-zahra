@@ -14,6 +14,7 @@ import {
   Megaphone, UserMinus, GripVertical, HandMetal, Minus, Plus, Mic, MicOff, Monitor,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { localCameraClassName } from "@/components/classroom/localCameraView"
 
 type MenuState = {
   identity: string
@@ -282,7 +283,7 @@ export function ParticipantsPanel({
                 setDropTargetId(null)
               }}
               className={cn(
-                "relative rounded-xl overflow-hidden transition-all h-full aspect-square bg-zinc-800 border shrink-0 group",
+                "relative rounded-xl overflow-hidden transition-all h-full aspect-video bg-zinc-800 border shrink-0 group",
                 isTutor
                   ? "border-amber-500/30 cursor-default"
                   : isPinned
@@ -317,7 +318,10 @@ export function ParticipantsPanel({
               )}
               {camOn && trackRef ? (
                 <>
-                  <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
+                  <VideoTrack
+                    trackRef={trackRef}
+                    className={localCameraClassName(isLocal && !sharingScreen)}
+                  />
                   <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-1.5 pb-0.5 pointer-events-none">
                     <p className="text-[9px] text-white truncate font-medium">
                       {isLocal ? "You" : displayName}

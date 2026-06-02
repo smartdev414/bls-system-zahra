@@ -11,9 +11,11 @@ import {
   ArrowLeft, Megaphone, Info, Maximize2, Minimize2, HandMetal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { localCameraClassName } from "@/components/classroom/localCameraView"
 
 export function PinnedVideoArea({
   identity,
+  localIdentity,
   containerRef,
   isFullscreen,
   onToggleFullscreen,
@@ -25,6 +27,7 @@ export function PinnedVideoArea({
   onLowerHand,
 }: {
   identity: string
+  localIdentity: string
   containerRef: React.RefObject<HTMLDivElement | null>
   isFullscreen: boolean
   onToggleFullscreen: () => void
@@ -50,11 +53,18 @@ export function PinnedVideoArea({
   )
   const active      = screenRef ?? camRef
   const displayName = participant?.name ?? identity
+  const mirrorLocalCamera = identity === localIdentity && !screenRef
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden group">
       {active ? (
-        <VideoTrack trackRef={active} className="w-full h-full object-contain" />
+        <VideoTrack
+          trackRef={active}
+          className={localCameraClassName(
+            mirrorLocalCamera,
+            "w-full h-full object-contain",
+          )}
+        />
       ) : (
         <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
           <div className="size-20 rounded-full bg-primary/10 flex items-center justify-center text-primary text-3xl font-bold">

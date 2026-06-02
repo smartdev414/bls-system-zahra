@@ -164,8 +164,10 @@ export type NudgeAction =
 
 export type BreakoutAction =
   | { action: "start"; groups: BreakoutGroup[]; visitingGroupId: string | null; startedAt: number; durationMin?: number | null }
-  | { action: "update"; groups: BreakoutGroup[] }                     // tutor edits assignments live
+  // Full snapshot while live — receivers must set `active` so late/missed `start` still works.
+  | { action: "update"; groups: BreakoutGroup[]; startedAt: number; durationMin?: number | null }
   | { action: "visit"; groupId: string | null }                       // tutor enters/leaves a group (audio bridge)
+  | { action: "closing"; endsAt: number }                             // wrap-up countdown before returning to main room
   | { action: "stop" }
   | { action: "sync_request" }
   | { action: "sync_response"
@@ -174,6 +176,7 @@ export type BreakoutAction =
       visitingGroupId: string | null
       startedAt: number | null
       durationMin: number | null
+      closingAt: number | null
     }
 
 // ─── Screen share privacy ─────────────────────────────────────────────────────

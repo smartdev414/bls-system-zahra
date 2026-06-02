@@ -12,7 +12,7 @@ import {
 import { ConnectionState, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
-  Radio, Users, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
+  Radio, Users, Users2, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
   MessageSquare, X, HandMetal,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -23,6 +23,7 @@ import { SlidePicker } from "./SlidePicker"
 import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
   BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC,
+  BREAKOUT_WRAP_UP_SEC,
   POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS,
   enc, dec,
 } from "./room/constants"
@@ -243,6 +244,7 @@ export function ClassroomRoom({
   const [visitingGroupId,    setVisitingGroupId]    = useState<string | null>(null)
   const [breakoutStartedAt,  setBreakoutStartedAt]  = useState<number | null>(null)
   const [breakoutDurationMin,setBreakoutDurationMin]= useState<number | null>(null)
+  const [breakoutClosingAt,  setBreakoutClosingAt]  = useState<number | null>(null)
   const [breakoutsPanelOpen, setBreakoutsPanelOpen] = useState(false)
   const [breakoutMonitorOpen,setBreakoutMonitorOpen]= useState(false)
   // Mirrors for sync_response so the handler always sees the latest values.
@@ -252,6 +254,7 @@ export function ClassroomRoom({
     visitingGroupId: null as string | null,
     startedAt: null as number | null,
     durationMin: null as number | null,
+    closingAt: null as number | null,
   })
   useEffect(() => {
     breakoutStateRef.current = {
@@ -260,8 +263,14 @@ export function ClassroomRoom({
       visitingGroupId,
       startedAt: breakoutStartedAt,
       durationMin: breakoutDurationMin,
+      closingAt: breakoutClosingAt,
     }
-  }, [breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin])
+  }, [breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt])
+
+  // Students: keep the participant strip open during breakouts so group cameras stay visible.
+  useEffect(() => {
+    if (!isTutor && breakoutsActive) setParticipantsOpen(true)
+  }, [isTutor, breakoutsActive])
 
   // ── Finger pointer state ───────────────────────────────────────────────────
   const [pointerMode,   setPointerMode]   = useState(false)
@@ -721,12 +730,29 @@ export function ClassroomRoom({
       }
 
       if (data.action === "update") {
+        setBreakoutsActive(true)
         setBreakoutGroups(data.groups)
+        setBreakoutStartedAt(data.startedAt)
+        setBreakoutDurationMin(data.durationMin ?? null)
         if (!isTutor) {
           const ownGroup = data.groups.find((g) => g.memberIds.includes(localParticipant.identity))
           if (ownGroup) {
             toast.info(`Group updated — you're now in ${ownGroup.name}`)
+          } else {
+            toast.info("Breakouts are live", {
+              description: "The tutor hasn't put you in a group yet — hang tight.",
+            })
           }
+        }
+        return
+      }
+
+      if (data.action === "closing") {
+        setBreakoutClosingAt(data.endsAt)
+        if (!isTutor) {
+          toast.info("Breakouts ending soon", {
+            description: "Wrap up — we'll return to the main room shortly.",
+          })
         }
         return
       }
@@ -751,6 +777,7 @@ export function ClassroomRoom({
         setVisitingGroupId(null)
         setBreakoutStartedAt(null)
         setBreakoutDurationMin(null)
+        setBreakoutClosingAt(null)
         if (!isTutor) {
           toast.info("Breakouts ended — back to the main room.")
           setMessages((prev) => [
@@ -776,6 +803,7 @@ export function ClassroomRoom({
           visitingGroupId: snap.visitingGroupId,
           startedAt: snap.startedAt,
           durationMin: snap.durationMin,
+          closingAt: snap.closingAt,
         }
         try {
           sendBreakout(enc.encode(JSON.stringify(response)), { reliable: true })
@@ -789,27 +817,43 @@ export function ClassroomRoom({
         setVisitingGroupId(data.visitingGroupId)
         setBreakoutStartedAt(data.startedAt)
         setBreakoutDurationMin(data.durationMin)
+        setBreakoutClosingAt(data.closingAt ?? null)
+        if (data.active) {
+          const ownGroup = data.groups.find((g) => g.memberIds.includes(localParticipant.identity))
+          if (ownGroup) {
+            toast.info(`You're in ${ownGroup.name}`, {
+              description: "Use the main view and camera tiles to work with your group.",
+            })
+          }
+        }
         return
       }
     } catch { /* ignore malformed */ }
   })
 
-  // Student: ask the tutor for the current breakout state after joining.
-  const hasSentBreakoutSync = useRef(false)
+  // Student: ask the tutor for breakout state after joining, and retry a few
+  // times in case breakouts went live before we connected.
+  const breakoutSyncAttempts = useRef(0)
   useEffect(() => {
-    if (isTutor || hasSentBreakoutSync.current) return
-    if (connectionState !== ConnectionState.Connected) return
-    const timer = setTimeout(() => {
-      hasSentBreakoutSync.current = true
+    if (isTutor || connectionState !== ConnectionState.Connected) return
+    if (breakoutsActive) {
+      breakoutSyncAttempts.current = 0
+      return
+    }
+    if (breakoutSyncAttempts.current >= 5) return
+
+    const requestSync = () => {
+      breakoutSyncAttempts.current += 1
       try {
         sendBreakout(enc.encode(JSON.stringify({ action: "sync_request" })), { reliable: true })
-      } catch {
-        hasSentBreakoutSync.current = false
-      }
-    }, 2000)
-    return () => clearTimeout(timer)
+      } catch { /* ignore */ }
+    }
+
+    requestSync()
+    const id = setInterval(requestSync, 8000)
+    return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTutor, connectionState])
+  }, [isTutor, connectionState, breakoutsActive])
 
   // ── Data channel: attention nudge ──────────────────────────────────────────
   // Tutor pings the class (or a single breakout group). Receivers render a
@@ -1752,8 +1796,10 @@ export function ClassroomRoom({
     setVisitingGroupId(null)
     setBreakoutStartedAt(startedAt)
     setBreakoutDurationMin(durationMin)
+    setBreakoutClosingAt(null)
     setBreakoutsPanelOpen(false)
     setBreakoutMonitorOpen(true)
+    setParticipantsOpen(true)
     safeSendBreakout({
       action: "start",
       groups,
@@ -1775,9 +1821,18 @@ export function ClassroomRoom({
 
   const handleUpdateBreakouts = useCallback((groups: BreakoutGroup[]) => {
     if (!isTutor) return
+    const snap = breakoutStateRef.current
+    const startedAt = snap.startedAt ?? Date.now()
+    if (!snap.startedAt) setBreakoutStartedAt(startedAt)
+    setBreakoutsActive(true)
     setBreakoutGroups(groups)
-    safeSendBreakout({ action: "update", groups })
-    toast.success("Breakout assignments updated")
+    safeSendBreakout({
+      action: "update",
+      groups,
+      startedAt,
+      durationMin: snap.durationMin,
+    })
+    toast.success("Breakout assignments shared with the class")
   }, [isTutor, safeSendBreakout])
 
   const handleVisitBreakout = useCallback((groupId: string | null) => {
@@ -1792,13 +1847,14 @@ export function ClassroomRoom({
     }
   }, [isTutor, safeSendBreakout])
 
-  const handleStopBreakouts = useCallback(() => {
+  const finalizeStopBreakouts = useCallback(() => {
     if (!isTutor) return
     setBreakoutsActive(false)
     setBreakoutGroups([])
     setVisitingGroupId(null)
     setBreakoutStartedAt(null)
     setBreakoutDurationMin(null)
+    setBreakoutClosingAt(null)
     setBreakoutsPanelOpen(false)
     setBreakoutMonitorOpen(false)
     safeSendBreakout({ action: "stop" })
@@ -1813,6 +1869,18 @@ export function ClassroomRoom({
       },
     ])
   }, [isTutor, safeSendBreakout])
+
+  /** Tutor clicked End — start a visible wrap-up countdown, then return to main room. */
+  const handleRequestEndBreakouts = useCallback(() => {
+    if (!isTutor || !breakoutsActive) return
+    if (breakoutClosingAt) return
+    const endsAt = Date.now() + BREAKOUT_WRAP_UP_SEC * 1000
+    setBreakoutClosingAt(endsAt)
+    safeSendBreakout({ action: "closing", endsAt })
+    toast.info(`Ending breakouts in ${BREAKOUT_WRAP_UP_SEC} seconds`, {
+      description: "Students can finish signing — click End now to skip the wait.",
+    })
+  }, [isTutor, breakoutsActive, breakoutClosingAt, safeSendBreakout])
 
   // ── Nudge handler (tutor only) ─────────────────────────────────────────────
   // Sends a short attention signal to the whole class, or to a specific
@@ -1956,12 +2024,26 @@ export function ClassroomRoom({
   // One-shot warning so students & tutor get a heads-up before auto-close.
   const endWarningShownRef = useRef<number | null>(null)
 
-  // Absolute wall-clock deadline for the active breakout, or null when none.
-  // Derived (not stored) so any state update to startedAt/duration re-renders.
+  // Wall-clock deadline shown on the countdown — session timer and/or wrap-up.
   const breakoutEndsAt = useMemo(() => {
+    if (breakoutClosingAt) return breakoutClosingAt
     if (!breakoutsActive || !breakoutStartedAt || !breakoutDurationMin) return null
     return breakoutStartedAt + breakoutDurationMin * 60_000
-  }, [breakoutsActive, breakoutStartedAt, breakoutDurationMin])
+  }, [breakoutsActive, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt])
+
+  // During breakouts, students see a group-mate (or visiting tutor) on the main stage.
+  const studentBreakoutMainId = useMemo(() => {
+    if (isTutor || !breakoutsActive || !ownBreakoutGroup) return null
+    if (visitingGroupId === ownBreakoutGroup.id && tutorIdentity) return tutorIdentity
+    return ownBreakoutGroup.memberIds.find((id) => id !== localParticipant.identity) ?? null
+  }, [
+    isTutor,
+    breakoutsActive,
+    ownBreakoutGroup,
+    visitingGroupId,
+    tutorIdentity,
+    localParticipant.identity,
+  ])
 
   // Auto-close when the timer expires. Only the tutor client drives the stop
   // broadcast so students don't race with each other to fire it. Also shows
@@ -1983,14 +2065,27 @@ export function ClassroomRoom({
       }
 
       if (remaining <= 0 && isTutor) {
-        handleStopBreakouts()
+        if (breakoutClosingAt) {
+          finalizeStopBreakouts()
+        } else if (breakoutDurationMin && breakoutStartedAt) {
+          handleRequestEndBreakouts()
+        }
       }
     }
 
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
-  }, [breakoutsActive, breakoutEndsAt, isTutor, handleStopBreakouts])
+  }, [
+    breakoutsActive,
+    breakoutEndsAt,
+    breakoutClosingAt,
+    breakoutDurationMin,
+    breakoutStartedAt,
+    isTutor,
+    finalizeStopBreakouts,
+    handleRequestEndBreakouts,
+  ])
 
   // Student list (no tutor) — used by the manager panel.
   const studentList = useMemo(
@@ -2073,7 +2168,9 @@ export function ClassroomRoom({
           onStart={handleStartBreakouts}
           onUpdate={handleUpdateBreakouts}
           onVisit={handleVisitBreakout}
-          onStop={handleStopBreakouts}
+          onStop={handleRequestEndBreakouts}
+          onEndNow={finalizeStopBreakouts}
+          closingAt={breakoutClosingAt}
           onClose={() => setBreakoutsPanelOpen(false)}
         />
       )}
@@ -2183,13 +2280,19 @@ export function ClassroomRoom({
       </header>
 
       {/* ── Student breakout banner ── */}
-      {!isTutor && breakoutsActive && ownBreakoutGroup && (
-        <BreakoutBanner
-          group={ownBreakoutGroup}
-          allParticipantNames={new Map(participants.map((p) => [p.identity, p.name ?? p.identity]))}
-          tutorVisiting={visitingGroupId === ownBreakoutGroup.id}
-          endsAt={breakoutEndsAt}
-        />
+      {!isTutor && breakoutsActive && (
+        ownBreakoutGroup ? (
+          <BreakoutBanner
+            group={ownBreakoutGroup}
+            allParticipantNames={new Map(participants.map((p) => [p.identity, p.name ?? p.identity]))}
+            tutorVisiting={visitingGroupId === ownBreakoutGroup.id}
+            endsAt={breakoutEndsAt}
+          />
+        ) : (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 max-w-[90%] px-4 py-2 rounded-full bg-amber-500/20 border border-amber-500/40 text-xs font-semibold text-amber-100 text-center">
+            Breakouts are live — waiting for your group assignment
+          </div>
+        )
       )}
 
       {/* ── Main body ── */}
@@ -2209,6 +2312,7 @@ export function ClassroomRoom({
                 {pinnedId ? (
                   <PinnedVideoArea
                     identity={pinnedId}
+                    localIdentity={localParticipant.identity}
                     containerRef={videoContainerRef}
                     isFullscreen={isFullscreen}
                     onToggleFullscreen={toggleFullscreen}
@@ -2250,6 +2354,7 @@ export function ClassroomRoom({
                 {pinnedId ? (
                   <PinnedVideoArea
                     identity={pinnedId}
+                    localIdentity={localParticipant.identity}
                     containerRef={videoContainerRef}
                     isFullscreen={isFullscreen}
                     onToggleFullscreen={toggleFullscreen}
@@ -2350,6 +2455,7 @@ export function ClassroomRoom({
                 {pinnedId ? (
                   <PinnedVideoArea
                     identity={pinnedId}
+                    localIdentity={localParticipant.identity}
                     containerRef={videoContainerRef}
                     isFullscreen={isFullscreen}
                     onToggleFullscreen={toggleFullscreen}
@@ -2379,29 +2485,50 @@ export function ClassroomRoom({
             </>
 
           ) : (
-            // ── Normal mode: full tutor video / pinned student ────────────────
+            // ── Normal mode: tutor video, pinned student, or (during breakouts)
+            // a group-mate on the main stage so students can sign with each other.
             <div className="flex-1 flex flex-col overflow-hidden relative">
               <div className="flex-1 overflow-hidden">
-                {pinnedId ? (
-                  <PinnedVideoArea
-                    identity={pinnedId}
-                    containerRef={videoContainerRef}
-                    isFullscreen={isFullscreen}
-                    onToggleFullscreen={toggleFullscreen}
-                    onUnpin={() => setPinnedId(null)}
-                    showSpotlight={isTutor && pinnedId !== localParticipant.identity}
-                    spotlightActive={spotlightedId === pinnedId}
-                    onToggleSpotlight={handleToggleSpotlight}
-                    handRaised={raisedHandIds.has(pinnedId)}
-                    onLowerHand={isTutor ? handleLowerHand : undefined}
-                  />
-                ) : (
-                  <TutorVideoArea
-                    containerRef={videoContainerRef}
-                    isFullscreen={isFullscreen}
-                    onToggleFullscreen={toggleFullscreen}
-                  />
-                )}
+                {(() => {
+                  const mainStageId = pinnedId ?? studentBreakoutMainId
+                  if (mainStageId) {
+                    return (
+                      <PinnedVideoArea
+                        identity={mainStageId}
+                        localIdentity={localParticipant.identity}
+                        containerRef={videoContainerRef}
+                        isFullscreen={isFullscreen}
+                        onToggleFullscreen={toggleFullscreen}
+                        onUnpin={() => setPinnedId(null)}
+                        showSpotlight={isTutor && mainStageId !== localParticipant.identity}
+                        spotlightActive={spotlightedId === mainStageId}
+                        onToggleSpotlight={handleToggleSpotlight}
+                        handRaised={raisedHandIds.has(mainStageId)}
+                        onLowerHand={isTutor ? handleLowerHand : undefined}
+                      />
+                    )
+                  }
+                  if (breakoutsActive && !isTutor && ownBreakoutGroup) {
+                    return (
+                      <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-400 px-6 text-center">
+                        <Users2 className="size-12 opacity-30" />
+                        <p className="text-sm font-semibold text-zinc-200">
+                          You&apos;re in {ownBreakoutGroup.name}
+                        </p>
+                        <p className="text-xs text-zinc-500 max-w-sm">
+                          Turn on your camera — when teammates join, they&apos;ll appear here and in the strip below.
+                        </p>
+                      </div>
+                    )
+                  }
+                  return (
+                    <TutorVideoArea
+                      containerRef={videoContainerRef}
+                      isFullscreen={isFullscreen}
+                      onToggleFullscreen={toggleFullscreen}
+                    />
+                  )
+                })()}
               </div>
               <CaptionsOverlay />
             </div>
@@ -2452,7 +2579,7 @@ export function ClassroomRoom({
         </div>
 
         {/* Bottom strip: participants row. Height grows with `tileSize` so the
-            tiles inside (aspect-square) scale with the strip. */}
+            tiles inside (16:9) scale with the strip. */}
         <div className={cn(
           "shrink-0 border-t border-zinc-800 bg-zinc-900 transition-[height] duration-200 overflow-hidden",
           !participantsOpen && "h-9",
@@ -2488,6 +2615,7 @@ export function ClassroomRoom({
         <FloatingVideoWindow
           key={id}
           identity={id}
+          localIdentity={localParticipant.identity}
           initial={{ x: 80 + i * 28, y: 80 + i * 28 }}
           onClose={() => handleClosePopOut(id)}
           handRaised={raisedHandIds.has(id)}

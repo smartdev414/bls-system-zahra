@@ -35,6 +35,8 @@ export function BreakoutsPanel({
   onUpdate,
   onVisit,
   onStop,
+  onEndNow,
+  closingAt,
   onClose,
 }: {
   students: StudentInfo[]
@@ -45,7 +47,11 @@ export function BreakoutsPanel({
   onStart: (groups: BreakoutGroup[], durationMin: number | null) => void
   onUpdate: (groups: BreakoutGroup[]) => void
   onVisit: (groupId: string | null) => void
+  /** Starts the wrap-up countdown before returning everyone to the main room. */
   onStop: () => void
+  /** Skip the countdown and end immediately (tutor only). */
+  onEndNow: () => void
+  closingAt: number | null
   onClose: () => void
 }) {
   const nameByIdentity = useMemo(
@@ -245,17 +251,30 @@ export function BreakoutsPanel({
                 <button
                   onClick={() => onUpdate(groups)}
                   className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground"
-                  title="Push these assignments live to all students"
+                  title="Share these group assignments with every student in the class"
                 >
-                  <Check className="size-3.5" /> Save changes
+                  <Check className="size-3.5" /> Share groups
                 </button>
-                <button
-                  onClick={onStop}
-                  className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white"
-                  title="End breakouts and bring everyone back to the main room"
-                >
-                  <Square className="size-3.5" /> End breakouts
-                </button>
+                {closingAt ? (
+                  <>
+                    <BreakoutCountdown endsAt={closingAt} />
+                    <button
+                      onClick={onEndNow}
+                      className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white"
+                      title="Return to the main room immediately"
+                    >
+                      <Square className="size-3.5" /> End now
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={onStop}
+                    className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white"
+                    title="Start a short countdown, then bring everyone back to the main room"
+                  >
+                    <Square className="size-3.5" /> End breakouts
+                  </button>
+                )}
               </>
             ) : (
               <button
@@ -268,7 +287,7 @@ export function BreakoutsPanel({
                     : "Send students into their breakout rooms"
                 }
               >
-                <Play className="size-3.5" /> Start breakouts
+                <Play className="size-3.5" /> Start &amp; share groups
               </button>
             )}
           </div>

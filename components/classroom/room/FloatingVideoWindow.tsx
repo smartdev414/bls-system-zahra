@@ -9,6 +9,7 @@ import {
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import { X, Move, Camera, HandMetal } from "lucide-react"
+import { localCameraClassName } from "@/components/classroom/localCameraView"
 
 const MIN_W = 200
 const MIN_H = 150
@@ -19,12 +20,14 @@ type Box = { x: number; y: number; width: number; height: number }
 
 export function FloatingVideoWindow({
   identity,
+  localIdentity,
   initial,
   onClose,
   handRaised,
   onLowerHand,
 }: {
   identity: string
+  localIdentity: string
   initial: { x: number; y: number }
   onClose: () => void
   handRaised?: boolean
@@ -60,6 +63,7 @@ export function FloatingVideoWindow({
   )
   const trackRef    = screenRef ?? camRef
   const displayName = participant?.name ?? identity
+  const mirrorLocalCamera = identity === localIdentity && !screenRef
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -150,7 +154,10 @@ export function FloatingVideoWindow({
 
       <div className="flex-1 relative bg-zinc-900 min-h-0">
         {trackRef ? (
-          <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
+          <VideoTrack
+            trackRef={trackRef}
+            className={localCameraClassName(mirrorLocalCamera)}
+          />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-600">
             <div className="size-12 rounded-full bg-primary/15 flex items-center justify-center text-primary text-lg font-bold">
