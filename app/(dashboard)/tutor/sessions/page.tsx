@@ -47,6 +47,9 @@ type SessionItem = {
   egressId: string | null
   startedAt: string | null
   endedAt: string | null
+  // True when the current tutor was invited to co-teach this session (not the
+  // owner). Co-tutors can open/join but not edit, cancel, start, or duplicate.
+  isCoTutor?: boolean
 }
 
 type SessionsData = { sessions: SessionItem[] }
@@ -717,6 +720,12 @@ function SessionCard({
                   {session.course.title}
                 </span>
               )}
+              {session.isCoTutor && (
+                <Badge variant="outline" className="text-xs gap-1 border-primary/30 text-primary bg-primary/5">
+                  <Users className="size-3" />
+                  Co-teaching
+                </Badge>
+              )}
             </div>
             <h3 className="font-bold text-base leading-snug">{session.title}</h3>
             {session.description && (
@@ -724,19 +733,28 @@ function SessionCard({
             )}
           </div>
 
-          {/* Primary action — top-right for quick access */}
+          {/* Primary action — top-right for quick access. Co-tutors open/join but
+              never start (flipping status is the owner's action). */}
           {session.status === "LIVE" && (
             <Button asChild size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
               <Link href={`/tutor/classroom/${session.id}`}>
-                <MonitorPlay className="size-3.5" /> Open Classroom
+                <MonitorPlay className="size-3.5" /> {session.isCoTutor ? "Join Classroom" : "Open Classroom"}
               </Link>
             </Button>
           )}
           {session.status === "SCHEDULED" && (
-            <Button size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
-              disabled={patching} onClick={() => patch({ status: "LIVE" })}>
-              <Radio className="size-3.5" /> Start
-            </Button>
+            session.isCoTutor ? (
+              <Button asChild size="sm" variant="outline" className="shrink-0 gap-1.5">
+                <Link href={`/tutor/classroom/${session.id}`}>
+                  <MonitorPlay className="size-3.5" /> Open Classroom
+                </Link>
+              </Button>
+            ) : (
+              <Button size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+                disabled={patching} onClick={() => patch({ status: "LIVE" })}>
+                <Radio className="size-3.5" /> Start
+              </Button>
+            )
           )}
         </div>
 
@@ -768,13 +786,18 @@ function SessionCard({
 
         {/* Footer actions */}
         <div className="flex items-center gap-2 pt-1 border-t border-border/50">
-          {session.status === "LIVE" && (
+          {session.isCoTutor && (session.status === "LIVE" || session.status === "SCHEDULED") && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Users className="size-3" /> You&apos;re a co-teacher — the host manages this session
+            </span>
+          )}
+          {session.status === "LIVE" && !session.isCoTutor && (
             <Button size="sm" variant="outline" disabled={patching} className="h-7 text-xs"
               onClick={() => patch({ status: "COMPLETED" })}>
               <CheckCircle2 className="size-3 mr-1.5" /> End Session
             </Button>
           )}
-          {session.status === "SCHEDULED" && (
+          {session.status === "SCHEDULED" && !session.isCoTutor && (
             <>
               <Button size="sm" variant="outline" disabled={patching}
                 className="h-7 text-xs gap-1.5"
@@ -836,14 +859,16 @@ function SessionCard({
           {session.status === "CANCELLED" && (
             <span className="text-xs text-muted-foreground">This session was cancelled</span>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs gap-1.5 ml-auto text-muted-foreground hover:text-foreground"
-            onClick={() => setDuplicateOpen(true)}
-          >
-            <Copy className="size-3" /> Duplicate
-          </Button>
+          {!session.isCoTutor && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1.5 ml-auto text-muted-foreground hover:text-foreground"
+              onClick={() => setDuplicateOpen(true)}
+            >
+              <Copy className="size-3" /> Duplicate
+            </Button>
+          )}
         </div>
       </div>
 

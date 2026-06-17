@@ -6,18 +6,33 @@ import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
 import { withAudit } from "@/lib/audit"
 
 const ALLOWED: Record<string, true> = {
+  // Images
   "image/jpeg": true,
   "image/png": true,
   "image/webp": true,
   "image/gif": true,
+  // Video
   "video/mp4": true,
   "video/webm": true,
   "video/quicktime": true,
+  // Documents
   "application/pdf": true,
+  // PowerPoint
+  "application/vnd.ms-powerpoint": true,
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
+  // Word
+  "application/msword": true,
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+  // Excel
+  "application/vnd.ms-excel": true,
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
+  // Plain text
+  "text/plain": true,
 }
 
-// 15 MB cap for classroom chat attachments
-const MAX_SIZE = 15 * 1024 * 1024
+// 50 MB cap for classroom chat attachments — large enough for short clips and
+// slide decks; full-length videos should go through the Present/resources flow.
+const MAX_SIZE = 50 * 1024 * 1024
 
 async function handlePOST(
   req: NextRequest,
@@ -77,13 +92,13 @@ async function handlePOST(
 
     if (!ALLOWED[contentType]) {
       return NextResponse.json(
-        { message: `File type "${contentType}" is not supported. Use images, PDF, or video.` },
+        { message: `File type "${contentType}" is not supported. Use images, video, PDF, Word, PowerPoint, Excel, or text files.` },
         { status: 400 },
       )
     }
 
     if (fileSize > MAX_SIZE) {
-      return NextResponse.json({ message: "File too large (max 15 MB)" }, { status: 400 })
+      return NextResponse.json({ message: "File too large (max 50 MB)" }, { status: 400 })
     }
 
     const ext = fileName.split(".").pop() ?? "bin"

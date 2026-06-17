@@ -65,6 +65,10 @@ export type SpotlightAction =
 export type MuteAction =
   | { action: "mute-all"; from: string }
   | { action: "set-mic"; identity: string; enabled: boolean; from: string }
+  // Student → tutor: ask to be unmuted. The tutor approves (set-mic on) or denies.
+  | { action: "request-speak"; identity: string; name: string }
+  // Tutor → student: their request was declined (mic stays off).
+  | { action: "deny-speak"; identity: string; from: string }
 
 // Session-level admin actions the tutor can issue to the whole room.
 //  - refresh: every client (including tutor) reloads its page — recovery for a frozen session.
@@ -128,6 +132,14 @@ export type UploadedSlides =
 export type CaptionEntry = {
   id: string
   speakerName: string
+  text: string
+  final: boolean
+}
+
+// Broadcast over CAPTION_TOPIC by each speaker's browser (Web Speech API).
+export type CaptionMessage = {
+  id: string
+  name: string
   text: string
   final: boolean
 }

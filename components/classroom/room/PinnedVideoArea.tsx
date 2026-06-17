@@ -62,7 +62,9 @@ export function PinnedVideoArea({
           trackRef={active}
           className={localCameraClassName(
             mirrorLocalCamera,
-            "w-full h-full object-contain",
+            // Cameras fill & crop (consistent with the lower strip); screen
+            // shares fit-whole so their content isn't cropped.
+            screenRef ? "w-full h-full object-contain" : "w-full h-full object-cover",
           )}
         />
       ) : (

@@ -1,41 +1,43 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
-import { useRoomContext } from "@livekit/components-react"
+import { useState, useRef, useEffect, useCallback } from "react"
+import { useRoomContext, useDataChannel } from "@livekit/components-react"
 import { RoomEvent } from "livekit-client"
-import type { CaptionEntry } from "./types"
+import { CAPTION_TOPIC, dec } from "./constants"
+import type { CaptionEntry, CaptionMessage } from "./types"
 
 export function CaptionsOverlay() {
   const room = useRoomContext()
   const [captions, setCaptions] = useState<CaptionEntry[]>([])
   const clearTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
+  // Shared by both caption sources: LiveKit's native transcription event and
+  // our Web Speech API broadcasts. Keeps only the latest line; finals fade after 4s.
+  const applySegment = useCallback((id: string, speakerName: string, text: string, final: boolean) => {
+    if (!text.trim()) return
+    setCaptions((prev) => {
+      const idx = prev.findIndex((c) => c.id === id)
+      const entry: CaptionEntry = { id, speakerName, text, final }
+      if (idx >= 0) {
+        const next = [...prev]; next[idx] = entry; return next
+      }
+      return [...prev.slice(-1), entry]
+    })
+    if (final) {
+      const existing = clearTimers.current.get(id)
+      if (existing) clearTimeout(existing)
+      clearTimers.current.set(id, setTimeout(() => {
+        setCaptions((prev) => prev.filter((c) => c.id !== id))
+        clearTimers.current.delete(id)
+      }, 4000))
+    }
+  }, [])
+
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handler = (segments: any[], participant: any) => {
       segments.forEach((seg) => {
-        if (!seg.text?.trim()) return
-        setCaptions((prev) => {
-          const idx = prev.findIndex((c) => c.id === seg.id)
-          const entry: CaptionEntry = {
-            id: seg.id,
-            speakerName: participant?.name ?? participant?.identity ?? "Unknown",
-            text: seg.text,
-            final: seg.final,
-          }
-          if (idx >= 0) {
-            const next = [...prev]; next[idx] = entry; return next
-          }
-          return [...prev.slice(-1), entry]
-        })
-        if (seg.final) {
-          const existing = clearTimers.current.get(seg.id)
-          if (existing) clearTimeout(existing)
-          clearTimers.current.set(seg.id, setTimeout(() => {
-            setCaptions((prev) => prev.filter((c) => c.id !== seg.id))
-            clearTimers.current.delete(seg.id)
-          }, 4000))
-        }
+        applySegment(seg.id, participant?.name ?? participant?.identity ?? "Unknown", seg.text ?? "", seg.final)
       })
     }
 
@@ -45,7 +47,15 @@ export function CaptionsOverlay() {
       room.off(RoomEvent.TranscriptionReceived, handler)
       timers.forEach(clearTimeout)
     }
-  }, [room])
+  }, [room, applySegment])
+
+  // Web Speech API captions broadcast by each speaker's browser.
+  useDataChannel(CAPTION_TOPIC, (msg) => {
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as CaptionMessage
+      applySegment(data.id, data.name, data.text, data.final)
+    } catch { /* ignore malformed */ }
+  })
 
   const visible = captions.filter((c) => c.text.trim())
   if (visible.length === 0) return null

@@ -13,7 +13,7 @@ import { ConnectionState, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Radio, Users, Users2, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
-  MessageSquare, X, HandMetal,
+  MessageSquare, X, HandMetal, Mic, Check,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
@@ -34,6 +34,7 @@ import type {
   BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
+import { SpeechCaptionPublisher } from "./room/SpeechCaptionPublisher"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
 import { TutorCameraInset }     from "./room/TutorCameraInset"
 import { ParticipantsPanel }    from "./room/ParticipantsPanel"
@@ -51,6 +52,7 @@ import { BreakoutsPanel }       from "./room/BreakoutsPanel"
 import { BreakoutMonitor }      from "./room/BreakoutMonitor"
 import { BreakoutBanner }       from "./room/BreakoutBanner"
 import { NudgeOverlay }          from "./room/NudgeOverlay"
+import { InviteCoTutorModal }    from "./InviteCoTutorModal"
 import { LogoWatermark }        from "@/components/layout/logo"
 import { readBlurPreference, writeBlurPreference } from "./blurPreference"
 import { Button } from "@/components/ui/button"
@@ -95,12 +97,17 @@ export function ClassroomRoom({
     () => new Set(raisedHands.map((h) => h.identity)),
     [raisedHands]
   )
+  // Pending "request to speak" from students (tutor-side). Each is cleared when
+  // the tutor approves (turns the mic on) or denies.
+  const [speakRequests,    setSpeakRequests]    = useState<{ identity: string; name: string }[]>([])
   const [chatFlash,        setChatFlash]        = useState(false)
   const [isFullscreen,     setIsFullscreen]     = useState(false)
   const [pinnedId,         setPinnedId]         = useState<string | null>(null)
   const [participantsOpen, setParticipantsOpen] = useState(true)
   const [chatOpen,         setChatOpen]         = useState(true)
   const [requestsOpen,     setRequestsOpen]     = useState(false)
+  // Tutor-only: "Invite a second teacher" modal.
+  const [inviteCoTutorOpen, setInviteCoTutorOpen] = useState(false)
 
   // On small screens (phones), default chat + participants to collapsed so the
   // camera/content area isn't covered by overlays / cramped strips. We do this
@@ -555,9 +562,34 @@ export function ClassroomRoom({
   }, [localParticipant])
 
   const { send: sendMuteAll } = useDataChannel(MUTE_TOPIC, (msg) => {
-    if (isTutor) return
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as MuteAction
+
+      // ── Tutor side: a student is requesting to be unmuted ──────────────────
+      // The tutor stays in control — they approve (turn the mic on) or deny.
+      if (data.action === "request-speak") {
+        if (!isTutor) return
+        setSpeakRequests((prev) =>
+          prev.some((r) => r.identity === data.identity)
+            ? prev
+            : [...prev, { identity: data.identity, name: data.name }]
+        )
+        setMessages((prev) => [
+          ...prev,
+          { id: `sys-ask-${Date.now()}`, from: "system", text: `${data.name} is asking to speak 🎙️`, ts: Date.now(), type: "system" },
+        ])
+        toast.info(`${data.name} wants to speak`, {
+          description: "Approve to turn their mic on, or deny.",
+          duration: 20000,
+          action: { label: "Approve", onClick: () => handleApproveSpeak(data.identity, data.name) },
+          cancel:  { label: "Deny",    onClick: () => handleDenySpeak(data.identity, data.name) },
+        })
+        return
+      }
+
+      // ── Student side: tutor-issued actions ─────────────────────────────────
+      if (isTutor) return
+
       if (data.action === "mute-all") {
         applyLocalMic(false)
         toast.info(`${data.from} muted everyone's microphone`, {
@@ -567,6 +599,7 @@ export function ClassroomRoom({
       }
       if (data.action === "set-mic" && data.identity === localParticipant.identity) {
         applyLocalMic(data.enabled)
+        // Approving a request clears the local "requested" state via the effect below.
         if (data.enabled) {
           toast.info(`${data.from} turned your microphone on`, {
             description: "You can sign with audio until the tutor mutes you again.",
@@ -574,6 +607,12 @@ export function ClassroomRoom({
         } else {
           toast.info(`${data.from} turned your microphone off`)
         }
+        return
+      }
+      if (data.action === "deny-speak" && data.identity === localParticipant.identity) {
+        toast.info(`${data.from} declined your request to speak`, {
+          description: "Your mic stays off for now — you can ask again later.",
+        })
       }
     } catch { /* ignore malformed */ }
   })
@@ -1544,6 +1583,49 @@ export function ClassroomRoom({
     }
   }, [isTutor, patchParticipantMic, broadcastMicControl, localName])
 
+  // ── Request-to-speak (tutor approves/denies; student asks) ─────────────────
+  const handleApproveSpeak = useCallback((identity: string, name: string) => {
+    if (!isTutor) return
+    setSpeakRequests((prev) => prev.filter((r) => r.identity !== identity))
+    void handleSetParticipantMic(identity, name, true)
+  }, [isTutor, handleSetParticipantMic])
+
+  const handleDenySpeak = useCallback((identity: string, name: string) => {
+    if (!isTutor) return
+    setSpeakRequests((prev) => prev.filter((r) => r.identity !== identity))
+    broadcastMicControl({ action: "deny-speak", identity, from: localName })
+    toast.info(`Declined ${name}'s request to speak`)
+  }, [isTutor, broadcastMicControl, localName])
+
+  // Student asks to be unmuted. Throttled so a double-tap doesn't spam the tutor.
+  const lastSpeakRequestRef = useRef(0)
+  const handleRequestToSpeak = useCallback(() => {
+    if (isTutor) return
+    if (localParticipant.isMicrophoneEnabled) return
+    const now = Date.now()
+    if (now - lastSpeakRequestRef.current < 5000) {
+      toast.info("Request already sent — give your tutor a moment")
+      return
+    }
+    lastSpeakRequestRef.current = now
+    const ok = broadcastMicControl({ action: "request-speak", identity: localParticipant.identity, name: localName })
+    if (ok) {
+      toast.info("Asked to speak ✋", { description: "Waiting for your tutor to turn your mic on." })
+    } else {
+      toast.error("Couldn't send your request — try again in a moment")
+    }
+  }, [isTutor, broadcastMicControl, localParticipant, localName])
+
+  // Tidy the pending list if a requester leaves the room before being answered.
+  useEffect(() => {
+    if (!isTutor || speakRequests.length === 0) return
+    const present = new Set(participants.map((p) => p.identity))
+    setSpeakRequests((prev) => {
+      const next = prev.filter((r) => present.has(r.identity))
+      return next.length === prev.length ? prev : next
+    })
+  }, [isTutor, participants, speakRequests.length])
+
   // ── Mute-all handler (tutor only) ──────────────────────────────────────────
   const handleMuteAll = useCallback(async () => {
     if (!isTutor) return
@@ -2103,6 +2185,9 @@ export function ClassroomRoom({
   return (
     <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col overflow-hidden z-50">
       <AudioRenderer audibleIdentities={audibleIdentities} />
+      {/* Live captions: transcribes the local mic (when on) and broadcasts text
+          so the tutor can read what a speaking student is saying. */}
+      <SpeechCaptionPublisher />
 
       {/* Brand watermark — visible to all participants. Top-left so it doesn't
           collide with the controls bar at the bottom. */}
@@ -2194,6 +2279,15 @@ export function ClassroomRoom({
           onSlidesReady={handleSlidesUploaded}
           onClose={() => setShowUpload(false)}
           previousSlides={uploadedSlidesRef.current}
+        />
+      )}
+
+      {/* ── Invite second teacher (tutor only) ── */}
+      {isTutor && inviteCoTutorOpen && (
+        <InviteCoTutorModal
+          sessionId={sessionId}
+          sessionTitle={sessionTitle}
+          onClose={() => setInviteCoTutorOpen(false)}
         />
       )}
 
@@ -2295,6 +2389,35 @@ export function ClassroomRoom({
         )
       )}
 
+      {/* ── Requests to speak (tutor only) ── */}
+      {isTutor && speakRequests.length > 0 && (
+        <div className="shrink-0 flex items-center gap-2 flex-wrap px-3 py-2 bg-sky-500/15 border-b border-sky-500/30">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-sky-300">
+            <Mic className="size-3.5 shrink-0" />
+            Wants to speak:
+          </span>
+          {speakRequests.map((r) => (
+            <span key={r.identity} className="flex items-center gap-1 bg-sky-500/20 rounded-full pl-2.5 pr-1 py-0.5">
+              <span className="text-xs text-sky-100">{r.name}</span>
+              <button
+                onClick={() => handleApproveSpeak(r.identity, r.name)}
+                className="flex items-center gap-0.5 text-[11px] font-semibold text-emerald-200 hover:text-white bg-emerald-500/30 hover:bg-emerald-500/60 rounded-full px-1.5 py-0.5 transition-colors"
+                title={`Turn on ${r.name}'s microphone`}
+              >
+                <Check className="size-3" /> Approve
+              </button>
+              <button
+                onClick={() => handleDenySpeak(r.identity, r.name)}
+                className="flex items-center gap-0.5 text-[11px] font-semibold text-rose-200 hover:text-white bg-rose-500/30 hover:bg-rose-500/60 rounded-full px-1.5 py-0.5 transition-colors"
+                title={`Decline ${r.name}'s request`}
+              >
+                <X className="size-3" /> Deny
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* ── Main body ── */}
       <div className="flex flex-1 overflow-hidden flex-col min-h-0">
 
@@ -2341,6 +2464,10 @@ export function ClassroomRoom({
                   onDelete={handleDeleteShape}
                   onClear={handleClearBoard}
                   onStop={handleToggleWhiteboard}
+                  sessionId={sessionId}
+                  onShareToChat={(attachment) =>
+                    handleSend("🖼️ Whiteboard snapshot", "text", attachment)
+                  }
                 />
                 <CaptionsOverlay />
               </div>
@@ -2694,6 +2821,8 @@ export function ClassroomRoom({
           onMuteAll={handleMuteAll}
           onUnmuteAll={handleUnmuteAll}
           onRefreshAll={handleRefreshAll}
+          onInviteCoTutor={() => setInviteCoTutorOpen(true)}
+          onRequestToSpeak={handleRequestToSpeak}
           pptActive={pptActive}
           presentKind={presentKind}
           presentationIdx={presentationIdx}

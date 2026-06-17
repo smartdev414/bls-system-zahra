@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { sendEmail } from "@/lib/email"
+import { sendAlert } from "@/lib/alert"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ export function withAudit<C extends AnyCtx = AnyCtx>(
       })
       .catch((e) => console.error("[audit] DB write failed:", e))
 
-    // Alert dev on any 5xx
+    // Alert dev on any 5xx — email (DEV_EMAIL) and instant webhook (ALERT_WEBHOOK_URL).
     if (statusCode >= 500) {
       sendDevAlert({
         method,
@@ -101,6 +102,11 @@ export function withAudit<C extends AnyCtx = AnyCtx>(
         durationMs,
         errorMessage,
       }).catch((e) => console.error("[audit] Dev alert send failed:", e))
+
+      sendAlert(
+        `API ${statusCode} on ${method} ${path}`,
+        errorMessage ? `error: ${errorMessage}` : undefined,
+      ).catch((e) => console.error("[audit] Webhook alert send failed:", e))
     }
 
     return res

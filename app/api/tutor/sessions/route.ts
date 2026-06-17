@@ -13,35 +13,55 @@ async function handleGET() {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
-    const sessions = await prisma.liveSession.findMany({
-      where: { tutorId: session.sub },
-      orderBy: { scheduledAt: "desc" },
-      include: {
-        course: { select: { id: true, title: true } },
-        _count: { select: { attendances: true, invites: true } },
-      },
+    // Sessions this tutor owns, plus sessions they were invited to co-teach.
+    const sessionInclude = {
+      course: { select: { id: true, title: true } },
+      _count: { select: { attendances: true, invites: true } },
+    } as const
+
+    const [owned, coTutorLinks] = await Promise.all([
+      prisma.liveSession.findMany({
+        where: { tutorId: session.sub },
+        orderBy: { scheduledAt: "desc" },
+        include: sessionInclude,
+      }),
+      prisma.liveSessionCoTutor.findMany({
+        where: { tutorId: session.sub },
+        include: { session: { include: sessionInclude } },
+      }),
+    ])
+
+    type SessionWithCounts = (typeof owned)[number]
+    const shape = (s: SessionWithCounts, isCoTutor: boolean) => ({
+      id: s.id,
+      title: s.title,
+      description: s.description,
+      scheduledAt: s.scheduledAt.toISOString(),
+      durationMins: s.durationMins,
+      roomName: s.roomName,
+      maxStudents: s.maxStudents,
+      status: s.status,
+      visibility: s.visibility,
+      course: s.course,
+      attendeeCount: s._count.attendances,
+      inviteCount: s._count.invites,
+      startedAt: s.startedAt?.toISOString() ?? null,
+      endedAt: s.endedAt?.toISOString() ?? null,
+      recordingUrl: s.recordingUrl ?? null,
+      egressId: s.egressId ?? null,
+      isCoTutor,
     })
 
-    return NextResponse.json({
-      sessions: sessions.map((s) => ({
-        id: s.id,
-        title: s.title,
-        description: s.description,
-        scheduledAt: s.scheduledAt.toISOString(),
-        durationMins: s.durationMins,
-        roomName: s.roomName,
-        maxStudents: s.maxStudents,
-        status: s.status,
-        visibility: s.visibility,
-        course: s.course,
-        attendeeCount: s._count.attendances,
-        inviteCount: s._count.invites,
-        startedAt: s.startedAt?.toISOString() ?? null,
-        endedAt: s.endedAt?.toISOString() ?? null,
-        recordingUrl: s.recordingUrl ?? null,
-        egressId: s.egressId ?? null,
-      })),
-    })
+    // De-dupe defensively (the co-tutor route never lets the owner self-invite).
+    const ownedIds = new Set(owned.map((s) => s.id))
+    const merged = [
+      ...owned.map((s) => shape(s, false)),
+      ...coTutorLinks
+        .filter((c) => !ownedIds.has(c.sessionId))
+        .map((c) => shape(c.session, true)),
+    ].sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt))
+
+    return NextResponse.json({ sessions: merged })
   } catch (err) {
     console.error("[GET /api/tutor/sessions]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

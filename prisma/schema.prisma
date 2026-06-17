@@ -73,6 +73,7 @@ enum NotificationType {
   SESSION_CANCELLED
   SESSION_DELETED
   SESSION_INVITE
+  SESSION_COTUTOR_INVITE
   RECORDING_READY
   // Course / lesson events
   COURSE_PUBLISHED
@@ -139,6 +140,8 @@ model User {
   courses              Course[]                @relation("TutorCourses")
   quizAttempts         QuizAttempt[]
   hostedSessions       LiveSession[]           @relation("TutorLiveSessions")
+  coTutorSessions      LiveSessionCoTutor[]    @relation("CoTutorSessions")
+  coTutorInvitesSent   LiveSessionCoTutor[]    @relation("CoTutorInvitesSent")
   enrollments          Enrollment[]
   attendances          LiveSessionAttendance[]
   sessionInvites       LiveSessionInvite[]
@@ -357,6 +360,7 @@ model LiveSession {
   course       Course?                 @relation(fields: [courseId], references: [id])
   attendances  LiveSessionAttendance[]
   invites      LiveSessionInvite[]
+  coTutors     LiveSessionCoTutor[]
   joinRequests SessionJoinRequest[]
   resources    LiveSessionResource[]
 
@@ -377,6 +381,21 @@ model LiveSessionInvite {
 
   @@unique([sessionId, studentId])
   @@index([studentId])
+}
+
+model LiveSessionCoTutor {
+  id          String   @id @default(cuid())
+  sessionId   String
+  tutorId     String
+  invitedById String
+  invitedAt   DateTime @default(now())
+
+  session     LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tutor       User        @relation("CoTutorSessions", fields: [tutorId], references: [id], onDelete: Cascade)
+  invitedBy   User        @relation("CoTutorInvitesSent", fields: [invitedById], references: [id])
+
+  @@unique([sessionId, tutorId])
+  @@index([tutorId])
 }
 
 model LiveSessionAttendance {

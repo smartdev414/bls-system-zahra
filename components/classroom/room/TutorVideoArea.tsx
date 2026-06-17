@@ -1,8 +1,9 @@
 "use client"
 
-import { useTracks, VideoTrack } from "@livekit/components-react"
+import { useTracks, useLocalParticipant, VideoTrack } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import { Camera, Maximize2, Minimize2 } from "lucide-react"
+import { localCameraClassName } from "@/components/classroom/localCameraView"
 
 export function TutorVideoArea({
   containerRef,
@@ -15,15 +16,25 @@ export function TutorVideoArea({
 }) {
   const camTracks    = useTracks([Track.Source.Camera],      { onlySubscribed: false })
   const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
+  const { localParticipant } = useLocalParticipant()
 
   const tutorCam    = camTracks.find((t) => t.participant.metadata === "tutor")
   const tutorScreen = screenTracks.find((t) => t.participant.metadata === "tutor")
   const active      = tutorScreen ?? tutorCam
+  // Fit the whole frame (no crop) for both camera and screen share: the tutor's
+  // full head and signing hands must stay visible, and a full-width main view
+  // with object-cover would crop the top of the head off (BSL Deaf-first).
+  // Mirror the local camera for self-view; never mirror a screen share.
+  const isScreen    = !!tutorScreen
+  const mirrorLocal = !isScreen && active?.participant.identity === localParticipant.identity
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden group">
       {active ? (
-        <VideoTrack trackRef={active} className="w-full h-full object-contain" />
+        <VideoTrack
+          trackRef={active}
+          className={localCameraClassName(mirrorLocal, "w-full h-full object-contain")}
+        />
       ) : (
         <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-700">
           <Camera className="size-14 opacity-20" />

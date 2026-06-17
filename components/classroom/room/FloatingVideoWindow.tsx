@@ -156,7 +156,11 @@ export function FloatingVideoWindow({
         {trackRef ? (
           <VideoTrack
             trackRef={trackRef}
-            className={localCameraClassName(mirrorLocalCamera)}
+            className={localCameraClassName(
+              mirrorLocalCamera,
+              // Camera fills & crops like the strip; screen share fits whole.
+              screenRef ? "w-full h-full object-contain" : "w-full h-full object-cover",
+            )}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-600">

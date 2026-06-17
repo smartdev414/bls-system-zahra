@@ -40,6 +40,8 @@ type SessionInfo = {
     description?: string | null
     durationMins?: number
   }
+  // Present for tutors; true when the viewer is the owning tutor (not a co-tutor).
+  isOwner?: boolean
 }
 
 // ─── Camera preview hook — mirrors the student lobby so the tutor sees the
@@ -317,7 +319,9 @@ export default function TutorClassroomPage({
   // gated on tokenData below.
   const handleStart = useCallback(async () => {
     if (!data?.session) return
-    if (data.session.status === "SCHEDULED") {
+    // Only the owning tutor flips the session live; a co-tutor just connects
+    // (the owner will have already started it, or will shortly).
+    if (data.session.status === "SCHEDULED" && data.isOwner !== false) {
       await patchStatus({ status: "LIVE" })
     }
     getToken({})

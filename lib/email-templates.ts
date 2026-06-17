@@ -176,6 +176,19 @@ function sessionInvite(name: string, body: string, link?: string): string {
   return layout(content, `Session invite: ${body}`)
 }
 
+function sessionCoTutorInvite(name: string, body: string, link?: string): string {
+  const content = `
+    ${greeting(name)}
+    <div style="margin-bottom:16px">${badge("Co-teaching", PRIMARY)}</div>
+    <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:${TEXT_MAIN}">You've been invited to co-teach</h2>
+    ${bodyText(body)}
+    ${link ? ctaButton("Open Classroom", link) : ""}
+    ${divider()}
+    ${bodyText("Open the classroom to join as a second teacher — you'll have full tutor controls alongside the host.")}
+  `
+  return layout(content, `Co-teaching invite: ${body}`)
+}
+
 function sessionCancelled(name: string, body: string, link?: string): string {
   const content = `
     ${greeting(name)}
@@ -386,6 +399,7 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.SESSION_SCHEDULED,
   NotificationType.SESSION_STARTED,
   NotificationType.SESSION_INVITE,
+  NotificationType.SESSION_COTUTOR_INVITE,
   NotificationType.SESSION_CANCELLED,
   NotificationType.SESSION_DELETED,
   NotificationType.NEW_ENROLLMENT,
@@ -418,6 +432,7 @@ export function renderEmailTemplate(
     [NotificationType.SESSION_SCHEDULED]:  `📅 New session scheduled — ${title}`,
     [NotificationType.SESSION_STARTED]:    `🔴 Live now — ${title}`,
     [NotificationType.SESSION_INVITE]:     `📩 You're invited — ${title}`,
+    [NotificationType.SESSION_COTUTOR_INVITE]: `🤝 Co-teaching invite — ${title}`,
     [NotificationType.SESSION_CANCELLED]:  `❌ Session cancelled — ${title}`,
     [NotificationType.SESSION_DELETED]:    `Session removed — ${title}`,
     [NotificationType.NEW_ENROLLMENT]:     `🎓 ${title}`,
@@ -446,6 +461,7 @@ export function renderEmailTemplate(
     case NotificationType.SESSION_SCHEDULED: html = sessionScheduled(recipientName, body, link); break
     case NotificationType.SESSION_STARTED:   html = sessionStarted(recipientName, body, link);   break
     case NotificationType.SESSION_INVITE:    html = sessionInvite(recipientName, body, link);    break
+    case NotificationType.SESSION_COTUTOR_INVITE: html = sessionCoTutorInvite(recipientName, body, link); break
     case NotificationType.SESSION_CANCELLED: html = sessionCancelled(recipientName, body, link); break
     case NotificationType.SESSION_DELETED:   html = sessionDeleted(recipientName, body, link);   break
     case NotificationType.NEW_ENROLLMENT:    html = newEnrollment(recipientName, body, link);    break

@@ -1,11 +1,14 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
+import { useParticipants } from "@livekit/components-react"
 import {
   Pen, Eraser, Trash2, X, PencilLine, Type, GripVertical, Users,
+  Download, Share2, Loader2,
 } from "lucide-react"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import type { WhiteboardShape, WhiteboardStroke, WhiteboardText } from "./types"
+import type { ChatAttachment, WhiteboardShape, WhiteboardStroke, WhiteboardText } from "./types"
 
 // Palette kept deliberately small so students don't get lost in options.
 const COLORS = ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#a855f7", "#111827"]
@@ -51,13 +54,60 @@ function hitStroke(stroke: WhiteboardStroke, x: number, y: number, tolerance: nu
   return false
 }
 
-// Draw the given shapes onto the canvas. Called on every state change and resize.
-// We render everything each frame — simpler than incremental draws and plenty
-// fast for the shape counts a live lesson actually produces.
-function renderStrokes(ctx: CanvasRenderingContext2D, shapes: WhiteboardShape[], w: number, h: number) {
-  ctx.clearRect(0, 0, w, h)
-  ctx.lineCap   = "round"
-  ctx.lineJoin  = "round"
+// Initials for an attribution tag: "Zahra Khaira" → "ZK", "Sam" → "SA".
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "?"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.min(r, w / 2, h / 2)
+  ctx.beginPath()
+  ctx.moveTo(x + rr, y)
+  ctx.arcTo(x + w, y, x + w, y + h, rr)
+  ctx.arcTo(x + w, y + h, x, y + h, rr)
+  ctx.arcTo(x, y + h, x, y, rr)
+  ctx.arcTo(x, y, x + w, y, rr)
+  ctx.closePath()
+}
+
+// Small dark pill with an author's initials, nudged to stay inside the board.
+function drawInitialsTag(ctx: CanvasRenderingContext2D, text: string, px: number, py: number, w: number, h: number) {
+  ctx.save()
+  ctx.font = "bold 11px ui-sans-serif, system-ui, sans-serif"
+  const padX = 5
+  const bw = ctx.measureText(text).width + padX * 2
+  const bh = 16
+  let x = px - bw
+  let y = py - bh - 2
+  if (x < 2) x = px + 4
+  if (y < 2) y = py + 4
+  if (x + bw > w) x = w - bw - 2
+  if (y + bh > h) y = h - bh - 2
+  ctx.fillStyle = "rgba(17,24,39,0.85)"
+  roundRect(ctx, x, y, bw, bh, 8)
+  ctx.fill()
+  ctx.fillStyle = "#ffffff"
+  ctx.textBaseline = "middle"
+  ctx.textAlign = "left"
+  ctx.fillText(text, x + padX, y + bh / 2 + 0.5)
+  ctx.restore()
+}
+
+// Draw strokes (no clear). `getLabel` returns an author tag to show next to the
+// first point of a stroke, or null to omit it (e.g. the local user's own work).
+// Tags for the same author near each other are de-duplicated to avoid clutter.
+function drawStrokes(
+  ctx: CanvasRenderingContext2D,
+  shapes: WhiteboardShape[],
+  w: number,
+  h: number,
+  getLabel?: (author: string) => string | null,
+) {
+  ctx.lineCap  = "round"
+  ctx.lineJoin = "round"
   for (const s of shapes) {
     if (s.kind !== "stroke") continue
     ctx.strokeStyle = s.color
@@ -66,7 +116,6 @@ function renderStrokes(ctx: CanvasRenderingContext2D, shapes: WhiteboardShape[],
     const pts = s.points
     if (pts.length === 0) continue
     if (pts.length === 1) {
-      // Single-tap dot — draw as a filled circle so tiny taps leave a mark.
       const [x, y] = pts[0]
       ctx.fillStyle = s.color
       ctx.arc(x * w, y * h, Math.max(1, (s.width * Math.min(w, h)) / 2), 0, Math.PI * 2)
@@ -78,6 +127,52 @@ function renderStrokes(ctx: CanvasRenderingContext2D, shapes: WhiteboardShape[],
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * w, pts[i][1] * h)
     ctx.stroke()
   }
+
+  // Author tags drawn on top of all strokes.
+  if (!getLabel) return
+  const placed: { author: string; x: number; y: number }[] = []
+  for (const s of shapes) {
+    if (s.kind !== "stroke" || s.points.length === 0) continue
+    const label = getLabel(s.author)
+    if (!label) continue
+    const [fx, fy] = s.points[0]
+    if (placed.some((p) => p.author === s.author && Math.hypot(p.x - fx, p.y - fy) < 0.06)) continue
+    placed.push({ author: s.author, x: fx, y: fy })
+    drawInitialsTag(ctx, label, fx * w, fy * h, w, h)
+  }
+}
+
+// Called on every state change and resize. We render everything each frame —
+// simpler than incremental draws and plenty fast for a live lesson's shape count.
+function renderStrokes(
+  ctx: CanvasRenderingContext2D,
+  shapes: WhiteboardShape[],
+  w: number,
+  h: number,
+  getLabel?: (author: string) => string | null,
+) {
+  ctx.clearRect(0, 0, w, h)
+  drawStrokes(ctx, shapes, w, h, getLabel)
+}
+
+// Word-wrap (honouring explicit newlines) for rendering text onto the export canvas.
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const lines: string[] = []
+  for (const para of text.split("\n")) {
+    const words = para.split(" ")
+    let line = ""
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line)
+        line = word
+      } else {
+        line = test
+      }
+    }
+    lines.push(line)
+  }
+  return lines
 }
 
 function uid() {
@@ -96,6 +191,8 @@ export function WhiteboardPanel({
   onDelete,
   onClear,
   onStop,
+  sessionId,
+  onShareToChat,
 }: {
   isTutor: boolean
   canWrite: boolean
@@ -108,6 +205,9 @@ export function WhiteboardPanel({
   onDelete: (id: string) => void
   onClear:  () => void
   onStop:   () => void
+  sessionId: string
+  // Posts an exported snapshot into the live chat so it survives after class.
+  onShareToChat: (attachment: ChatAttachment) => void
 }) {
   const boardRef    = useRef<HTMLDivElement>(null)
   const canvasRef   = useRef<HTMLCanvasElement>(null)
@@ -118,6 +218,26 @@ export function WhiteboardPanel({
 
   const [tool, setTool]   = useState<Tool>("pen")
   const [color, setColor] = useState<string>(DEFAULT_COLOR)
+  const [sharing, setSharing] = useState(false)
+
+  // Resolve an author's identity → display name so we can attribute shapes.
+  const participants = useParticipants()
+  const nameByIdentity = useMemo(() => {
+    const m = new Map<string, string>()
+    participants.forEach((p) => m.set(p.identity, p.name ?? p.identity))
+    return m
+  }, [participants])
+
+  // Attribution tag for a shape: the author's initials, but not for the local
+  // user's own work (you already know what you wrote — keeps the board clean).
+  const getStrokeLabel = useCallback(
+    (author: string) => {
+      if (author === localIdentity) return null
+      const name = nameByIdentity.get(author)
+      return name ? initialsOf(name) : null
+    },
+    [localIdentity, nameByIdentity],
+  )
 
   // Board pixel size, kept in sync via resizeCanvas — used to size text in px
   // from its normalised `size`.
@@ -184,8 +304,8 @@ export function WhiteboardPanel({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    renderStrokes(ctx, [...shapes, ...(liveStrokeRef.current ? [liveStrokeRef.current] : [])], rect.width, rect.height)
-  }, [shapes])
+    renderStrokes(ctx, [...shapes, ...(liveStrokeRef.current ? [liveStrokeRef.current] : [])], rect.width, rect.height, getStrokeLabel)
+  }, [shapes, getStrokeLabel])
 
   useEffect(() => {
     resizeCanvas()
@@ -202,8 +322,8 @@ export function WhiteboardPanel({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     const rect = host.getBoundingClientRect()
-    renderStrokes(ctx, [...shapes, ...(liveStrokeRef.current ? [liveStrokeRef.current] : [])], rect.width, rect.height)
-  }, [shapes])
+    renderStrokes(ctx, [...shapes, ...(liveStrokeRef.current ? [liveStrokeRef.current] : [])], rect.width, rect.height, getStrokeLabel)
+  }, [shapes, getStrokeLabel])
 
   // ── Coordinate helper: clientX/Y → normalised [0,1] against the board ──────
   function toNorm(clientX: number, clientY: number) {
@@ -370,6 +490,98 @@ export function WhiteboardPanel({
     // re-render it from `shapes` once the add lands.
   }
 
+  // ── Save / share: flatten the board (strokes + text + author tags) to PNG ───
+  const buildBoardBlob = useCallback(async (): Promise<Blob | null> => {
+    const host = boardRef.current
+    if (!host) return null
+    const rect = host.getBoundingClientRect()
+    const w = Math.max(1, Math.round(rect.width))
+    const h = Math.max(1, Math.round(rect.height))
+    const scale = 2 // export at 2× for crisp text/lines
+    const out = document.createElement("canvas")
+    out.width  = w * scale
+    out.height = h * scale
+    const ctx = out.getContext("2d")
+    if (!ctx) return null
+    ctx.scale(scale, scale)
+
+    // Opaque white background so the PNG isn't transparent.
+    ctx.fillStyle = "#ffffff"
+    ctx.fillRect(0, 0, w, h)
+
+    drawStrokes(ctx, shapes, w, h, getStrokeLabel)
+
+    // Text boxes live in the DOM during the lesson — redraw them onto the canvas.
+    const dim = Math.min(w, h)
+    for (const s of shapes) {
+      if (s.kind !== "text" || !s.text.trim()) continue
+      const fontSize = Math.max(14, s.size * dim)
+      ctx.font = `${fontSize}px ui-sans-serif, system-ui, sans-serif`
+      ctx.fillStyle = s.color
+      ctx.textBaseline = "top"
+      ctx.textAlign = "left"
+      const lineH = fontSize * 1.25
+      let ty = s.y * h
+      for (const line of wrapText(ctx, s.text, w * 0.8)) {
+        ctx.fillText(line, s.x * w, ty)
+        ty += lineH
+      }
+      const label = getStrokeLabel(s.author)
+      if (label) drawInitialsTag(ctx, label, s.x * w, s.y * h, w, h)
+    }
+
+    return await new Promise<Blob | null>((resolve) => out.toBlob(resolve, "image/png"))
+  }, [shapes, getStrokeLabel])
+
+  const handleDownload = useCallback(async () => {
+    if (shapes.length === 0) return
+    const blob = await buildBoardBlob()
+    if (!blob) {
+      toast.error("Could not export the whiteboard")
+      return
+    }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `whiteboard-${uid()}.png`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }, [shapes, buildBoardBlob])
+
+  const handleShare = useCallback(async () => {
+    if (sharing || shapes.length === 0) return
+    setSharing(true)
+    try {
+      const blob = await buildBoardBlob()
+      if (!blob) throw new Error("Could not export the whiteboard")
+      const fileName = `whiteboard-${uid()}.png`
+      const presignRes = await fetch(`/api/sessions/${sessionId}/chat-upload-presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName, contentType: "image/png", fileSize: blob.size }),
+      })
+      if (!presignRes.ok) {
+        const err = await presignRes.json() as { message?: string }
+        throw new Error(err.message ?? "Could not get upload URL")
+      }
+      const { presignedUrl, fileUrl } = await presignRes.json() as { presignedUrl: string; fileUrl: string }
+      const uploadRes = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "image/png" },
+        body: blob,
+      })
+      if (!uploadRes.ok) throw new Error("Upload failed")
+      onShareToChat({ fileUrl, fileName, fileSize: blob.size, mimeType: "image/png" })
+      toast.success("Whiteboard shared to the chat — everyone can open or download it.")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not share the whiteboard")
+    } finally {
+      setSharing(false)
+    }
+  }, [sharing, shapes, buildBoardBlob, sessionId, onShareToChat])
+
   // ── UI ─────────────────────────────────────────────────────────────────────
 
   return (
@@ -454,6 +666,29 @@ export function WhiteboardPanel({
         )}
 
         <div className="ml-auto flex items-center gap-1.5">
+          {/* Save / share — available to everyone so the board survives the class. */}
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={shapes.length === 0}
+            className="flex items-center gap-1 px-2.5 h-8 rounded-lg text-xs font-medium bg-zinc-700/60 hover:bg-zinc-700 text-zinc-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Download the whole whiteboard as an image"
+          >
+            <Download className="size-3.5" /> Save image
+          </button>
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={shapes.length === 0 || sharing}
+            className="flex items-center gap-1 px-2.5 h-8 rounded-lg text-xs font-medium bg-zinc-700/60 hover:bg-zinc-700 text-zinc-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Share a snapshot to the class chat so everyone keeps a copy after class"
+          >
+            {sharing ? <Loader2 className="size-3.5 animate-spin" /> : <Share2 className="size-3.5" />}
+            {sharing ? "Sharing…" : "Share"}
+          </button>
+
+          {(isTutor) && <div className="h-5 w-px bg-zinc-700 mx-0.5" />}
+
           {isTutor && (
             <button
               type="button"
@@ -528,6 +763,8 @@ export function WhiteboardPanel({
           const pos = isDragging && dragPos ? dragPos : { x: box.x, y: box.y }
           const dim = Math.min(boardSize.w || 400, boardSize.h || 300)
           const fontSize = Math.max(14, box.size * dim)
+          const authorLabel = getStrokeLabel(box.author)
+          const authorName  = nameByIdentity.get(box.author)
           return (
             <div
               key={box.id}
@@ -538,6 +775,16 @@ export function WhiteboardPanel({
               style={{ left: `${pos.x * 100}%`, top: `${pos.y * 100}%`, maxWidth: "80%" }}
               onPointerDown={(e) => e.stopPropagation()}
             >
+              {/* Author attribution — who wrote this (not shown for your own text). */}
+              {authorLabel && (
+                <span
+                  className="absolute -top-4 left-0 flex items-center rounded-full bg-zinc-900/85 text-white text-[10px] font-bold leading-none px-1.5 py-0.5 pointer-events-none whitespace-nowrap"
+                  title={authorName ? `Written by ${authorName}` : "Author"}
+                >
+                  {authorLabel}
+                </span>
+              )}
+
               {/* Drag handle */}
               {canWrite && (
               <button

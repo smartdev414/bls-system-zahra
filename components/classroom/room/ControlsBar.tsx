@@ -6,7 +6,7 @@ import {
   Mic, MicOff, Camera, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles,
-  Circle, Pause,
+  Circle, Pause, UserPlus, HandMetal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -19,6 +19,10 @@ export function ControlsBar({
   onUnmuteAll,
   // Session-level admin actions (tutor only)
   onRefreshAll,
+  // Invite a second teacher to co-teach (tutor only)
+  onInviteCoTutor,
+  // Student asks the tutor to unmute them
+  onRequestToSpeak,
   // PPT controls (tutor only)
   pptActive,
   // "slides" shows next/prev/counter + slide tray. "video" hides those and shows
@@ -70,6 +74,8 @@ export function ControlsBar({
   onMuteAll: () => void
   onUnmuteAll: () => void
   onRefreshAll: () => void
+  onInviteCoTutor: () => void
+  onRequestToSpeak: () => void
   pptActive: boolean
   presentKind?: "slides" | "video" | null
   presentationIdx: number
@@ -112,17 +118,29 @@ export function ControlsBar({
           <Mic className="size-3.5" /> Mic
         </TrackToggle>
       ) : (
-        <div
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium border whitespace-nowrap cursor-not-allowed",
-            micEnabled
-              ? "bg-emerald-900/30 text-emerald-300 border-emerald-700/40"
-              : "bg-zinc-800/80 text-zinc-500 border-zinc-700/60",
+        <div className="flex items-center gap-2">
+          <div
+            className={cn(
+              "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium border whitespace-nowrap cursor-not-allowed",
+              micEnabled
+                ? "bg-emerald-900/30 text-emerald-300 border-emerald-700/40"
+                : "bg-zinc-800/80 text-zinc-500 border-zinc-700/60",
+            )}
+            title={micEnabled ? "Microphone is ON (controlled by tutor)" : "Microphone is OFF (controlled by tutor)"}
+          >
+            {micEnabled ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
+            Mic ({micEnabled ? "on" : "off"} · tutor controlled)
+          </div>
+          {/* When muted, a student can ask the tutor to turn their mic on. */}
+          {!micEnabled && (
+            <button
+              onClick={onRequestToSpeak}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors whitespace-nowrap"
+              title="Ask your tutor to turn your microphone on"
+            >
+              <HandMetal className="size-3.5" /> Request to speak
+            </button>
           )}
-          title={micEnabled ? "Microphone is ON (controlled by tutor)" : "Microphone is OFF (controlled by tutor)"}
-        >
-          {micEnabled ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
-          Mic ({micEnabled ? "on" : "off"} · tutor controlled)
         </div>
       )}
 
@@ -224,6 +242,21 @@ export function ControlsBar({
             Unmute all
           </button>
         </>
+      )}
+
+      {/* Tutor-only: invite another teacher to co-teach this session. They get a
+          notification (and email if configured) with a link that opens the
+          classroom with full tutor controls — works mid-session. */}
+      {isTutor && (
+        <button
+          onClick={onInviteCoTutor}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"
+          title="Invite another teacher to co-teach this session"
+          aria-label="Invite a second teacher"
+        >
+          <UserPlus className="size-3.5" />
+          Invite teacher
+        </button>
       )}
 
       {/* Tutor-only recovery: refresh every client (including the tutor) — useful

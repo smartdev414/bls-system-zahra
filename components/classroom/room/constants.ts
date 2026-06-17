@@ -13,6 +13,9 @@ export const BREAKOUT_TOPIC       = "cls-breakouts"
 export const BREAKOUT_WRAP_UP_SEC = 30
 export const NUDGE_TOPIC     = "cls-nudge"
 export const SCREEN_TOPIC    = "cls-screen"
+// Live captions: each speaker's browser transcribes its own mic (Web Speech API)
+// and broadcasts the text so everyone — especially the Deaf tutor — can read it.
+export const CAPTION_TOPIC   = "cls-captions"
 
 export const POINTER_SEND_INTERVAL_MS = 50  // throttle pointer moves to ~20 fps
 export const POINTER_AUTO_HIDE_MS     = 1500

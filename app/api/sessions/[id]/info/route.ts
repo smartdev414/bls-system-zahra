@@ -62,6 +62,9 @@ async function handleGET(
             }
           : {}),
       },
+      // Tutors/admins: true only for the owning tutor. Co-tutors get false, so
+      // the classroom page won't try to flip session status (an owner-only op).
+      ...(auth.role !== "STUDENT" ? { isOwner: auth.sub === rest.tutorId } : {}),
     })
   } catch (err) {
     console.error("[GET /api/sessions/[id]/info]", err)

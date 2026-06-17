@@ -57,7 +57,18 @@ async function handlePOST(
       )
     }
 
-    const isTutor = session.role === "TUTOR" && session.sub === liveSession.tutorId
+    // The owning tutor always gets tutor rights. A co-tutor (another tutor the
+    // owner invited to this specific session) gets the same tutor metadata and
+    // publish grant, so they join with full classroom controls.
+    const isOwnerTutor = session.role === "TUTOR" && session.sub === liveSession.tutorId
+    const isCoTutor =
+      session.role === "TUTOR" &&
+      !isOwnerTutor &&
+      !!(await prisma.liveSessionCoTutor.findUnique({
+        where: { sessionId_tutorId: { sessionId: id, tutorId: session.sub } },
+        select: { id: true },
+      }))
+    const isTutor = isOwnerTutor || isCoTutor
 
     const at = new AccessToken(apiKey, apiSecret, {
       identity: session.sub,
