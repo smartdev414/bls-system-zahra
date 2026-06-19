@@ -96,6 +96,12 @@ class MultiUserTranscriber {
     if (participant.kind === ParticipantKind.AGENT) return
     if (this.sessions.has(participant.identity)) return
 
+    console.info("[classroom-transcriber] attaching speaker", {
+      room: this.ctx.room.name,
+      identity: participant.identity,
+      name: participant.name,
+    })
+
     const session = new voice.AgentSession({
       turnHandling: { turnDetection: "stt" },
     })
@@ -141,9 +147,14 @@ class MultiUserTranscriber {
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
+    console.info("[classroom-transcriber] job started", { room: ctx.room.name })
     const hub = new MultiUserTranscriber(ctx)
     hub.start()
     await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY)
+    console.info("[classroom-transcriber] connected", {
+      room: ctx.room.name,
+      participants: ctx.room.remoteParticipants.size,
+    })
     await hub.attachExisting()
     ctx.addShutdownCallback(() => hub.close())
   },

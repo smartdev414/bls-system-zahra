@@ -112,10 +112,12 @@ async function handlePOST(
 
     const token = await at.toJwt()
 
-    // Spin up the server-side caption agent once per room (Deepgram STT).
-    void ensureClassroomTranscriber(liveSession.roomName).catch((err) => {
-      console.warn("[captions] transcriber dispatch failed", err)
-    })
+    // Await dispatch — Vercel kills fire-and-forget work when the response is sent.
+    try {
+      await ensureClassroomTranscriber(liveSession.roomName)
+    } catch (err) {
+      console.warn("[captions] transcriber dispatch failed (token still issued)", err)
+    }
 
     // Record attendance for students
     if (session.role === "STUDENT") {
