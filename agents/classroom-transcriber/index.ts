@@ -1,5 +1,5 @@
 /**
- * Server-side classroom captions — one LiveKit Inference STT session per speaker.
+ * Server-side classroom captions — one LiveKit Inference STT stream per speaker.
  * Publishes LiveKit transcriptions so every client can read who said what.
  *
  * Local dev:  npm run transcriber
@@ -15,15 +15,24 @@ import {
   AutoSubscribe,
   type JobContext,
   cli,
+  
   defineAgent,
   inference,
   ServerOptions,
   WorkerPermissions,
+  stt,
   voice,
 } from "@livekit/agents"
 import {
+  AudioStream,
+  type AudioFrame,
   type RemoteParticipant,
+  type RemoteTrack,
+  type RemoteTrackPublication,
   ParticipantKind,
+  RoomEvent,
+  type Room,
+  TrackSource,
 } from "@livekit/rtc-node"
 
 // Load repo-root .env when started via `npm run transcriber`.
@@ -32,6 +41,9 @@ config({ path: resolve(root, ".env") })
 
 const AGENT_NAME = process.env.LIVEKIT_AGENT_NAME ?? "classroom-transcriber"
 const LIVEKIT_URL = process.env.LIVEKIT_WS_URL ?? process.env.LIVEKIT_URL ?? ""
+
+const AUDIO_SAMPLE_RATE = 24000
+const AUDIO_CHANNELS = 1
 
 /** Low-latency streaming via LiveKit Inference (Deepgram Nova-3 under the hood). */
 function makeStt() {
@@ -48,23 +60,180 @@ function makeStt() {
   })
 }
 
-class Transcriber extends voice.Agent {
-  constructor(readonly participantIdentity: string) {
-    super({
-      instructions: "not-needed",
-      stt: makeStt(),
-    })
+/** Subscribe to one participant's microphone and forward PCM frames. */
+class SpeakerAudioCapture {
+  private closed = false
+  private reader: ReadableStreamDefaultReader<AudioFrame> | null = null
+  private pumpTask: Promise<void> | null = null
+
+  constructor(
+    private readonly room: Room,
+    private readonly participantIdentity: string,
+    private readonly onFrame: (frame: AudioFrame) => void,
+  ) {
+    this.room.on(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
+    this.room.on(RoomEvent.TrackUnpublished, this.onTrackUnpublished)
+    this.attachExistingMic()
   }
 
-  async onUserTurnCompleted(): Promise<void> {
-    // Transcription-only — never call an LLM or speak back.
-    throw new voice.StopResponse()
+  private attachExistingMic() {
+    const participant = this.room.remoteParticipants.get(this.participantIdentity)
+    if (!participant) return
+    for (const publication of participant.trackPublications.values()) {
+      if (publication.source === TrackSource.SOURCE_MICROPHONE && publication.track) {
+        this.startReading(publication.track)
+        break
+      }
+    }
+  }
+
+  private onTrackSubscribed = (
+    track: RemoteTrack,
+    publication: RemoteTrackPublication,
+    participant: RemoteParticipant,
+  ) => {
+    if (participant.identity !== this.participantIdentity) return
+    if (publication.source !== TrackSource.SOURCE_MICROPHONE) return
+    this.startReading(track)
+  }
+
+  private onTrackUnpublished = (
+    publication: RemoteTrackPublication,
+    participant: RemoteParticipant,
+  ) => {
+    if (participant.identity !== this.participantIdentity) return
+    if (publication.source !== TrackSource.SOURCE_MICROPHONE) return
+    void this.stopReading()
+  }
+
+  private startReading(track: RemoteTrack) {
+    void this.stopReading()
+    const stream = new AudioStream(track, {
+      sampleRate: AUDIO_SAMPLE_RATE,
+      numChannels: AUDIO_CHANNELS,
+    })
+    const reader = stream.getReader()
+    this.reader = reader
+    this.pumpTask = (async () => {
+      try {
+        while (!this.closed) {
+          const { done, value } = await reader.read()
+          if (done) break
+          this.onFrame(value)
+        }
+      } catch (err) {
+        if (!this.closed) {
+          console.error("[classroom-transcriber] mic read failed", {
+            identity: this.participantIdentity,
+            err,
+          })
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    })()
+  }
+
+  private async stopReading() {
+    if (this.reader) {
+      try {
+        await this.reader.cancel()
+      } catch {
+        /* ignore */
+      }
+      this.reader = null
+    }
+    if (this.pumpTask) {
+      await this.pumpTask.catch(() => {})
+      this.pumpTask = null
+    }
+  }
+
+  async close() {
+    this.closed = true
+    this.room.off(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
+    this.room.off(RoomEvent.TrackUnpublished, this.onTrackUnpublished)
+    await this.stopReading()
+  }
+}
+
+/**
+ * One STT + transcription publisher per remote speaker.
+ * Avoids multiple voice.AgentSession instances on the same room (they conflict on
+ * lk.agent.session byte-stream registration in @livekit/agents 1.4.x).
+ */
+class SpeakerTranscriber {
+  private closed = false
+  private readonly audioCapture: SpeakerAudioCapture
+  private readonly transcriptOut: voice.ParticipantTranscriptionOutput
+  private readonly speechStream: stt.SpeechStream
+  private readonly tasks: Promise<void>[] = []
+
+  constructor(
+    private readonly room: Room,
+    participant: RemoteParticipant,
+  ) {
+    this.transcriptOut = new voice.ParticipantTranscriptionOutput(
+      this.room,
+      false,
+      participant.identity,
+    )
+
+    this.speechStream = makeStt().stream()
+    this.audioCapture = new SpeakerAudioCapture(
+      this.room,
+      participant.identity,
+      (frame) => {
+        if (!this.closed) this.speechStream.pushFrame(frame)
+      },
+    )
+    this.tasks.push(this.consumeTranscripts(participant.identity))
+  }
+
+  private async consumeTranscripts(identity: string) {
+    try {
+      for await (const event of this.speechStream) {
+        if (this.closed) break
+
+        const text = event.alternatives?.[0]?.text?.trim()
+        if (!text) continue
+
+        if (
+          event.type === stt.SpeechEventType.INTERIM_TRANSCRIPT ||
+          event.type === stt.SpeechEventType.FINAL_TRANSCRIPT
+        ) {
+          await this.transcriptOut.captureText(text)
+          if (event.type === stt.SpeechEventType.FINAL_TRANSCRIPT) {
+            this.transcriptOut.flush()
+          }
+        }
+      }
+    } catch (err) {
+      if (!this.closed) {
+        console.error("[classroom-transcriber] STT consume failed", {
+          identity,
+          err,
+        })
+      }
+    }
+  }
+
+  async close() {
+    this.closed = true
+    await this.audioCapture.close()
+    try {
+      this.speechStream.endInput()
+      this.speechStream.close()
+    } catch {
+      /* ignore */
+    }
+    await Promise.allSettled(this.tasks)
   }
 }
 
 class MultiUserTranscriber {
-  private sessions = new Map<string, voice.AgentSession>()
-  private tasks = new Set<Promise<void>>()
+  private readonly pipelines = new Map<string, SpeakerTranscriber>()
+  private readonly closeTasks = new Set<Promise<void>>()
 
   constructor(private readonly ctx: JobContext) {}
 
@@ -78,23 +247,17 @@ class MultiUserTranscriber {
   }
 
   private onDisconnected = (participant: RemoteParticipant) => {
-    const session = this.sessions.get(participant.identity)
-    if (!session) return
-    this.sessions.delete(participant.identity)
-    const task = (async () => {
-      try {
-        await session.close()
-      } catch {
-        /* room may already be gone */
-      }
-    })()
-    this.tasks.add(task)
-    void task.finally(() => this.tasks.delete(task))
+    const pipeline = this.pipelines.get(participant.identity)
+    if (!pipeline) return
+    this.pipelines.delete(participant.identity)
+    const task = pipeline.close()
+    this.closeTasks.add(task)
+    void task.finally(() => this.closeTasks.delete(task))
   }
 
   private async attachParticipant(participant: RemoteParticipant) {
     if (participant.kind === ParticipantKind.AGENT) return
-    if (this.sessions.has(participant.identity)) return
+    if (this.pipelines.has(participant.identity)) return
 
     console.info("[classroom-transcriber] attaching speaker", {
       room: this.ctx.room.name,
@@ -102,30 +265,8 @@ class MultiUserTranscriber {
       name: participant.name,
     })
 
-    const session = new voice.AgentSession({
-      turnHandling: { turnDetection: "stt" },
-    })
-
-    await session.start({
-      agent: new Transcriber(participant.identity),
-      room: this.ctx.room,
-      inputOptions: {
-        participantIdentity: participant.identity,
-        audioEnabled: true,
-        textEnabled: false,
-        videoEnabled: false,
-        closeOnDisconnect: false,
-      },
-      outputOptions: {
-        audioEnabled: false,
-        transcriptionEnabled: true,
-        // Don't wait for TTS sync — push interim/final text immediately.
-        syncTranscription: false,
-      },
-      record: false,
-    })
-
-    this.sessions.set(participant.identity, session)
+    const pipeline = new SpeakerTranscriber(this.ctx.room, participant)
+    this.pipelines.set(participant.identity, pipeline)
   }
 
   async attachExisting() {
@@ -138,10 +279,10 @@ class MultiUserTranscriber {
     this.ctx.room.off("participantConnected", this.onConnected)
     this.ctx.room.off("participantDisconnected", this.onDisconnected)
     await Promise.allSettled([
-      ...[...this.sessions.values()].map((s) => s.close()),
-      ...this.tasks,
+      ...[...this.pipelines.values()].map((p) => p.close()),
+      ...this.closeTasks,
     ])
-    this.sessions.clear()
+    this.pipelines.clear()
   }
 }
 

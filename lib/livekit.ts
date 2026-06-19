@@ -80,6 +80,14 @@ export async function ensureClassroomTranscriber(roomName: string): Promise<void
     }
 
     const existing = await client.listDispatch(roomName)
+    for (const d of existing) {
+      // Orphan dispatches (empty agent name) never start a worker — remove them.
+      if (!d.agentName?.trim() && d.id) {
+        await client.deleteDispatch(d.id, roomName).catch(() => {})
+        console.info("[captions] removed orphan dispatch", d.id, "for room", roomName)
+      }
+    }
+
     const hasDispatch = existing.some((d) => d.agentName === CLASSROOM_TRANSCRIBER_AGENT)
     if (hasDispatch) {
       console.info("[captions] stale dispatch for room — re-dispatching transcriber", roomName)
