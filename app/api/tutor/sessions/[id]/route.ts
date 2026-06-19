@@ -5,7 +5,8 @@ import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
-import { scheduleRecordingReconcile } from "@/lib/recording"
+import { reconcileSessionRecording, scheduleRecordingReconcile } from "@/lib/recording"
+import { closeLiveKitRoom, notifySessionStatusChange } from "@/lib/live-session-status"
 
 function egressClient() {
   return new EgressClient(
@@ -127,8 +128,12 @@ async function handlePATCH(
         if (existing.egressId) {
           const egressId = existing.egressId
           await stopEgress(egressId)
+          // Clear immediately — a stale egressId leaves "Recording processing…"
+          // spinning forever when background work never runs (e.g. serverless).
+          data.egressId = null
+          await reconcileSessionRecording(id, { egressId, pollEgress: true })
           scheduleRecordingReconcile(id, egressId)
-          console.log("[session] egress stopped; reconciling recording in background")
+          console.log("[session] egress stopped; recording reconciled")
         } else {
           console.log("[session] no egressId found, recording not available")
         }
@@ -202,6 +207,13 @@ async function handlePATCH(
           ),
         )
       }
+    }
+
+    // When the host ends (or cancels) a session, close the LiveKit room and tell
+    // co-teachers immediately — they otherwise keep seeing "Live Now" until refresh.
+    if (body.status === "COMPLETED" || body.status === "CANCELLED") {
+      void closeLiveKitRoom(existing.roomName)
+      void notifySessionStatusChange(id, body.status, updated.title, existing.tutorId)
     }
 
     // Notify students on critical status transitions

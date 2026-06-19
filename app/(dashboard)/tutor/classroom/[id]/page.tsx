@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/dialog"
 import { useFetch, usePostCallback, usePatchCallback } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
+import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
+import { toast } from "sonner"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -314,6 +316,23 @@ export default function TutorClassroomPage({
     { successMessage: false, errorMessage: false }
   )
 
+  const isOwner = data?.isOwner !== false
+
+  // When the host ends the session, disconnect co-teachers still in the room.
+  useEffect(() => {
+    const onStatus = (e: Event) => {
+      const detail = (e as CustomEvent<{ sessionId: string; status: string }>).detail
+      if (detail?.sessionId !== id) return
+      if (detail.status === "COMPLETED" || detail.status === "CANCELLED") {
+        setEnded(true)
+        toast.info("This session has ended")
+        router.replace("/tutor/sessions")
+      }
+    }
+    window.addEventListener(SESSION_STATUS_EVENT, onStatus)
+    return () => window.removeEventListener(SESSION_STATUS_EVENT, onStatus)
+  }, [id, router])
+
   // Tutor explicitly clicks "Start Session" from the lobby. Patches status if
   // still SCHEDULED then fetches a connect token. The actual room mount is
   // gated on tokenData below.
@@ -321,11 +340,11 @@ export default function TutorClassroomPage({
     if (!data?.session) return
     // Only the owning tutor flips the session live; a co-tutor just connects
     // (the owner will have already started it, or will shortly).
-    if (data.session.status === "SCHEDULED" && data.isOwner !== false) {
+    if (data.session.status === "SCHEDULED" && isOwner) {
       await patchStatus({ status: "LIVE" })
     }
     getToken({})
-  }, [data, getToken, patchStatus])
+  }, [data, getToken, patchStatus, isOwner])
 
   const handleDisconnected = () => {
     setEnded(true)
@@ -411,9 +430,11 @@ export default function TutorClassroomPage({
       <Dialog open={leaveDialogOpen} onOpenChange={(open) => !leavingBusy && setLeaveDialogOpen(open)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Leave live session?</DialogTitle>
+            <DialogTitle>{isOwner ? "Leave live session?" : "Leave classroom?"}</DialogTitle>
             <DialogDescription>
-              You can leave temporarily and come back later, or finish this session for everyone.
+              {isOwner
+                ? "You can leave temporarily and come back later, or finish this session for everyone."
+                : "You'll leave the classroom. The host manages when this session ends."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -425,22 +446,34 @@ export default function TutorClassroomPage({
             >
               Cancel
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleLeaveForNow}
-              disabled={leavingBusy}
-            >
-              Leave for now
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={handleFinishSession}
-              disabled={leavingBusy}
-            >
-              {leavingBusy ? "Finishing..." : "Finish session"}
-            </Button>
+            {isOwner ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleLeaveForNow}
+                  disabled={leavingBusy}
+                >
+                  Leave for now
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleFinishSession}
+                  disabled={leavingBusy}
+                >
+                  {leavingBusy ? "Finishing..." : "Finish session"}
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                onClick={handleLeaveForNow}
+                disabled={leavingBusy}
+              >
+                Leave classroom
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

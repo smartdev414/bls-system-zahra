@@ -2,6 +2,7 @@ import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { UserIdSeeder } from "@/components/layout/user-id-seeder"
 import { CoTutorInviteListener } from "@/components/layout/cotutor-invite-listener"
+import { SessionStatusListener } from "@/components/layout/session-status-listener"
 import { TutorPendingApproval } from "@/components/tutor-pending-approval"
 import { getSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
@@ -23,6 +24,7 @@ export default async function TutorLayout({ children }: { children: React.ReactN
     <>
       <UserIdSeeder userId={user.id} />
       <CoTutorInviteListener userId={user.id} />
+      <SessionStatusListener userId={user.id} />
       <Header role="TUTOR" user={user} />
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
         {isVerified ? children : <TutorPendingApproval userName={session.name} />}

@@ -31,6 +31,22 @@ import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { Pagination } from "@/components/ui/pagination"
 import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
+import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
+
+const RECORDING_PROCESSING_MS = 10 * 60 * 1000
+const S3_UPLOAD_GRACE_MS = 3 * 60 * 1000
+
+function isRecordingProcessing(session: SessionItem): boolean {
+  if (session.status !== "COMPLETED") return false
+  if (session.recordingUrl) return false
+  if (!session.recordingKey && !session.egressId) return false
+  if (!session.endedAt) return !!session.egressId
+
+  const elapsed = Date.now() - new Date(session.endedAt).getTime()
+  if (elapsed >= RECORDING_PROCESSING_MS) return false
+  if (session.egressId) return true
+  return !!session.recordingKey && elapsed < S3_UPLOAD_GRACE_MS
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +62,7 @@ type SessionItem = {
   maxStudents: number | null
   course: { id: string; title: string } | null
   recordingUrl: string | null
+  recordingKey: string | null
   egressId: string | null
   startedAt: string | null
   endedAt: string | null
@@ -765,6 +782,14 @@ function SessionCard({
     onSuccess: () => onMutated?.(),
   })
 
+  const recordingProcessing = isRecordingProcessing(session)
+
+  useEffect(() => {
+    if (!recordingProcessing || !onMutated) return
+    const id = window.setInterval(() => onMutated(), 5_000)
+    return () => window.clearInterval(id)
+  }, [recordingProcessing, onMutated, session.id])
+
   async function openRecording() {
     setRecordingLoading(true)
     try {
@@ -941,12 +966,12 @@ function SessionCard({
               </Button>
             </>
           )}
-          {session.status === "COMPLETED" && !session.recordingUrl && session.egressId && (
+          {recordingProcessing && (
             <span className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Loader2 className="size-3 animate-spin" /> Recording processing…
             </span>
           )}
-          {session.status === "COMPLETED" && !session.recordingUrl && !session.egressId && (
+          {session.status === "COMPLETED" && !session.recordingUrl && !recordingProcessing && (
             <span className="text-xs text-muted-foreground">No recording available</span>
           )}
           {session.status === "CANCELLED" && (
@@ -1414,6 +1439,20 @@ export default function TutorSessionsPage() {
   })
 
   const sessions = data?.sessions ?? []
+
+  // Co-teachers don't get a push when the host ends from another tab unless we
+  // poll or listen — the layout listener dispatches SESSION_STATUS_EVENT.
+  useEffect(() => {
+    const onStatus = () => { void refetch() }
+    window.addEventListener(SESSION_STATUS_EVENT, onStatus)
+    return () => window.removeEventListener(SESSION_STATUS_EVENT, onStatus)
+  }, [refetch])
+
+  useEffect(() => {
+    if (!sessions.some((s) => s.status === "LIVE")) return
+    const timer = setInterval(() => { void refetch() }, 30_000)
+    return () => clearInterval(timer)
+  }, [sessions, refetch])
 
   return (
     <div className="flex flex-col gap-6">

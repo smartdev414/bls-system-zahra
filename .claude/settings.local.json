@@ -42,7 +42,8 @@
       "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
       "Bash(git stash *)",
       "Bash(rm -f scripts/lk-diag.mjs scripts/lk-diag2.mjs)",
-      "Bash(rmdir scripts *)"
+      "Bash(rmdir scripts *)",
+      "WebFetch(domain:docs.livekit.io)"
     ]
   }
 }

@@ -5,6 +5,7 @@ import { randomBytes } from "crypto"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
+import { reconcilePendingRecordings } from "@/lib/recording"
 
 async function handleGET() {
   try {
@@ -32,6 +33,35 @@ async function handleGET() {
       }),
     ])
 
+    const coSessions = coTutorLinks.map((c) => c.session)
+    await reconcilePendingRecordings([
+      ...owned,
+      ...coSessions.filter((s) => !owned.some((o) => o.id === s.id)),
+    ])
+
+    // Re-read recording fields that reconcile may have updated.
+    const refreshed = await prisma.liveSession.findMany({
+      where: { id: { in: [...owned, ...coSessions].map((s) => s.id) } },
+      select: { id: true, recordingUrl: true, egressId: true, recordingKey: true },
+    })
+    const recordingById = new Map(refreshed.map((r) => [r.id, r]))
+    for (const s of owned) {
+      const r = recordingById.get(s.id)
+      if (r) {
+        s.recordingUrl = r.recordingUrl
+        s.egressId = r.egressId
+        s.recordingKey = r.recordingKey
+      }
+    }
+    for (const s of coSessions) {
+      const r = recordingById.get(s.id)
+      if (r) {
+        s.recordingUrl = r.recordingUrl
+        s.egressId = r.egressId
+        s.recordingKey = r.recordingKey
+      }
+    }
+
     type SessionWithCounts = (typeof owned)[number]
     const shape = (s: SessionWithCounts, isCoTutor: boolean) => ({
       id: s.id,
@@ -49,6 +79,7 @@ async function handleGET() {
       startedAt: s.startedAt?.toISOString() ?? null,
       endedAt: s.endedAt?.toISOString() ?? null,
       recordingUrl: s.recordingUrl ?? null,
+      recordingKey: s.recordingKey ?? null,
       egressId: s.egressId ?? null,
       isCoTutor,
     })

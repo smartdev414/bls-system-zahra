@@ -12,8 +12,11 @@
 //   1. Connect to the room as a view-only participant using `token`.
 //   2. Render whatever the recording should look like (here: a video grid
 //      with the Deaf Signs logo overlaid in the top-left).
-//   3. Signal readiness via `lk-egress-template-ready` (and the legacy
-//      `window.READY_TO_RECORD` flag) so the worker starts capturing.
+//   3. Signal readiness by logging the literal string `START_RECORDING` to the
+//      console (and `END_RECORDING` on teardown). The egress worker watches the
+//      headless-Chrome console for these exact strings — this is the ONLY signal
+//      LiveKit's recorder honours. See:
+//      https://docs.livekit.io/home/egress/custom-template/
 //
 // IMPORTANT: this route is PUBLIC. Access is gated by the JWT in the URL —
 // only the egress worker has it, and it's view-only.
@@ -70,18 +73,21 @@ function CompositeGrid() {
 }
 
 // Signals readiness to the egress worker once the room has connected and at
-// least one frame has been rendered. The dispatch happens on the next animation
-// frame so the worker captures actual video, not the loading placeholder.
+// least one frame has been rendered. The worker watches the console for the
+// literal `START_RECORDING` / `END_RECORDING` strings — a console.log is the
+// canonical (and only) signal LiveKit's recorder acts on. The log is deferred to
+// the next animation frame so the worker captures actual video, not the loading
+// placeholder.
 function ReadySignal() {
   useEffect(() => {
     const id = window.requestAnimationFrame(() => {
-      // Legacy boolean — some egress worker builds still check this.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(window as any).READY_TO_RECORD = true
-      // Current event — the canonical signal LiveKit Cloud documents.
-      window.dispatchEvent(new Event("lk-egress-template-ready"))
+      console.log("START_RECORDING")
     })
-    return () => window.cancelAnimationFrame(id)
+    return () => {
+      window.cancelAnimationFrame(id)
+      // Room disconnected / page tearing down — let the worker finalise the file.
+      console.log("END_RECORDING")
+    }
   }, [])
   return null
 }
