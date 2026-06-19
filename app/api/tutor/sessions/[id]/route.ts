@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
+import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
 
 function egressClient() {
@@ -101,6 +102,7 @@ async function handlePATCH(
       maxStudents?: number | null
       visibility?: "PUBLIC" | "INVITE_ONLY"
       invitedStudentIds?: string[]
+      invitedTutorIds?: string[]
     }
 
     const data: Record<string, unknown> = {}
@@ -143,6 +145,62 @@ async function handlePATCH(
           data: body.invitedStudentIds.map((studentId) => ({ sessionId: id, studentId })),
           skipDuplicates: true,
         })
+      }
+    }
+
+    // Sync co-teachers when invitedTutorIds is provided
+    if (body.invitedTutorIds !== undefined) {
+      const candidateIds = [...new Set(body.invitedTutorIds)].filter((tid) => tid !== session.sub)
+      const tutors = await prisma.user.findMany({
+        where: { id: { in: candidateIds }, role: "TUTOR" },
+        select: { id: true },
+      })
+      const newTutorIds = new Set(tutors.map((t) => t.id))
+
+      const existingCoTutors = await prisma.liveSessionCoTutor.findMany({
+        where: { sessionId: id },
+        select: { tutorId: true },
+      })
+      const existingIds = new Set(existingCoTutors.map((c) => c.tutorId))
+
+      const toRemove = [...existingIds].filter((tid) => !newTutorIds.has(tid))
+      const toAdd = [...newTutorIds].filter((tid) => !existingIds.has(tid))
+
+      if (toRemove.length > 0) {
+        await prisma.liveSessionCoTutor.deleteMany({
+          where: { sessionId: id, tutorId: { in: toRemove } },
+        })
+      }
+
+      if (toAdd.length > 0) {
+        await prisma.liveSessionCoTutor.createMany({
+          data: toAdd.map((tutorId) => ({
+            sessionId: id,
+            tutorId,
+            invitedById: session.sub,
+          })),
+          skipDuplicates: true,
+        })
+
+        void createNotifications(
+          toAdd,
+          "SESSION_COTUTOR_INVITE",
+          "You've been added as a co-teacher",
+          `${session.name} invited you to co-teach "${updated.title}". Open the classroom to join.`,
+          `/tutor/classroom/${id}`,
+        )
+
+        const isLive = updated.status === "LIVE"
+        void Promise.all(
+          toAdd.map((tutorId) =>
+            triggerUserEvent(tutorId, "cotutor-invite", {
+              sessionId: id,
+              sessionTitle: updated.title,
+              from: session.name,
+              live: isLive,
+            }).catch(() => {}),
+          ),
+        )
       }
     }
 

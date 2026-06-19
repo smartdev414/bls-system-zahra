@@ -406,7 +406,7 @@ export default function TutorDashboardPage() {
 
               <Separator />
               <Button asChild className="w-full" size="sm">
-                <Link href="/tutor/sessions/new">
+                <Link href="/tutor/sessions">
                   <CalendarPlus className="size-4 mr-1.5" /> Schedule Session
                 </Link>
               </Button>

@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import {
-  Video, CalendarPlus, Clock, Users,
+  Video, CalendarPlus, Clock, Users, Users2,
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
+import { TutorPickerModal } from "@/components/classroom/TutorPickerModal"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { Pagination } from "@/components/ui/pagination"
 import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
@@ -129,6 +130,7 @@ function buildMonthGrid(year: number, month: number): Date[][] {
 
 type CoursesData = { courses: Array<{ id: string; title: string }> }
 type StudentResult = { id: string; name: string; email: string; avatarUrl: string | null }
+type TutorResult = { id: string; name: string; email: string; avatarUrl: string | null }
 type SessionBody = {
   title: string; description: string; scheduledAt: string
   durationMins: number; maxStudents: number | undefined; courseId: string | undefined
@@ -177,7 +179,9 @@ function ScheduleSessionDialog({
   const [courseId, setCourseId] = useState("")
   const [visibility, setVisibility] = useState<"PUBLIC" | "INVITE_ONLY">("INVITE_ONLY")
   const [invitedStudents, setInvitedStudents] = useState<StudentResult[]>([])
+  const [invitedTutors, setInvitedTutors] = useState<TutorResult[]>([])
   const [showPicker, setShowPicker] = useState(false)
+  const [showTutorPicker, setShowTutorPicker] = useState(false)
   const [repeatWeekly, setRepeatWeekly] = useState(false)
   const [repeatWeeks, setRepeatWeeks] = useState(4)
 
@@ -189,7 +193,7 @@ function ScheduleSessionDialog({
 
   const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
 
-  // Load existing resources and invites when editing; load invites only when duplicating
+  // Load existing resources, invites, and co-tutors when editing; load when duplicating
   useEffect(() => {
     if (!open) return
     if (isEdit && editSession?.id) {
@@ -203,11 +207,23 @@ function ScheduleSessionDialog({
           setInvitedStudents(d.invites.map((i) => ({ id: i.studentId, name: i.studentName, email: i.studentEmail, avatarUrl: null })))
         })
         .catch(() => {})
+      fetch(`/api/tutor/sessions/${editSession.id}/co-tutors`)
+        .then((r) => r.json())
+        .then((d: { coTutors: Array<{ tutorId: string; tutorName: string; tutorEmail: string }> }) => {
+          setInvitedTutors(d.coTutors.map((t) => ({ id: t.tutorId, name: t.tutorName, email: t.tutorEmail, avatarUrl: null })))
+        })
+        .catch(() => {})
     } else if (isDuplicate && duplicateSession?.id) {
       fetch(`/api/tutor/sessions/${duplicateSession.id}/invites`)
         .then((r) => r.json())
         .then((d: { invites: Array<{ studentId: string; studentName: string; studentEmail: string }> }) => {
           setInvitedStudents(d.invites.map((i) => ({ id: i.studentId, name: i.studentName, email: i.studentEmail, avatarUrl: null })))
+        })
+        .catch(() => {})
+      fetch(`/api/tutor/sessions/${duplicateSession.id}/co-tutors`)
+        .then((r) => r.json())
+        .then((d: { coTutors: Array<{ tutorId: string; tutorName: string; tutorEmail: string }> }) => {
+          setInvitedTutors(d.coTutors.map((t) => ({ id: t.tutorId, name: t.tutorName, email: t.tutorEmail, avatarUrl: null })))
         })
         .catch(() => {})
     }
@@ -233,7 +249,7 @@ function ScheduleSessionDialog({
   function resetForm() {
     setTitle(""); setDescription(""); setDate(undefined); setTime("")
     setDurationMins(60); setMaxStudents(""); setCourseId("")
-    setVisibility("PUBLIC"); setInvitedStudents([])
+    setVisibility("PUBLIC"); setInvitedStudents([]); setInvitedTutors([])
     setPendingFiles([]); setSavedResources([]); setSubmitError(null)
     setRepeatWeekly(false); setRepeatWeeks(4)
   }
@@ -278,6 +294,7 @@ function ScheduleSessionDialog({
             courseId: courseId || undefined,
             visibility,
             invitedStudentIds: invitedStudents.map((s) => s.id),
+            invitedTutorIds: invitedTutors.map((t) => t.id),
           }),
         })
         if (!res.ok) throw new Error((await res.json() as { message?: string }).message ?? "Could not update session")
@@ -296,6 +313,7 @@ function ScheduleSessionDialog({
             courseId: courseId || undefined,
             visibility,
             invitedStudentIds: invitedStudents.map((s) => s.id),
+            invitedTutorIds: invitedTutors.map((t) => t.id),
             repeatWeeks: occurrences,
           }),
         })
@@ -553,6 +571,61 @@ function ScheduleSessionDialog({
             </div>
           )}
 
+          {/* Co-teacher invites */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-1.5">
+                <Users2 className="size-3.5" /> Invite Tutors
+                {invitedTutors.length > 0 && (
+                  <span className="ml-1 text-xs bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded-full">
+                    {invitedTutors.length}
+                  </span>
+                )}
+              </Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => setShowTutorPicker(true)}
+              >
+                <Users2 className="size-3" />
+                {invitedTutors.length > 0 ? "Edit Selection" : "Select Tutors"}
+              </Button>
+            </div>
+            {invitedTutors.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowTutorPicker(true)}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/30 py-4 text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+              >
+                <Users2 className="size-5 opacity-50" />
+                <span className="text-xs">Click to invite colleagues as co-teachers</span>
+              </button>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {invitedTutors.map((t) => (
+                  <span
+                    key={t.id}
+                    className="flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs px-2.5 py-1 font-medium"
+                  >
+                    {t.name}
+                    <button
+                      type="button"
+                      onClick={() => setInvitedTutors((prev) => prev.filter((i) => i.id !== t.id))}
+                      className="ml-0.5 rounded-full hover:bg-primary/20 transition-colors"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Invited tutors can co-teach this session and will see it in their sessions list.
+            </p>
+          </div>
+
           {/* Resource files */}
           <Separator />
           <div className="flex flex-col gap-2">
@@ -648,6 +721,17 @@ function ScheduleSessionDialog({
             setShowPicker(false)
           }}
           onClose={() => setShowPicker(false)}
+        />
+      )}
+
+      {showTutorPicker && (
+        <TutorPickerModal
+          selected={new Set(invitedTutors.map((t) => t.id))}
+          onConfirm={(_ids, tutors) => {
+            setInvitedTutors(tutors)
+            setShowTutorPicker(false)
+          }}
+          onClose={() => setShowTutorPicker(false)}
         />
       )}
     </Dialog>

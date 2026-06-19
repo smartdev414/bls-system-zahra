@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { randomBytes } from "crypto"
 import { createNotifications } from "@/lib/notifications"
+import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET() {
@@ -85,10 +86,11 @@ async function handlePOST(req: NextRequest) {
       courseId?: string
       visibility?: "PUBLIC" | "INVITE_ONLY"
       invitedStudentIds?: string[]
+      invitedTutorIds?: string[]
       repeatWeeks?: number
     }
 
-    const { title, description, scheduledAt, durationMins, maxStudents, courseId, visibility = "PUBLIC", invitedStudentIds = [], repeatWeeks = 1 } = body
+    const { title, description, scheduledAt, durationMins, maxStudents, courseId, visibility = "PUBLIC", invitedStudentIds = [], invitedTutorIds = [], repeatWeeks = 1 } = body
 
     if (!title?.trim()) return NextResponse.json({ message: "Title is required" }, { status: 400 })
     if (!scheduledAt) return NextResponse.json({ message: "scheduledAt is required" }, { status: 400 })
@@ -131,6 +133,48 @@ async function handlePOST(req: NextRequest) {
     })
     const seriesSuffix = occurrences > 1 ? ` (weekly series, ${occurrences} sessions)` : ""
     const sessionLink = `/student/classroom`
+
+    // Co-teacher invites (independent of student visibility)
+    const coTutorCandidateIds = [...new Set(invitedTutorIds)].filter((tid) => tid !== session.sub)
+    if (coTutorCandidateIds.length > 0) {
+      const tutors = await prisma.user.findMany({
+        where: { id: { in: coTutorCandidateIds }, role: "TUTOR" },
+        select: { id: true },
+      })
+      const tutorIds = tutors.map((t) => t.id)
+      if (tutorIds.length > 0) {
+        await Promise.all(
+          created.map((s) =>
+            prisma.liveSessionCoTutor.createMany({
+              data: tutorIds.map((tutorId) => ({
+                sessionId: s.id,
+                tutorId,
+                invitedById: session.sub,
+              })),
+              skipDuplicates: true,
+            }),
+          ),
+        )
+        const cotutorLink = occurrences > 1 ? "/tutor/sessions" : `/tutor/classroom/${created[0].id}`
+        void createNotifications(
+          tutorIds,
+          "SESSION_COTUTOR_INVITE",
+          occurrences > 1 ? "You've been added as a co-teacher to a weekly series" : "You've been added as a co-teacher",
+          `${session.name} invited you to co-teach "${title.trim()}" starting ${firstScheduledDate}${seriesSuffix}`,
+          cotutorLink,
+        )
+        void Promise.all(
+          tutorIds.map((tutorId) =>
+            triggerUserEvent(tutorId, "cotutor-invite", {
+              sessionId: created[0].id,
+              sessionTitle: title.trim(),
+              from: session.name,
+              live: false,
+            }).catch(() => {}),
+          ),
+        )
+      }
+    }
 
     if (visibility === "INVITE_ONLY" && invitedStudentIds.length > 0) {
       void createNotifications(
