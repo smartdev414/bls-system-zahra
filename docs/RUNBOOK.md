@@ -104,8 +104,10 @@ npm run transcriber:deploy
 ```
 
 First-time setup (already done): `lk agent create --config agents/classroom-transcriber/livekit.toml --region eu-central --secrets-file agents/classroom-transcriber/secrets.env -y .`
-Local dev only: `npm run transcriber` in a second terminal — stop the local worker when
+Local dev only: `npm run transcriber` in a second terminal — **stop the local worker** when
 testing against the cloud agent to avoid duplicate dispatch.
+
+**Do not run local + cloud transcriber at the same time** — they compete for the same room jobs.
 
 ### 4.5 Invites/notifications not received
 Email is **silently skipped** when Mailgun isn't configured (`/api/health` →

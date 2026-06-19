@@ -85,6 +85,12 @@ export function CaptionsOverlay() {
       segments: TranscriptionSegment[],
       participant?: Participant,
     ) => {
+      if (process.env.NODE_ENV === "development") {
+        console.debug("[captions] TranscriptionReceived", {
+          participant: participant?.identity,
+          segments: segments.map((s) => ({ id: s.id, text: s.text, final: s.final })),
+        })
+      }
       segments.forEach((seg) => applySegment(seg, participant))
     }
 
@@ -104,7 +110,7 @@ export function CaptionsOverlay() {
   if (visible.length === 0) return null
 
   return (
-    <div className="absolute bottom-3 inset-x-0 flex justify-center pointer-events-none z-30 px-3 sm:px-6">
+    <div className="absolute bottom-3 inset-x-0 flex justify-center pointer-events-none z-50 px-3 sm:px-6">
       <div
         className="bg-black/85 backdrop-blur-md rounded-2xl px-4 py-3 max-w-3xl w-full flex flex-col gap-2 shadow-lg border border-white/10"
         aria-live="polite"

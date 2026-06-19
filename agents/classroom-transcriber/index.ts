@@ -11,17 +11,16 @@
 import { config } from "dotenv"
 import { fileURLToPath } from "node:url"
 import { dirname, resolve } from "node:path"
+import { randomUUID } from "node:crypto"
 import {
   AutoSubscribe,
   type JobContext,
   cli,
-  
   defineAgent,
   inference,
   ServerOptions,
   WorkerPermissions,
   stt,
-  voice,
 } from "@livekit/agents"
 import {
   AudioStream,
@@ -60,6 +59,90 @@ function makeStt() {
   })
 }
 
+/** Publishes captions via LiveKit's transcription API (drives TranscriptionReceived in clients). */
+class CaptionPublisher {
+  private trackSid: string | undefined
+  private segmentId: string
+
+  constructor(
+    private readonly room: Room,
+    private readonly participantIdentity: string,
+  ) {
+    this.segmentId = newSegmentId()
+    this.refreshTrackSid()
+    this.room.on(RoomEvent.TrackPublished, this.onTrackPublished)
+  }
+
+  private onTrackPublished = (pub: RemoteTrackPublication, p: RemoteParticipant) => {
+    if (
+      p.identity === this.participantIdentity &&
+      pub.source === TrackSource.SOURCE_MICROPHONE &&
+      pub.sid
+    ) {
+      this.trackSid = pub.sid
+    }
+  }
+
+  setTrackSid(sid: string) {
+    this.trackSid = sid
+  }
+
+  refreshTrackSid() {
+    const p = this.room.remoteParticipants.get(this.participantIdentity)
+    if (!p) return
+    for (const pub of p.trackPublications.values()) {
+      if (pub.source === TrackSource.SOURCE_MICROPHONE && pub.sid) {
+        this.trackSid = pub.sid
+        return
+      }
+    }
+  }
+
+  async publish(text: string, final: boolean) {
+    const local = this.room.localParticipant
+    if (!local || !this.room.isConnected) return
+
+    if (!this.trackSid) {
+      this.refreshTrackSid()
+      if (!this.trackSid) {
+        console.warn("[classroom-transcriber] skip publish — no mic trackSid", this.participantIdentity)
+        return
+      }
+    }
+
+    try {
+      await local.publishTranscription({
+        participantIdentity: this.participantIdentity,
+        trackSid: this.trackSid,
+        segments: [
+          {
+            id: this.segmentId,
+            text,
+            final,
+            startTime: BigInt(0),
+            endTime: BigInt(0),
+            language: "en",
+          },
+        ],
+      })
+      if (final) this.segmentId = newSegmentId()
+    } catch (err) {
+      console.error("[classroom-transcriber] publishTranscription failed", {
+        identity: this.participantIdentity,
+        err,
+      })
+    }
+  }
+
+  close() {
+    this.room.off(RoomEvent.TrackPublished, this.onTrackPublished)
+  }
+}
+
+function newSegmentId() {
+  return `SG_${randomUUID().slice(0, 12)}`
+}
+
 /** Subscribe to one participant's microphone and forward PCM frames. */
 class SpeakerAudioCapture {
   private closed = false
@@ -70,6 +153,7 @@ class SpeakerAudioCapture {
     private readonly room: Room,
     private readonly participantIdentity: string,
     private readonly onFrame: (frame: AudioFrame) => void,
+    private readonly onMicTrack?: (trackSid: string) => void,
   ) {
     this.room.on(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
     this.room.on(RoomEvent.TrackUnpublished, this.onTrackUnpublished)
@@ -81,7 +165,8 @@ class SpeakerAudioCapture {
     if (!participant) return
     for (const publication of participant.trackPublications.values()) {
       if (publication.source === TrackSource.SOURCE_MICROPHONE && publication.track) {
-        this.startReading(publication.track)
+        if (publication.sid) this.onMicTrack?.(publication.sid)
+        this.startReading(publication.track, publication.sid)
         break
       }
     }
@@ -94,7 +179,8 @@ class SpeakerAudioCapture {
   ) => {
     if (participant.identity !== this.participantIdentity) return
     if (publication.source !== TrackSource.SOURCE_MICROPHONE) return
-    this.startReading(track)
+    if (publication.sid) this.onMicTrack?.(publication.sid)
+    this.startReading(track, publication.sid)
   }
 
   private onTrackUnpublished = (
@@ -106,8 +192,12 @@ class SpeakerAudioCapture {
     void this.stopReading()
   }
 
-  private startReading(track: RemoteTrack) {
+  private startReading(track: RemoteTrack, trackSid?: string) {
     void this.stopReading()
+    console.info("[classroom-transcriber] mic subscribed", {
+      identity: this.participantIdentity,
+      trackSid: trackSid ?? track.sid,
+    })
     const stream = new AudioStream(track, {
       sampleRate: AUDIO_SAMPLE_RATE,
       numChannels: AUDIO_CHANNELS,
@@ -165,7 +255,7 @@ class SpeakerAudioCapture {
 class SpeakerTranscriber {
   private closed = false
   private readonly audioCapture: SpeakerAudioCapture
-  private readonly transcriptOut: voice.ParticipantTranscriptionOutput
+  private readonly captions: CaptionPublisher
   private readonly speechStream: stt.SpeechStream
   private readonly tasks: Promise<void>[] = []
 
@@ -173,11 +263,7 @@ class SpeakerTranscriber {
     private readonly room: Room,
     participant: RemoteParticipant,
   ) {
-    this.transcriptOut = new voice.ParticipantTranscriptionOutput(
-      this.room,
-      false,
-      participant.identity,
-    )
+    this.captions = new CaptionPublisher(this.room, participant.identity)
 
     this.speechStream = makeStt().stream()
     this.audioCapture = new SpeakerAudioCapture(
@@ -186,6 +272,7 @@ class SpeakerTranscriber {
       (frame) => {
         if (!this.closed) this.speechStream.pushFrame(frame)
       },
+      (trackSid) => this.captions.setTrackSid(trackSid),
     )
     this.tasks.push(this.consumeTranscripts(participant.identity))
   }
@@ -202,10 +289,13 @@ class SpeakerTranscriber {
           event.type === stt.SpeechEventType.INTERIM_TRANSCRIPT ||
           event.type === stt.SpeechEventType.FINAL_TRANSCRIPT
         ) {
-          await this.transcriptOut.captureText(text)
-          if (event.type === stt.SpeechEventType.FINAL_TRANSCRIPT) {
-            this.transcriptOut.flush()
-          }
+          const isFinal = event.type === stt.SpeechEventType.FINAL_TRANSCRIPT
+          console.info("[classroom-transcriber] transcript", {
+            identity,
+            final: isFinal,
+            text: text.slice(0, 80),
+          })
+          await this.captions.publish(text, isFinal)
         }
       }
     } catch (err) {
@@ -220,6 +310,7 @@ class SpeakerTranscriber {
 
   async close() {
     this.closed = true
+    this.captions.close()
     await this.audioCapture.close()
     try {
       this.speechStream.endInput()
