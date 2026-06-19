@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
 import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 type LiveSession = {
@@ -134,7 +135,11 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
     setRecordingLoading(true)
     try {
       const res  = await fetch(`/api/sessions/${session.id}/recording`)
-      const data = await res.json() as { url?: string; segments?: string[] }
+      const data = await res.json() as { url?: string; segments?: string[]; message?: string }
+      if (!res.ok) {
+        toast.error(data.message ?? "Recording is not available yet")
+        return
+      }
       const segs = data.segments ?? (data.url ? [data.url] : [])
       if (segs.length) { setRecordingSegments(segs); setRecordingOpen(true) }
     } finally {

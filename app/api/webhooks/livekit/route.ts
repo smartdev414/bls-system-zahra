@@ -29,7 +29,13 @@ async function handlePOST(req: NextRequest) {
 
       // EgressStatus.EGRESS_COMPLETE = 2, EGRESS_FAILED = 3
       const failed = (status as unknown as number) === 3
-      if (!failed) {
+      if (failed) {
+        console.error("[webhook/livekit] egress failed for session:", liveSession.id, "egressId:", egressId)
+        await prisma.liveSession.update({
+          where: { id: liveSession.id },
+          data: { egressId: null },
+        })
+      } else {
         const key = (liveSession as unknown as { recordingKey?: string }).recordingKey
           ?? `recordings/${liveSession.id}.mp4`
         // If the egress is still active (i.e. this is one segment of a
@@ -40,7 +46,7 @@ async function handlePOST(req: NextRequest) {
         if (!stillActive) {
           await prisma.liveSession.update({
             where: { id: liveSession.id },
-            data: { recordingUrl: key },
+            data: { recordingUrl: key, egressId: null },
           })
         }
       }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { getPresignedDownloadUrl, listObjectKeys } from "@/lib/s3"
+import { getPresignedDownloadUrl, listObjectKeys, objectExists } from "@/lib/s3"
 import { withAudit } from "@/lib/audit"
 
 // Segments share a prefix: `recordings/{id}.mp4`, `recordings/{id}-2.mp4`, …
@@ -54,12 +54,24 @@ async function handleGET(
       // Fallback to the legacy single-file pointer for older recordings that
       // predate segmented capture, just in case the listing returned nothing.
       const legacyKey = liveSession.recordingUrl
-      if (!legacyKey) return NextResponse.json({ message: "No recording available" }, { status: 404 })
+      if (!legacyKey || !(await objectExists(legacyKey))) {
+        return NextResponse.json({ message: "No recording available" }, { status: 404 })
+      }
       const url = await getPresignedDownloadUrl(legacyKey)
       return NextResponse.json({ url, segments: [url] })
     }
 
-    const segments = await Promise.all(mp4Keys.map((k) => getPresignedDownloadUrl(k)))
+    // Only presign keys that actually exist — the DB pointer can be set before
+    // LiveKit finishes uploading to S3.
+    const existingKeys: string[] = []
+    for (const key of mp4Keys) {
+      if (await objectExists(key)) existingKeys.push(key)
+    }
+    if (existingKeys.length === 0) {
+      return NextResponse.json({ message: "Recording is still processing" }, { status: 404 })
+    }
+
+    const segments = await Promise.all(existingKeys.map((k) => getPresignedDownloadUrl(k)))
 
     // `url` stays for backward compatibility with callers that only consume
     // a single source; `segments` is the canonical ordered list.

@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -768,7 +769,11 @@ function SessionCard({
     setRecordingLoading(true)
     try {
       const res  = await fetch(`/api/sessions/${session.id}/recording`)
-      const data = await res.json() as { url?: string; segments?: string[] }
+      const data = await res.json() as { url?: string; segments?: string[]; message?: string }
+      if (!res.ok) {
+        toast.error(data.message ?? "Recording is not available yet")
+        return
+      }
       const segs = data.segments ?? (data.url ? [data.url] : [])
       if (segs.length) { setRecordingSegments(segs); setRecordingOpen(true) }
     } finally {
@@ -910,7 +915,11 @@ function SessionCard({
                   setRecordingLoading(true)
                   try {
                     const res  = await fetch(`/api/sessions/${session.id}/recording`)
-                    const data = await res.json() as { url?: string; segments?: string[] }
+                    const data = await res.json() as { url?: string; segments?: string[]; message?: string }
+                    if (!res.ok) {
+                      toast.error(data.message ?? "Recording is not available yet")
+                      return
+                    }
                     const segs = data.segments ?? (data.url ? [data.url] : [])
                     // Multi-segment downloads: trigger one anchor per part so
                     // the user gets each piece. Cross-origin downloads from a

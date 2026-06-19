@@ -125,10 +125,10 @@ async function handlePATCH(
         console.log("[session] stopping egress, egressId:", existing.egressId)
         if (existing.egressId) {
           await stopEgress(existing.egressId)
-          const key = existing.recordingKey ?? `recordings/${id}.mp4`
-          data.recordingKey = key
-          data.recordingUrl  = key
-          console.log("[session] recording URL set to:", key)
+          // Leave recordingUrl unset until the LiveKit egress_ended webhook
+          // confirms the MP4 landed in S3. Setting it here made the UI offer
+          // download links before the file existed (S3 NoSuchKey).
+          console.log("[session] egress stopped; awaiting S3 upload via webhook")
         } else {
           console.log("[session] no egressId found, recording not available")
         }
