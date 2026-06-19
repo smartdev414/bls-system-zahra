@@ -5,6 +5,7 @@ import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
+import { scheduleRecordingReconcile } from "@/lib/recording"
 
 function egressClient() {
   return new EgressClient(
@@ -124,11 +125,10 @@ async function handlePATCH(
         data.endedAt = new Date()
         console.log("[session] stopping egress, egressId:", existing.egressId)
         if (existing.egressId) {
-          await stopEgress(existing.egressId)
-          // Leave recordingUrl unset until the LiveKit egress_ended webhook
-          // confirms the MP4 landed in S3. Setting it here made the UI offer
-          // download links before the file existed (S3 NoSuchKey).
-          console.log("[session] egress stopped; awaiting S3 upload via webhook")
+          const egressId = existing.egressId
+          await stopEgress(egressId)
+          scheduleRecordingReconcile(id, egressId)
+          console.log("[session] egress stopped; reconciling recording in background")
         } else {
           console.log("[session] no egressId found, recording not available")
         }
