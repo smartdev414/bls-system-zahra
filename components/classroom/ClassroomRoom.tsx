@@ -86,6 +86,7 @@ export function ClassroomRoom({
 
   // Students may only publish audio when the tutor enables their mic.
   const micAllowedByTutorRef = useRef(false)
+  const studentInitialMutedRef = useRef(false)
 
   // ── Chat / hand state ──────────────────────────────────────────────────────
   const [messages,         setMessages]         = useState<ChatMsg[]>([])
@@ -550,14 +551,39 @@ export function ClassroomRoom({
   })
 
   // ── Data channel: tutor-controlled microphones ─────────────────────────────
+  // Server permission updates can lag the data-channel command by a few hundred ms.
+  // Retry enabling so publish doesn't fail silently while the UI still looks "on".
+  const enableStudentMic = useCallback(async () => {
+    const retryDelaysMs = [0, 500, 1200, 2500]
+    for (let i = 0; i < retryDelaysMs.length; i++) {
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[i]! - retryDelaysMs[i - 1]!))
+      }
+      if (!micAllowedByTutorRef.current) return
+      try {
+        await localParticipant.setMicrophoneEnabled(true)
+        if (localParticipant.isMicrophoneEnabled) return
+      } catch {
+        // Permission may not have propagated yet — retry.
+      }
+    }
+    micAllowedByTutorRef.current = false
+    const micErr = localParticipant.lastMicrophoneError
+    toast.error("Couldn't turn your microphone on", {
+      description: micErr?.message?.toLowerCase().includes("permission")
+        ? "Allow microphone access in your browser, then tap Request to speak again."
+        : "Tap Request to speak again — your tutor may need to approve once more.",
+    })
+  }, [localParticipant])
+
   const applyLocalMic = useCallback((enabled: boolean) => {
     micAllowedByTutorRef.current = enabled
     if (enabled) {
-      localParticipant.setMicrophoneEnabled(true).catch(() => { /* ignore */ })
+      void enableStudentMic()
     } else {
-      localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
+      void localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
     }
-  }, [localParticipant])
+  }, [localParticipant, enableStudentMic])
 
   const { send: sendMuteAll } = useDataChannel(MUTE_TOPIC, (msg) => {
     try {
@@ -615,13 +641,16 @@ export function ClassroomRoom({
     } catch { /* ignore malformed */ }
   })
 
-  // Join muted once per mount. Don't force-mute on later state changes,
-  // otherwise tutor-issued "set-mic on" gets immediately reverted.
+  // Join muted once after the room connects. Guard with a ref so a later
+  // localParticipant identity change (e.g. after publishing) can't re-mute
+  // a student the tutor already approved.
   useEffect(() => {
-    if (isTutor) return
+    if (isTutor || studentInitialMutedRef.current) return
+    if (connectionState !== ConnectionState.Connected) return
+    studentInitialMutedRef.current = true
     micAllowedByTutorRef.current = false
-    localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
-  }, [isTutor, localParticipant])
+    void localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
+  }, [isTutor, connectionState, localParticipant])
 
   // ── Data channel: session-level admin actions ─────────────────────────────
   // Tutor broadcasts `refresh`. Students react on receipt; the tutor performs
@@ -1573,6 +1602,10 @@ export function ClassroomRoom({
     if (!isTutor) return
     try {
       await patchParticipantMic(identity, enabled)
+      // Give LiveKit a moment to apply publish permissions before the student publishes.
+      if (enabled) {
+        await new Promise((resolve) => setTimeout(resolve, 250))
+      }
       const ok = broadcastMicControl({ action: "set-mic", identity, enabled, from: localName })
       if (!ok) throw new Error("Could not notify the student")
       toast.success(enabled ? `${name}'s microphone is on` : `${name}'s microphone is off`)

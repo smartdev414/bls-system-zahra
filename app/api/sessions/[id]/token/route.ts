@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { AccessToken, TrackSource } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
-import { ensureClassroomTranscriber } from "@/lib/livekit"
+import { ensureClassroomTranscriber, evictStaleParticipant } from "@/lib/livekit"
 
 async function handlePOST(
   _req: Request,
@@ -70,6 +70,13 @@ async function handlePOST(
         select: { id: true },
       }))
     const isTutor = isOwnerTutor || isCoTutor
+
+    // A refresh / tab close kills the socket without a clean leave, so the server
+    // holds a ghost session for this identity (~15s reconnect grace). Since the
+    // identity is stable (session.sub), an immediate rejoin collides with that
+    // ghost and the new token gets rejected as "invalid token: revoked". Evict any
+    // lingering session for this identity first so the fresh join below succeeds.
+    await evictStaleParticipant(liveSession.roomName, session.sub)
 
     const at = new AccessToken(apiKey, apiSecret, {
       identity: session.sub,

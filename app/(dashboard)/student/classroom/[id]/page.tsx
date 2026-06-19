@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { usePostCallback, useFetch } from "@/hooks/use-fetch"
 import { LiveKitRoom } from "@livekit/components-react"
-import { createLocalVideoTrack, type LocalVideoTrack } from "livekit-client"
+import { createLocalVideoTrack, DisconnectReason, type LocalVideoTrack } from "livekit-client"
 import "@livekit/components-styles"
 import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
 import { BLUR_PREF_KEY } from "@/components/classroom/blurPreference"
@@ -552,6 +552,32 @@ function ConnectionLostScreen({ onRetry }: { onRetry: () => void }) {
   )
 }
 
+/** Same-identity collision (another tab/device joined, or a stale ghost session) — offer a clean re-join here. */
+function ConnectionDuplicateScreen({ onReconnect }: { onReconnect: () => void }) {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center gap-6 text-center px-4">
+      <div className="size-24 rounded-full bg-amber-500/15 flex items-center justify-center">
+        <WifiOff className="size-10 text-amber-600" />
+      </div>
+
+      <div className="max-w-md">
+        <h2 className="text-2xl font-black">Opened somewhere else</h2>
+        <p className="text-muted-foreground mt-2 text-sm">
+          This classroom is now open in another tab, window, or device. Only one connection per
+          person is allowed at a time. Close the other one, then reconnect here.
+        </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button size="lg" onClick={onReconnect}>Reconnect here</Button>
+        <Button asChild variant="outline" size="lg">
+          <Link href="/student/classroom">Back to Classroom</Link>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 // A tutor-triggered "refresh all" sets this flag in sessionStorage right before
@@ -568,9 +594,11 @@ export default function ClassroomRoomPage({
 }) {
   const { id } = use(params)
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
-  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost">(null)
+  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost" | "duplicate">(null)
   const leaveClickedRef = useRef(false)
   const [autoRejoin, setAutoRejoin] = useState(false)
+  // Shown while we fetch a fresh token and remount after a recoverable drop.
+  const [reconnecting, setReconnecting] = useState(false)
 
   const { data, loading: infoLoading, refetch: refetchInfo } = useFetch<SessionInfo>(`/api/sessions/${id}/info`, {
     errorMessage: false,
@@ -612,21 +640,37 @@ export default function ClassroomRoomPage({
     setDisconnectKind("left")
   }
 
-  const handleLiveKitDisconnected = () => {
+  const handleLiveKitDisconnected = (reason?: DisconnectReason) => {
     setDisconnectKind((prev) => {
       if (prev !== null) return prev
-      return leaveClickedRef.current ? "left" : "lost"
+      if (leaveClickedRef.current) return "left"
+      // Another tab/device joined with the same identity and took the seat — the
+      // server kicked this connection. Tell the user plainly rather than blaming
+      // the network. The server evicts ghost sessions on token issue, so this only
+      // fires for a genuinely concurrent second connection.
+      if (reason === DisconnectReason.DUPLICATE_IDENTITY) return "duplicate"
+      return "lost"
     })
   }
 
-  const handleRetryAfterDrop = () => {
+  // Tear down the dead room and pull a fresh token to remount cleanly. Used by
+  // both the "Connection lost" and "Opened elsewhere" recovery buttons.
+  const handleReconnect = () => {
     leaveClickedRef.current = false
     setDisconnectKind(null)
     setTokenData(null)
+    setReconnecting(true)
+    autoGetToken({})
   }
 
+  // Drop the spinner once a fresh token lands and the room can remount.
+  useEffect(() => {
+    if (tokenData) setReconnecting(false)
+  }, [tokenData])
+
   if (disconnectKind === "left") return <SessionEndedScreen />
-  if (disconnectKind === "lost") return <ConnectionLostScreen onRetry={handleRetryAfterDrop} />
+  if (disconnectKind === "lost") return <ConnectionLostScreen onRetry={handleReconnect} />
+  if (disconnectKind === "duplicate") return <ConnectionDuplicateScreen onReconnect={handleReconnect} />
 
   if (infoLoading && !data) {
     return (
@@ -638,7 +682,7 @@ export default function ClassroomRoomPage({
 
   if (!tokenData) {
     if (!data?.session) return null
-    if (autoRejoin) {
+    if (autoRejoin || reconnecting) {
       return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
           <Loader2 className="size-8 animate-spin text-primary" />
@@ -658,6 +702,7 @@ export default function ClassroomRoomPage({
 
   return (
     <LiveKitRoom
+      key={tokenData.token}
       token={tokenData.token}
       serverUrl={tokenData.wsUrl}
       connect={true}

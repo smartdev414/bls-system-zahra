@@ -37,7 +37,13 @@ async function handlePATCH(
     }
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: {
+        id,
+        OR: [
+          { tutorId: session.sub },
+          { coTutors: { some: { tutorId: session.sub } } },
+        ],
+      },
       select: { id: true, roomName: true },
     })
     if (!liveSession) {
@@ -62,18 +68,19 @@ async function handlePATCH(
 
     // LiveKit rejects remote unmute in some room configs ("remote unmute not enabled").
     // For enabling, we rely on the student client to call setMicrophoneEnabled(true)
-    // after receiving the tutor's data-channel command.
+    // after receiving the tutor's data-channel command. Best-effort server unmute
+    // helps when an existing mic track was left server-muted from a prior mute.
     // For disabling, keep best-effort server-side mute if a mic track exists.
-    if (!body.enabled && micTrack?.sid) {
+    if (micTrack?.sid) {
       try {
         await client.mutePublishedTrack(
           liveSession.roomName,
           identity,
           micTrack.sid,
-          true,
+          !body.enabled,
         )
       } catch {
-        // Best effort only: permission + client command still enforce mute.
+        // Best effort only: permission + client command still enforce mute/unmute.
       }
     }
 

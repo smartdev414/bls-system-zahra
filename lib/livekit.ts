@@ -1,4 +1,4 @@
-import { AgentDispatchClient } from "livekit-server-sdk"
+import { AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk"
 
 export const CLASSROOM_TRANSCRIBER_AGENT = "classroom-transcriber"
 
@@ -21,6 +21,31 @@ export function livekitCredentials() {
 export function agentDispatchClient() {
   const { apiKey, apiSecret } = livekitCredentials()
   return new AgentDispatchClient(livekitHttpUrl(), apiKey, apiSecret)
+}
+
+export function roomServiceClient() {
+  const { apiKey, apiSecret } = livekitCredentials()
+  return new RoomServiceClient(livekitHttpUrl(), apiKey, apiSecret)
+}
+
+/**
+ * Force-clear any lingering session for `identity` in `roomName`.
+ *
+ * On a page refresh or tab close the browser kills the WebSocket without a clean
+ * LiveKit "leave", so the server holds the participant in its reconnect-grace
+ * window (~15s). Because everyone joins with a stable identity (`session.sub`),
+ * an immediate rejoin collides with that ghost and the new token is rejected with
+ * `invalid token: revoked`. Evicting the ghost up front frees the identity so the
+ * fresh join succeeds. Removing the old session only revokes that session's token,
+ * not the identity — a freshly-minted token joins cleanly. No-op if the
+ * participant or room doesn't exist yet.
+ */
+export async function evictStaleParticipant(roomName: string, identity: string): Promise<void> {
+  try {
+    await roomServiceClient().removeParticipant(roomName, identity)
+  } catch {
+    // Participant or room not found — nothing to clear.
+  }
 }
 
 /** Start the caption agent once per room (idempotent). */
