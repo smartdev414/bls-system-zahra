@@ -1,6 +1,17 @@
-import { AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk"
+import { AgentDispatchClient } from "livekit-server-sdk"
 
 export const CLASSROOM_TRANSCRIBER_AGENT = "classroom-transcriber"
+
+/**
+ * Strip the per-connection suffix from a LiveKit participant identity.
+ *
+ * Join tokens use a unique identity of the form `<userId>__<random>` (see the
+ * token route) so a rejoin never collides with a revoked identity on Cloud. This
+ * recovers the underlying user id for the rare server-side check that needs it.
+ */
+export function participantBaseId(identity: string): string {
+  return identity.split("__")[0]
+}
 
 /** LiveKit HTTP API base (Egress / AgentDispatch / RoomService). */
 export function livekitHttpUrl(): string {
@@ -23,35 +34,10 @@ export function agentDispatchClient() {
   return new AgentDispatchClient(livekitHttpUrl(), apiKey, apiSecret)
 }
 
-export function roomServiceClient() {
-  const { apiKey, apiSecret } = livekitCredentials()
-  return new RoomServiceClient(livekitHttpUrl(), apiKey, apiSecret)
-}
-
-/**
- * Force-clear any lingering session for `identity` in `roomName`.
- *
- * On a page refresh or tab close the browser kills the WebSocket without a clean
- * LiveKit "leave", so the server holds the participant in its reconnect-grace
- * window (~15s). Because everyone joins with a stable identity (`session.sub`),
- * an immediate rejoin collides with that ghost and the new token is rejected with
- * `invalid token: revoked`. Evicting the ghost up front frees the identity so the
- * fresh join succeeds. Removing the old session only revokes that session's token,
- * not the identity — a freshly-minted token joins cleanly. No-op if the
- * participant or room doesn't exist yet.
- */
-export async function evictStaleParticipant(roomName: string, identity: string): Promise<void> {
-  try {
-    await roomServiceClient().removeParticipant(roomName, identity)
-  } catch {
-    // Participant or room not found — nothing to clear.
-  }
-}
-
-/** Start the caption agent once per room (idempotent). */
+/** Start the caption agent once per room (idempotent). STT uses LiveKit Inference. */
 export async function ensureClassroomTranscriber(roomName: string): Promise<void> {
-  if (!process.env.DEEPGRAM_API_KEY) {
-    console.warn("[captions] DEEPGRAM_API_KEY missing — server captions disabled")
+  if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
+    console.warn("[captions] LiveKit not configured — server captions disabled")
     return
   }
 

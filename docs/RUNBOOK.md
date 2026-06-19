@@ -17,7 +17,7 @@ didn't build it.
 | Database | PostgreSQL via Prisma | `DATABASE_URL` |
 | Live audio/video | LiveKit | `LIVEKIT_API_KEY/SECRET/WS_URL` |
 | In-room sync (slides, whiteboard, mute) | LiveKit **data channels** | (no extra config) |
-| Live captions | LiveKit agent + **Deepgram** | `DEEPGRAM_API_KEY`, run `npm run transcriber` |
+| Live captions | LiveKit agent + **Inference STT** | LiveKit creds; deploy agent on LiveKit Cloud |
 | Realtime across pages (messaging badge, **co-teacher pull-in**) | Pusher | `PUSHER_*`, `NEXT_PUBLIC_PUSHER_*` |
 | File uploads & recordings | AWS S3 | `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID/SECRET`, `AWS_REGION` |
 | Session recording | LiveKit Egress → S3 | LiveKit + S3 |
@@ -82,12 +82,30 @@ looks cropped, it's almost always a participant pinned with `object-cover`
 tiles — unpin, or have them re-toggle their camera.
 
 ### 4.4 Captions don't appear
-Captions are **server-side** (Deepgram via a LiveKit agent). Checklist:
-- `DEEPGRAM_API_KEY` is set (`/api/health` → `config.captions: true`).
-- The transcriber worker is running: `npm run transcriber` (dev) or deploy it as a separate process in production.
+Captions are **server-side** (LiveKit Inference STT via a `classroom-transcriber` agent).
+No separate Deepgram API key — STT is billed through your LiveKit Cloud plan.
+
+Checklist:
+- LiveKit is configured (`/api/health` → `config.captions: true`, same as `livekit`).
+- **Production:** the transcriber agent is deployed on LiveKit Cloud (`lk agent deploy`).
+  **Local dev:** `npm run transcriber` in a second terminal alongside `npm run dev`.
 - The speaking participant's **mic must be ON** (tutor always; students after the tutor approves "Request to speak").
 - Works in every browser — no Chrome-only Web Speech API requirement.
-If captions are slow, confirm the transcriber agent is connected in the LiveKit dashboard for that room.
+
+If captions are slow or missing, confirm the agent is connected in the LiveKit dashboard
+for that room. Free/Build plans allow **5 concurrent STT** streams — enough for typical
+request-to-speak classrooms; upgrade if many people speak at once.
+
+**Production agent (LiveKit Cloud):** `classroom-transcriber` — agent ID `CA_uQD4KLT29Emo`,
+region `eu-central`. Redeploy after code changes:
+
+```bash
+npm run transcriber:deploy
+```
+
+First-time setup (already done): `lk agent create --config agents/classroom-transcriber/livekit.toml --region eu-central --secrets-file agents/classroom-transcriber/secrets.env -y .`
+Local dev only: `npm run transcriber` in a second terminal — stop the local worker when
+testing against the cloud agent to avoid duplicate dispatch.
 
 ### 4.5 Invites/notifications not received
 Email is **silently skipped** when Mailgun isn't configured (`/api/health` →
@@ -138,7 +156,6 @@ Check `DATABASE_URL` and that Postgres is reachable. After any change to
 ```
 DATABASE_URL
 LIVEKIT_API_KEY  LIVEKIT_API_SECRET  LIVEKIT_WS_URL
-DEEPGRAM_API_KEY             # server-side live captions; run `npm run transcriber` alongside the app
 PUSHER_APP_ID  PUSHER_SECRET  NEXT_PUBLIC_PUSHER_KEY  NEXT_PUBLIC_PUSHER_CLUSTER
 AWS_S3_BUCKET  AWS_ACCESS_KEY_ID  AWS_SECRET_ACCESS_KEY  AWS_REGION
 MAILGUN_API_KEY  MAILGUN_DOMAIN  (optional: MAILGUN_FROM, MAILGUN_API_BASE)

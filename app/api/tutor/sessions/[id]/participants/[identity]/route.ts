@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { RoomServiceClient } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
+import { participantBaseId } from "@/lib/livekit"
 
 function roomServiceClient() {
   return new RoomServiceClient(
@@ -32,7 +33,9 @@ async function handleDELETE(
     if (!liveSession) {
       return NextResponse.json({ message: "Session not found" }, { status: 404 })
     }
-    if (identity === session.sub) {
+    // Identities are `<userId>__<random>`, so compare the base id to block a
+    // tutor from removing their own connection.
+    if (participantBaseId(identity) === session.sub) {
       return NextResponse.json(
         { message: "You can't remove yourself. Use \"Leave\" to end the session." },
         { status: 400 }

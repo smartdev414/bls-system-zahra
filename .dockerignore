@@ -1,0 +1,25 @@
+# Next.js / dev artifacts — not needed for the transcriber image
+.next
+node_modules
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+agents/classroom-transcriber/secrets.env
+
+# App sources unrelated to the agent worker
+app
+components
+public
+prisma
+docs
+uploads
+*.md
+!agents/classroom-transcriber/**
+
+# Editor / OS noise
+.cursor
+.vscode
+terminals
+**/*.log

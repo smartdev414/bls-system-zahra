@@ -26,7 +26,8 @@ export async function GET() {
     pusher: present("PUSHER_APP_ID", "PUSHER_SECRET", "NEXT_PUBLIC_PUSHER_KEY", "NEXT_PUBLIC_PUSHER_CLUSTER"),
     email: present("MAILGUN_API_KEY", "MAILGUN_DOMAIN"),
     storage: present("AWS_S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
-    captions: present("DEEPGRAM_API_KEY"),
+    // Captions use LiveKit Inference STT; agent worker is deployed separately on LiveKit Cloud.
+    captions: present("LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "LIVEKIT_WS_URL"),
     alerting: present("ALERT_WEBHOOK_URL"),
   }
 

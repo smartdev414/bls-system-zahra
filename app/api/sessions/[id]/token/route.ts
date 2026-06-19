@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto"
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { AccessToken, TrackSource } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
-import { ensureClassroomTranscriber, evictStaleParticipant } from "@/lib/livekit"
+import { ensureClassroomTranscriber } from "@/lib/livekit"
 
 async function handlePOST(
   _req: Request,
@@ -71,15 +72,18 @@ async function handlePOST(
       }))
     const isTutor = isOwnerTutor || isCoTutor
 
-    // A refresh / tab close kills the socket without a clean leave, so the server
-    // holds a ghost session for this identity (~15s reconnect grace). Since the
-    // identity is stable (session.sub), an immediate rejoin collides with that
-    // ghost and the new token gets rejected as "invalid token: revoked". Evict any
-    // lingering session for this identity first so the fresh join below succeeds.
-    await evictStaleParticipant(liveSession.roomName, session.sub)
+    // Use a UNIQUE identity per connection (`<userId>__<random>`) rather than the
+    // bare user id. LiveKit Cloud revokes an *identity* — not just a single token —
+    // when its session ends abnormally (a refresh kills the socket) or when
+    // `removeParticipant` is called, and that revocation outlives the token TTL.
+    // Reusing the bare user id therefore makes a rejoin fail with
+    // "invalid token: revoked". A fresh suffix is never revoked, so every (re)join
+    // connects cleanly. The base id stays recoverable via `participantBaseId()` for
+    // the rare server-side check that needs it.
+    const identity = `${session.sub}__${randomUUID().slice(0, 8)}`
 
     const at = new AccessToken(apiKey, apiSecret, {
-      identity: session.sub,
+      identity,
       name: session.name,
       ttl: 60 * 60, // 1 hour
       metadata: isTutor ? "tutor" : "student",

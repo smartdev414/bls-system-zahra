@@ -1,12 +1,12 @@
 /**
- * Server-side classroom captions — one Deepgram STT session per speaker.
+ * Server-side classroom captions — one LiveKit Inference STT session per speaker.
  * Publishes LiveKit transcriptions so every client can read who said what.
  *
- * Run alongside the Next.js app:
- *   npm run transcriber
+ * Local dev:  npm run transcriber
+ * Production: deploy to LiveKit Cloud (see docs/RUNBOOK.md § captions)
  *
- * Requires: LIVEKIT_WS_URL (or LIVEKIT_URL), LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
- *           DEEPGRAM_API_KEY
+ * Requires: LIVEKIT_WS_URL (or LIVEKIT_URL), LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+ *           (STT billed via LiveKit Inference — no separate Deepgram API key)
  */
 import { config } from "dotenv"
 import { fileURLToPath } from "node:url"
@@ -16,15 +16,15 @@ import {
   type JobContext,
   cli,
   defineAgent,
+  inference,
   ServerOptions,
   WorkerPermissions,
+  voice,
 } from "@livekit/agents"
-import * as deepgram from "@livekit/agents-plugin-deepgram"
 import {
   type RemoteParticipant,
   ParticipantKind,
 } from "@livekit/rtc-node"
-import { voice } from "@livekit/agents"
 
 // Load repo-root .env when started via `npm run transcriber`.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
@@ -33,17 +33,18 @@ config({ path: resolve(root, ".env") })
 const AGENT_NAME = process.env.LIVEKIT_AGENT_NAME ?? "classroom-transcriber"
 const LIVEKIT_URL = process.env.LIVEKIT_WS_URL ?? process.env.LIVEKIT_URL ?? ""
 
-/** Low-latency Deepgram streaming — interim results, minimal endpointing delay. */
+/** Low-latency streaming via LiveKit Inference (Deepgram Nova-3 under the hood). */
 function makeStt() {
-  return new deepgram.STT({
-    model: "nova-3",
-    language: "en-GB",
-    interimResults: true,
-    noDelay: true,
-    smartFormat: true,
-    punctuate: true,
-    endpointing: 200,
-    fillerWords: false,
+  return new inference.STT({
+    model: "deepgram/nova-3",
+    language: "en",
+    modelOptions: {
+      interim_results: true,
+      punctuate: true,
+      smart_format: true,
+      endpointing: 200,
+      filler_words: false,
+    },
   })
 }
 

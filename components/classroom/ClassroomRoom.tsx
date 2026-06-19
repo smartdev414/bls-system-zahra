@@ -7,6 +7,7 @@ import {
   useDataChannel,
   useConnectionState,
   useTracks,
+  useRoomContext,
   VideoTrack,
 } from "@livekit/components-react"
 import { ConnectionState, Track } from "livekit-client"
@@ -72,9 +73,26 @@ export function ClassroomRoom({
   sessionTitle: string
   onLeave: () => void
 }) {
+  const room                  = useRoomContext()
   const { localParticipant } = useLocalParticipant()
   const participants          = useParticipants()
   const connectionState       = useConnectionState()
+
+  // A browser refresh / tab close fires no React unmount, so LiveKit never sends a
+  // clean "leave". The socket dies abnormally (1006) and LiveKit Cloud holds the
+  // identity in its reconnect-grace window — which makes an immediate rejoin with
+  // our stable identity (session.sub) collide and get rejected with
+  // "invalid token: revoked". Disconnecting on pagehide sends the leave frame over
+  // the still-open socket so Cloud frees the identity right away and the rejoin
+  // connects cleanly. `pagehide` (not `beforeunload`) is the bfcache-safe hook and
+  // still fires on reload, navigation, and tab close.
+  useEffect(() => {
+    const onPageHide = () => {
+      try { void room.disconnect(true) } catch { /* socket already gone */ }
+    }
+    window.addEventListener("pagehide", onPageHide)
+    return () => window.removeEventListener("pagehide", onPageHide)
+  }, [room])
 
   // Reactive screen share state — works for both tutor and student clients.
   // `onlySubscribed: false` includes the tutor's own locally-published track.
