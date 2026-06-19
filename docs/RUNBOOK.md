@@ -16,7 +16,8 @@ didn't build it.
 | Web app | Next.js 16 (App Router) | this repo |
 | Database | PostgreSQL via Prisma | `DATABASE_URL` |
 | Live audio/video | LiveKit | `LIVEKIT_API_KEY/SECRET/WS_URL` |
-| In-room sync (slides, whiteboard, mute, **captions**) | LiveKit **data channels** | (no extra config) |
+| In-room sync (slides, whiteboard, mute) | LiveKit **data channels** | (no extra config) |
+| Live captions | LiveKit agent + **Deepgram** | `DEEPGRAM_API_KEY`, run `npm run transcriber` |
 | Realtime across pages (messaging badge, **co-teacher pull-in**) | Pusher | `PUSHER_*`, `NEXT_PUBLIC_PUSHER_*` |
 | File uploads & recordings | AWS S3 | `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID/SECRET`, `AWS_REGION` |
 | Session recording | LiveKit Egress → S3 | LiveKit + S3 |
@@ -80,14 +81,13 @@ The tutor's main camera uses `object-contain` (full frame, no crop). If a feed
 looks cropped, it's almost always a participant pinned with `object-cover`
 tiles — unpin, or have them re-toggle their camera.
 
-### 4.4 Captions don't appear (teacher can't read a speaking student)
-Captions use the **browser Web Speech API** (`SpeechCaptionPublisher.tsx`),
-which only works in **Chrome/Edge**. Checklist:
-- The **speaking student must be on Chrome/Edge** (Safari/Firefox won't transcribe).
-- That student's **mic must be ON** (tutor approves "Request to speak").
-- The reader (tutor) can be on any browser.
-If you need cross-browser captions, the upgrade is server-side STT (e.g.
-LiveKit transcription agent + Deepgram) — not currently wired in.
+### 4.4 Captions don't appear
+Captions are **server-side** (Deepgram via a LiveKit agent). Checklist:
+- `DEEPGRAM_API_KEY` is set (`/api/health` → `config.captions: true`).
+- The transcriber worker is running: `npm run transcriber` (dev) or deploy it as a separate process in production.
+- The speaking participant's **mic must be ON** (tutor always; students after the tutor approves "Request to speak").
+- Works in every browser — no Chrome-only Web Speech API requirement.
+If captions are slow, confirm the transcriber agent is connected in the LiveKit dashboard for that room.
 
 ### 4.5 Invites/notifications not received
 Email is **silently skipped** when Mailgun isn't configured (`/api/health` →

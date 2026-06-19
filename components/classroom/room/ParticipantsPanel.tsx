@@ -367,7 +367,7 @@ export function ParticipantsPanel({
               )}
 
               {isTutor && (
-                <div className="absolute top-1 left-1 text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30">
+                <div className="absolute top-1 right-1 text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30 z-10">
                   Tutor
                 </div>
               )}

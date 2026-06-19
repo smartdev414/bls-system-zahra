@@ -26,6 +26,7 @@ export async function GET() {
     pusher: present("PUSHER_APP_ID", "PUSHER_SECRET", "NEXT_PUBLIC_PUSHER_KEY", "NEXT_PUBLIC_PUSHER_CLUSTER"),
     email: present("MAILGUN_API_KEY", "MAILGUN_DOMAIN"),
     storage: present("AWS_S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
+    captions: present("DEEPGRAM_API_KEY"),
     alerting: present("ALERT_WEBHOOK_URL"),
   }
 

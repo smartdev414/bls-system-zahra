@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { AccessToken, TrackSource } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
+import { ensureClassroomTranscriber } from "@/lib/livekit"
 
 async function handlePOST(
   _req: Request,
@@ -99,6 +100,11 @@ async function handlePOST(
     )
 
     const token = await at.toJwt()
+
+    // Spin up the server-side caption agent once per room (Deepgram STT).
+    void ensureClassroomTranscriber(liveSession.roomName).catch((err) => {
+      console.warn("[captions] transcriber dispatch failed", err)
+    })
 
     // Record attendance for students
     if (session.role === "STUDENT") {

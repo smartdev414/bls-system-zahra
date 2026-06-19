@@ -34,7 +34,6 @@ import type {
   BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
-import { SpeechCaptionPublisher } from "./room/SpeechCaptionPublisher"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
 import { TutorCameraInset }     from "./room/TutorCameraInset"
 import { ParticipantsPanel }    from "./room/ParticipantsPanel"
@@ -303,7 +302,6 @@ export function ClassroomRoom({
   const [recordingStarted, setRecordingStarted] = useState(false)
   const [recordingPaused, setRecordingPaused]     = useState(false)
   const [recordingBusy, setRecordingBusy]         = useState(false)
-  const [recordingReminderDismissed, setRecordingReminderDismissed] = useState(false)
   const recordingReminderShown = useRef(false)
 
   // ── Participant tile size (persisted per-user) ─────────────────────────────
@@ -1331,7 +1329,7 @@ export function ClassroomRoom({
     if (!isTutor || recordingReminderShown.current) return
     if (connectionState !== ConnectionState.Connected) return
     recordingReminderShown.current = true
-    toast.info("Click Start Rec in the controls when you're ready to record this session.", {
+    toast.info("Click Start Rec in the controls bar when you're ready to record this session.", {
       duration: 12_000,
     })
   }, [isTutor, connectionState])
@@ -2185,52 +2183,10 @@ export function ClassroomRoom({
   return (
     <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col overflow-hidden z-50">
       <AudioRenderer audibleIdentities={audibleIdentities} />
-      {/* Live captions: transcribes the local mic (when on) and broadcasts text
-          so the tutor can read what a speaking student is saying. */}
-      <SpeechCaptionPublisher />
 
       {/* Brand watermark — visible to all participants. Top-left so it doesn't
           collide with the controls bar at the bottom. */}
       <LogoWatermark className="top-3 left-3" size={44} />
-
-      {/* Recording reminder — tutor only, until they start recording or dismiss it. */}
-      {isTutor && !recordingStarted && !recordingReminderDismissed && (
-        <div
-          className="absolute top-3 right-3 z-30 flex items-start gap-2 max-w-xs pl-3 pr-1.5 py-2 rounded-xl bg-amber-500/15 backdrop-blur-sm border border-amber-400/40 text-[11px] font-medium text-amber-100 shadow"
-          role="status"
-        >
-          <span className="size-2 shrink-0 rounded-full bg-amber-400 mt-1" />
-          <span className="flex-1 min-w-0">
-            Click <span className="font-semibold">Start Rec</span> below when you&apos;re ready to record this session.
-          </span>
-          <button
-            type="button"
-            onClick={() => setRecordingReminderDismissed(true)}
-            className="shrink-0 rounded-md p-1 text-amber-200/80 hover:text-amber-50 hover:bg-amber-400/20 transition-colors"
-            aria-label="Dismiss recording reminder"
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Recording indicator — tutor only, after recording has started. */}
-      {isTutor && recordingStarted && (
-        <div
-          className="absolute top-3 right-3 z-30 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-sm border border-white/15 text-[11px] font-semibold text-white shadow"
-          aria-live="polite"
-        >
-          <span
-            className={cn(
-              "size-2 rounded-full",
-              recordingPaused
-                ? "bg-amber-400"
-                : "bg-rose-500 animate-pulse",
-            )}
-          />
-          {recordingPaused ? "Paused" : "Recording"}
-        </div>
-      )}
 
       {/* ── Attention nudge overlay (everyone, triggered by tutor) ── */}
       {activeNudge && (
@@ -2308,6 +2264,20 @@ export function ClassroomRoom({
         <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           <Radio className="size-3.5 text-rose-500 animate-pulse shrink-0" />
           <span className="font-bold text-sm truncate max-w-[40vw] sm:max-w-xs">{sessionTitle}</span>
+          {isTutor && recordingStarted && (
+            <span
+              className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/55 border border-white/15 text-[10px] font-semibold text-white shrink-0"
+              aria-live="polite"
+            >
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  recordingPaused ? "bg-amber-400" : "bg-rose-500 animate-pulse",
+                )}
+              />
+              {recordingPaused ? "Paused" : "Recording"}
+            </span>
+          )}
           {pptActive && (
             <span className="hidden sm:flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap">
               <Presentation className="size-3" />
@@ -2419,13 +2389,14 @@ export function ClassroomRoom({
       )}
 
       {/* ── Main body ── */}
-      <div className="flex flex-1 overflow-hidden flex-col min-h-0">
+      <div className="flex flex-1 overflow-hidden min-h-0 relative flex-col md:flex-row">
 
-        {/* Top row: slides / video / whiteboard + chat sidebar.
-            On phones (default) we stack camera/content vertically; from md+
-            we revert to the side-by-side BSL layout. `relative` is required
-            so the mobile chat overlay can pin to this row. */}
-        <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
+        {/* Stage + participants — left column; chat sits alongside at full height. */}
+        <div className="flex flex-1 flex-col overflow-hidden min-h-0 min-w-0">
+
+          {/* Stage row: slides / video / whiteboard. On phones we stack camera/content
+              vertically; from md+ we use the side-by-side BSL layout. */}
+          <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
 
           {whiteboardActive ? (
             // ── Whiteboard mode: same deaf-first layout as PPT. Tutor camera on
@@ -2469,7 +2440,6 @@ export function ClassroomRoom({
                     handleSend("🖼️ Whiteboard snapshot", "text", attachment)
                   }
                 />
-                <CaptionsOverlay />
               </div>
             </>
 
@@ -2556,7 +2526,6 @@ export function ClassroomRoom({
                   </div>
                 )}
                 {/* Captions during presentation */}
-                <CaptionsOverlay />
               </div>
 
               {/* Live thumbnail tray — slides only, tutor-only */}
@@ -2607,7 +2576,6 @@ export function ClassroomRoom({
                 ) : tutorScreenTrack ? (
                   <VideoTrack trackRef={tutorScreenTrack} className="w-full h-full object-contain" />
                 ) : null}
-                <CaptionsOverlay />
               </div>
             </>
 
@@ -2657,84 +2625,81 @@ export function ClassroomRoom({
                   )
                 })()}
               </div>
-              <CaptionsOverlay />
             </div>
           )}
 
-          {/* Chat column — desktop sidebar; mobile full-screen overlay.
-              When closed on mobile we hide it entirely and surface a floating
-              chat-toggle button (below) so the camera/content stay unobstructed. */}
-          <div className={cn(
-            "flex flex-col overflow-hidden bg-zinc-900 transition-all duration-200 border-zinc-800",
-            // Desktop: inline sidebar, always part of layout
-            "md:relative md:h-full md:border-l md:flex",
-            chatOpen ? "md:w-72" : "md:w-10",
-            // Mobile: overlay when open, hidden when closed
-            chatOpen
-              ? "absolute inset-y-0 right-0 z-30 w-full shadow-2xl md:shadow-none"
-              : "hidden"
-          )}>
-            <ChatPanel
-              messages={messages}
-              localName={localName}
-              raisedHands={raisedHands}
-              onSend={handleSend}
-              flash={chatFlash}
-              collapsed={!chatOpen}
-              onToggleCollapse={() => setChatOpen((v) => !v)}
-              isTutor={isTutor}
-              sessionId={sessionId}
-              onLowerHand={isTutor ? handleLowerHand : undefined}
-              onLowerAllHands={isTutor ? handleLowerAllHands : undefined}
-            />
+          <CaptionsOverlay />
           </div>
 
-          {/* Mobile-only floating chat toggle — visible when chat is closed.
-              On desktop the collapsed w-10 strip handles this affordance. */}
-          {!chatOpen && (
-            <button
-              onClick={() => setChatOpen(true)}
-              className={cn(
-                "md:hidden absolute bottom-3 right-3 z-30 size-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center active:scale-95 transition-transform",
-                chatFlash && "animate-pulse"
-              )}
-              aria-label="Open chat"
-            >
-              <MessageSquare className="size-5" />
-            </button>
-          )}
+          {/* Bottom strip: participants row. Height grows with `tileSize` so the
+              tiles inside (16:9) scale with the strip. */}
+          <div className={cn(
+            "shrink-0 border-t border-zinc-800 bg-zinc-900 transition-[height] duration-200 overflow-hidden",
+            !participantsOpen && "h-9",
+            participantsOpen && tileSize === "sm" && "h-20",
+            participantsOpen && tileSize === "md" && "h-28",
+            participantsOpen && tileSize === "lg" && "h-40",
+            participantsOpen && tileSize === "xl" && "h-56",
+          )}>
+            <ParticipantsPanel
+              pinnedId={pinnedId}
+              onPin={setPinnedId}
+              collapsed={!participantsOpen}
+              onToggleCollapse={() => setParticipantsOpen((v) => !v)}
+              isLocalTutor={isTutor}
+              spotlightedId={spotlightedId}
+              onToggleSpotlight={handleToggleSpotlightFor}
+              onPopOut={handlePopOut}
+              poppedOutIds={poppedOutIds}
+              onRemoveParticipant={handleRequestRemove}
+              onToggleParticipantMic={isTutor ? handleSetParticipantMic : undefined}
+              raisedHandIds={raisedHandIds}
+              onLowerHand={isTutor ? handleLowerHand : undefined}
+              visibleIdentities={visibleIdentities}
+              groupLabels={groupLabels}
+              tileSize={tileSize}
+              onTileSizeChange={handleTileSizeChange}
+            />
+          </div>
         </div>
 
-        {/* Bottom strip: participants row. Height grows with `tileSize` so the
-            tiles inside (16:9) scale with the strip. */}
+        {/* Chat column — full-height sidebar on desktop; mobile full-screen overlay. */}
         <div className={cn(
-          "shrink-0 border-t border-zinc-800 bg-zinc-900 transition-[height] duration-200 overflow-hidden",
-          !participantsOpen && "h-9",
-          participantsOpen && tileSize === "sm" && "h-20",
-          participantsOpen && tileSize === "md" && "h-28",
-          participantsOpen && tileSize === "lg" && "h-40",
-          participantsOpen && tileSize === "xl" && "h-56",
+          "flex flex-col overflow-hidden bg-zinc-900 transition-all duration-200 border-zinc-800",
+          "md:relative md:h-full md:shrink-0 md:border-l md:flex",
+          chatOpen ? "md:w-72" : "md:w-10",
+          chatOpen
+            ? "max-md:absolute max-md:inset-0 max-md:z-30 max-md:w-full max-md:shadow-2xl"
+            : "max-md:hidden",
         )}>
-          <ParticipantsPanel
-            pinnedId={pinnedId}
-            onPin={setPinnedId}
-            collapsed={!participantsOpen}
-            onToggleCollapse={() => setParticipantsOpen((v) => !v)}
-            isLocalTutor={isTutor}
-            spotlightedId={spotlightedId}
-            onToggleSpotlight={handleToggleSpotlightFor}
-            onPopOut={handlePopOut}
-            poppedOutIds={poppedOutIds}
-            onRemoveParticipant={handleRequestRemove}
-            onToggleParticipantMic={isTutor ? handleSetParticipantMic : undefined}
-            raisedHandIds={raisedHandIds}
+          <ChatPanel
+            messages={messages}
+            localName={localName}
+            raisedHands={raisedHands}
+            onSend={handleSend}
+            flash={chatFlash}
+            collapsed={!chatOpen}
+            onToggleCollapse={() => setChatOpen((v) => !v)}
+            isTutor={isTutor}
+            sessionId={sessionId}
             onLowerHand={isTutor ? handleLowerHand : undefined}
-            visibleIdentities={visibleIdentities}
-            groupLabels={groupLabels}
-            tileSize={tileSize}
-            onTileSizeChange={handleTileSizeChange}
+            onLowerAllHands={isTutor ? handleLowerAllHands : undefined}
           />
         </div>
+
+        {/* Mobile-only floating chat toggle — visible when chat is closed. */}
+        {!chatOpen && (
+          <button
+            onClick={() => setChatOpen(true)}
+            className={cn(
+              "md:hidden absolute bottom-3 right-3 z-30 size-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center active:scale-95 transition-transform",
+              chatFlash && "animate-pulse"
+            )}
+            aria-label="Open chat"
+          >
+            <MessageSquare className="size-5" />
+          </button>
+        )}
       </div>
 
       {/* ── Floating, draggable, resizable video pop-outs ── */}

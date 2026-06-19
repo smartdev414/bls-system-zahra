@@ -301,8 +301,8 @@ export function ChatPanel({
   const [atBottom, setAtBottom] = useState(true)
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null)
   const [uploading, setUploading] = useState(false)
-  // Default to the light/white look; restore the user's saved choice on mount.
-  const [theme, setTheme] = useState<ChatThemeName>("light")
+  // Default to dark to match the classroom chrome; restore saved choice on mount.
+  const [theme, setTheme] = useState<ChatThemeName>("dark")
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
   const listRef      = useRef<HTMLDivElement>(null)
   const inputRef     = useRef<HTMLTextAreaElement>(null)
