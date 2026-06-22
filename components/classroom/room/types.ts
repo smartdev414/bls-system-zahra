@@ -93,11 +93,17 @@ export type WhiteboardDiff = {
 // A tldraw store snapshot (`getSnapshot(store)` output) — opaque JSON.
 export type WhiteboardSnapshot = Record<string, unknown>
 
+// A serialised tldraw `TLInstancePresence` record — one peer's live cursor,
+// selection and camera. Carried opaquely; tldraw renders it as a collaborator
+// cursor once merged into the receiver's store. Broadcast lossily (high churn).
+export type WhiteboardPresence = Record<string, unknown>
+
 export type WhiteboardAction =
   | { action: "start" }                                            // tutor opens the board for everyone
   | { action: "stop" }                                             // tutor closes the board
   | { action: "student_write"; enabled: boolean }                  // tutor allows/revokes student drawing
   | { action: "doc"; changes: WhiteboardDiff }                     // incremental tldraw store changes
+  | { action: "presence"; presence: WhiteboardPresence }           // live cursor/presence for one peer
   | { action: "sync_request" }                                     // late joiner asks the tutor
   | { action: "sync_response"; active: boolean; studentWrite: boolean; snapshot: WhiteboardSnapshot | null }
 

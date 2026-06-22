@@ -768,6 +768,14 @@ export function ClassroomRoom({
         return
       }
 
+      // Live cursor from a peer. Cursors are view-only, so they're applied
+      // regardless of write permission. Dropped (not buffered) if the board
+      // isn't mounted yet — presence is ephemeral and the next frame is ~60ms out.
+      if (data.action === "presence") {
+        wbApiRef.current?.applyPresence(data.presence)
+        return
+      }
+
       // Late joiner asked the tutor for current state — reply with the live
       // tldraw snapshot from the board bridge.
       if (data.action === "sync_request" && isTutor) {
@@ -1801,7 +1809,11 @@ export function ClassroomRoom({
     if (connectionState !== ConnectionState.Connected) return
     if (typeof sendWhiteboard !== "function") return
     try {
-      const result = sendWhiteboard(enc.encode(JSON.stringify(data)), { reliable: true }) as unknown as Promise<void> | void
+      // Cursor/presence frames are high-churn and disposable — send lossily so
+      // they never queue up behind (or delay) reliable document diffs.
+      const result = sendWhiteboard(enc.encode(JSON.stringify(data)), {
+        reliable: data.action !== "presence",
+      }) as unknown as Promise<void> | void
       if (result && typeof (result as Promise<void>).catch === "function") {
         ;(result as Promise<void>).catch(() => { /* ignore transient LiveKit errors */ })
       }
@@ -1892,6 +1904,17 @@ export function ClassroomRoom({
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTutor, connectionState])
+
+  // Drop a peer's whiteboard cursor when they leave the room, so stale cursors
+  // don't linger on the canvas. (Presence records are keyed off identity.)
+  const prevWbPeers = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const current = new Set(participants.map((p) => p.identity))
+    for (const id of prevWbPeers.current) {
+      if (!current.has(id)) wbApiRef.current?.removePeer(id)
+    }
+    prevWbPeers.current = current
+  }, [participants])
 
   // ── Keyboard shortcuts for slide navigation ────────────────────────────────
   // Video mode owns its own keyboard (native <video> controls handle seek/space),
@@ -2485,6 +2508,8 @@ export function ClassroomRoom({
                   onToggleStudentWrite={handleToggleStudentWrite}
                   onStop={handleToggleWhiteboard}
                   sessionId={sessionId}
+                  localIdentity={localParticipant.identity}
+                  localName={localName}
                   send={handleWhiteboardSend}
                   registerApi={registerWhiteboardApi}
                   onShareToChat={(attachment) =>

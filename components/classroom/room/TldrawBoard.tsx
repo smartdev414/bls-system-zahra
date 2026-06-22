@@ -9,6 +9,20 @@ import {
   type TLRecord,
   type TLShapeId,
 } from "tldraw"
+// These reactive primitives + presence helpers are re-exported by `tldraw` at
+// runtime, but its bundled .d.ts omits them — so we import each from its own
+// canonical sub-package (tldraw pins exact versions, so there's a single
+// hoisted copy and the signals interoperate with tldraw's store).
+import { atom, react } from "@tldraw/state"
+import { useValue } from "@tldraw/state-react"
+import { useEditor } from "@tldraw/editor"
+import {
+  InstancePresenceRecordType,
+  UserRecordType,
+  createPresenceStateDerivation,
+  type TLInstancePresence,
+  type TLUser,
+} from "@tldraw/tlschema"
 import "tldraw/tldraw.css"
 import { PencilLine, Users, Share2, Download, X, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -17,8 +31,99 @@ import type {
   ChatAttachment,
   WhiteboardAction,
   WhiteboardDiff,
+  WhiteboardPresence,
   WhiteboardSnapshot,
 } from "./types"
+
+// Throttle for outgoing cursor/presence frames (~16 fps). Lossy by design.
+const PRESENCE_THROTTLE_MS = 60
+
+// Stable per-author colour. The same identity always maps to the same colour
+// across clients, so authorship chips and live cursors stay consistent for
+// everyone in the room. Tuned for legibility on tldraw's light canvas.
+const AUTHOR_COLORS = [
+  "#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed",
+  "#db2777", "#0891b2", "#ca8a04", "#4f46e5", "#be123c",
+]
+function colorForId(id: string): string {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return AUTHOR_COLORS[h % AUTHOR_COLORS.length]
+}
+
+// Authorship metadata stamped onto every locally-created shape's `meta` field.
+type AuthorMeta = { authorId?: string; authorName?: string; authorColor?: string }
+
+// Overlay rendered inside tldraw's canvas (so it pans/zooms with the board).
+// Shows a small author chip on the hovered shape and any selected shapes; every
+// other shape stays clean. Chips counter-scale by 1/zoom to keep a constant
+// on-screen size regardless of zoom level.
+function AuthorBadges() {
+  const editor = useEditor()
+  const { zoom, chips } = useValue(
+    "wb-author-chips",
+    () => {
+      const ids = new Set<TLShapeId>()
+      const hovered = editor.getHoveredShapeId()
+      if (hovered) ids.add(hovered)
+      for (const id of editor.getSelectedShapeIds()) ids.add(id)
+
+      const chips: { id: string; x: number; y: number; name: string; color: string }[] = []
+      for (const id of ids) {
+        const shape = editor.getShape(id)
+        const bounds = editor.getShapePageBounds(id)
+        const meta = shape?.meta as AuthorMeta | undefined
+        if (!bounds || !meta?.authorName) continue
+        chips.push({
+          id,
+          x: bounds.x,
+          y: bounds.y,
+          name: meta.authorName,
+          color: meta.authorColor ?? "#2563eb",
+        })
+      }
+      return { zoom: editor.getZoomLevel(), chips }
+    },
+    [editor],
+  )
+
+  return (
+    <>
+      {chips.map((c) => (
+        <div
+          key={c.id}
+          style={{ position: "absolute", left: c.x, top: c.y, width: 0, height: 0, pointerEvents: "none" }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              transform: `scale(${1 / zoom})`,
+              transformOrigin: "bottom left",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 7px",
+              marginBottom: 4,
+              borderRadius: 6,
+              background: c.color,
+              color: "#fff",
+              fontSize: 11,
+              lineHeight: "14px",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+            }}
+          >
+            <PencilLine style={{ width: 11, height: 11 }} />
+            {c.name}
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
 
 // Imperative bridge handed up to ClassroomRoom so the data-channel layer can
 // drive the tldraw store without knowing anything about tldraw internals.
@@ -26,6 +131,10 @@ export type WhiteboardApi = {
   applyChanges: (changes: WhiteboardDiff) => void
   applySnapshot: (snapshot: WhiteboardSnapshot) => void
   getSnapshot: () => WhiteboardSnapshot | null
+  /** Merge a peer's live cursor/presence record into the local store. */
+  applyPresence: (presence: WhiteboardPresence) => void
+  /** Drop a departed peer's cursor (called when they leave the room). */
+  removePeer: (identity: string) => void
 }
 
 type TldrawBoardProps = {
@@ -35,6 +144,9 @@ type TldrawBoardProps = {
   onToggleStudentWrite: () => void
   onStop: () => void
   sessionId: string
+  /** Local participant identity + display name — used to attribute shapes and cursors. */
+  localIdentity: string
+  localName: string
   onShareToChat: (attachment: ChatAttachment) => void
   /** Broadcast a whiteboard action over the LiveKit data channel. */
   send: (action: WhiteboardAction) => void
@@ -51,6 +163,8 @@ export default function TldrawBoard({
   onToggleStudentWrite,
   onStop,
   sessionId,
+  localIdentity,
+  localName,
   onShareToChat,
   send,
   registerApi,
@@ -67,11 +181,15 @@ export default function TldrawBoard({
   const isTutorRef = useRef(isTutor)
   const canWriteRef = useRef(canWrite)
   const sessionIdRef = useRef(sessionId)
+  const localIdentityRef = useRef(localIdentity)
+  const localNameRef = useRef(localName)
   useEffect(() => { sendRef.current = send }, [send])
   useEffect(() => { registerApiRef.current = registerApi }, [registerApi])
   useEffect(() => { isTutorRef.current = isTutor }, [isTutor])
   useEffect(() => { canWriteRef.current = canWrite }, [canWrite])
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
+  useEffect(() => { localIdentityRef.current = localIdentity }, [localIdentity])
+  useEffect(() => { localNameRef.current = localName }, [localName])
 
   const [sharing, setSharing] = useState(false)
 
@@ -100,6 +218,47 @@ export default function TldrawBoard({
   const handleMount = useCallback((editor: Editor) => {
     editorRef.current = editor
     editor.updateInstanceState({ isReadonly: !canWriteRef.current })
+
+    const authorId = localIdentityRef.current
+    const authorName = localNameRef.current
+    const authorColor = colorForId(authorId)
+
+    // Authorship: stamp every shape the local user creates with who made it, so
+    // "who drew/wrote this" survives in the document. Shapes arriving from peers
+    // already carry their author and are applied under `applyingRemote`, so we
+    // skip those to avoid re-attributing them to the local user.
+    const stopStamp = editor.sideEffects.registerBeforeCreateHandler("shape", (shape) => {
+      if (applyingRemote.current) return shape
+      if ((shape.meta as AuthorMeta)?.authorId) return shape
+      return { ...shape, meta: { ...shape.meta, authorId, authorName, authorColor } }
+    })
+
+    // Live cursors: derive this user's presence record and broadcast it lossily
+    // on change (throttled). Peers merge it into their store and tldraw renders
+    // the collaborator cursor. A stable presence id keyed off the identity lets
+    // peers drop the cursor cleanly when the user leaves.
+    const user = UserRecordType.create({
+      id: UserRecordType.createId(authorId),
+      name: authorName,
+      color: authorColor,
+    })
+    const $user = atom<TLUser | null>("wb-user", user)
+    const presenceId = InstancePresenceRecordType.createId(authorId)
+    const $presence = createPresenceStateDerivation($user, { instanceId: presenceId })(editor.store)
+    let presencePending: TLInstancePresence | null = null
+    let presenceTimer: ReturnType<typeof setTimeout> | null = null
+    const flushPresence = () => {
+      presenceTimer = null
+      if (!presencePending) return
+      sendRef.current({ action: "presence", presence: presencePending as unknown as WhiteboardPresence })
+      presencePending = null
+    }
+    const stopPresence = react("wb-presence-broadcast", () => {
+      const p = $presence.get()
+      if (!p) return
+      presencePending = p
+      if (!presenceTimer) presenceTimer = setTimeout(flushPresence, PRESENCE_THROTTLE_MS)
+    })
 
     // Seed the board. Tutor reads the persisted snapshot from the DB; students
     // ask the tutor for the current live state.
@@ -168,11 +327,31 @@ export default function TldrawBoard({
         const ed = editorRef.current
         return ed ? (getSnapshot(ed.store) as unknown as WhiteboardSnapshot) : null
       },
+      applyPresence: (presence) => {
+        const ed = editorRef.current
+        if (!ed) return
+        // Presence is a session-scoped record, so this merge never trips the
+        // document listener above — no echo back onto the wire.
+        try {
+          ed.store.mergeRemoteChanges(() => {
+            ed.store.put([presence as unknown as TLInstancePresence])
+          })
+        } catch { /* ignore a malformed presence frame */ }
+      },
+      removePeer: (identity) => {
+        const ed = editorRef.current
+        if (!ed) return
+        const id = InstancePresenceRecordType.createId(identity)
+        try { ed.store.mergeRemoteChanges(() => ed.store.remove([id])) } catch { /* already gone */ }
+      },
     }
     registerApiRef.current(api)
 
     return () => {
       unlisten()
+      stopStamp()
+      stopPresence()
+      if (presenceTimer) clearTimeout(presenceTimer)
       registerApiRef.current(null)
       editorRef.current = null
     }
@@ -318,6 +497,7 @@ export default function TldrawBoard({
         <Tldraw
           onMount={handleMount}
           licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
+          components={{ InFrontOfTheCanvas: AuthorBadges }}
         />
       </div>
     </div>

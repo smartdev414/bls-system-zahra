@@ -51,7 +51,15 @@
       "Bash(git checkout *)",
       "Bash(tasklist)",
       "Bash(netstat -ano)",
-      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"http://localhost:4123/tutor/classroom/test-id\" --max-time 90)"
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"http://localhost:4123/tutor/classroom/test-id\" --max-time 90)",
+      "Bash(grep -nB2 -A6 \"createPresenceStateDerivation\" node_modules/@tldraw/tlschema/dist-cjs/index.d.ts)",
+      "Bash(grep -nA10 \"interface TLUserPreferences\\\\|type TLUserPreferences\" node_modules/@tldraw/editor/dist-cjs/index.d.ts)",
+      "Bash(grep -n \"\\\\\"types\\\\\"\\\\|\\\\\"import\\\\\"\\\\|\\\\\"require\\\\\"\\\\|\\\\\"\\\\\\\\.\\\\\":\\\\|index.d\" node_modules/tldraw/package.json)",
+      "Bash(grep -nA12 \"interface TLUser \\\\|type TLUser =\\\\|declare interface TLUser \" node_modules/@tldraw/tlschema/dist-cjs/index.d.ts)",
+      "Bash(grep -nA6 \"registerBeforeCreateHandler<T\" node_modules/@tldraw/store/dist-cjs/index.d.ts)",
+      "Bash(grep -nA3 \"type StoreBeforeCreateHandler\" node_modules/@tldraw/store/dist-cjs/index.d.ts)",
+      "Bash(grep -nB2 -A14 \"interface CreatePresenceStateDerivationOpts\" node_modules/@tldraw/tlschema/dist-cjs/index.d.ts)",
+      "Bash(grep -nA20 \"interface TLInstancePresence\" node_modules/@tldraw/tlschema/dist-cjs/index.d.ts)"
     ]
   }
 }
