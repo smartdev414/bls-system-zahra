@@ -315,6 +315,7 @@ export function FeedbackButton() {
     <>
       {/* Floating trigger */}
       <button
+        data-app-feedback
         onClick={() => setOpen(true)}
         title="Send feedback"
         className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-primary-foreground shadow-lg hover:bg-primary/90 transition-all hover:scale-105 active:scale-95 text-sm font-semibold"

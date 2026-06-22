@@ -388,16 +388,14 @@ export function ParticipantsPanel({
                 </div>
               )}
 
-              {/* Raised-hand badge — top-right; nudged below "Pinned" when both show. */}
+              {/* Raised-hand badge — bottom-right so it stays clear of "Pinned"
+                  and other top-corner chips. Tutors can click to lower. */}
               {handRaised && !isTutor && (
                 isLocalTutor && onLowerHand ? (
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onLowerHand(p.identity) }}
-                    className={cn(
-                      "absolute right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand",
-                      isPinned ? "top-6" : "top-1",
-                    )}
+                    className="absolute bottom-1 right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand"
                     title={`Click to lower ${displayName}'s hand`}
                     aria-label={`Lower ${displayName}'s hand`}
                   >
@@ -406,10 +404,7 @@ export function ParticipantsPanel({
                   </button>
                 ) : (
                   <div
-                    className={cn(
-                      "absolute right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none",
-                      isPinned ? "top-6" : "top-1",
-                    )}
+                    className="absolute bottom-1 right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none"
                     title={`${displayName} raised their hand`}
                     aria-label={`${displayName} has their hand raised`}
                   >

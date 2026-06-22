@@ -43,7 +43,15 @@
       "Bash(git stash *)",
       "Bash(rm -f scripts/lk-diag.mjs scripts/lk-diag2.mjs)",
       "Bash(rmdir scripts *)",
-      "WebFetch(domain:docs.livekit.io)"
+      "WebFetch(domain:docs.livekit.io)",
+      "Bash(grep -nA4 \"toImage\\\\\\(shapes\" index.d.mts)",
+      "Bash(grep -nA12 \"interface TLSvgExportOptions\" editor/dist-esm/index.d.mts)",
+      "Bash(rm -f ClassroomRoom.tsx.tmp.*)",
+      "Bash(rm -f room/WhiteboardPanel.tsx)",
+      "Bash(git checkout *)",
+      "Bash(tasklist)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"http://localhost:4123/tutor/classroom/test-id\" --max-time 90)"
     ]
   }
 }

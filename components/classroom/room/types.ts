@@ -76,50 +76,30 @@ export type SessionControlAction =
   | { action: "refresh"; from: string }
 
 // ─── Whiteboard ───────────────────────────────────────────────────────────────
-// Collaborative drawing surface. Coordinates are normalised to [0,1] against
-// the board's rendered rect so everyone sees the same layout regardless of
-// their screen size/aspect.
-//
-// Shape identity persists from client to client so deletes can target a
-// specific shape rather than diff-ing whole lists. The union is kept as a
-// single-member discriminated union so additional kinds can be added later
-// without churn in consumers.
+// Collaborative drawing surface powered by tldraw. The classroom shell stays
+// agnostic of tldraw's record internals: local edits are broadcast as opaque
+// tldraw store diffs (`doc`) and late joiners receive a full tldraw store
+// snapshot (`sync_response`). The shell only owns the lifecycle (open/close)
+// and the student-write permission; tldraw owns the document state.
 
-export type WhiteboardStroke = {
-  id: string
-  kind: "stroke"
-  author: string           // participant identity of the person who drew it
-  color: string            // CSS color (e.g. "#ef4444")
-  width: number            // stroke width in normalised board units (×1000 for px-feel)
-  points: [number, number][]
+// A tldraw `RecordsDiff`, serialised as-is over the wire. Records are plain
+// JSON objects keyed by id; `updated` carries [from, to] tuples.
+export type WhiteboardDiff = {
+  added?: Record<string, unknown>
+  updated?: Record<string, [unknown, unknown]>
+  removed?: Record<string, unknown>
 }
 
-// A free-floating text label. Position is the top-left corner, normalised to
-// [0,1] like strokes so it lands in the same place on every screen. `size` is
-// the font size in normalised board units (× the board's min dimension for px).
-export type WhiteboardText = {
-  id: string
-  kind: "text"
-  author: string
-  color: string
-  x: number
-  y: number
-  text: string
-  size: number
-}
-
-export type WhiteboardShape = WhiteboardStroke | WhiteboardText
+// A tldraw store snapshot (`getSnapshot(store)` output) — opaque JSON.
+export type WhiteboardSnapshot = Record<string, unknown>
 
 export type WhiteboardAction =
   | { action: "start" }                                            // tutor opens the board for everyone
   | { action: "stop" }                                             // tutor closes the board
   | { action: "student_write"; enabled: boolean }                  // tutor allows/revokes student drawing
-  | { action: "add";    shape: WhiteboardShape }                   // tutor (always) or students when enabled
-  | { action: "update"; shape: WhiteboardShape }                   // tutor (always) or students when enabled
-  | { action: "delete"; id: string }                               // tutor (always) or students when enabled
-  | { action: "clear" }                                            // tutor wipes everything
+  | { action: "doc"; changes: WhiteboardDiff }                     // incremental tldraw store changes
   | { action: "sync_request" }                                     // late joiner asks the tutor
-  | { action: "sync_response"; active: boolean; studentWrite: boolean; shapes: WhiteboardShape[] }
+  | { action: "sync_response"; active: boolean; studentWrite: boolean; snapshot: WhiteboardSnapshot | null }
 
 // Discriminates on `kind` so the classroom can branch after upload:
 //   - "slides" goes through SlidePicker, PptSlideViewer, next/prev, SlideTray.

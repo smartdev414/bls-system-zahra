@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react"
+import dynamic from "next/dynamic"
 import {
   useParticipants,
   useLocalParticipant,
@@ -31,7 +32,7 @@ import {
 import type {
   ChatMsg, MsgType, RaisedHand, JoinRequest,
   PptAction, PointerAction, SpotlightAction, MuteAction, SessionControlAction,
-  UploadedSlides, WhiteboardAction, WhiteboardShape,
+  UploadedSlides, WhiteboardAction, WhiteboardSnapshot, WhiteboardDiff,
   BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
@@ -47,7 +48,7 @@ import { VideoPlayer }          from "./room/VideoPlayer"
 import { ControlsBar }          from "./room/ControlsBar"
 import { CaptionsOverlay }      from "./room/CaptionsOverlay"
 import { JoinRequestsPopover }  from "./room/JoinRequestsPopover"
-import { WhiteboardPanel }      from "./room/WhiteboardPanel"
+import type { WhiteboardApi }   from "./room/TldrawBoard"
 import { BreakoutsPanel }       from "./room/BreakoutsPanel"
 import { BreakoutMonitor }      from "./room/BreakoutMonitor"
 import { BreakoutBanner }       from "./room/BreakoutBanner"
@@ -59,6 +60,17 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
+
+// tldraw pulls in browser-only APIs and a large bundle, so load it lazily and
+// skip SSR. Only mounted while the whiteboard is active.
+const TldrawBoard = dynamic(() => import("./room/TldrawBoard"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-zinc-100 text-zinc-500 text-sm">
+      Loading whiteboard…
+    </div>
+  ),
+})
 
 // ─── Main ClassroomRoom ───────────────────────────────────────────────────────
 
@@ -93,6 +105,15 @@ export function ClassroomRoom({
     window.addEventListener("pagehide", onPageHide)
     return () => window.removeEventListener("pagehide", onPageHide)
   }, [room])
+
+  // Dashboard layout renders a global Feedback button; hide it while the
+  // classroom fullscreen UI is mounted so it doesn't overlap the controls.
+  useEffect(() => {
+    const btn = document.querySelector<HTMLButtonElement>("[data-app-feedback]")
+    if (!btn) return
+    btn.hidden = true
+    return () => { btn.hidden = false }
+  }, [])
 
   // Reactive screen share state — works for both tutor and student clients.
   // `onlySubscribed: false` includes the tutor's own locally-published track.
@@ -232,12 +253,13 @@ export function ClassroomRoom({
   const videoStateRef = useRef({ url: "", playing: false, currentTime: 0, ts: 0 })
 
   // ── Whiteboard state ───────────────────────────────────────────────────────
-  // `whiteboardActive` toggles the shared drawing surface for everyone.
-  // `whiteboardShapes` is the whole surface — strokes + text, in order.
+  // `whiteboardActive` toggles the shared tldraw surface for everyone. The
+  // document state itself lives inside tldraw (TldrawBoard); this shell only
+  // owns the lifecycle + the student-write permission and relays opaque tldraw
+  // diffs/snapshots over the data channel.
   // Mutually exclusive with slides/video: only one "main area" resource runs
   // at a time, handled in the render branch below.
   const [whiteboardActive, setWhiteboardActive] = useState(false)
-  const [whiteboardShapes, setWhiteboardShapes] = useState<WhiteboardShape[]>([])
   // Students can draw only after the tutor presses "Let them write".
   const [whiteboardStudentWrite, setWhiteboardStudentWrite] = useState(false)
   const tutorIdentityRef = useRef<string | null>(null)
@@ -246,18 +268,30 @@ export function ClassroomRoom({
       participants.find((p) => p.metadata === "tutor")?.identity ?? null
   }, [participants])
   // Ref mirrors for the sync_response handler so it always sees latest values.
-  const whiteboardStateRef = useRef({
-    active: false,
-    studentWrite: false,
-    shapes: [] as WhiteboardShape[],
-  })
+  const whiteboardStateRef = useRef({ active: false, studentWrite: false })
   useEffect(() => {
     whiteboardStateRef.current = {
       active: whiteboardActive,
       studentWrite: whiteboardStudentWrite,
-      shapes: whiteboardShapes,
     }
-  }, [whiteboardActive, whiteboardStudentWrite, whiteboardShapes])
+  }, [whiteboardActive, whiteboardStudentWrite])
+
+  // Imperative bridge to the tldraw store, populated by TldrawBoard on mount.
+  // While the board is mounting, remote diffs/snapshots that arrive first are
+  // buffered here and flushed once the bridge registers.
+  const wbApiRef = useRef<WhiteboardApi | null>(null)
+  const wbPendingRef = useRef<{ snapshot?: WhiteboardSnapshot; changes: WhiteboardDiff[] }>({ changes: [] })
+  const registerWhiteboardApi = useCallback((api: WhiteboardApi | null) => {
+    wbApiRef.current = api
+    if (!api) return
+    const pending = wbPendingRef.current
+    if (pending.snapshot) {
+      api.applySnapshot(pending.snapshot)
+      pending.snapshot = undefined
+    }
+    for (const changes of pending.changes) api.applyChanges(changes)
+    pending.changes = []
+  }, [])
 
   // ── Breakout rooms state ───────────────────────────────────────────────────
   // Simulated breakouts — everyone stays in the same LiveKit room, but each
@@ -717,45 +751,32 @@ export function ClassroomRoom({
       if (data.action === "stop") {
         setWhiteboardActive(false)
         setWhiteboardStudentWrite(false)
-        setWhiteboardShapes([])
+        wbApiRef.current = null
+        wbPendingRef.current = { changes: [] }
         return
       }
       if (data.action === "student_write") {
         setWhiteboardStudentWrite(data.enabled)
         return
       }
-      if (data.action === "clear") {
-        setWhiteboardShapes([])
-        return
-      }
-      if (data.action === "add") {
-        if (!allowStudentMutation() && data.shape.author !== tutorId) return
-        setWhiteboardShapes((prev) =>
-          prev.some((s) => s.id === data.shape.id) ? prev : [...prev, data.shape]
-        )
-        return
-      }
-      if (data.action === "update") {
-        if (!allowStudentMutation() && data.shape.author !== tutorId) return
-        setWhiteboardShapes((prev) =>
-          prev.map((s) => (s.id === data.shape.id ? data.shape : s))
-        )
-        return
-      }
-      if (data.action === "delete") {
+      // Incremental tldraw store diff. Apply if it's allowed for the sender;
+      // buffer until the board's store bridge has registered.
+      if (data.action === "doc") {
         if (!allowStudentMutation() && !isFromTutor) return
-        setWhiteboardShapes((prev) => prev.filter((s) => s.id !== data.id))
+        if (wbApiRef.current) wbApiRef.current.applyChanges(data.changes)
+        else wbPendingRef.current.changes.push(data.changes)
         return
       }
 
-      // Late joiner asked the tutor for current state
+      // Late joiner asked the tutor for current state — reply with the live
+      // tldraw snapshot from the board bridge.
       if (data.action === "sync_request" && isTutor) {
-        const snapshot = whiteboardStateRef.current
+        const state = whiteboardStateRef.current
         const response: WhiteboardAction = {
           action: "sync_response",
-          active: snapshot.active,
-          studentWrite: snapshot.studentWrite,
-          shapes: snapshot.shapes,
+          active: state.active,
+          studentWrite: state.studentWrite,
+          snapshot: wbApiRef.current?.getSnapshot() ?? null,
         }
         try {
           sendWhiteboard(enc.encode(JSON.stringify(response)), { reliable: true })
@@ -765,7 +786,10 @@ export function ClassroomRoom({
       if (data.action === "sync_response" && !isTutor) {
         setWhiteboardActive(data.active)
         setWhiteboardStudentWrite(data.studentWrite)
-        setWhiteboardShapes(data.shapes)
+        if (data.snapshot) {
+          if (wbApiRef.current) wbApiRef.current.applySnapshot(data.snapshot)
+          else wbPendingRef.current.snapshot = data.snapshot
+        }
         return
       }
     } catch { /* ignore malformed */ }
@@ -1789,7 +1813,8 @@ export function ClassroomRoom({
     if (whiteboardActive) {
       setWhiteboardActive(false)
       setWhiteboardStudentWrite(false)
-      setWhiteboardShapes([])
+      wbApiRef.current = null
+      wbPendingRef.current = { changes: [] }
       safeSendWhiteboard({ action: "stop" })
       setMessages((prev) => [
         ...prev,
@@ -1846,31 +1871,10 @@ export function ClassroomRoom({
     ])
   }, [isTutor, whiteboardActive, whiteboardStudentWrite, safeSendWhiteboard])
 
-  const handleAddShape = useCallback((shape: WhiteboardShape) => {
-    if (!canWriteWhiteboard) return
-    setWhiteboardShapes((prev) =>
-      prev.some((s) => s.id === shape.id) ? prev : [...prev, shape]
-    )
-    safeSendWhiteboard({ action: "add", shape })
-  }, [canWriteWhiteboard, safeSendWhiteboard])
-
-  const handleUpdateShape = useCallback((shape: WhiteboardShape) => {
-    if (!canWriteWhiteboard) return
-    setWhiteboardShapes((prev) => prev.map((s) => (s.id === shape.id ? shape : s)))
-    safeSendWhiteboard({ action: "update", shape })
-  }, [canWriteWhiteboard, safeSendWhiteboard])
-
-  const handleDeleteShape = useCallback((id: string) => {
-    if (!canWriteWhiteboard) return
-    setWhiteboardShapes((prev) => prev.filter((s) => s.id !== id))
-    safeSendWhiteboard({ action: "delete", id })
-  }, [canWriteWhiteboard, safeSendWhiteboard])
-
-  const handleClearBoard = useCallback(() => {
-    if (!isTutor) return
-    setWhiteboardShapes([])
-    safeSendWhiteboard({ action: "clear" })
-  }, [isTutor, safeSendWhiteboard])
+  // Broadcast a local tldraw store diff to everyone (called by TldrawBoard).
+  const handleWhiteboardSend = useCallback((action: WhiteboardAction) => {
+    safeSendWhiteboard(action)
+  }, [safeSendWhiteboard])
 
   // Late-joining student asks the tutor for the current whiteboard state.
   const hasSentWhiteboardSync = useRef(false)
@@ -2474,19 +2478,15 @@ export function ClassroomRoom({
               </div>
 
               <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800">
-                <WhiteboardPanel
+                <TldrawBoard
                   isTutor={isTutor}
                   canWrite={canWriteWhiteboard}
                   studentsCanWrite={whiteboardStudentWrite}
                   onToggleStudentWrite={handleToggleStudentWrite}
-                  localIdentity={localParticipant.identity}
-                  shapes={whiteboardShapes}
-                  onAdd={handleAddShape}
-                  onUpdate={handleUpdateShape}
-                  onDelete={handleDeleteShape}
-                  onClear={handleClearBoard}
                   onStop={handleToggleWhiteboard}
                   sessionId={sessionId}
+                  send={handleWhiteboardSend}
+                  registerApi={registerWhiteboardApi}
                   onShareToChat={(attachment) =>
                     handleSend("🖼️ Whiteboard snapshot", "text", attachment)
                   }

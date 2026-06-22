@@ -363,11 +363,26 @@ model LiveSession {
   coTutors     LiveSessionCoTutor[]
   joinRequests SessionJoinRequest[]
   resources    LiveSessionResource[]
+  whiteboard   WhiteboardDoc?
 
   @@index([tutorId])
   @@index([status])
   @@index([scheduledAt])
   @@index([visibility])
+}
+
+// Persisted tldraw whiteboard for a live session. One snapshot per session
+// (tldraw store snapshot JSON) so the board survives reloads/session end and
+// can be reopened later. The tutor is authoritative: it seeds the board from
+// this row on open and autosaves changes; students receive live state over the
+// LiveKit data channel rather than reading this directly.
+model WhiteboardDoc {
+  id        String      @id @default(cuid())
+  sessionId String      @unique
+  session   LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  snapshot  Json
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 }
 
 model LiveSessionInvite {
