@@ -65,8 +65,10 @@ export type SpotlightAction =
 export type MuteAction =
   | { action: "mute-all"; from: string }
   | { action: "set-mic"; identity: string; enabled: boolean; from: string }
-  // Student → tutor: ask to be unmuted. The tutor approves (set-mic on) or denies.
+  // Student → tutor: ask to speak. The tutor can acknowledge without unmuting.
   | { action: "request-speak"; identity: string; name: string }
+  // Tutor → student: the request was acknowledged; mic stays off until enabled.
+  | { action: "accept-speak"; identity: string; from: string }
   // Tutor → student: their request was declined (mic stays off).
   | { action: "deny-speak"; identity: string; from: string }
 

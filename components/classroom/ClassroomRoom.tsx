@@ -641,8 +641,9 @@ export function ClassroomRoom({
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as MuteAction
 
-      // ── Tutor side: a student is requesting to be unmuted ──────────────────
-      // The tutor stays in control — they approve (turn the mic on) or deny.
+      // ── Tutor side: a student is asking to speak ────────────────────────────
+      // The tutor stays in control — they can acknowledge the request now and
+      // turn the mic on later from the participant controls if needed.
       if (data.action === "request-speak") {
         if (!isTutor) return
         setSpeakRequests((prev) =>
@@ -655,9 +656,9 @@ export function ClassroomRoom({
           { id: `sys-ask-${Date.now()}`, from: "system", text: `${data.name} is asking to speak 🎙️`, ts: Date.now(), type: "system" },
         ])
         toast.info(`${data.name} wants to speak`, {
-          description: "Approve to turn their mic on, or deny.",
+          description: "Accept to acknowledge them now, or deny. Their mic stays off until you enable it.",
           duration: 20000,
-          action: { label: "Approve", onClick: () => handleApproveSpeak(data.identity, data.name) },
+          action: { label: "Accept", onClick: () => handleAcceptSpeak(data.identity, data.name) },
           cancel:  { label: "Deny",    onClick: () => handleDenySpeak(data.identity, data.name) },
         })
         return
@@ -683,6 +684,12 @@ export function ClassroomRoom({
         } else {
           toast.info(`${data.from} turned your microphone off`)
         }
+        return
+      }
+      if (data.action === "accept-speak" && data.identity === localParticipant.identity) {
+        toast.info(`${data.from} accepted your request`, {
+          description: "Your mic is still off for now. Your tutor can turn it on when they're ready.",
+        })
         return
       }
       if (data.action === "deny-speak" && data.identity === localParticipant.identity) {
@@ -1665,11 +1672,18 @@ export function ClassroomRoom({
   }, [isTutor, patchParticipantMic, broadcastMicControl, localName])
 
   // ── Request-to-speak (tutor approves/denies; student asks) ─────────────────
-  const handleApproveSpeak = useCallback((identity: string, name: string) => {
+  const handleAcceptSpeak = useCallback((identity: string, name: string) => {
     if (!isTutor) return
     setSpeakRequests((prev) => prev.filter((r) => r.identity !== identity))
-    void handleSetParticipantMic(identity, name, true)
-  }, [isTutor, handleSetParticipantMic])
+    const ok = broadcastMicControl({ action: "accept-speak", identity, from: localName })
+    if (!ok) {
+      toast.error("Could not notify the student")
+      return
+    }
+    toast.success(`Accepted ${name}'s request`, {
+      description: "Their microphone stays off until you enable it from the participant controls.",
+    })
+  }, [isTutor, broadcastMicControl, localName])
 
   const handleDenySpeak = useCallback((identity: string, name: string) => {
     if (!isTutor) return
@@ -2448,11 +2462,11 @@ export function ClassroomRoom({
             <span key={r.identity} className="flex items-center gap-1 bg-sky-500/20 rounded-full pl-2.5 pr-1 py-0.5">
               <span className="text-xs text-sky-100">{r.name}</span>
               <button
-                onClick={() => handleApproveSpeak(r.identity, r.name)}
+                onClick={() => handleAcceptSpeak(r.identity, r.name)}
                 className="flex items-center gap-0.5 text-[11px] font-semibold text-emerald-200 hover:text-white bg-emerald-500/30 hover:bg-emerald-500/60 rounded-full px-1.5 py-0.5 transition-colors"
-                title={`Turn on ${r.name}'s microphone`}
+                title={`Accept ${r.name}'s request without turning their microphone on`}
               >
-                <Check className="size-3" /> Approve
+                <Check className="size-3" /> Accept
               </button>
               <button
                 onClick={() => handleDenySpeak(r.identity, r.name)}
