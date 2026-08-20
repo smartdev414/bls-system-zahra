@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { uploadObject, publicUrl } from "@/lib/s3"
-import { randomUUID } from "crypto"
 import { withAudit } from "@/lib/audit"
+import { uniqueUploadKeyWithExt } from "@/lib/upload-filename"
 import sharp from "sharp"
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB input limit
@@ -41,10 +41,16 @@ async function handlePOST(req: NextRequest) {
       .withMetadata({ orientation: undefined }) // strip EXIF but keep orientation corrected
       .toBuffer()
 
-    const key = `images/${session.sub}/${randomUUID()}.webp`
+    // Keep the original basename (e.g. "homework-photo.webp") so the URL does
+    // not end in a bare UUID. Content is still converted to WebP.
+    const key = uniqueUploadKeyWithExt(`images/${session.sub}`, file.name, "webp")
     await uploadObject(key, webpBuffer, "image/webp", { CacheControl: "public, max-age=31536000" })
 
-    return NextResponse.json({ fileUrl: publicUrl(key), assetType: "IMAGE" })
+    return NextResponse.json({
+      fileUrl: publicUrl(key),
+      fileName: file.name,
+      assetType: "IMAGE",
+    })
   } catch (err) {
     console.error("[POST /api/upload/image]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
