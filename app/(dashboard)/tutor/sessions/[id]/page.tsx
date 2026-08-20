@@ -16,6 +16,7 @@ import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { InviteStudentsModal } from "@/components/classroom/InviteStudentsModal"
+import { SlidePrepCard } from "@/components/classroom/SlidePrepCard"
 import { toast } from "sonner"
 
 type Invite = {
@@ -278,6 +279,10 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           )}
         </CardContent>
       </Card>
+
+      {/* Lesson slides — prepared before the class starts, and still editable
+          while it runs so a mid-lesson swap doesn't mean re-uploading. */}
+      {!isDone && <SlidePrepCard sessionId={id} />}
 
       {/* Invited Students (only for SCHEDULED sessions) */}
       {canStart && (

@@ -9,7 +9,6 @@ import {
   useConnectionState,
   useTracks,
   useRoomContext,
-  VideoTrack,
 } from "@livekit/components-react"
 import { ConnectionState, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
@@ -53,10 +52,15 @@ import { BreakoutsPanel }       from "./room/BreakoutsPanel"
 import { BreakoutMonitor }      from "./room/BreakoutMonitor"
 import { BreakoutBanner }       from "./room/BreakoutBanner"
 import { NudgeOverlay }          from "./room/NudgeOverlay"
+import { SelfViewInset }        from "./room/SelfViewInset"
+import { ScreenShareView }      from "./room/ScreenShareView"
 import { InviteCoTutorModal }    from "./InviteCoTutorModal"
 import { LogoWatermark }        from "@/components/layout/logo"
 import { readBlurPreference, writeBlurPreference } from "./blurPreference"
 import { participantBaseId } from "@/lib/participant-identity"
+import {
+  fetchPreparedPresentation, registerPresentation, toUploadedSlides,
+} from "@/lib/slide-upload"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -173,8 +177,18 @@ export function ClassroomRoom({
   // Reactive screen share state — works for both tutor and student clients.
   // `onlySubscribed: false` includes the tutor's own locally-published track.
   const allScreenTracks  = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
+  const allCameraTracks  = useTracks([Track.Source.Camera],      { onlySubscribed: false })
   const tutorScreenTrack = allScreenTracks.find((t) => t.participant.metadata === "tutor") ?? null
   const screenSharing    = !!tutorScreenTrack
+
+  // Is *this* client the one sharing, and is their camera live? Drives the
+  // self-view inset so a teacher never loses sight of themselves while sharing.
+  const localScreenSharing = allScreenTracks.some(
+    (t) => t.participant.identity === localParticipant.identity,
+  )
+  const localCameraRef = allCameraTracks.find(
+    (t) => t.participant.identity === localParticipant.identity,
+  ) ?? null
 
   const localName = localParticipant.name ?? localParticipant.identity
 
@@ -306,6 +320,12 @@ export function ClassroomRoom({
   // Broadcast protocol doesn't need to know about this — students just receive
   // actual page numbers in the underlying deck.
   const [selectedSlides, setSelectedSlides] = useState<number[]>([])
+  // A deck the tutor prepared before the lesson (uploaded and slide-picked on
+  // the session page). Armed on join so "Present" starts it immediately —
+  // no upload, no conversion wait, no picking slides in front of the class.
+  const [preparedDeck, setPreparedDeck] = useState<
+    { slides: UploadedSlides; selectedPages: number[] } | null
+  >(null)
   // Tutor-only: show/hide the live slide-thumbnail sidebar (shown only in PPT mode)
   const [slideTrayOpen,  setSlideTrayOpen]  = useState(true)
 
@@ -331,6 +351,26 @@ export function ClassroomRoom({
       restoredPresentationRef.current = true
     } catch { /* corrupt or unavailable storage — come up with a blank stage */ }
   }, [sessionId])
+
+  // Pull in whatever the tutor prepared on the session page before class. This
+  // only arms the "Present" button — nothing goes on screen until they press it,
+  // so opening the room early never puts slides in front of arriving students.
+  useEffect(() => {
+    if (!isTutor) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const resource = await fetchPreparedPresentation(sessionId)
+        if (cancelled || !resource) return
+        const slides = toUploadedSlides(resource)
+        if (!slides) return
+        setPreparedDeck({ slides, selectedPages: resource.selectedPages ?? [] })
+        // Also feed the upload panel's "Resume previous" shortcut.
+        uploadedSlidesRef.current = slides
+      } catch { /* a prepared deck is a convenience — never block the room on it */ }
+    })()
+    return () => { cancelled = true }
+  }, [isTutor, sessionId])
 
   useEffect(() => {
     try {
@@ -507,6 +547,26 @@ export function ClassroomRoom({
   const handleTileSizeChange = useCallback((next: TileSize) => {
     setTileSize(next)
     try { window.localStorage.setItem("classroom:tileSize", next) } catch { /* ignore */ }
+  }, [])
+
+  // ── Wide shared screen (persisted per-user) ───────────────────────────────
+  // Text on a shared screen is only as big as the panel it lands in, and the
+  // default split gives it half the stage. Wide mode hands the whole stage to
+  // the share and drops the signer to a corner inset. Everyone chooses for
+  // themselves — a student squinting at a spreadsheet can widen it without
+  // changing what anyone else sees.
+  const [screenWide, setScreenWide] = useState(false)
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("classroom:screenWide") === "1") setScreenWide(true)
+    } catch { /* ignore — private mode or quota */ }
+  }, [])
+  const handleToggleScreenWide = useCallback(() => {
+    setScreenWide((prev) => {
+      const next = !prev
+      try { window.localStorage.setItem("classroom:screenWide", next ? "1" : "0") } catch { /* ignore */ }
+      return next
+    })
   }, [])
 
   // ── Spotlight state (tutor-initiated, seen by everyone) ───────────────────
@@ -1200,7 +1260,9 @@ export function ClassroomRoom({
   // Tutor pings the class (or a single breakout group). Receivers render a
   // short visual flash overlay — the key UX for BSL, where audio cues miss.
 
-  const [activeNudge, setActiveNudge] = useState<{ id: number; from: string; message: string | null } | null>(null)
+  const [activeNudge, setActiveNudge] = useState<
+    { id: number; from: string; message: string | null; self: boolean } | null
+  >(null)
 
   // ── Screen share privacy state ─────────────────────────────────────────────
   const [screenPrivate, setScreenPrivate] = useState(false)
@@ -1222,7 +1284,7 @@ export function ClassroomRoom({
         const own = breakoutStateRef.current.groups.find((g) => g.memberIds.includes(localBaseId))
         if (!own || own.id !== data.groupId) return
       }
-      setActiveNudge({ id: Date.now(), from: data.from, message: data.message ?? null })
+      setActiveNudge({ id: Date.now(), from: data.from, message: data.message ?? null, self: false })
     } catch { /* ignore malformed */ }
   })
 
@@ -1486,10 +1548,12 @@ export function ClassroomRoom({
     setPickerData(data)
   }, [handleVideoStart])
 
-  const handleSlidesPicked = useCallback((selected: number[]) => {
-    if (!pickerData || selected.length === 0) return
+  // Puts a deck on the stage for everyone. Shared by the post-upload picker and
+  // by a deck prepared before the lesson, so both paths behave identically.
+  const startSlides = useCallback((deck: SlidesUpload, selected: number[]) => {
+    if (selected.length === 0) return
 
-    const { url, total } = pickerData
+    const { url, total } = deck
     const firstPage = selected[0]
 
     setPickerData(null)
@@ -1514,7 +1578,38 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [pickerData, safeSendPpt])
+  }, [safeSendPpt])
+
+  const handleSlidesPicked = useCallback((selected: number[]) => {
+    if (!pickerData) return
+    startSlides(pickerData, selected)
+    // Remember the choice on the session so this deck is ready to go next time
+    // — including after a mid-lesson upload. Best effort: presenting has already
+    // started, and a failed write must not interrupt the lesson.
+    setPreparedDeck({ slides: pickerData, selectedPages: selected })
+    void registerPresentation(sessionId, {
+      fileUrl:  pickerData.url,
+      fileName: pickerData.fileName,
+      mimeType: pickerData.mimeType,
+      selectedPages: selected,
+      totalPages: pickerData.total,
+    }).catch(() => { /* the lesson carries on regardless */ })
+  }, [pickerData, startSlides, sessionId])
+
+  // One-click start for a deck prepared ahead of the lesson.
+  const handlePresentPrepared = useCallback(() => {
+    if (!preparedDeck) return
+    const { slides, selectedPages } = preparedDeck
+    if (slides.kind === "video") {
+      handleVideoStart(slides.url)
+      return
+    }
+    // No explicit pick recorded (the tutor uploaded but never chose) — show all.
+    const pages = selectedPages.length > 0
+      ? selectedPages
+      : Array.from({ length: slides.total }, (_, i) => i + 1)
+    startSlides(slides, pages)
+  }, [preparedDeck, handleVideoStart, startSlides])
 
   // Next/prev walk through the selected subset relative to the page currently
   // on screen. Deriving position from `pptCurrentPage` (rather than tracking a
@@ -2428,8 +2523,10 @@ export function ClassroomRoom({
       toast.error("Couldn't send the nudge — please try again.")
       return
     }
-    // Local echo so the tutor sees the same flash their students will.
-    setActiveNudge({ id: Date.now(), from: localName, message: opts?.message ?? null })
+    // Local echo so the tutor knows the ping went out. Deliberately the compact
+    // "self" variant — the tutor is mid-lesson and shouldn't have their own view
+    // blocked by the full-screen alert the students get.
+    setActiveNudge({ id: Date.now(), from: localName, message: opts?.message ?? null, self: true })
     if (opts?.groupId) {
       const g = breakoutStateRef.current.groups.find((x) => x.id === opts.groupId)
       toast.success(g ? `Nudged ${g.name}` : "Nudge sent")
@@ -2697,10 +2794,39 @@ export function ClassroomRoom({
     />
   )
 
+  // Whether the split camera panel is already showing this client's own camera.
+  // With nothing pinned it shows the tutor's camera (their own, for a teacher);
+  // any pin takes it away — including pinning yourself, since a pinned tile
+  // prefers the screen share over the camera.
+  const insetTutorCameraIdentity = useMemo(() => {
+    const tutorCams = allCameraTracks.filter((t) => t.participant.metadata === "tutor")
+    const own = tutorCams.find((t) => t.participant.identity === localParticipant.identity)
+    return (own ?? tutorCams[0])?.participant.identity ?? null
+  }, [allCameraTracks, localParticipant.identity])
+
+  const splitPanelShowsMyCamera =
+    !splitStageId && tutorCameraVisible && insetTutorCameraIdentity === localParticipant.identity
+
+  // Self-view for whoever is sharing their screen, shown only when their camera
+  // isn't already on the stage. Without it a teacher who has pinned a student
+  // has no view of themselves for as long as the share runs.
+  const selfViewTrack =
+    localScreenSharing && localCameraRef && !splitPanelShowsMyCamera ? localCameraRef : null
+
+  // A student looking at the "preparing content…" placeholder has nothing to
+  // widen, so wide mode stands down until the share is actually visible.
+  const screenShareHidden  = !isTutor && screenPrivate
+  const screenWideActive   = screenWide && !screenShareHidden
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col overflow-hidden z-50">
+    <div
+      // Marked so NudgeOverlay can shake the whole room without dragging its own
+      // fixed-position alert along with it.
+      data-classroom-shell
+      className="fixed inset-0 bg-zinc-950 text-white flex flex-col overflow-hidden z-50"
+    >
       <AudioRenderer audibleIdentities={audibleIdentities} />
 
       {/* Brand watermark — visible to all participants. Top-left so it doesn't
@@ -2713,6 +2839,7 @@ export function ClassroomRoom({
           key={activeNudge.id}
           from={activeNudge.from}
           message={activeNudge.message}
+          self={activeNudge.self}
           onDismiss={() => setActiveNudge(null)}
         />
       )}
@@ -3033,20 +3160,45 @@ export function ClassroomRoom({
           ) : screenSharing ? (
             // ── Screen share mode: camera LEFT so the tutor can keep signing,
             // screen content RIGHT. Students see a placeholder when private.
+            // In wide mode the share takes the whole stage and the signer moves
+            // to a corner inset, so small text on the share is twice the size.
             <>
-              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
-                {splitCameraPanel}
-              </div>
+              {!screenWideActive && (
+                <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
+                  {splitCameraPanel}
+                </div>
+              )}
 
-              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800 bg-zinc-950">
-                {!isTutor && screenPrivate ? (
+              <div
+                className={cn(
+                  "flex-1 min-w-0 min-h-0 overflow-hidden relative bg-zinc-950",
+                  !screenWideActive && "md:basis-0 border-t md:border-t-0 md:border-l border-zinc-800",
+                )}
+              >
+                {screenShareHidden ? (
                   <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
                     <Monitor className="size-12 opacity-20" />
                     <span className="text-sm opacity-60">Tutor is preparing content…</span>
                   </div>
                 ) : tutorScreenTrack ? (
-                  <VideoTrack trackRef={tutorScreenTrack} className="w-full h-full object-contain" />
+                  <ScreenShareView
+                    trackRef={tutorScreenTrack}
+                    wide={screenWide}
+                    onToggleWide={handleToggleScreenWide}
+                  />
                 ) : null}
+
+                {/* Wide mode never drops the signer — BSL has to stay on screen. */}
+                {screenWideActive && (
+                  <div className="absolute top-3 left-3 z-30 w-40 sm:w-52 md:w-64 aspect-video rounded-xl overflow-hidden ring-2 ring-zinc-600 shadow-2xl bg-zinc-900">
+                    <TutorCameraInset
+                      hidden={!tutorCameraVisible}
+                      breakoutGroupName={!isTutor && breakoutsActive ? ownBreakoutGroup?.name ?? null : null}
+                    />
+                  </div>
+                )}
+
+                {selfViewTrack && <SelfViewInset trackRef={selfViewTrack} />}
               </div>
             </>
 
@@ -3283,6 +3435,14 @@ export function ClassroomRoom({
           hasNextSlide={hasNextSlide}
           hasPrevSlide={hasPrevSlide}
           onShowUpload={() => setShowUpload(true)}
+          preparedKind={preparedDeck?.slides.kind ?? null}
+          preparedName={preparedDeck?.slides.fileName ?? null}
+          preparedCount={
+            preparedDeck?.slides.kind === "slides"
+              ? (preparedDeck.selectedPages.length || preparedDeck.slides.total)
+              : 0
+          }
+          onPresentPrepared={handlePresentPrepared}
           onPptNext={handlePptNext}
           onPptPrev={handlePptPrev}
           onPptStop={handlePptStop}

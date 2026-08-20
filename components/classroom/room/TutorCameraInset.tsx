@@ -21,7 +21,13 @@ export function TutorCameraInset({
 }) {
   const camTracks = useTracks([Track.Source.Camera], { onlySubscribed: false })
   const { localParticipant } = useLocalParticipant()
-  const tutorCam  = camTracks.find((t) => t.participant.metadata === "tutor")
+  // With a co-teacher in the room there are two "tutor" cameras. A teacher must
+  // always see their own feed here — otherwise a teacher who is screen-sharing
+  // (this panel is the only camera on screen in that layout) ends up watching
+  // their colleague instead of themselves.
+  const tutorCams = camTracks.filter((t) => t.participant.metadata === "tutor")
+  const tutorCam  =
+    tutorCams.find((t) => t.participant.identity === localParticipant.identity) ?? tutorCams[0]
   const name      = tutorCam?.participant.name ?? tutorCam?.participant.identity ?? "Tutor"
   const mirrorLocal = tutorCam?.participant.identity === localParticipant.identity
 

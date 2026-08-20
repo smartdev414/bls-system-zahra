@@ -3,21 +3,13 @@
 import { useState, useRef, useEffect } from "react"
 import { Presentation, Upload, X, Loader2, FileText } from "lucide-react"
 import type { UploadedSlides } from "./types"
+import { countPdfPages, uploadPresentation } from "@/lib/slide-upload"
 
 type SessionMaterial = {
   id: string
   fileName: string
   presentationUrl: string | null
   presentationMimeType: string | null
-}
-
-async function countPdfPages(url: string): Promise<number> {
-  const pdfjsLib = await import("pdfjs-dist")
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-    `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-  const pdf = await pdfjsLib.getDocument({ url, withCredentials: false }).promise
-  return pdf.numPages
 }
 
 export function SlideUploadPanel({
@@ -74,137 +66,10 @@ export function SlideUploadPanel({
 
   const handleFile = async (file: File) => {
     setError("")
-
-    const isVideo = file.type.startsWith("video/")
-    const isPptx  =
-      file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-      file.type === "application/vnd.ms-powerpoint"
-
     setUploading(true)
-
     try {
-      let registerUrl      = ""
-      let registerName     = file.name
-      let registerMime     = file.type
-      let registerSize: number | null = file.size
-
-      if (isPptx) {
-        // PowerPoint: upload straight to CloudConvert (no S3 hop for the deck).
-        // The server only mints upload credentials; the API key never leaves the backend.
-        setProgress("Preparing conversion…")
-        const presignRes = await fetch(
-          `/api/tutor/sessions/${sessionId}/slides/convert/presign`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sourceFileName: file.name }),
-          },
-        )
-        if (!presignRes.ok) {
-          const err = await presignRes.json().catch(() => ({}))
-          throw new Error(err.message ?? "Could not start conversion")
-        }
-        const { jobId, uploadUrl, uploadParameters } = await presignRes.json() as {
-          jobId: string
-          uploadUrl: string
-          uploadParameters: Record<string, string>
-        }
-
-        setProgress("Uploading slides…")
-        const ccForm = new FormData()
-        for (const [key, value] of Object.entries(uploadParameters)) {
-          ccForm.append(key, value)
-        }
-        ccForm.append("file", file)
-
-        const ccUploadRes = await fetch(uploadUrl, { method: "POST", body: ccForm })
-        if (!ccUploadRes.ok) throw new Error("Upload to conversion service failed")
-
-        setProgress("Converting slides to PDF…")
-        const convertRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/convert`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jobId, sourceFileName: file.name }),
-        })
-        if (!convertRes.ok) {
-          const err = await convertRes.json().catch(() => ({}))
-          throw new Error(err.message ?? "Could not convert PPTX to PDF")
-        }
-        const converted = await convertRes.json() as {
-          fileUrl: string; fileName: string; mimeType: string; fileSize: number
-        }
-        registerUrl  = converted.fileUrl
-        registerName = converted.fileName
-        registerMime = converted.mimeType
-        registerSize = converted.fileSize
-      } else {
-        // PDF / video: presigned upload to S3, then register.
-        setProgress("Getting upload URL…")
-        const presignRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/presign`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fileName: file.name, mimeType: file.type }),
-        })
-        if (!presignRes.ok) {
-          const err = await presignRes.json()
-          throw new Error(err.message ?? "Could not get upload URL")
-        }
-        const { uploadUrl, fileUrl } = await presignRes.json() as {
-          uploadUrl: string; fileUrl: string
-        }
-
-        setProgress(isVideo ? "Uploading video…" : "Uploading file…")
-        const uploadRes = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
-        })
-        if (!uploadRes.ok) throw new Error("Upload to storage failed")
-
-        registerUrl = fileUrl
-      }
-
-      // 3. Register the file in the session
-      setProgress(isVideo ? "Registering video…" : "Registering slides…")
-      const registerRes = await fetch(`/api/tutor/sessions/${sessionId}/slides`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileUrl:  registerUrl,
-          fileName: registerName,
-          mimeType: registerMime,
-          fileSize: registerSize,
-        }),
-      })
-      if (!registerRes.ok) {
-        const err = await registerRes.json()
-        throw new Error(err.message ?? "Could not save slides")
-      }
-
-      // Videos skip the slide-counting step — they're played, not paged.
-      if (isVideo) {
-        onSlidesReady({ kind: "video", url: registerUrl, mimeType: registerMime, fileName: registerName })
-        return
-      }
-
-      // 4. Determine slide/page count. After PPTX conversion the registered
-      // file is always a PDF, so the PDF branch handles it via the URL.
-      setProgress("Reading slide count…")
-      let total: number
-
-      if (isPptx || file.type === "application/pdf") {
-        total = await countPdfPages(registerUrl)
-      } else {
-        // Defensive fallback — shouldn't hit this path now that PPTX is converted.
-        const JSZip = (await import("jszip")).default
-        const zip = await JSZip.loadAsync(file)
-        const slideFiles = Object.keys(zip.files).filter(
-          (name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)
-        )
-        total = slideFiles.length || 1
-      }
-
-      onSlidesReady({ kind: "slides", url: registerUrl, total, mimeType: registerMime, fileName: registerName })
+      const result = await uploadPresentation(sessionId, file, setProgress)
+      onSlidesReady(result)
     } catch (err: unknown) {
       setError((err as Error).message ?? "Upload failed")
     } finally {

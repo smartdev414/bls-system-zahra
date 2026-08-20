@@ -122,9 +122,21 @@ export function ParticipantsPanel({
           const camRef = camTracks.find(
             (t) => t.participant.identity === p.identity && isTrackReference(t),
           )
-          const trackRef = screenRef ?? camRef
+          // Everyone else's tile prefers their screen share — that's the
+          // interesting feed. Your own tile prefers your camera: you are already
+          // looking at the screen you're sharing, and a teacher who is sharing
+          // still needs to see themselves signing.
+          const isLocal  = p.identity === localParticipant.identity
+          const trackRef = isLocal ? (camRef ?? screenRef) : (screenRef ?? camRef)
           const camOn = !!trackRef
-          return { p, trackRef, camOn, sharingScreen: !!screenRef }
+          return {
+            p,
+            trackRef,
+            camOn,
+            sharingScreen: !!screenRef,
+            // Only mirror when the tile is actually showing your own camera.
+            showingOwnCamera: isLocal && trackRef === camRef,
+          }
         }),
     [allParticipants, camTracks, screenTracks, visibleIdentities, localParticipant.identity],
   )
@@ -238,7 +250,7 @@ export function ParticipantsPanel({
       </div>
 
       <div className="overflow-x-auto flex items-center gap-2 px-2 py-2 min-w-0 flex-1">
-        {sorted.map(({ p, trackRef, camOn, sharingScreen }) => {
+        {sorted.map(({ p, trackRef, camOn, sharingScreen, showingOwnCamera }) => {
           const isLocal     = p.identity === localParticipant.identity
           const isPinned    = pinnedId === p.identity
           const isTutor     = p.metadata === "tutor"
@@ -320,7 +332,7 @@ export function ParticipantsPanel({
                 <>
                   <VideoTrack
                     trackRef={trackRef}
-                    className={localCameraClassName(isLocal && !sharingScreen)}
+                    className={localCameraClassName(showingOwnCamera)}
                   />
                   <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-1.5 pb-0.5 pointer-events-none">
                     <p className="text-[9px] text-white truncate font-medium">
@@ -359,10 +371,10 @@ export function ParticipantsPanel({
                 </div>
               )}
 
-              {sharingScreen && !isTutor && (
+              {sharingScreen && (!isTutor || isLocal) && (
                 <div className="absolute bottom-7 left-1 bg-emerald-600/90 text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 z-10">
                   <Monitor className="size-2.5" />
-                  Screen
+                  {isLocal ? "Sharing" : "Screen"}
                 </div>
               )}
 

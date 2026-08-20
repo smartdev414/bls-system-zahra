@@ -74,6 +74,10 @@ async function handlePOST(
       fileName: string
       mimeType: string
       fileSize?: number
+      // Set when the deck is prepared ahead of class: the 1-based page numbers
+      // the tutor picked, in presentation order, and the deck's page count.
+      selectedPages?: number[]
+      totalPages?: number
     }
 
     if (!body.fileUrl || !body.fileName || !body.mimeType) {
@@ -82,6 +86,10 @@ async function handlePOST(
         { status: 400 }
       )
     }
+
+    const selectedPages = Array.isArray(body.selectedPages)
+      ? body.selectedPages.filter((n) => Number.isInteger(n) && n > 0)
+      : null
 
     // Delete existing presentation resources for this session before saving new one
     await prisma.liveSessionResource.deleteMany({
@@ -96,6 +104,8 @@ async function handlePOST(
         fileName:  body.fileName,
         mimeType:  body.mimeType,
         fileSize:  body.fileSize ?? null,
+        selectedPages: selectedPages && selectedPages.length > 0 ? selectedPages : undefined,
+        totalPages:    Number.isInteger(body.totalPages) ? body.totalPages : null,
       },
     })
 
@@ -106,5 +116,39 @@ async function handlePOST(
   }
 }
 
+// ─── DELETE /api/tutor/sessions/[id]/slides ──────────────────────────────────
+// Clears the prepared presentation so the tutor starts the lesson with a blank
+// stage (or can prepare a different deck).
+
+async function handleDELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+
+    const { id } = await params
+
+    const liveSession = await prisma.liveSession.findFirst({
+      where: { id, tutorId: session.sub },
+    })
+    if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
+
+    await prisma.liveSessionResource.deleteMany({
+      where: { sessionId: id, mimeType: { in: PPT_MIME_TYPES } },
+    })
+
+    return NextResponse.json({ message: "Slides removed" })
+  } catch (err) {
+    console.error("[DELETE /api/tutor/sessions/[id]/slides]", err)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
+}
+
 export const GET = withAudit(handleGET)
 export const POST = withAudit(handlePOST)
+export const DELETE = withAudit(handleDELETE)

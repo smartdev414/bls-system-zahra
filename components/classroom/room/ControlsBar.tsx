@@ -5,10 +5,11 @@ import { Track } from "livekit-client"
 import {
   Mic, MicOff, Camera, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
-  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles,
+  X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles, Upload,
   Circle, Pause, UserPlus, HandMetal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
 
 export function ControlsBar({
   isTutor,
@@ -41,6 +42,11 @@ export function ControlsBar({
   hasNextSlide,
   hasPrevSlide,
   onShowUpload,
+  // A deck the tutor prepared before the lesson, ready to go in one click.
+  preparedKind = null,
+  preparedName = null,
+  preparedCount = 0,
+  onPresentPrepared,
   onPptNext,
   onPptPrev,
   onPptStop,
@@ -86,6 +92,10 @@ export function ControlsBar({
   hasNextSlide: boolean
   hasPrevSlide: boolean
   onShowUpload: () => void
+  preparedKind?: "slides" | "video" | null
+  preparedName?: string | null
+  preparedCount?: number
+  onPresentPrepared: () => void
   onPptNext: () => void
   onPptPrev: () => void
   onPptStop: () => void
@@ -179,6 +189,10 @@ export function ControlsBar({
 
       <TrackToggle
         source={Track.Source.ScreenShare}
+        // Capture and publish at text-readable quality — see the constants for
+        // why the defaults aren't good enough for slides and documents.
+        captureOptions={SCREEN_SHARE_CAPTURE}
+        publishOptions={SCREEN_SHARE_PUBLISH}
         className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=true]:bg-emerald-900/50 data-[enabled=true]:text-emerald-400 whitespace-nowrap"
         title={
           isTutor
@@ -410,15 +424,45 @@ export function ControlsBar({
         </button>
       )}
 
-      {/* ── Presentation controls (tutor only) ── */}
+      {/* ── Presentation controls (tutor only) ──
+          With a deck prepared before the lesson the primary button starts it
+          outright — the whole point of preparing is not to be uploading and
+          picking slides while a class watches. The upload path stays one click
+          away for a last-minute change. */}
       {isTutor && !pptActive && !whiteboardActive && (
-        <button
-          onClick={onShowUpload}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"
-          title="Upload and present slides or a video"
-        >
-          <Presentation className="size-3.5" /> Present
-        </button>
+        preparedKind ? (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={onPresentPrepared}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 transition-colors whitespace-nowrap"
+              title={
+                preparedName
+                  ? `Present "${preparedName}" — prepared before the lesson`
+                  : "Present your prepared file"
+              }
+            >
+              {preparedKind === "video"
+                ? <><Film className="size-3.5" /> Play video</>
+                : <><Presentation className="size-3.5" /> Present {preparedCount} slides</>}
+            </button>
+            <button
+              onClick={onShowUpload}
+              className="flex items-center justify-center size-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors shrink-0"
+              title="Present something else — upload a different file"
+              aria-label="Present a different file"
+            >
+              <Upload className="size-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onShowUpload}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"
+            title="Upload and present slides or a video"
+          >
+            <Presentation className="size-3.5" /> Present
+          </button>
+        )
       )}
 
       {/* Slide-specific controls — only while presenting a deck. Video is driven

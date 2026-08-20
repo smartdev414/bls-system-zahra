@@ -608,6 +608,11 @@ model LiveSessionResource {
   mimeType             String?
   presentationUrl      String?  // pre-converted PDF for low-latency classroom use
   presentationMimeType String?
+  // Slides the tutor picked, in presentation order (1-based page numbers).
+  // Set when a deck is prepared before class so the classroom can start
+  // presenting the right subset without asking the tutor to choose again.
+  selectedPages        Json?
+  totalPages           Int?
   createdAt            DateTime @default(now())
 
   session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
