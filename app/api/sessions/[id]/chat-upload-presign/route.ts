@@ -46,7 +46,13 @@ async function handlePOST(
 
     const liveSession = await prisma.liveSession.findUnique({
       where: { id: sessionId },
-      select: { id: true, tutorId: true, status: true, visibility: true },
+      select: {
+        id: true,
+        tutorId: true,
+        status: true,
+        visibility: true,
+        coTutors: { select: { tutorId: true } },
+      },
     })
 
     if (!liveSession) {
@@ -57,7 +63,14 @@ async function handlePOST(
       return NextResponse.json({ message: "Session is no longer active" }, { status: 410 })
     }
 
-    const isTutor = auth.role === "TUTOR" && auth.sub === liveSession.tutorId
+    // Every tutor who can be in the room may attach files: the owning tutor and
+    // any co-tutor they invited to this session. The token route grants both the
+    // same tutor rights, so the upload gate has to match it — otherwise a
+    // co-teacher sees the paperclip but gets a 403 on send.
+    const isTutor =
+      auth.role === "TUTOR" &&
+      (auth.sub === liveSession.tutorId ||
+        liveSession.coTutors.some((c) => c.tutorId === auth.sub))
     const isStudent = auth.role === "STUDENT"
 
     if (!isTutor && !isStudent) {
