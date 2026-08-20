@@ -76,6 +76,30 @@ client (including the tutor) and auto-rejoins. First resort for a stuck room.
 If it persists for everyone, check the LiveKit dashboard for the project/region
 and that `LIVEKIT_WS_URL` is reachable (wss://).
 
+Students have their own **Refresh** button next to it, which reloads only their
+tab and rejoins without the lobby.
+
+### 4.2b Student joined late (or refreshed) and sees no slides / no chat
+Both are restored from the server, so this is a data problem rather than a
+timing one:
+- **Slides/video** come from `GET /api/sessions/[id]/live-state`, written by the
+  tutor on every start / slide change / stop. If it 500s, the
+  `LiveSessionPresentation` table is missing — run the schema sync in §5. The
+  room still works: it falls back to asking the tutor's browser directly.
+- **Chat** comes from `GET /api/sessions/[id]/chat` (last 500 messages). A
+  student who is neither invited nor approved for an INVITE_ONLY session gets a
+  403 and an empty panel — check their invite/join request.
+- A half-typed message, the current slide and a raised hand are also mirrored
+  into that tab's `sessionStorage`, so a reload restores them instantly. Private
+  browsing with storage disabled loses only that instant restore — the server
+  copies still arrive a moment later.
+- A student stuck on the *wrong* slide (rather than none) self-corrects within
+  ~20s: while a lesson is on screen, students re-read the stored stage after any
+  quiet spell and follow it. If one student stays behind for minutes, their tab
+  can't reach the API — check the browser console, not LiveKit.
+- The stored stage is deleted when the session completes or is cancelled, so an
+  old deck can never reappear in a session that goes live again.
+
 ### 4.3 Camera shows "half a face" / wrong crop
 The tutor's main camera uses `object-contain` (full frame, no crop). If a feed
 looks cropped, it's almost always a participant pinned with `object-cover`

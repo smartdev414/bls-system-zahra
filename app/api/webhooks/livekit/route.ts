@@ -40,6 +40,11 @@ async function handlePOST(req: NextRequest) {
             updated.title,
             liveSession.tutorId,
           )
+          // The stage snapshot is what late joiners hydrate from — clear it with
+          // the room, so reopening this session never restores a finished lesson.
+          void prisma.liveSessionPresentation
+            .deleteMany({ where: { sessionId: liveSession.id } })
+            .catch(() => { /* best effort */ })
           console.info("[webhook/livekit] auto-completed session", liveSession.id, "after room finished")
         }
       }

@@ -287,6 +287,13 @@ function TutorEntryScreen({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// "Refresh all" (and the tutor's own refresh) sets this flag right before
+// reloading. On the way back the page reads it once and reconnects without
+// waiting for a click: the tutor answers every student's sync request, so a
+// tutor parked on the lobby screen means a room full of blank stages.
+const AUTO_REJOIN_KEY = (id: string) => `classroom:auto-rejoin:${id}`
+const AUTO_REJOIN_MAX_AGE_MS = 30_000
+
 export default function TutorClassroomPage({
   params,
 }: {
@@ -298,6 +305,7 @@ export default function TutorClassroomPage({
   const [ended, setEnded] = useState(false)
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
   const [leavingBusy, setLeavingBusy] = useState(false)
+  const [autoRejoin, setAutoRejoin] = useState(false)
 
   const { data, loading: infoLoading, error: infoError } = useFetch<SessionInfo>(
     `/api/sessions/${id}/info`,
@@ -317,6 +325,26 @@ export default function TutorClassroomPage({
   )
 
   const isOwner = data?.isOwner !== false
+
+  // Read the one-shot flag on mount. An effect (not lazy state) because
+  // sessionStorage is client-only and would break hydration.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const key = AUTO_REJOIN_KEY(id)
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return
+    sessionStorage.removeItem(key)
+    const ts = parseInt(raw, 10)
+    if (Number.isFinite(ts) && Date.now() - ts < AUTO_REJOIN_MAX_AGE_MS) setAutoRejoin(true)
+  }, [id])
+
+  // Reconnect as soon as session info lands. The session is already LIVE at
+  // this point (it was mid-lesson), so this only needs a token.
+  useEffect(() => {
+    if (!autoRejoin || !data?.session || tokenData || tokenLoading) return
+    getToken({})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRejoin, data, tokenData, tokenLoading])
 
   // When the host ends the session, disconnect co-teachers still in the room.
   useEffect(() => {
@@ -403,6 +431,14 @@ export default function TutorClassroomPage({
   // Lobby — shown until the tutor explicitly starts the session.
   if (!tokenData) {
     if (!data?.session) return null
+    if (autoRejoin) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
+          <Loader2 className="size-8 animate-spin text-primary" />
+          <p className="text-muted-foreground text-sm">Reconnecting to the classroom…</p>
+        </div>
+      )
+    }
     return (
       <TutorEntryScreen
         session={data.session}

@@ -29,7 +29,7 @@ import {
   enc, dec,
 } from "./room/constants"
 import type {
-  ChatMsg, MsgType, RaisedHand, JoinRequest,
+  ChatMsg, MsgType, RaisedHand, HandAction, JoinRequest,
   PptAction, PointerAction, SpotlightAction, MuteAction, SessionControlAction,
   UploadedSlides, WhiteboardAction, WhiteboardSnapshot, WhiteboardDiff,
   BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction,
@@ -61,6 +61,9 @@ import { participantBaseId } from "@/lib/participant-identity"
 import {
   fetchPreparedPresentation, registerPresentation, toUploadedSlides,
 } from "@/lib/slide-upload"
+import {
+  fetchStageState, publishStageState, type StageState, type StagePayload,
+} from "@/lib/live-state"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -83,6 +86,13 @@ function readStoredBreakoutGroupId(sessionId: string): string | null {
 // the presentation — without this, "refresh the classroom" wipes the slides for
 // everyone and nobody can put them back except by re-uploading.
 const presentationStorageKey = (sessionId: string) => `classroom:presentation:${sessionId}`
+
+// How long the stage must be quiet — no slide/video event from the tutor — before
+// a student double-checks the stored stage against what they're showing, and how
+// often that check runs. Slow on purpose: it's a safety net for a lost packet,
+// not the primary sync path.
+const STAGE_QUIET_MS = 15_000
+const STAGE_RECONCILE_MS = 20_000
 
 type StoredPresentation = {
   kind: "slides" | "video"
@@ -418,6 +428,91 @@ export function ClassroomRoom({
   const [videoAsOf,        setVideoAsOf]        = useState(() => Date.now())
   const videoStateRef = useRef({ url: "", playing: false, currentTime: 0, ts: 0 })
 
+  // ── Stage state from the server ────────────────────────────────────────────
+  // The data channel only carries "from now on", so it cannot tell a student
+  // who joins late — or who reloads while the tutor's own tab is reloading —
+  // what is currently on screen. The tutor mirrors every stage change to
+  // `/api/sessions/[id]/live-state`; this reads it back.
+  //
+  // `stageTouchedRef` records that we have heard from the tutor live on this
+  // mount. Once we have, the live channel is authoritative and the stored row
+  // (which may lag by the publish debounce) never overrides it again.
+  const stageTouchedRef = useRef(false)
+  // When we last heard the tutor on the data channel. The reconcile poll below
+  // only speaks up after a quiet spell, so it can never fight a tutor who is
+  // mid-way through flicking through a deck.
+  const lastLiveStageRef = useRef(0)
+  // What this client has on stage right now. Read by the hydrate and reconcile
+  // paths below so a stored row is only ever applied as a *correction*, never
+  // as a reason to reshuffle a room that is already showing the right thing.
+  const stageLocalRef = useRef<{
+    active: boolean
+    kind: "slides" | "video" | null
+    url: string | null
+    page: number
+  }>({ active: false, kind: null, url: null, page: 1 })
+  useEffect(() => {
+    stageLocalRef.current = {
+      active: pptActive, kind: presentKind, url: pptUrl, page: pptCurrentPage,
+    }
+  }, [pptActive, presentKind, pptUrl, pptCurrentPage])
+
+  const applyStageState = useCallback((state: StageState) => {
+    if (state.active && state.kind === "slides" && state.url) {
+      setPresentKind("slides")
+      setPptUrl(state.url)
+      setPptTotalPages(state.totalPages)
+      setPptCurrentPage(state.page > 0 ? state.page : 1)
+      if (state.selectedPages.length > 0) setSelectedSlides(state.selectedPages)
+      setPptActive(true)
+      setParticipantsOpen(false)
+      return
+    }
+    if (state.active && state.kind === "video" && state.url) {
+      setPresentKind("video")
+      setPptUrl(state.url)
+      setPptActive(true)
+      setVideoPlaying(state.videoPlaying)
+      setVideoCurrentTime(state.videoTime)
+      // Treat the stored position as "as of now" rather than trusting the
+      // server clock against this browser's. The tutor re-broadcasts
+      // `video_state` every few seconds, which corrects any drift.
+      setVideoAsOf(Date.now())
+      setParticipantsOpen(false)
+      return
+    }
+    // Nothing on stage. Reached when a student restored a slide from storage
+    // that the tutor has since stopped presenting.
+    setPptActive(false)
+    setPresentKind(null)
+    setPptUrl(null)
+    setPptCurrentPage(1)
+    setPptTotalPages(0)
+    setParticipantsOpen(true)
+  }, [])
+
+  const hydrateStage = useCallback(async () => {
+    if (stageTouchedRef.current) return
+    try {
+      const state = await fetchStageState(sessionId)
+      if (!state || stageTouchedRef.current) return
+      // Nothing on stage and nothing showing — no correction to make.
+      if (!state.active && !stageLocalRef.current.active) return
+      // The tutor drives the stage, so only hydrate them when they have nothing
+      // restored locally — reopening the room on another device, say. Never let
+      // a stale row blank out a lesson the tutor is actively presenting.
+      if (isTutor && (restoredPresentationRef.current || !state.active)) return
+      applyStageState(state)
+      // The tutor picking their lesson back up on a new device is a restore as
+      // far as the rest of the room is concerned: let the existing re-announce
+      // effect push it out over the data channel too.
+      if (isTutor) restoredPresentationRef.current = true
+    } catch {
+      /* offline, or the row doesn't exist yet — the peer sync path still covers
+         the common case where the tutor is connected. */
+    }
+  }, [sessionId, isTutor, applyStageState])
+
   // ── Whiteboard state ───────────────────────────────────────────────────────
   // `whiteboardActive` toggles the shared tldraw surface for everyone. The
   // document state itself lives inside tldraw (TldrawBoard); this shell only
@@ -611,40 +706,70 @@ export function ClassroomRoom({
     } catch { /* ignore malformed */ }
   })
 
-  // Hydrate history once the room mounts so refreshes and late joiners see the
-  // conversation that already happened (live channel only covers "from now on").
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const res = await fetch(`/api/sessions/${sessionId}/chat`)
-        if (!res.ok || cancelled) return
-        const body = await res.json() as { messages?: ChatMsg[] }
-        const history = Array.isArray(body.messages) ? body.messages : []
-        if (cancelled || history.length === 0) return
-        setMessages((prev) => {
-          if (prev.length === 0) return history
-          const seen = new Set(prev.map((m) => m.id))
-          const merged = [...prev]
-          for (const m of history) {
-            if (!seen.has(m.id)) {
-              seen.add(m.id)
-              merged.push(m)
-            }
+  // Hydrate history so refreshes and late joiners see the conversation that
+  // already happened — the live channel only covers "from now on". Messages
+  // carry stable client-generated ids, so merging can never double up a bubble.
+  const hydrateChat = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/chat`, { cache: "no-store" })
+      if (!res.ok) return
+      const body = await res.json() as { messages?: ChatMsg[] }
+      const history = Array.isArray(body.messages) ? body.messages : []
+      if (history.length === 0) return
+      setMessages((prev) => {
+        if (prev.length === 0) return history
+        const seen = new Set(prev.map((m) => m.id))
+        const merged = [...prev]
+        for (const m of history) {
+          if (!seen.has(m.id)) {
+            seen.add(m.id)
+            merged.push(m)
           }
-          merged.sort((a, b) => a.ts - b.ts)
-          return merged
-        })
-      } catch { /* offline / transient — live chat still works */ }
-    })()
-    return () => { cancelled = true }
+        }
+        merged.sort((a, b) => a.ts - b.ts)
+        return merged
+      })
+    } catch { /* offline / transient — live chat still works */ }
   }, [sessionId])
+
+  // On mount, and again on every reconnect: a student whose connection dropped
+  // mid-lesson missed every message sent while they were away, and those only
+  // exist server-side.
+  useEffect(() => {
+    if (connectionState === ConnectionState.Disconnected) return
+    void hydrateChat()
+  }, [hydrateChat, connectionState])
 
   // ── Data channel: hand raise ───────────────────────────────────────────────
 
+  // Mirrors so the sync_response handler below always sees current values.
+  const raisedHandsRef = useRef<RaisedHand[]>([])
+  useEffect(() => { raisedHandsRef.current = raisedHands }, [raisedHands])
+  const handRaisedRef = useRef(false)
+  useEffect(() => { handRaisedRef.current = handRaised }, [handRaised])
+
   const { send: sendHand } = useDataChannel(HAND_TOPIC, (msg) => {
     try {
-      const data = JSON.parse(dec.decode(msg.payload)) as { identity: string; name: string; raised: boolean }
+      const data = JSON.parse(dec.decode(msg.payload)) as HandAction
+
+      // A late joiner (or someone back from a reload) asks who has a hand up.
+      if ("action" in data) {
+        if (data.action === "sync_request" && isTutor) {
+          const response: HandAction = { action: "sync_response", hands: raisedHandsRef.current }
+          sendHand(enc.encode(JSON.stringify(response)), { reliable: true })
+        } else if (data.action === "sync_response" && !isTutor) {
+          // Never let the snapshot drop this student's own hand: their
+          // re-announcement after a reload can still be in flight.
+          const mine = { identity: localParticipant.identity, name: localName }
+          setRaisedHands(
+            handRaisedRef.current && !data.hands.some((h) => h.identity === mine.identity)
+              ? [...data.hands, mine]
+              : data.hands,
+          )
+        }
+        return
+      }
+
       setRaisedHands((prev) => {
         if (data.raised) {
           if (prev.find((h) => h.identity === data.identity)) return prev
@@ -671,11 +796,28 @@ export function ClassroomRoom({
     } catch { /* ignore */ }
   })
 
+  useEffect(() => {
+    if (raisedHands.length === 0) return
+    const present = new Set(participants.map((p) => p.identity))
+    setRaisedHands((prev) => {
+      const next = prev.filter((h) => present.has(h.identity))
+      return next.length === prev.length ? prev : next
+    })
+  }, [participants, raisedHands.length])
+
   // ── Data channel: PPT sync ─────────────────────────────────────────────────
 
   const { send: sendPpt } = useDataChannel(PPT_TOPIC, (msg) => {
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as PptAction
+
+      // Anything the tutor pushes live is fresher than the stored stage row,
+      // so stop the server hydrate from overriding it. `sync_request` is a
+      // student asking, not the tutor answering, so it doesn't count.
+      if (data.action !== "sync_request") {
+        stageTouchedRef.current = true
+        lastLiveStageRef.current = Date.now()
+      }
 
       // ── Slides ───────────────────────────────────────────────────────────
       if (data.action === "start") {
@@ -758,7 +900,22 @@ export function ClassroomRoom({
             ts: v.ts,
           }
           sendPpt(enc.encode(JSON.stringify(response)), { reliable: true })
+          return
         }
+        // Nothing on stage — say so, so a student who restored a slide from
+        // storage while the tutor was stopping it doesn't keep showing it.
+        sendPpt(enc.encode(JSON.stringify({ action: "sync_idle" } as PptAction)), { reliable: true })
+        return
+      }
+
+      if (data.action === "sync_idle" && !isTutor) {
+        setPptActive(false)
+        setPresentKind(null)
+        setPptUrl(null)
+        setPptCurrentPage(1)
+        setPptTotalPages(0)
+        setVideoPlaying(false)
+        setVideoCurrentTime(0)
         return
       }
 
@@ -1357,12 +1514,37 @@ export function ClassroomRoom({
     }
   }, [pptActive, presentKind, pptUrl, pptTotalPages, pptCurrentPage])
 
-  // ── Student: request sync when first joining ───────────────────────────────
+  // ── Everyone: pull the current stage on (re)connect ────────────────────────
+  // Two independent sources, because either one can be unavailable:
+  //   • the stored stage row — works even when the tutor's tab is reloading
+  //   • a `sync_request` to the tutor — works even when the row was never written
+  // Runs on every transition into Connected, so a student who dropped mid-lesson
+  // is put back on the right slide instead of on whatever they last saw.
+  useEffect(() => {
+    // While we are not connected we are missing stage events, so let the stored
+    // row speak again on the way back in rather than trusting what we last saw.
+    if (connectionState !== ConnectionState.Connected) {
+      stageTouchedRef.current = false
+      return
+    }
+    void hydrateStage()
+    if (isTutor) return
+    const id = setTimeout(() => {
+      try {
+        sendPpt(enc.encode(JSON.stringify({ action: "sync_request" } as PptAction)), { reliable: true })
+      } catch { /* connection may have dropped again */ }
+    }, 600)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionState, isTutor, hydrateStage])
+
+  // ── Student: keep asking while the stage is empty ──────────────────────────
   // Retry rather than asking once. A class-wide refresh reloads everyone at the
   // same moment, so a single request 2s after connecting routinely lands while
   // the tutor's own page is still coming back up — and the student would then
-  // sit in front of a blank stage for the rest of the lesson. Stops as soon as
-  // something is on screen.
+  // sit in front of a blank stage for the rest of the lesson. Backs off after
+  // the first minute rather than giving up: a student can join well before the
+  // tutor starts presenting, and must still get the slides when they do.
   const pptSyncAttempts = useRef(0)
   useEffect(() => {
     if (isTutor || connectionState !== ConnectionState.Connected) return
@@ -1370,20 +1552,67 @@ export function ClassroomRoom({
       pptSyncAttempts.current = 0
       return
     }
-    if (pptSyncAttempts.current >= 8) return
 
-    const requestSync = () => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const tick = () => {
       pptSyncAttempts.current += 1
       try {
         sendPpt(enc.encode(JSON.stringify({ action: "sync_request" } as PptAction)), { reliable: true })
       } catch { /* ignore */ }
+      void hydrateStage()
+      // Fast while a late joiner is waiting to catch up, then slow so a student
+      // who is simply early doesn't poll all lesson at 6s intervals.
+      timer = setTimeout(tick, pptSyncAttempts.current < 10 ? 6000 : 30000)
     }
 
-    const first = setTimeout(requestSync, 2000)
-    const id = setInterval(requestSync, 6000)
-    return () => { clearTimeout(first); clearInterval(id) }
+    timer = setTimeout(tick, 2000)
+    return () => { if (timer) clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTutor, connectionState, pptActive])
+  }, [isTutor, connectionState, pptActive, hydrateStage])
+
+  // ── Student: reconcile the stage while a lesson is on screen ───────────────
+  // The retry loop above stops the moment something is showing, which leaves one
+  // hole: a stage event that never lands. A packet sent while this tab was
+  // asleep, or during a reconnect the student never noticed, is simply gone —
+  // and they would sit on a stale slide for the rest of the lesson with nothing
+  // to correct them. So re-read the stored stage now and then, but only after a
+  // quiet spell (never fight a tutor mid-deck) and only apply a real difference.
+  useEffect(() => {
+    if (isTutor || connectionState !== ConnectionState.Connected) return
+    if (!pptActive) return
+
+    const id = setInterval(() => {
+      if (Date.now() - lastLiveStageRef.current < STAGE_QUIET_MS) return
+      void (async () => {
+        try {
+          const state = await fetchStageState(sessionId)
+          // The tutor may have spoken while the request was in flight.
+          if (!state || Date.now() - lastLiveStageRef.current < STAGE_QUIET_MS) return
+          const local = stageLocalRef.current
+
+          if (!state.active) {
+            if (local.active) applyStageState(state)
+            return
+          }
+          if (state.kind === "slides") {
+            if (local.kind !== "slides" || local.url !== state.url || local.page !== state.page) {
+              applyStageState(state)
+            }
+            return
+          }
+          // Video: only a different clip is worth acting on. Re-applying the
+          // stored position would yank a student who is perfectly in sync back
+          // to a sample that can be several seconds old.
+          if (state.kind === "video" && (local.kind !== "video" || local.url !== state.url)) {
+            applyStageState(state)
+          }
+        } catch { /* transient — the next tick tries again */ }
+      })()
+    }, STAGE_RECONCILE_MS)
+
+    return () => clearInterval(id)
+  }, [isTutor, connectionState, pptActive, sessionId, applyStageState])
 
   // ── Tutor: re-announce a restored presentation ─────────────────────────────
   // After a refresh the tutor comes back holding the slides again, but nobody
@@ -1468,6 +1697,60 @@ export function ClassroomRoom({
     })
   }, [handRaised, localParticipant.identity, localName, sendHand])
 
+  // ── Hand raise survives a reload ───────────────────────────────────────────
+  // A reconnect issues a brand-new LiveKit identity, so a student who reloads
+  // with their hand up comes back as a stranger with no hand raised. Remember
+  // the flag per session/tab and re-announce it once reconnected.
+  const handStorageKey = `classroom:hand:${sessionId}`
+  const handRestoredRef = useRef(false)
+
+  useEffect(() => {
+    if (isTutor) return
+    try {
+      if (sessionStorage.getItem(handStorageKey) === "1") handRestoredRef.current = true
+    } catch { /* storage disabled — the hand just won't survive a reload */ }
+    // Read once, on mount, before the mirror effect below can clear it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (isTutor) return
+    try {
+      if (handRaised) sessionStorage.setItem(handStorageKey, "1")
+      else sessionStorage.removeItem(handStorageKey)
+    } catch { /* ignore */ }
+  }, [isTutor, handRaised, handStorageKey])
+
+  useEffect(() => {
+    if (isTutor || connectionState !== ConnectionState.Connected) return
+
+    const timers: ReturnType<typeof setTimeout>[] = []
+
+    if (handRestoredRef.current) {
+      handRestoredRef.current = false
+      timers.push(setTimeout(() => {
+        const evt: HandAction = { identity: localParticipant.identity, name: localName, raised: true }
+        try { sendHand(enc.encode(JSON.stringify(evt)), { reliable: true }) } catch { /* ignore */ }
+        setHandRaised(true)
+        setRaisedHands((prev) => (
+          prev.some((h) => h.identity === localParticipant.identity)
+            ? prev
+            : [...prev, { identity: localParticipant.identity, name: localName }]
+        ))
+      }, 800))
+    }
+
+    // Then ask the tutor who else has a hand up, so a late joiner sees the class
+    // as it actually is rather than as it was from this moment on.
+    timers.push(setTimeout(() => {
+      try {
+        sendHand(enc.encode(JSON.stringify({ action: "sync_request" } as HandAction)), { reliable: true })
+      } catch { /* ignore */ }
+    }, 1400))
+
+    return () => { for (const t of timers) clearTimeout(t) }
+  }, [isTutor, connectionState, localParticipant.identity, localName, sendHand])
+
   // ── Tutor: lower a raised hand on behalf of a student ──────────────────────
   // Broadcasts the same shape the student would send, so every client (including
   // the target student) applies it via the HAND_TOPIC receiver above — which
@@ -1508,6 +1791,32 @@ export function ClassroomRoom({
     }
   }, [connectionState, sendPpt])
 
+  // ── Tutor: mirror the stage to the server ─────────────────────────────────
+  // Every change to what's on screen is written to `/api/sessions/[id]/live-state`
+  // so a student who joins late, or reloads while this tab is also reloading,
+  // can read it back instead of waiting for a peer to answer. Coalesced through
+  // one timer: flicking through slides must not turn into a write per keypress.
+  const stagePendingRef = useRef<StagePayload | null>(null)
+  const stagePublishTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const publishStage = useCallback((payload: StagePayload, delay = 0) => {
+    if (!isTutor) return
+    stagePendingRef.current = payload
+    if (stagePublishTimer.current) clearTimeout(stagePublishTimer.current)
+    stagePublishTimer.current = setTimeout(() => {
+      const pending = stagePendingRef.current
+      stagePendingRef.current = null
+      if (!pending) return
+      void publishStageState(sessionId, pending).catch(() => {
+        /* best effort — the live channel already reached everyone in the room */
+      })
+    }, delay)
+  }, [isTutor, sessionId])
+
+  useEffect(() => () => {
+    if (stagePublishTimer.current) clearTimeout(stagePublishTimer.current)
+  }, [])
+
   // Kicks off a video presentation. Broadcasts `video_start`, flips the
   // classroom into video mode, and seeds videoStateRef so late joiners can
   // sync. Separate from slide-start because there's no picker step.
@@ -1525,6 +1834,7 @@ export function ClassroomRoom({
     videoStateRef.current = { url, playing: false, currentTime: 0, ts: now }
 
     safeSendPpt({ action: "video_start", url })
+    publishStage({ active: true, kind: "video", url, videoPlaying: false, videoTime: 0 })
 
     setMessages((prev) => [
       ...prev,
@@ -1536,7 +1846,7 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [safeSendPpt])
+  }, [safeSendPpt, publishStage])
 
   const handleSlidesUploaded = useCallback((data: UploadedSlides) => {
     setShowUpload(false)
@@ -1567,6 +1877,9 @@ export function ClassroomRoom({
     setSlideTrayOpen(true)
 
     safeSendPpt({ action: "start", url, total, page: firstPage })
+    publishStage({
+      active: true, kind: "slides", url, page: firstPage, totalPages: total, selectedPages: selected,
+    })
 
     setMessages((prev) => [
       ...prev,
@@ -1578,7 +1891,7 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [safeSendPpt])
+  }, [safeSendPpt, publishStage])
 
   const handleSlidesPicked = useCallback((selected: number[]) => {
     if (!pickerData) return
@@ -1655,6 +1968,26 @@ export function ClassroomRoom({
     })
   }, [])
 
+  // Tutor: keep the stored stage row on the current page. An effect rather than
+  // a call inside every handler, so next/prev, tray jumps and mid-lesson changes
+  // to the included set all land the same way. Debounced — flicking through a
+  // deck must not become a write per slide.
+  useEffect(() => {
+    if (!isTutor) return
+    if (!pptActive || presentKind !== "slides" || !pptUrl) return
+    publishStage({
+      active: true,
+      kind: "slides",
+      url: pptUrl,
+      page: pptCurrentPage,
+      totalPages: pptTotalPages,
+      selectedPages: selectedSlides,
+    }, 700)
+  }, [
+    isTutor, pptActive, presentKind, pptUrl,
+    pptCurrentPage, pptTotalPages, selectedSlides, publishStage,
+  ])
+
   // ── Video handlers (tutor only) ────────────────────────────────────────────
   // Each DOM event on the tutor's <video> broadcasts the new playback state so
   // students can mirror. We also stash the latest snapshot so sync_request from
@@ -1665,7 +1998,15 @@ export function ClassroomRoom({
     const url = videoStateRef.current.url || pptUrl || ""
     videoStateRef.current = { url, playing, currentTime, ts }
     safeSendPpt({ action: "video_state", playing, currentTime, ts })
-  }, [isTutor, pptUrl, safeSendPpt])
+    // Long debounce: a late joiner only needs a position within a few seconds,
+    // and the tutor's live broadcasts correct them the moment they arrive.
+    if (url) {
+      publishStage(
+        { active: true, kind: "video", url, videoPlaying: playing, videoTime: currentTime },
+        5000,
+      )
+    }
+  }, [isTutor, pptUrl, safeSendPpt, publishStage])
 
   const handleVideoPlayPause = useCallback((playing: boolean, currentTime: number) => {
     broadcastVideoState(playing, currentTime)
@@ -1980,6 +2321,7 @@ export function ClassroomRoom({
     videoStateRef.current = { url: "", playing: false, currentTime: 0, ts: 0 }
 
     safeSendPpt(wasVideo ? { action: "video_stop" } : { action: "stop" })
+    publishStage({ active: false })
 
     setMessages((prev) => [
       ...prev,
@@ -1991,7 +2333,7 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [presentKind, safeSendPpt])
+  }, [presentKind, safeSendPpt, publishStage])
 
   const broadcastMicControl = useCallback((payload: MuteAction) => {
     if (connectionState !== ConnectionState.Connected) return false
@@ -2175,8 +2517,14 @@ export function ClassroomRoom({
     }
     setRefreshConfirmOpen(false)
     toast.info("Refreshing the classroom for everyone…")
+    // Skip the lobby on the way back in. The tutor is the only source of truth
+    // for the stage, so every second they spend sitting on a "Start session"
+    // screen is a second the class is looking at nothing.
+    try {
+      sessionStorage.setItem(`classroom:auto-rejoin:${sessionId}`, String(Date.now()))
+    } catch { /* storage may be disabled */ }
     setTimeout(() => window.location.reload(), 800)
-  }, [isTutor, connectionState, localName, sendControl])
+  }, [isTutor, connectionState, localName, sendControl, sessionId])
 
   // Student (and tutor) self-refresh: reload this tab only, then auto-rejoin so
   // the lobby is skipped. Chat history comes back from the API; slides/video
@@ -2233,6 +2581,9 @@ export function ClassroomRoom({
         setPptUrl(null)
         setPresentKind(null)
         safeSendPpt({ action: "stop" })
+        // Clear the stored stage too, or a student joining while the whiteboard
+        // is up would hydrate the deck the tutor just closed.
+        publishStage({ active: false })
       }
       setWhiteboardActive(true)
       setWhiteboardStudentWrite(false)

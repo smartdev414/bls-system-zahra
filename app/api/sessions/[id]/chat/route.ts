@@ -3,6 +3,7 @@ import type { Prisma } from "@/app/generated/prisma/client"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { assertCanAccessSession } from "@/lib/session-access"
 
 const MAX_MESSAGES = 500
 const ALLOWED_TYPES = new Set(["text", "reaction", "system"])
@@ -12,55 +13,6 @@ type AttachmentBody = {
   fileName?: unknown
   fileSize?: unknown
   mimeType?: unknown
-}
-
-async function assertCanAccessSession(
-  auth: { role: string; sub: string },
-  sessionId: string,
-) {
-  const liveSession = await prisma.liveSession.findUnique({
-    where: { id: sessionId },
-    select: {
-      id: true,
-      tutorId: true,
-      status: true,
-      visibility: true,
-      coTutors: { select: { tutorId: true } },
-    },
-  })
-
-  if (!liveSession) return { error: NextResponse.json({ message: "Session not found" }, { status: 404 }) }
-
-  if (auth.role === "ADMIN") return { liveSession }
-
-  const isOwner = auth.role === "TUTOR" && auth.sub === liveSession.tutorId
-  const isCoTutor =
-    auth.role === "TUTOR" &&
-    liveSession.coTutors.some((c) => c.tutorId === auth.sub)
-
-  if (isOwner || isCoTutor) return { liveSession }
-
-  if (auth.role !== "STUDENT") {
-    return { error: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
-  }
-
-  if (liveSession.visibility === "INVITE_ONLY") {
-    const [invite, approvedRequest] = await Promise.all([
-      prisma.liveSessionInvite.findUnique({
-        where: { sessionId_studentId: { sessionId, studentId: auth.sub } },
-        select: { id: true },
-      }),
-      prisma.sessionJoinRequest.findFirst({
-        where: { sessionId, studentId: auth.sub, status: "APPROVED" },
-        select: { id: true },
-      }),
-    ])
-    if (!invite && !approvedRequest) {
-      return { error: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
-    }
-  }
-
-  return { liveSession }
 }
 
 function serializeMessage(row: {
@@ -105,7 +57,10 @@ async function handleGET(
 
     const rows = await prisma.liveSessionChatMessage.findMany({
       where: { sessionId },
-      orderBy: { createdAt: "asc" },
+      // Newest-first with a cap, reversed below: a busy lesson can outgrow
+      // MAX_MESSAGES, and a late joiner needs the recent conversation rather
+      // than the first minutes of class.
+      orderBy: { createdAt: "desc" },
       take: MAX_MESSAGES,
       select: {
         id: true,
@@ -117,7 +72,7 @@ async function handleGET(
       },
     })
 
-    return NextResponse.json({ messages: rows.map(serializeMessage) })
+    return NextResponse.json({ messages: rows.reverse().map(serializeMessage) })
   } catch (err) {
     console.error("[GET /api/sessions/[id]/chat]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

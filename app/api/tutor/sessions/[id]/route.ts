@@ -214,6 +214,12 @@ async function handlePATCH(
     if (body.status === "COMPLETED" || body.status === "CANCELLED") {
       void closeLiveKitRoom(existing.roomName)
       void notifySessionStatusChange(id, body.status, updated.title, existing.tutorId)
+      // Drop the stage snapshot with it. It's what late joiners hydrate from, so
+      // leaving it behind would put last lesson's deck in front of anyone who
+      // opens the room again (a session can be set back to LIVE).
+      void prisma.liveSessionPresentation
+        .deleteMany({ where: { sessionId: id } })
+        .catch(() => { /* best effort — a stale row is corrected on the next start */ })
     }
 
     // Notify students on critical status transitions

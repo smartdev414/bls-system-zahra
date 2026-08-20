@@ -366,11 +366,35 @@ model LiveSession {
   resources    LiveSessionResource[]
   whiteboard   WhiteboardDoc?
   chatMessages LiveSessionChatMessage[]
+  presentation LiveSessionPresentation?
 
   @@index([tutorId])
   @@index([status])
   @@index([scheduledAt])
   @@index([visibility])
+}
+
+// What is on the classroom stage right now, as last published by the tutor.
+// The LiveKit data channel only carries "from now on", so a student who joins
+// late — or reloads while the tutor's own tab is still coming back up — has
+// nobody to ask. This row is the durable answer: any participant can read it on
+// mount and land on the current slide immediately.
+model LiveSessionPresentation {
+  sessionId     String   @id
+  active        Boolean  @default(false)
+  kind          String?  // "slides" | "video"
+  url           String?
+  page          Int      @default(1)
+  totalPages    Int      @default(0)
+  // 1-based page numbers the tutor is presenting, in order.
+  selectedPages Json?
+  // Video playback, sampled at `updatedAt`. Students seek from here on join and
+  // are corrected by the tutor's periodic `video_state` broadcasts thereafter.
+  videoPlaying  Boolean  @default(false)
+  videoTime     Float    @default(0)
+  updatedAt     DateTime @updatedAt
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 // Classroom live-chat history for a session. Messages are also broadcast over

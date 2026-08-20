@@ -21,6 +21,14 @@ export type RaisedHand = {
   name: string
 }
 
+// Hand raises. A participant's LiveKit identity changes on every reconnect, so
+// a student who reloads re-announces their hand under the new identity and the
+// tutor answers a late joiner's sync_request with the current list.
+export type HandAction =
+  | { identity: string; name: string; raised: boolean }
+  | { action: "sync_request" }
+  | { action: "sync_response"; hands: RaisedHand[] }
+
 export type JoinRequest = {
   id: string
   student: { id: string; name: string; email: string; avatarUrl: string | null }
@@ -41,6 +49,10 @@ export type PptAction =
   | { action: "stop" }
   | { action: "sync_request" }
   | { action: "sync_response"; url: string; total: number; page: number }
+  // Answer to a sync_request when the stage is empty. Without it a student who
+  // reloaded while the tutor was stopping the deck would keep showing the slide
+  // they restored from storage, with nothing left to correct it.
+  | { action: "sync_idle" }
   // ── Video ──────────────────────────────────────────────────────────────────
   // `ts` is Date.now() at the tutor; students use it to compensate for
   // network latency when seeking to the target currentTime.

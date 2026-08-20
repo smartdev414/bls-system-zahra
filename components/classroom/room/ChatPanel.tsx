@@ -297,6 +297,11 @@ export function ChatPanel({
   onLowerAllHands?: () => void
 }) {
   const [input, setInput]       = useState("")
+  // A message the student was part-way through typing is exactly what they lose
+  // by reloading, so mirror the composer into sessionStorage (per session, per
+  // tab) alongside any file they already uploaded but haven't sent.
+  const draftStorageKey = `classroom:chat-draft:${sessionId}`
+  const draftRestoredRef = useRef(false)
   const [unread, setUnread]     = useState(0)
   const [atBottom, setAtBottom] = useState(true)
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null)
@@ -317,6 +322,36 @@ export function ChatPanel({
       : null
     if (saved === "light" || saved === "dark" || saved === "contrast") setTheme(saved)
   }, [])
+
+  // Restore the composer once, on mount.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(draftStorageKey)
+      if (raw) {
+        const saved = JSON.parse(raw) as { text?: string; attachment?: ChatAttachment | null }
+        if (typeof saved.text === "string" && saved.text) setInput(saved.text)
+        if (saved.attachment?.fileUrl) setPendingAttachment(saved.attachment)
+      }
+    } catch { /* corrupt or unavailable storage — start with an empty composer */ }
+    draftRestoredRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    // Skip the first pass: it runs before the restore above has re-rendered and
+    // would otherwise overwrite the draft it is about to read.
+    if (!draftRestoredRef.current) return
+    try {
+      if (!input && !pendingAttachment) {
+        sessionStorage.removeItem(draftStorageKey)
+        return
+      }
+      sessionStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({ text: input, attachment: pendingAttachment }),
+      )
+    } catch { /* quota or storage disabled — the draft just won't survive a reload */ }
+  }, [input, pendingAttachment, draftStorageKey])
 
   const changeTheme = (next: ChatThemeName) => {
     setTheme(next)
