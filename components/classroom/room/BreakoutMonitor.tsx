@@ -9,8 +9,9 @@ import {
   isTrackReference,
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { X, Eye, LogIn, LogOut, Focus, Minimize2, Mic, MicOff, Users2, Bell } from "lucide-react"
+import { X, Eye, LogIn, LogOut, Focus, Minimize2, Mic, MicOff, Users2, Bell, TimerReset } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { participantBaseId } from "@/lib/participant-identity"
 import type { BreakoutGroup } from "./types"
 import { BreakoutCountdown } from "./BreakoutCountdown"
 
@@ -20,6 +21,7 @@ export function BreakoutMonitor({
   onVisit,
   onClose,
   onNudgeGroup,
+  onExtend,
   endsAt,
 }: {
   groups: BreakoutGroup[]
@@ -27,6 +29,8 @@ export function BreakoutMonitor({
   onVisit: (groupId: string | null) => void
   onClose: () => void
   onNudgeGroup: (groupId: string) => void
+  /** Push the deadline out by N minutes without recreating the rooms. */
+  onExtend: (minutes: number) => void
   endsAt: number | null
 }) {
   const participants = useParticipants()
@@ -35,6 +39,12 @@ export function BreakoutMonitor({
 
   const [focusedIdentity, setFocusedIdentity] = useState<string | null>(null)
 
+  // Group membership is stored as stable user ids so it survives reconnects —
+  // index live participants the same way to look them up.
+  const participantByBaseId = useMemo(
+    () => new Map(participants.map((p) => [participantBaseId(p.identity), p])),
+    [participants]
+  )
   const participantById = useMemo(
     () => new Map(participants.map((p) => [p.identity, p])),
     [participants]
@@ -74,6 +84,19 @@ export function BreakoutMonitor({
         </div>
         <div className="flex items-center gap-2">
           <BreakoutCountdown endsAt={endsAt} />
+          <div className="flex items-center gap-1">
+            <TimerReset className="size-3.5 text-zinc-500" />
+            {[5, 10].map((n) => (
+              <button
+                key={n}
+                onClick={() => onExtend(n)}
+                className="px-2 h-7 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-sky-600 hover:text-white text-zinc-200 transition-colors"
+                title={`Add ${n} more minutes — groups stay exactly as they are`}
+              >
+                +{n} min
+              </button>
+            ))}
+          </div>
           {focusedParticipant && (
             <button
               onClick={() => setFocusedIdentity(null)}
@@ -134,11 +157,14 @@ export function BreakoutMonitor({
             {groups.map((g) => {
               const isVisiting = visitingGroupId === g.id
               const members = g.memberIds
-                .map((id) => ({
-                  identity: id,
-                  participant: participantById.get(id),
-                  trackRef: trackByIdentity.get(id),
-                }))
+                .map((baseId) => {
+                  const participant = participantByBaseId.get(baseId)
+                  return {
+                    identity: participant?.identity ?? baseId,
+                    participant,
+                    trackRef: participant ? trackByIdentity.get(participant.identity) : undefined,
+                  }
+                })
                 .filter((m) => !!m.participant)
 
               return (

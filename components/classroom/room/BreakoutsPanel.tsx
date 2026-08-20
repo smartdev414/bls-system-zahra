@@ -3,11 +3,15 @@
 import { useCallback, useMemo, useState } from "react"
 import {
   Users2, Shuffle, Plus, Trash2, X, Play, Square, Pencil, Check, LogIn, LogOut, Timer,
+  TimerReset,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { BreakoutGroup } from "./types"
 import { BreakoutCountdown } from "./BreakoutCountdown"
 
+// `identity` here is the *stable* user id (see BreakoutGroup.memberIds), not a
+// per-connection LiveKit identity — that's what makes an assignment stick when
+// a student drops off Wi-Fi and comes back.
 type StudentInfo = { identity: string; name: string }
 
 // Unattached = students not yet placed in a group (shown in a "Lobby" strip).
@@ -36,6 +40,7 @@ export function BreakoutsPanel({
   onVisit,
   onStop,
   onEndNow,
+  onExtend,
   closingAt,
   onClose,
 }: {
@@ -51,6 +56,8 @@ export function BreakoutsPanel({
   onStop: () => void
   /** Skip the countdown and end immediately (tutor only). */
   onEndNow: () => void
+  /** Push the deadline out by N minutes without recreating the rooms. */
+  onExtend: (minutes: number) => void
   closingAt: number | null
   onClose: () => void
 }) {
@@ -63,6 +70,7 @@ export function BreakoutsPanel({
     () => (initialGroups.length > 0 ? initialGroups : buildInitialGroups(students, 2))
   )
   const [durationMin, setDurationMin]   = useState<number | "">(10)
+  const [extendMin, setExtendMin]       = useState<number | "">(5)
   const [editingId, setEditingId]       = useState<string | null>(null)
   const [draftName, setDraftName]       = useState("")
   const [draggingId, setDraggingId]     = useState<string | null>(null)
@@ -243,6 +251,49 @@ export function BreakoutsPanel({
               />
               <span className="text-zinc-500">min (optional)</span>
             </label>
+          )}
+
+          {active && (
+            <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-zinc-800">
+              <TimerReset className="size-3.5 text-zinc-400" />
+              <span className="text-xs text-zinc-400">Add</span>
+              <input
+                type="number"
+                min={1}
+                max={60}
+                value={extendMin}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (v === "") setExtendMin("")
+                  else {
+                    const n = parseInt(v, 10)
+                    setExtendMin(Number.isFinite(n) ? n : "")
+                  }
+                }}
+                className="w-12 h-7 rounded-md bg-zinc-800 border border-zinc-700 px-2 text-xs text-white focus:outline-none focus:border-primary"
+                aria-label="Minutes to add to the breakout timer"
+              />
+              <button
+                onClick={() => {
+                  if (typeof extendMin === "number" && extendMin > 0) onExtend(extendMin)
+                }}
+                disabled={!(typeof extendMin === "number" && extendMin > 0)}
+                className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-[11px] font-semibold bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Give every group more time — nobody is sent back to the main room"
+              >
+                Add min
+              </button>
+              {[5, 10].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => onExtend(n)}
+                  className="px-2 h-7 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+                  title={`Add ${n} minutes`}
+                >
+                  +{n}
+                </button>
+              ))}
+            </div>
           )}
 
           <div className="ml-auto flex items-center gap-2">

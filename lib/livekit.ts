@@ -2,16 +2,9 @@ import { AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk"
 
 export const CLASSROOM_TRANSCRIBER_AGENT = "classroom-transcriber"
 
-/**
- * Strip the per-connection suffix from a LiveKit participant identity.
- *
- * Join tokens use a unique identity of the form `<userId>__<random>` (see the
- * token route) so a rejoin never collides with a revoked identity on Cloud. This
- * recovers the underlying user id for the rare server-side check that needs it.
- */
-export function participantBaseId(identity: string): string {
-  return identity.split("__")[0]
-}
+// Re-exported so existing server-side importers keep working; the definition
+// lives in a client-safe module because the classroom UI needs it too.
+export { participantBaseId } from "./participant-identity"
 
 /** LiveKit HTTP API base (Egress / AgentDispatch / RoomService). */
 export function livekitHttpUrl(): string {

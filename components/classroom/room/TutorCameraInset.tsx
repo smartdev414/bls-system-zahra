@@ -5,15 +5,47 @@
 
 import { useTracks, useLocalParticipant, VideoTrack } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { Camera } from "lucide-react"
+import { Camera, Users2 } from "lucide-react"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
 
-export function TutorCameraInset() {
+// `hidden` is set for a student whose breakout group the tutor has not joined:
+// the tutor is elsewhere, so this slot shows where they are instead of a feed.
+// `breakoutGroupName` names the student's own group when they're in one, so the
+// placeholder explains the situation rather than just showing a blank panel.
+export function TutorCameraInset({
+  hidden = false,
+  breakoutGroupName = null,
+}: {
+  hidden?: boolean
+  breakoutGroupName?: string | null
+}) {
   const camTracks = useTracks([Track.Source.Camera], { onlySubscribed: false })
   const { localParticipant } = useLocalParticipant()
   const tutorCam  = camTracks.find((t) => t.participant.metadata === "tutor")
   const name      = tutorCam?.participant.name ?? tutorCam?.participant.identity ?? "Tutor"
   const mirrorLocal = tutorCam?.participant.identity === localParticipant.identity
+
+  if (hidden) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-full gap-2 bg-zinc-900 text-zinc-600 px-3 text-center">
+        <Users2 className="size-8 opacity-20" />
+        {breakoutGroupName ? (
+          <>
+            <span className="text-xs font-semibold text-zinc-400">
+              You&apos;re in {breakoutGroupName}
+            </span>
+            <span className="text-[11px] opacity-60 max-w-52">
+              Turn your camera on — your group appears here, and the lesson stays on the right.
+            </span>
+          </>
+        ) : (
+          <span className="text-xs opacity-60">
+            Tutor isn&apos;t in your group right now
+          </span>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="relative w-full h-full bg-zinc-900 overflow-hidden">

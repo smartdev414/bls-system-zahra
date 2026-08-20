@@ -142,7 +142,11 @@ export type CaptionMessage = {
 export type BreakoutGroup = {
   id: string
   name: string
-  memberIds: string[]   // participant identities assigned to this group
+  // Stable *user* ids (`participantBaseId(identity)`), NOT raw LiveKit
+  // identities. Identities carry a fresh per-connection suffix, so a student
+  // who drops off Wi-Fi returns under a different identity — keying on the
+  // base id is what lets them rejoin the group they were already in.
+  memberIds: string[]
 }
 
 // ─── Attention nudge ──────────────────────────────────────────────────────────
@@ -167,6 +171,11 @@ export type BreakoutAction =
   // Full snapshot while live — receivers must set `active` so late/missed `start` still works.
   | { action: "update"; groups: BreakoutGroup[]; startedAt: number; durationMin?: number | null }
   | { action: "visit"; groupId: string | null }                       // tutor enters/leaves a group (audio bridge)
+  // Tutor pushes the deadline out mid-session. Carries the authoritative
+  // recomputed timer (rather than a delta) so every client lands on the same
+  // deadline no matter which messages they missed. Cancels any wrap-up in
+  // progress — adding time means "not yet".
+  | { action: "extend"; startedAt: number; durationMin: number; addedMin: number }
   | { action: "closing"; endsAt: number }                             // wrap-up countdown before returning to main room
   | { action: "stop" }
   | { action: "sync_request" }

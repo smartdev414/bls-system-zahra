@@ -24,3 +24,8 @@ export const enc = new TextEncoder()
 export const dec = new TextDecoder()
 
 export const QUICK_REACTIONS = ["👍", "✋", "❓", "👏", "😮", "❤️"]
+
+// How many chat messages are kept in sessionStorage so the conversation
+// survives a reload or a dropped connection. Enough to scroll back through a
+// breakout discussion without risking the storage quota.
+export const CHAT_HISTORY_LIMIT = 300

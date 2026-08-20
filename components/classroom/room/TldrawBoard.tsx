@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Tldraw,
+  allDefaultFontFaces,
   getSnapshot,
   loadSnapshot,
   type Editor,
@@ -156,6 +157,36 @@ type TldrawBoardProps = {
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
+/**
+ * Make sure tldraw's fonts are loaded before anyone measures text against them.
+ *
+ * tldraw sizes a text shape by measuring it in the DOM and baking the result
+ * into `props.w`, but its default faces are fetched lazily from tldraw's CDN.
+ * Until a face arrives, measurement falls back to the platform's generic
+ * `sans-serif`, which is a different width per glyph.
+ *
+ * That matters here more than in a single-player board, because this whiteboard
+ * syncs by putting a peer's shape records straight into the local store: a text
+ * shape carries the *sender's* measured width, while the receiver's canvas
+ * measures the same text itself. If the two clients resolved different faces —
+ * the tutor on a warm cache, a student on a cold one, or a school network that
+ * is slow to reach the CDN — they disagree about how wide that text is. Each
+ * time either side changes the size, tldraw repositions the shape from the
+ * difference between the old and new measurements, so the disagreement is
+ * re-applied and the text drifts out of its box a little further every time.
+ * Loading every face up front makes all clients measure identically.
+ */
+function preloadBoardFonts(editor: Editor) {
+  try {
+    editor.fonts.requestFonts(allDefaultFontFaces)
+  } catch { /* font manager is best-effort; the board still works */ }
+}
+
+/** Load whatever faces the shapes now on the board actually need. */
+function loadFontsForSeededBoard(editor: Editor) {
+  void editor.fonts.loadRequiredFontsForCurrentPage().catch(() => { /* best-effort */ })
+}
+
 export default function TldrawBoard({
   isTutor,
   canWrite,
@@ -219,6 +250,10 @@ export default function TldrawBoard({
     editorRef.current = editor
     editor.updateInstanceState({ isReadonly: !canWriteRef.current })
 
+    // Start fetching the text faces immediately: every measurement taken before
+    // they land is taken against the wrong font. See preloadBoardFonts.
+    preloadBoardFonts(editor)
+
     const authorId = localIdentityRef.current
     const authorName = localNameRef.current
     const authorColor = colorForId(authorId)
@@ -272,6 +307,7 @@ export default function TldrawBoard({
             applyingRemote.current = true
             try { loadSnapshot(editor.store, snapshot as Parameters<typeof loadSnapshot>[1]) }
             finally { applyingRemote.current = false }
+            loadFontsForSeededBoard(editor)
           }
         } catch { /* empty board is fine */ }
       })()
@@ -322,6 +358,7 @@ export default function TldrawBoard({
         applyingRemote.current = true
         try { loadSnapshot(ed.store, snapshot as Parameters<typeof loadSnapshot>[1]) }
         finally { applyingRemote.current = false }
+        loadFontsForSeededBoard(ed)
       },
       getSnapshot: () => {
         const ed = editorRef.current

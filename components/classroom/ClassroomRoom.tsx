@@ -25,7 +25,7 @@ import { SlidePicker } from "./SlidePicker"
 import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
   BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC,
-  BREAKOUT_WRAP_UP_SEC,
+  BREAKOUT_WRAP_UP_SEC, CHAT_HISTORY_LIMIT,
   POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS,
   enc, dec,
 } from "./room/constants"
@@ -56,10 +56,38 @@ import { NudgeOverlay }          from "./room/NudgeOverlay"
 import { InviteCoTutorModal }    from "./InviteCoTutorModal"
 import { LogoWatermark }        from "@/components/layout/logo"
 import { readBlurPreference, writeBlurPreference } from "./blurPreference"
+import { participantBaseId } from "@/lib/participant-identity"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
+
+// Which breakout group this student was last in, remembered per session and per
+// tab so a reload or a re-login after a dropped connection can put them back.
+const breakoutGroupStorageKey = (sessionId: string) => `classroom:breakout-group:${sessionId}`
+
+function readStoredBreakoutGroupId(sessionId: string): string | null {
+  try {
+    return sessionStorage.getItem(breakoutGroupStorageKey(sessionId))
+  } catch {
+    return null   // storage disabled — treat every join as a first placement
+  }
+}
+
+// What's on the shared screen, remembered per session and per tab. A class-wide
+// refresh reloads the tutor too, and the tutor is the only source of truth for
+// the presentation — without this, "refresh the classroom" wipes the slides for
+// everyone and nobody can put them back except by re-uploading.
+const presentationStorageKey = (sessionId: string) => `classroom:presentation:${sessionId}`
+
+type StoredPresentation = {
+  kind: "slides" | "video"
+  url: string
+  page: number
+  total: number
+  /** Tutor-only: which slides were picked, in presentation order. */
+  selected: number[]
+}
 
 // tldraw pulls in browser-only APIs and a large bundle, so load it lazily and
 // skip SSR. Only mounted while the whiteboard is active.
@@ -88,6 +116,33 @@ export function ClassroomRoom({
   const room                  = useRoomContext()
   const { localParticipant } = useLocalParticipant()
   const participants          = useParticipants()
+
+  // A LiveKit identity is per-connection (`<userId>__<random>`), so it changes
+  // every time someone reconnects. Breakout membership is keyed on the stable
+  // user id instead; these two helpers translate between the two worlds.
+  const localBaseId = useMemo(
+    () => participantBaseId(localParticipant.identity),
+    [localParticipant.identity],
+  )
+
+  const identitiesByBaseId = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const p of participants) {
+      const base = participantBaseId(p.identity)
+      const existing = map.get(base)
+      if (existing) existing.push(p.identity)
+      else map.set(base, [p.identity])
+    }
+    return map
+  }, [participants])
+
+  // Resolve stored group members to the identities currently in the room. A
+  // reconnecting student can briefly appear twice (the dropped connection has
+  // not timed out yet) — including both is correct for audio and tiles.
+  const liveIdentitiesFor = useCallback(
+    (memberIds: string[]) => memberIds.flatMap((base) => identitiesByBaseId.get(base) ?? []),
+    [identitiesByBaseId],
+  )
   const connectionState       = useConnectionState()
 
   // A browser refresh / tab close fires no React unmount, so LiveKit never sends a
@@ -128,7 +183,33 @@ export function ClassroomRoom({
   const studentInitialMutedRef = useRef(false)
 
   // ── Chat / hand state ──────────────────────────────────────────────────────
-  const [messages,         setMessages]         = useState<ChatMsg[]>([])
+  // Chat lives only in memory during a call, so a reload or a dropped Wi-Fi
+  // connection used to wipe the whole conversation — exactly when a student
+  // most needs to read back what their group said. Mirror it into
+  // sessionStorage (per session, per tab) and restore it on mount.
+  const chatStorageKey = `classroom:chat:${sessionId}`
+  const [messages, setMessages] = useState<ChatMsg[]>([])
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(chatStorageKey)
+      if (!saved) return
+      const parsed = JSON.parse(saved) as ChatMsg[]
+      if (Array.isArray(parsed) && parsed.length > 0) setMessages(parsed)
+    } catch { /* corrupt or unavailable storage — start empty */ }
+    // Restore once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    // Never write an empty list: on mount this effect would otherwise run before
+    // the restore above has re-rendered, wiping the history it just read.
+    if (messages.length === 0) return
+    try {
+      // Cap the backlog: a long session would otherwise outgrow the ~5 MB quota.
+      sessionStorage.setItem(chatStorageKey, JSON.stringify(messages.slice(-CHAT_HISTORY_LIMIT)))
+    } catch { /* quota or storage disabled — history just won't survive a reload */ }
+  }, [messages, chatStorageKey])
   const [raisedHands,      setRaisedHands]      = useState<RaisedHand[]>([])
   const [handRaised,       setHandRaised]       = useState(false)
   // Fast O(1) membership lookup for tile/overlay badges.
@@ -228,6 +309,51 @@ export function ClassroomRoom({
   // Tutor-only: show/hide the live slide-thumbnail sidebar (shown only in PPT mode)
   const [slideTrayOpen,  setSlideTrayOpen]  = useState(true)
 
+  // ── Presentation survives a reload ─────────────────────────────────────────
+  // Restore whatever was on screen before the page reloaded. Read in an effect
+  // rather than a lazy initialiser so the first client render still matches the
+  // server's, matching how the rest of this component restores stored prefs.
+  const restoredPresentationRef = useRef(false)
+  const hadPresentationRef = useRef(false)
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(presentationStorageKey(sessionId))
+      if (!raw) return
+      const saved = JSON.parse(raw) as StoredPresentation
+      if (!saved?.url || (saved.kind !== "slides" && saved.kind !== "video")) return
+      setPresentKind(saved.kind)
+      setPptUrl(saved.url)
+      setPptCurrentPage(saved.page > 0 ? saved.page : 1)
+      setPptTotalPages(saved.total > 0 ? saved.total : 0)
+      setSelectedSlides(Array.isArray(saved.selected) ? saved.selected : [])
+      setPptActive(true)
+      setParticipantsOpen(false)
+      restoredPresentationRef.current = true
+    } catch { /* corrupt or unavailable storage — come up with a blank stage */ }
+  }, [sessionId])
+
+  useEffect(() => {
+    try {
+      if (pptActive && pptUrl && presentKind) {
+        hadPresentationRef.current = true
+        const record: StoredPresentation = {
+          kind: presentKind,
+          url: pptUrl,
+          page: pptCurrentPage,
+          total: pptTotalPages,
+          selected: selectedSlides,
+        }
+        sessionStorage.setItem(presentationStorageKey(sessionId), JSON.stringify(record))
+        return
+      }
+      // Only clear once this mount has actually seen a presentation: on the
+      // first render after a reload the state is still empty, and clearing here
+      // would wipe the very record the effect above is about to restore.
+      if (!hadPresentationRef.current) return
+      sessionStorage.removeItem(presentationStorageKey(sessionId))
+    } catch { /* storage disabled — the presentation just won't survive a reload */ }
+  }, [pptActive, pptUrl, presentKind, pptCurrentPage, pptTotalPages, selectedSlides, sessionId])
+
   // Position of the currently-shown page within the tutor-selected subset.
   // -1 if the tutor has live-excluded the current slide from the sequence.
   const presentationIdx = useMemo(
@@ -326,9 +452,16 @@ export function ClassroomRoom({
     }
   }, [breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt])
 
-  // Students: keep the participant strip open during breakouts so group cameras stay visible.
+  // Students: keep the participant strip open during breakouts so group cameras
+  // stay visible — and open the chat too. Chat is the main channel in a BSL
+  // classroom, and on phones/tablets it starts collapsed, so a student sent
+  // into a breakout would otherwise land in a room with no visible way to talk
+  // to their group.
   useEffect(() => {
-    if (!isTutor && breakoutsActive) setParticipantsOpen(true)
+    if (!isTutor && breakoutsActive) {
+      setParticipantsOpen(true)
+      setChatOpen(true)
+    }
   }, [isTutor, breakoutsActive])
 
   // ── Finger pointer state ───────────────────────────────────────────────────
@@ -828,7 +961,7 @@ export function ClassroomRoom({
 
         if (!isTutor) {
           // Figure out which group the local student landed in and toast.
-          const ownGroup = data.groups.find((g) => g.memberIds.includes(localParticipant.identity))
+          const ownGroup = data.groups.find((g) => g.memberIds.includes(localBaseId))
           if (ownGroup) {
             toast.info(`You're in ${ownGroup.name}`, {
               description: "Use the camera tiles to work with your group — sign away!",
@@ -858,7 +991,7 @@ export function ClassroomRoom({
         setBreakoutStartedAt(data.startedAt)
         setBreakoutDurationMin(data.durationMin ?? null)
         if (!isTutor) {
-          const ownGroup = data.groups.find((g) => g.memberIds.includes(localParticipant.identity))
+          const ownGroup = data.groups.find((g) => g.memberIds.includes(localBaseId))
           if (ownGroup) {
             toast.info(`Group updated — you're now in ${ownGroup.name}`)
           } else {
@@ -866,6 +999,30 @@ export function ClassroomRoom({
               description: "The tutor hasn't put you in a group yet — hang tight.",
             })
           }
+        }
+        return
+      }
+
+      if (data.action === "extend") {
+        setBreakoutsActive(true)
+        setBreakoutStartedAt(data.startedAt)
+        setBreakoutDurationMin(data.durationMin)
+        // Adding time means "not yet" — cancel a wrap-up already counting down.
+        setBreakoutClosingAt(null)
+        if (!isTutor) {
+          toast.success(`${data.addedMin} more minute${data.addedMin !== 1 ? "s" : ""} added`, {
+            description: "Your breakout room is staying open a little longer.",
+          })
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `sys-bo-extend-${Date.now()}`,
+              from: "system",
+              text: `Tutor added ${data.addedMin} more minute${data.addedMin !== 1 ? "s" : ""} to the breakout ⏱️`,
+              ts: Date.now(),
+              type: "system",
+            },
+          ])
         }
         return
       }
@@ -884,7 +1041,7 @@ export function ClassroomRoom({
         setVisitingGroupId(data.groupId)
         if (!isTutor) {
           const group = data.groupId ? breakoutStateRef.current.groups.find((g) => g.id === data.groupId) : null
-          const ownGroup = breakoutStateRef.current.groups.find((g) => g.memberIds.includes(localParticipant.identity))
+          const ownGroup = breakoutStateRef.current.groups.find((g) => g.memberIds.includes(localBaseId))
           if (group && ownGroup && group.id === ownGroup.id) {
             toast.info("The tutor just joined your group 🎯")
           } else if (ownGroup && data.groupId === null) {
@@ -942,11 +1099,20 @@ export function ClassroomRoom({
         setBreakoutDurationMin(data.durationMin)
         setBreakoutClosingAt(data.closingAt ?? null)
         if (data.active) {
-          const ownGroup = data.groups.find((g) => g.memberIds.includes(localParticipant.identity))
+          const ownGroup = data.groups.find((g) => g.memberIds.includes(localBaseId))
           if (ownGroup) {
-            toast.info(`You're in ${ownGroup.name}`, {
-              description: "Use the main view and camera tiles to work with your group.",
-            })
+            // Landing back in the group we were already in means this is a
+            // return after a drop, not a fresh assignment. Say so — the room
+            // otherwise just silently changes shape around them.
+            if (readStoredBreakoutGroupId(sessionId) === ownGroup.id) {
+              toast.success(`Welcome back — you're in ${ownGroup.name} again`, {
+                description: "Your breakout room is still running.",
+              })
+            } else {
+              toast.info(`You're in ${ownGroup.name}`, {
+                description: "Use the main view and camera tiles to work with your group.",
+              })
+            }
           }
         }
         return
@@ -963,7 +1129,10 @@ export function ClassroomRoom({
       breakoutSyncAttempts.current = 0
       return
     }
-    if (breakoutSyncAttempts.current >= 5) return
+    // Keep asking for a while: a student returning after a dropped connection
+    // needs an answer, and "no reply yet" is indistinguishable from "no
+    // breakouts running" until one arrives.
+    if (breakoutSyncAttempts.current >= 12) return
 
     const requestSync = () => {
       breakoutSyncAttempts.current += 1
@@ -1001,7 +1170,7 @@ export function ClassroomRoom({
       // Respect a targeted nudge: only show it to members of that group. The
       // tutor always sees their own nudge echo so they know it fired.
       if (data.groupId && !isTutor) {
-        const own = breakoutStateRef.current.groups.find((g) => g.memberIds.includes(localParticipant.identity))
+        const own = breakoutStateRef.current.groups.find((g) => g.memberIds.includes(localBaseId))
         if (!own || own.id !== data.groupId) return
       }
       setActiveNudge({ id: Date.now(), from: data.from, message: data.message ?? null })
@@ -1078,22 +1247,49 @@ export function ClassroomRoom({
   }, [pptActive, presentKind, pptUrl, pptTotalPages, pptCurrentPage])
 
   // ── Student: request sync when first joining ───────────────────────────────
-  const hasSentSyncRequest = useRef(false)
+  // Retry rather than asking once. A class-wide refresh reloads everyone at the
+  // same moment, so a single request 2s after connecting routinely lands while
+  // the tutor's own page is still coming back up — and the student would then
+  // sit in front of a blank stage for the rest of the lesson. Stops as soon as
+  // something is on screen.
+  const pptSyncAttempts = useRef(0)
   useEffect(() => {
-    if (isTutor || hasSentSyncRequest.current) return
-    if (connectionState !== ConnectionState.Connected) return
-    const timer = setTimeout(() => {
-      hasSentSyncRequest.current = true
-      const req: PptAction = { action: "sync_request" }
+    if (isTutor || connectionState !== ConnectionState.Connected) return
+    if (pptActive) {
+      pptSyncAttempts.current = 0
+      return
+    }
+    if (pptSyncAttempts.current >= 8) return
+
+    const requestSync = () => {
+      pptSyncAttempts.current += 1
       try {
-        sendPpt(enc.encode(JSON.stringify(req)), { reliable: true })
-      } catch {
-        hasSentSyncRequest.current = false
-      }
-    }, 2000)
-    return () => clearTimeout(timer)
+        sendPpt(enc.encode(JSON.stringify({ action: "sync_request" } as PptAction)), { reliable: true })
+      } catch { /* ignore */ }
+    }
+
+    const first = setTimeout(requestSync, 2000)
+    const id = setInterval(requestSync, 6000)
+    return () => { clearTimeout(first); clearInterval(id) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTutor, connectionState])
+  }, [isTutor, connectionState, pptActive])
+
+  // ── Tutor: re-announce a restored presentation ─────────────────────────────
+  // After a refresh the tutor comes back holding the slides again, but nobody
+  // else knows. Students restore their own copy from storage and also retry a
+  // sync, so this is belt-and-braces for anyone whose storage was cleared.
+  const pptRebroadcastRef = useRef(false)
+  useEffect(() => {
+    if (!isTutor || pptRebroadcastRef.current) return
+    if (!restoredPresentationRef.current) return
+    if (connectionState !== ConnectionState.Connected) return
+    if (!pptActive || !pptUrl || presentKind !== "slides") return
+    pptRebroadcastRef.current = true
+    safeSendPpt({ action: "start", url: pptUrl, total: pptTotalPages, page: pptCurrentPage })
+    // safeSendPpt is declared further down; it is initialised by the time any
+    // effect body runs, and listing it here would reorder the hook.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTutor, connectionState, pptActive, pptUrl, presentKind, pptTotalPages, pptCurrentPage])
 
   // ── Fullscreen ─────────────────────────────────────────────────────────────
 
@@ -2007,6 +2203,79 @@ export function ClassroomRoom({
     toast.success("Breakout assignments shared with the class")
   }, [isTutor, safeSendBreakout])
 
+  // A student who drops off Wi-Fi comes back as a brand-new LiveKit identity and
+  // has no idea breakouts are running. They do ask for a sync on connect, but
+  // that request can land before the tutor's handler is wired up or be dropped
+  // outright — so the tutor also pushes the current snapshot whenever a new
+  // participant appears while breakouts are live. Membership is keyed on the
+  // stable user id, so the returning student drops straight back into the same
+  // group with no action from the tutor.
+  const knownIdentitiesRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!isTutor) return
+    const current = new Set(participants.map((p) => p.identity))
+    const newcomers = [...current].filter((id) => !knownIdentitiesRef.current.has(id))
+    knownIdentitiesRef.current = current
+    if (newcomers.length === 0) return
+
+    const snap = breakoutStateRef.current
+    if (!snap.active) return
+
+    // Small delay so the newcomer's data-channel handlers are listening.
+    const timer = setTimeout(() => {
+      safeSendBreakout({
+        action: "sync_response",
+        active: snap.active,
+        groups: snap.groups,
+        visitingGroupId: snap.visitingGroupId,
+        startedAt: snap.startedAt,
+        durationMin: snap.durationMin,
+        closingAt: snap.closingAt,
+      })
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [isTutor, participants, safeSendBreakout])
+
+  // Push the deadline out without tearing the rooms down. Broadcasts the whole
+  // recomputed timer rather than a delta, so a client that missed an earlier
+  // extension still lands on the same deadline as everyone else.
+  const handleExtendBreakouts = useCallback((extraMin: number) => {
+    if (!isTutor || !Number.isFinite(extraMin) || extraMin <= 0) return
+    const snap = breakoutStateRef.current
+    if (!snap.active) return
+
+    const now = Date.now()
+    const currentDeadline =
+      snap.closingAt ??
+      (snap.startedAt && snap.durationMin ? snap.startedAt + snap.durationMin * 60_000 : null)
+    // Extend from the later of now and the existing deadline: adding time to a
+    // breakout that already expired (or is mid wrap-up) still buys a full block.
+    const newDeadline = Math.max(currentDeadline ?? now, now) + extraMin * 60_000
+    const startedAt = snap.startedAt ?? now
+    // Kept fractional on purpose — rounding to whole minutes would drift the
+    // clock a little further every time the tutor adds time.
+    const durationMin = (newDeadline - startedAt) / 60_000
+
+    setBreakoutStartedAt(startedAt)
+    setBreakoutDurationMin(durationMin)
+    setBreakoutClosingAt(null)
+    safeSendBreakout({ action: "extend", startedAt, durationMin, addedMin: extraMin })
+
+    toast.success(`Added ${extraMin} more minute${extraMin !== 1 ? "s" : ""}`, {
+      description: "Everyone's countdown has been updated.",
+    })
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `sys-bo-extend-${Date.now()}`,
+        from: "system",
+        text: `Breakouts extended by ${extraMin} minute${extraMin !== 1 ? "s" : ""} ⏱️`,
+        ts: Date.now(),
+        type: "system",
+      },
+    ])
+  }, [isTutor, safeSendBreakout])
+
   const handleVisitBreakout = useCallback((groupId: string | null) => {
     if (!isTutor) return
     setVisitingGroupId(groupId)
@@ -2138,9 +2407,34 @@ export function ClassroomRoom({
   )
 
   const ownBreakoutGroup = useMemo(
-    () => breakoutGroups.find((g) => g.memberIds.includes(localParticipant.identity)) ?? null,
-    [breakoutGroups, localParticipant.identity]
+    () => breakoutGroups.find((g) => g.memberIds.includes(localBaseId)) ?? null,
+    [breakoutGroups, localBaseId]
   )
+
+  // Student: remember which breakout group we're in. `sessionStorage` outlives a
+  // reload and a re-login in the same tab, which is what lets the sync handler
+  // above tell a return apart from a first placement.
+  useEffect(() => {
+    if (isTutor) return
+    try {
+      if (!breakoutsActive) sessionStorage.removeItem(breakoutGroupStorageKey(sessionId))
+      else if (ownBreakoutGroup) {
+        sessionStorage.setItem(breakoutGroupStorageKey(sessionId), ownBreakoutGroup.id)
+      }
+    } catch { /* storage may be disabled */ }
+  }, [isTutor, breakoutsActive, ownBreakoutGroup, sessionId])
+
+  // Is the tutor present in *this* client's breakout context? Sending the class
+  // into breakouts must not leave the tutor sitting inside every room: they only
+  // arrive in a group once they explicitly visit it. A student who was never
+  // assigned to a group stays behind with the tutor in the main room, so they
+  // aren't stranded alone. Both audio and video gating read this one predicate
+  // so the two can never drift apart.
+  const tutorPresentForMe = useMemo(() => {
+    if (!breakoutsActive || isTutor || !tutorIdentity) return false
+    if (ownBreakoutGroup) return visitingGroupId === ownBreakoutGroup.id
+    return visitingGroupId === null
+  }, [breakoutsActive, isTutor, tutorIdentity, ownBreakoutGroup, visitingGroupId])
 
   // `null` → no filtering, play/show everyone (the default pre-breakout behaviour).
   const audibleIdentities = useMemo<Set<string> | null>(() => {
@@ -2151,36 +2445,52 @@ export function ClassroomRoom({
       // audio in the monitor is rendered separately inside BreakoutMonitor.
       if (visitingGroupId) {
         const g = breakoutGroups.find((x) => x.id === visitingGroupId)
-        g?.memberIds.forEach((id) => audible.add(id))
+        if (g) liveIdentitiesFor(g.memberIds).forEach((id) => audible.add(id))
       }
     } else {
       // Student: own group-mates + tutor (only if tutor is visiting this group).
       if (ownBreakoutGroup) {
-        ownBreakoutGroup.memberIds.forEach((id) => audible.add(id))
+        liveIdentitiesFor(ownBreakoutGroup.memberIds).forEach((id) => audible.add(id))
       }
-      if (tutorIdentity) {
-        const tutorInMyGroup =
-          visitingGroupId && ownBreakoutGroup && visitingGroupId === ownBreakoutGroup.id
-        // If unassigned *and* tutor hasn't entered any group, tutor is in main —
-        // keep them audible so the student isn't silently stranded.
-        const tutorInMainRoom = visitingGroupId === null
-        if (tutorInMyGroup || (!ownBreakoutGroup && tutorInMainRoom)) {
-          audible.add(tutorIdentity)
-        }
-      }
+      if (tutorIdentity && tutorPresentForMe) audible.add(tutorIdentity)
     }
     audible.delete(localParticipant.identity)
     return audible
-  }, [breakoutsActive, isTutor, visitingGroupId, breakoutGroups, ownBreakoutGroup, tutorIdentity, localParticipant.identity])
+  }, [breakoutsActive, isTutor, visitingGroupId, breakoutGroups, ownBreakoutGroup, tutorIdentity, tutorPresentForMe, liveIdentitiesFor, localParticipant.identity])
 
   const visibleIdentities = useMemo<Set<string> | null>(() => {
     if (!breakoutsActive) return null
     if (isTutor) return null   // tutors see everyone in the participants strip
     const visible = new Set<string>()
-    if (ownBreakoutGroup) ownBreakoutGroup.memberIds.forEach((id) => visible.add(id))
-    if (tutorIdentity) visible.add(tutorIdentity)
+    if (ownBreakoutGroup) liveIdentitiesFor(ownBreakoutGroup.memberIds).forEach((id) => visible.add(id))
+    // Same rule as audio: the tutor appears only once they join this group.
+    if (tutorIdentity && tutorPresentForMe) visible.add(tutorIdentity)
     return visible
-  }, [breakoutsActive, isTutor, ownBreakoutGroup, tutorIdentity])
+  }, [breakoutsActive, isTutor, ownBreakoutGroup, tutorIdentity, tutorPresentForMe, liveIdentitiesFor])
+
+  // A pin or a pop-out survives the move into breakouts, so a student who had
+  // the tutor pinned (or was pinned onto them by a spotlight) would keep the
+  // tutor on screen regardless of the tile filter. Drop anyone this client may
+  // no longer see; they come back the moment the tutor visits the group.
+  useEffect(() => {
+    if (!visibleIdentities || !pinnedId) return
+    if (pinnedId === localParticipant.identity) return
+    if (!visibleIdentities.has(pinnedId)) setPinnedId(null)
+  }, [visibleIdentities, pinnedId, localParticipant.identity])
+
+  useEffect(() => {
+    if (!visibleIdentities) return
+    setPoppedOutIds((prev) => {
+      const next = prev.filter(
+        (id) => id === localParticipant.identity || visibleIdentities.has(id),
+      )
+      return next.length === prev.length ? prev : next
+    })
+  }, [visibleIdentities, localParticipant.identity])
+
+  // Whether this client may render the tutor's camera at all. Drives the
+  // split-screen inset used by whiteboard / slides / screen-share modes.
+  const tutorCameraVisible = !visibleIdentities || !tutorIdentity || visibleIdentities.has(tutorIdentity)
 
   const groupLabels = useMemo(() => {
     if (!breakoutsActive || breakoutGroups.length === 0) return null
@@ -2188,10 +2498,10 @@ export function ClassroomRoom({
     const map = new Map<string, { name: string; color: string }>()
     breakoutGroups.forEach((g, idx) => {
       const color = palette[idx % palette.length]
-      g.memberIds.forEach((id) => map.set(id, { name: g.name, color }))
+      liveIdentitiesFor(g.memberIds).forEach((id) => map.set(id, { name: g.name, color }))
     })
     return map
-  }, [breakoutsActive, breakoutGroups])
+  }, [breakoutsActive, breakoutGroups, liveIdentitiesFor])
 
   // One-shot warning so students & tutor get a heads-up before auto-close.
   const endWarningShownRef = useRef<number | null>(null)
@@ -2207,13 +2517,14 @@ export function ClassroomRoom({
   const studentBreakoutMainId = useMemo(() => {
     if (isTutor || !breakoutsActive || !ownBreakoutGroup) return null
     if (visitingGroupId === ownBreakoutGroup.id && tutorIdentity) return tutorIdentity
-    return ownBreakoutGroup.memberIds.find((id) => id !== localParticipant.identity) ?? null
+    return liveIdentitiesFor(ownBreakoutGroup.memberIds).find((id) => id !== localParticipant.identity) ?? null
   }, [
     isTutor,
     breakoutsActive,
     ownBreakoutGroup,
     visitingGroupId,
     tutorIdentity,
+    liveIdentitiesFor,
     localParticipant.identity,
   ])
 
@@ -2259,16 +2570,49 @@ export function ClassroomRoom({
     handleRequestEndBreakouts,
   ])
 
-  // Student list (no tutor) — used by the manager panel.
-  const studentList = useMemo(
-    () =>
-      participants
-        .filter((p) => p.metadata !== "tutor")
-        .map((p) => ({ identity: p.identity, name: p.name ?? p.identity })),
-    [participants]
-  )
+  // Student list (no tutor) — used by the manager panel. Keyed by the stable
+  // user id, so assignments made here survive a student's reconnect, and a
+  // student caught mid-reconnect (old + new connection both present) shows up
+  // once rather than twice.
+  const studentList = useMemo(() => {
+    const byBaseId = new Map<string, { identity: string; name: string }>()
+    for (const p of participants) {
+      if (p.metadata === "tutor") continue
+      const base = participantBaseId(p.identity)
+      byBaseId.set(base, { identity: base, name: p.name ?? base })
+    }
+    return [...byBaseId.values()]
+  }, [participants])
 
   const studentCount = participants.filter((p) => p.metadata !== "tutor").length
+
+  // Camera panel shown beside the whiteboard, the slides, or a shared screen.
+  // Normally the tutor, so students can read BSL alongside the material. During
+  // breakouts a student sees their own group here instead — the lesson material
+  // stays on screen and they practise it with each other, which is the whole
+  // point of sending them into a group. `studentBreakoutMainId` already resolves
+  // to the visiting tutor when the tutor has joined that group.
+  const splitStageId = pinnedId ?? studentBreakoutMainId
+  const splitCameraPanel = splitStageId ? (
+    <PinnedVideoArea
+      identity={splitStageId}
+      localIdentity={localParticipant.identity}
+      containerRef={videoContainerRef}
+      isFullscreen={isFullscreen}
+      onToggleFullscreen={toggleFullscreen}
+      onUnpin={() => setPinnedId(null)}
+      showSpotlight={isTutor && splitStageId !== localParticipant.identity}
+      spotlightActive={spotlightedId === splitStageId}
+      onToggleSpotlight={handleToggleSpotlight}
+      handRaised={raisedHandIds.has(splitStageId)}
+      onLowerHand={isTutor ? handleLowerHand : undefined}
+    />
+  ) : (
+    <TutorCameraInset
+      hidden={!tutorCameraVisible}
+      breakoutGroupName={!isTutor && breakoutsActive ? ownBreakoutGroup?.name ?? null : null}
+    />
+  )
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -2303,6 +2647,7 @@ export function ClassroomRoom({
           onVisit={handleVisitBreakout}
           onStop={handleRequestEndBreakouts}
           onEndNow={finalizeStopBreakouts}
+          onExtend={handleExtendBreakouts}
           closingAt={breakoutClosingAt}
           onClose={() => setBreakoutsPanelOpen(false)}
         />
@@ -2316,6 +2661,7 @@ export function ClassroomRoom({
           onVisit={handleVisitBreakout}
           onClose={() => setBreakoutMonitorOpen(false)}
           onNudgeGroup={(groupId) => handleNudge({ groupId })}
+          onExtend={handleExtendBreakouts}
           endsAt={breakoutEndsAt}
         />
       )}
@@ -2440,7 +2786,7 @@ export function ClassroomRoom({
         ownBreakoutGroup ? (
           <BreakoutBanner
             group={ownBreakoutGroup}
-            allParticipantNames={new Map(participants.map((p) => [p.identity, p.name ?? p.identity]))}
+            allParticipantNames={new Map(participants.map((p) => [participantBaseId(p.identity), p.name ?? p.identity]))}
             tutorVisiting={visitingGroupId === ownBreakoutGroup.id}
             endsAt={breakoutEndsAt}
           />
@@ -2495,23 +2841,7 @@ export function ClassroomRoom({
             // the LEFT so signing stays visible while everyone draws on the RIGHT.
             <>
               <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
-                {pinnedId ? (
-                  <PinnedVideoArea
-                    identity={pinnedId}
-                    localIdentity={localParticipant.identity}
-                    containerRef={videoContainerRef}
-                    isFullscreen={isFullscreen}
-                    onToggleFullscreen={toggleFullscreen}
-                    onUnpin={() => setPinnedId(null)}
-                    showSpotlight={isTutor && pinnedId !== localParticipant.identity}
-                    spotlightActive={spotlightedId === pinnedId}
-                    onToggleSpotlight={handleToggleSpotlight}
-                    handRaised={raisedHandIds.has(pinnedId)}
-                    onLowerHand={isTutor ? handleLowerHand : undefined}
-                  />
-                ) : (
-                  <TutorCameraInset />
-                )}
+                {splitCameraPanel}
               </div>
 
               <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800">
@@ -2538,23 +2868,7 @@ export function ClassroomRoom({
             <>
               {/* Camera panel — LEFT. Pinned student if set, otherwise tutor for BSL */}
               <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
-                {pinnedId ? (
-                  <PinnedVideoArea
-                    identity={pinnedId}
-                    localIdentity={localParticipant.identity}
-                    containerRef={videoContainerRef}
-                    isFullscreen={isFullscreen}
-                    onToggleFullscreen={toggleFullscreen}
-                    onUnpin={() => setPinnedId(null)}
-                    showSpotlight={isTutor && pinnedId !== localParticipant.identity}
-                    spotlightActive={spotlightedId === pinnedId}
-                    onToggleSpotlight={handleToggleSpotlight}
-                    handRaised={raisedHandIds.has(pinnedId)}
-                    onLowerHand={isTutor ? handleLowerHand : undefined}
-                  />
-                ) : (
-                  <TutorCameraInset />
-                )}
+                {splitCameraPanel}
               </div>
 
               {/* Presentation column — RIGHT. Slides or video, decided by `presentKind`. */}
@@ -2638,23 +2952,7 @@ export function ClassroomRoom({
             // screen content RIGHT. Students see a placeholder when private.
             <>
               <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
-                {pinnedId ? (
-                  <PinnedVideoArea
-                    identity={pinnedId}
-                    localIdentity={localParticipant.identity}
-                    containerRef={videoContainerRef}
-                    isFullscreen={isFullscreen}
-                    onToggleFullscreen={toggleFullscreen}
-                    onUnpin={() => setPinnedId(null)}
-                    showSpotlight={isTutor && pinnedId !== localParticipant.identity}
-                    spotlightActive={spotlightedId === pinnedId}
-                    onToggleSpotlight={handleToggleSpotlight}
-                    handRaised={raisedHandIds.has(pinnedId)}
-                    onLowerHand={isTutor ? handleLowerHand : undefined}
-                  />
-                ) : (
-                  <TutorCameraInset />
-                )}
+                {splitCameraPanel}
               </div>
 
               <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800 bg-zinc-950">
@@ -2691,6 +2989,20 @@ export function ClassroomRoom({
                         handRaised={raisedHandIds.has(mainStageId)}
                         onLowerHand={isTutor ? handleLowerHand : undefined}
                       />
+                    )
+                  }
+                  // Unassigned student while the tutor is off visiting a group:
+                  // there is nobody for them to watch, so don't fall through to
+                  // the tutor's feed.
+                  if (breakoutsActive && !isTutor && !tutorCameraVisible && !ownBreakoutGroup) {
+                    return (
+                      <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-400 px-6 text-center">
+                        <Users2 className="size-12 opacity-30" />
+                        <p className="text-sm font-semibold text-zinc-200">Breakouts are running</p>
+                        <p className="text-xs text-zinc-500 max-w-sm">
+                          The tutor is visiting a group. They&apos;ll be back in the main room shortly.
+                        </p>
+                      </div>
                     )
                   }
                   if (breakoutsActive && !isTutor && ownBreakoutGroup) {
@@ -2782,7 +3094,9 @@ export function ClassroomRoom({
           <button
             onClick={() => setChatOpen(true)}
             className={cn(
-              "md:hidden absolute bottom-3 right-3 z-30 size-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center active:scale-95 transition-transform",
+              "md:hidden absolute bottom-3 right-3 z-40 size-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center active:scale-95 transition-transform",
+              // Ring it while breakouts run so it reads as "your group chat is here".
+              breakoutsActive && "ring-2 ring-white/70",
               chatFlash && "animate-pulse"
             )}
             aria-label="Open chat"
