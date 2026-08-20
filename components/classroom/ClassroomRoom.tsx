@@ -521,15 +521,64 @@ export function ClassroomRoom({
   const videoContainerRef = useRef<HTMLDivElement>(null)
 
   // ── Data channel: chat ─────────────────────────────────────────────────────
+  // Messages are durable in Postgres (`LiveSessionChatMessage`) and also fan out
+  // over LiveKit for live delivery. Stable client-generated `id`s keep the two
+  // paths from duplicating the same bubble after a refresh / late join.
 
   const { send: sendChat } = useDataChannel(CHAT_TOPIC, (msg) => {
     try {
-      const data = JSON.parse(dec.decode(msg.payload)) as Omit<ChatMsg, "id">
-      setMessages((prev) => [...prev, { ...data, id: `${Date.now()}-${Math.random()}` }])
+      const raw = JSON.parse(dec.decode(msg.payload)) as Partial<ChatMsg> & { ts?: unknown }
+      if (!raw?.from) return
+
+      const type = raw.type === "text" || raw.type === "reaction" || raw.type === "system" ? raw.type : "text"
+      const ts = typeof raw.ts === "number" && Number.isFinite(raw.ts) ? raw.ts : Date.now()
+      const id = raw.id ? String(raw.id) : `recv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+      const data: ChatMsg = {
+        id,
+        from: String(raw.from),
+        text: typeof raw.text === "string" ? raw.text : "",
+        ts,
+        type,
+        ...(raw.attachment ? { attachment: raw.attachment } : {}),
+      }
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === data.id)) return prev
+        return [...prev, data]
+      })
       setChatFlash(true)
       setTimeout(() => setChatFlash(false), 800)
     } catch { /* ignore malformed */ }
   })
+
+  // Hydrate history once the room mounts so refreshes and late joiners see the
+  // conversation that already happened (live channel only covers "from now on").
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/chat`)
+        if (!res.ok || cancelled) return
+        const body = await res.json() as { messages?: ChatMsg[] }
+        const history = Array.isArray(body.messages) ? body.messages : []
+        if (cancelled || history.length === 0) return
+        setMessages((prev) => {
+          if (prev.length === 0) return history
+          const seen = new Set(prev.map((m) => m.id))
+          const merged = [...prev]
+          for (const m of history) {
+            if (!seen.has(m.id)) {
+              seen.add(m.id)
+              merged.push(m)
+            }
+          }
+          merged.sort((a, b) => a.ts - b.ts)
+          return merged
+        })
+      } catch { /* offline / transient — live chat still works */ }
+    })()
+    return () => { cancelled = true }
+  }, [sessionId])
 
   // ── Data channel: hand raise ───────────────────────────────────────────────
 
@@ -1311,11 +1360,34 @@ export function ClassroomRoom({
 
   const handleSend = useCallback(
     (text: string, type: MsgType, attachment?: ChatMsg["attachment"]) => {
-      const msg: Omit<ChatMsg, "id"> = { from: localName, text, ts: Date.now(), type, attachment }
-      sendChat(enc.encode(JSON.stringify(msg)), { reliable: true })
-      setMessages((prev) => [...prev, { ...msg, id: `local-${Date.now()}` }])
+      const msg: ChatMsg = {
+        id: (typeof crypto !== "undefined" && "randomUUID" in crypto)
+          ? crypto.randomUUID()
+          : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        from: localName,
+        text,
+        ts: Date.now(),
+        type,
+        attachment,
+      }
+      // Optimistic local append + live fan-out.
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev
+        return [...prev, msg]
+      })
+      try {
+        sendChat(enc.encode(JSON.stringify(msg)), { reliable: true })
+      } catch { /* connection may have dropped */ }
+
+      // Persist so refreshes / late joiners can hydrate. Fire-and-forget; the
+      // live channel already delivered the message to everyone currently in-room.
+      void fetch(`/api/sessions/${sessionId}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(msg),
+      }).catch(() => { /* ignore — durability best-effort */ })
     },
-    [localName, sendChat]
+    [localName, sendChat, sessionId]
   )
 
   // ── Hand raise handler ─────────────────────────────────────────────────────
@@ -2010,6 +2082,17 @@ export function ClassroomRoom({
     toast.info("Refreshing the classroom for everyone…")
     setTimeout(() => window.location.reload(), 800)
   }, [isTutor, connectionState, localName, sendControl])
+
+  // Student (and tutor) self-refresh: reload this tab only, then auto-rejoin so
+  // the lobby is skipped. Chat history comes back from the API; slides/video
+  // are re-synced from the tutor via the existing sync_request flow.
+  const handleRefreshSelf = useCallback(() => {
+    toast.info("Refreshing your classroom…")
+    try {
+      sessionStorage.setItem(`classroom:auto-rejoin:${sessionId}`, String(Date.now()))
+    } catch { /* storage may be disabled */ }
+    setTimeout(() => window.location.reload(), 400)
+  }, [sessionId])
 
   // ── Whiteboard handlers (start/stop/clear tutor-only; draw when allowed) ───
 
@@ -3190,6 +3273,7 @@ export function ClassroomRoom({
           onMuteAll={handleMuteAll}
           onUnmuteAll={handleUnmuteAll}
           onRefreshAll={handleRefreshAll}
+          onRefreshSelf={handleRefreshSelf}
           onInviteCoTutor={() => setInviteCoTutorOpen(true)}
           onRequestToSpeak={handleRequestToSpeak}
           pptActive={pptActive}

@@ -165,6 +165,7 @@ model User {
   certEnrollments      CertEnrollment[]
   certReviews          CertStepSubmission[]    @relation("CertReviewer")
   passwordResetTokens  PasswordResetToken[]
+  liveSessionChatMessages LiveSessionChatMessage[] @relation("LiveSessionChatMessages")
 }
 
 model PasswordResetToken {
@@ -364,11 +365,33 @@ model LiveSession {
   joinRequests SessionJoinRequest[]
   resources    LiveSessionResource[]
   whiteboard   WhiteboardDoc?
+  chatMessages LiveSessionChatMessage[]
 
   @@index([tutorId])
   @@index([status])
   @@index([scheduledAt])
   @@index([visibility])
+}
+
+// Classroom live-chat history for a session. Messages are also broadcast over
+// the LiveKit data channel for real-time delivery; this table is the durable
+// source so refreshes and late joiners can hydrate the full conversation.
+model LiveSessionChatMessage {
+  id        String   @id // client-generated so live + persisted copies share an id
+  sessionId String
+  senderId  String?
+  fromName  String
+  text      String   @default("")
+  type      String   // "text" | "reaction" | "system"
+  // Optional file attachment (JSON: { fileUrl, fileName, fileSize, mimeType })
+  attachment Json?
+  createdAt DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender  User?       @relation("LiveSessionChatMessages", fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
+  @@index([senderId])
 }
 
 // Persisted tldraw whiteboard for a live session. One snapshot per session
