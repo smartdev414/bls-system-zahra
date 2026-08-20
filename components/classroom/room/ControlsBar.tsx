@@ -19,6 +19,8 @@ export function ControlsBar({
   onUnmuteAll,
   // Session-level admin actions (tutor only)
   onRefreshAll,
+  // Student self-refresh — reloads this tab and auto-rejoins without the lobby
+  onRefreshSelf,
   // Invite a second teacher to co-teach (tutor only)
   onInviteCoTutor,
   // Student asks the tutor to unmute them
@@ -74,6 +76,7 @@ export function ControlsBar({
   onMuteAll: () => void
   onUnmuteAll: () => void
   onRefreshAll: () => void
+  onRefreshSelf: () => void
   onInviteCoTutor: () => void
   onRequestToSpeak: () => void
   pptActive: boolean
@@ -270,6 +273,20 @@ export function ControlsBar({
         >
           <RefreshCw className="size-3.5" />
           Refresh all
+        </button>
+      )}
+
+      {/* Student self-refresh: reload this tab only, then auto-rejoin. Chat history
+          and current slides are restored after reconnect. */}
+      {!isTutor && (
+        <button
+          onClick={onRefreshSelf}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-900/40 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
+          title="Reload your classroom view. Chat history and the current slides will come back after you reconnect."
+          aria-label="Refresh your classroom"
+        >
+          <RefreshCw className="size-3.5" />
+          Refresh
         </button>
       )}
 
