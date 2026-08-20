@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { randomUUID } from "crypto"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
 import { withAudit } from "@/lib/audit"
+import { uniqueUploadKey } from "@/lib/upload-filename"
 
 const ALLOWED: Record<string, true> = {
   // Images
@@ -114,8 +114,8 @@ async function handlePOST(
       return NextResponse.json({ message: "File too large (max 50 MB)" }, { status: 400 })
     }
 
-    const ext = fileName.split(".").pop() ?? "bin"
-    const key = `classroom-chat/${sessionId}/${auth.sub}/${randomUUID()}.${ext}`
+    // Preserve the original filename in the S3 key (UUID folder keeps it unique).
+    const key = uniqueUploadKey(`classroom-chat/${sessionId}/${auth.sub}`, fileName)
 
     const presignedUrl = await getPresignedUploadUrl(key, contentType)
     const fileUrl = publicUrl(key)

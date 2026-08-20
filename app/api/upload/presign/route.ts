@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth"
 import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
 import { randomUUID } from "crypto"
 import { withAudit } from "@/lib/audit"
+import { sanitizeUploadFileName, uniqueUploadKey } from "@/lib/upload-filename"
 
 // Allowed MIME types and their S3 folder prefix
 // Images are NOT listed here — they go through /api/upload/image for WebP conversion
@@ -48,16 +49,18 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "File too large (max 500 MB)" }, { status: 400 })
     }
 
-    const ext = fileName.split(".").pop() ?? "bin"
     const isPowerPoint =
       contentType === "application/vnd.ms-powerpoint" ||
       contentType === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
-    // PowerPoint files share a folder so we can store original + converted PDF together.
+    // Keep the original filename as the final path segment so downloads/openers
+    // show e.g. "Lesson Intro.mp4" instead of a UUID. Uniqueness comes from the
+    // UUID folder. PowerPoint shares that folder with the converted PDF.
     const folderId = randomUUID()
+    const safeName = sanitizeUploadFileName(fileName)
     const key = isPowerPoint
-      ? `${allowed.prefix}/${session.sub}/${folderId}/original.${ext}`
-      : `${allowed.prefix}/${session.sub}/${randomUUID()}.${ext}`
+      ? `${allowed.prefix}/${session.sub}/${folderId}/${safeName}`
+      : uniqueUploadKey(`${allowed.prefix}/${session.sub}`, fileName)
     const pdfKey = isPowerPoint
       ? `${allowed.prefix}/${session.sub}/${folderId}/presentation.pdf`
       : undefined

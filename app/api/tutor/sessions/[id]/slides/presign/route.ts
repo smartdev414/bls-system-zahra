@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
 import { withAudit } from "@/lib/audit"
+import { sanitizeUploadFileName } from "@/lib/upload-filename"
 
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
@@ -56,7 +57,15 @@ async function handlePOST(
     }
 
     const ext = MIME_EXTENSIONS[body.mimeType]
-    const key = `slides/${id}/presentation.${ext}`
+    // Prefer the original basename so downloads show the real name; fall back to
+    // presentation.<ext> when the client sends an empty/odd name. Always keep
+    // the mime-derived extension so the classroom viewer can sniff the URL.
+    const safeBase = sanitizeUploadFileName(body.fileName)
+    const bare = safeBase.includes(".")
+      ? safeBase.slice(0, safeBase.lastIndexOf("."))
+      : safeBase
+    const leaf = `${bare || "presentation"}.${ext}`
+    const key = `slides/${id}/${leaf}`
 
     const uploadUrl = await getPresignedUploadUrl(key, body.mimeType)
     const fileUrl   = publicUrl(key)

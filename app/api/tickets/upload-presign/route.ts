@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
-import { randomUUID } from "crypto"
 import { withAudit } from "@/lib/audit"
+import { uniqueUploadKey } from "@/lib/upload-filename"
 
 const ALLOWED: Record<string, { prefix: string }> = {
   "image/jpeg":       { prefix: "tickets" },
@@ -42,8 +42,8 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "File too large (max 50 MB)" }, { status: 400 })
     }
 
-    const ext = fileName.split(".").pop() ?? "bin"
-    const key = `${allowed.prefix}/${session.sub}/${randomUUID()}.${ext}`
+    // Preserve the original filename in the S3 key (UUID folder keeps it unique).
+    const key = uniqueUploadKey(`${allowed.prefix}/${session.sub}`, fileName)
 
     const presignedUrl = await getPresignedUploadUrl(key, contentType)
     const fileUrl = publicUrl(key)
