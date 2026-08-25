@@ -27,6 +27,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useFetch, usePostCallback, usePatchCallback } from "@/hooks/use-fetch"
+import {
+  getNetworkSnapshot, probeNetworkNow, subscribeNetworkRecovery,
+} from "@/lib/network-health"
 import { cn } from "@/lib/utils"
 import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
 import { toast } from "sonner"
@@ -297,6 +300,16 @@ function TutorEntryScreen({
 const AUTO_REJOIN_KEY = (id: string) => `classroom:auto-rejoin:${id}`
 const AUTO_REJOIN_MAX_AGE_MS = 30_000
 
+/** How many times a dropped host re-joins their own class when the link returns. */
+const AUTO_RECOVER_LIMIT = 3
+
+/** No usable path to us at all — see the identical helper on the student page. */
+function linkIsDown(): boolean {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true
+  const status = getNetworkSnapshot().status
+  return status === "offline" || status === "captive-portal"
+}
+
 export default function TutorClassroomPage({
   params,
 }: {
@@ -310,14 +323,20 @@ export default function TutorClassroomPage({
   // Tutors hit restricted networks too — a co-teacher joining from a hospital
   // training room, or a tutor working from a school. The stored per-device mode
   // applies here as well. Automatic escalation is deliberately student-only:
-  // this page navigates away on any disconnect, and quietly rebuilding the room
-  // under a host who is mid-lesson would be more disruptive than helpful. A
-  // tutor who needs another mode sets it once via /tutor/connection-check.
+  // switching a host's ICE policy mid-lesson would rebuild the room under
+  // everyone watching them, and a tutor who needs another mode sets it once via
+  // /tutor/connection-check. Losing the *link* is different, and is recovered
+  // from — see handleDisconnected.
   const [netMode, setNetMode] = useState<NetworkMode>("standard")
   useEffect(() => { setNetMode(readNetworkMode()) }, [])
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
   const [leavingBusy, setLeavingBusy] = useState(false)
   const [autoRejoin, setAutoRejoin] = useState(false)
+  // Set when the tutor's own link drops mid-lesson. See handleDisconnected.
+  const [waitingForNetwork, setWaitingForNetwork] = useState(false)
+  const autoRecoveriesRef = useRef(0)
+  // Distinguishes "the tutor chose to go" from "the network took them".
+  const leavingDeliberatelyRef = useRef(false)
 
   const { data, loading: infoLoading, error: infoError } = useFetch<SessionInfo>(
     `/api/sessions/${id}/info`,
@@ -386,12 +405,42 @@ export default function TutorClassroomPage({
     getToken({})
   }, [data, getToken, patchStatus, isOwner])
 
+  /**
+   * The room dropped without the tutor asking it to.
+   *
+   * Navigating away is right when the session genuinely ended. It is badly
+   * wrong when a café or hotel link went out for forty seconds: the class is
+   * still running, every student is still in it, and the host has just been
+   * ejected to a session page with no way back except starting again. So when
+   * the link is what failed, hold the page and re-join as soon as it returns.
+   */
   const handleDisconnected = () => {
+    if (
+      !leavingDeliberatelyRef.current &&
+      linkIsDown() &&
+      autoRecoveriesRef.current < AUTO_RECOVER_LIMIT
+    ) {
+      autoRecoveriesRef.current += 1
+      setTokenData(null)
+      setWaitingForNetwork(true)
+      return
+    }
     setEnded(true)
     router.replace(`/tutor/sessions/${id}`)
   }
 
+  // Back into the room by ourselves once the link is provably back.
+  useEffect(() => {
+    if (!waitingForNetwork) return
+    return subscribeNetworkRecovery(() => {
+      setWaitingForNetwork(false)
+      getToken({})
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingForNetwork])
+
   const handleLeaveForNow = () => {
+    leavingDeliberatelyRef.current = true
     setLeaveDialogOpen(false)
     setEnded(true)
     router.replace(`/tutor/sessions/${id}`)
@@ -399,6 +448,7 @@ export default function TutorClassroomPage({
 
   const handleFinishSession = async () => {
     if (leavingBusy) return
+    leavingDeliberatelyRef.current = true
     setLeavingBusy(true)
     try {
       await patchStatus({ status: "COMPLETED" })
@@ -413,6 +463,38 @@ export default function TutorClassroomPage({
   }
 
   // ── Loading / error states ──────────────────────────────────────────────────
+
+  // Comes first: during an outage the token request fails too, and the generic
+  // "something went wrong" screen would bury the one thing that is true and
+  // useful — the class is still running and we are getting them back into it.
+  if (waitingForNetwork) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5 max-w-md mx-auto text-center px-4">
+        <div className="size-20 rounded-full bg-amber-500/15 flex items-center justify-center">
+          <Loader2 className="size-9 animate-spin text-amber-600" />
+        </div>
+        <div>
+          <h2 className="text-xl font-black">Your connection dropped</h2>
+          <p className="text-muted-foreground mt-2 text-sm">
+            Your class is still running and your students are still in it. We&apos;ve kept this page
+            open and will put you back in the room the moment your internet returns.
+          </p>
+          <p className="text-muted-foreground mt-2 text-sm">
+            Please don&apos;t close this tab. On public Wi-Fi, check whether a sign-in page is
+            waiting in another tab.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button onClick={() => { probeNetworkNow(); setWaitingForNetwork(false); getToken({}) }}>
+            Try now
+          </Button>
+          <Button variant="outline" onClick={() => { leavingDeliberatelyRef.current = true; setEnded(true); router.replace(`/tutor/sessions/${id}`) }}>
+            Leave the class
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   if (infoLoading) {
     return (

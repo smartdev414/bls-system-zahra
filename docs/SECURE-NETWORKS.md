@@ -18,6 +18,13 @@ and routinely do things that break video calling:
 **Short answer for a prospective student: yes, it will work — and if it doesn't,
 the platform tells them precisely what to ask IT for.**
 
+> **Café, hotel, train and airport Wi-Fi is a different problem** — those
+> networks block almost nothing, they simply stop working and start again.
+> See [PUBLIC-WIFI.md](./PUBLIC-WIFI.md). Note in particular that the network
+> modes below are the *wrong* tool there: both restricted modes force a relay,
+> which on public Wi-Fi only adds a hop to a link that is already short of
+> latency.
+
 ---
 
 ## 1. Network modes
@@ -92,6 +99,12 @@ Checks run in order:
 9. **Messages and alerts** — Pusher. A warning, not a failure — class works
    without it.
 
+Plus **Connection steadiness**, which runs immediately after the platform check:
+a burst of small timed requests measuring loss, round-trip time and — the number
+that decides whether live video holds — how much that round trip varies. It is
+what catches a connection that is perfectly reachable and still unusable. See
+[PUBLIC-WIFI.md](./PUBLIC-WIFI.md).
+
 The verdict is one of: ready for class · use Restricted mode · use Minimal data ·
 network is blocking us. Where a mode would fix it, the page offers a button that
 applies it.
@@ -140,6 +153,8 @@ Common outcomes:
   IT must allowlist `*.livekit.cloud` on TCP 443.
 - **Everything passes but students drop out every few minutes** → a proxy is
   timing out long-lived connections. Classes run up to two hours.
+- **Everything passes but the steadiness row warns or fails** → not a firewall
+  at all. That is a congested or shared link; see [PUBLIC-WIFI.md](./PUBLIC-WIFI.md).
 - **Materials fail, class works** → the S3 host is blocked; allowlist it.
 - **Camera warning only** → nothing to fix at the network level. Confirm with
   the tutor whether that session requires the student to be seen.

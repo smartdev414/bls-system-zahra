@@ -26,6 +26,9 @@ import {
   connectOptionsFor, escalateNetworkMode, readNetworkMode, roomOptionsFor, writeNetworkMode,
   NETWORK_MODE_LABELS, type NetworkMode,
 } from "@/lib/network-mode"
+import {
+  getNetworkSnapshot, subscribeNetworkRecovery, probeNetworkNow,
+} from "@/lib/network-health"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -567,6 +570,45 @@ function SessionEndedScreen() {
 }
 
 /** LiveKit disconnected without an explicit Leave tap — offer reconnect steps (student-side crash / network protocol). */
+/**
+ * The link is down and we are waiting for it, rather than blaming anyone.
+ *
+ * Distinct from "Connection lost" on purpose. That screen ends the visit and
+ * asks the student to check their internet; this one keeps the visit alive,
+ * because on café, hotel and train Wi-Fi the connection is coming back on its
+ * own in under a minute and the only thing that needs to happen is nobody
+ * pressing reload in the meantime.
+ */
+function WaitingForNetworkScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center gap-6 text-center px-4">
+      <div className="size-24 rounded-full bg-amber-500/15 flex items-center justify-center">
+        <Loader2 className="size-10 text-amber-600 animate-spin" />
+      </div>
+
+      <div className="max-w-md">
+        <h2 className="text-2xl font-black">Waiting for your internet</h2>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Your connection dropped, so we&apos;ve paused rather than ending your class.
+          We&apos;re watching for it to come back and will put you straight back in — you don&apos;t need to do anything.
+        </p>
+        <ul className="text-left text-sm text-muted-foreground mt-4 space-y-2 list-disc list-inside">
+          <li>Please don&apos;t reload — your chat and raised hand are kept.</li>
+          <li>On public Wi-Fi, check whether a sign-in page is waiting in another tab.</li>
+          <li>Moving nearer the router, or switching to your phone&apos;s hotspot, usually fixes it.</li>
+        </ul>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button size="lg" onClick={() => { probeNetworkNow(); onRetry() }}>Try now</Button>
+        <Button asChild variant="outline" size="lg">
+          <Link href="/student/classroom">Back to Classroom</Link>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function ConnectionLostScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center gap-6 text-center px-4">
@@ -675,6 +717,43 @@ function ConnectionDuplicateScreen({ onReconnect }: { onReconnect: () => void })
 const AUTO_REJOIN_KEY = (id: string) => `classroom:auto-rejoin:${id}`
 const AUTO_REJOIN_MAX_AGE_MS = 30_000
 
+/**
+ * Free retries on the path already chosen, per visit, before the escalation
+ * ladder is allowed to conclude that the path is the problem.
+ *
+ * The escalation ladder was built for locked-down workplace networks, where a
+ * failed connection is evidence about the firewall and the next mode is the
+ * answer. On café or hotel Wi-Fi the same failure means something entirely
+ * different — the link wobbled — and escalating on it is actively harmful: the
+ * student is walked through all three modes in a few seconds, none of which can
+ * succeed while the link is down, and lands on "this network is blocking the
+ * classroom" when their network is blocking nothing. Worse, if a retry then
+ * happens to land in Minimal, that gets saved to the device and every future
+ * lesson runs at 320×180 through a relay because of one bad afternoon.
+ *
+ * So the first failed attempt of a visit gets one retry on the path already
+ * chosen. Budgeted per visit rather than per mode on purpose: a genuinely
+ * blocked network then reaches its verdict exactly one attempt later than
+ * before, instead of one per rung, which would have doubled the wait for the
+ * NHS and police students this ladder was built for.
+ */
+const SAME_MODE_RETRIES = 1
+
+/** How many times a dropped class re-joins itself when the link returns. */
+const AUTO_RECOVER_LIMIT = 3
+
+/**
+ * True when this browser currently has no usable path to us at all — the Wi-Fi
+ * is gone, or a captive portal is answering in our place. Nothing about the
+ * classroom's route can be inferred while that is the case, so the connection
+ * logic must wait rather than draw conclusions.
+ */
+function linkIsDown(): boolean {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true
+  const status = getNetworkSnapshot().status
+  return status === "offline" || status === "captive-portal"
+}
+
 export default function ClassroomRoomPage({
   params,
 }: {
@@ -700,6 +779,15 @@ export default function ClassroomRoomPage({
   const [autoRejoin, setAutoRejoin] = useState(false)
   // Shown while we fetch a fresh token and remount after a recoverable drop.
   const [reconnecting, setReconnecting] = useState(false)
+  // Set when the link itself is down. Nothing to retry until it returns, so we
+  // hold the student here rather than sending them to a screen that blames the
+  // classroom for the café's Wi-Fi.
+  const [waitingForNetwork, setWaitingForNetwork] = useState(false)
+  // Attempts already spent on the current mode before escalating.
+  const sameModeRetriesRef = useRef(0)
+  // Automatic re-joins after the link came back, capped so a link that flaps
+  // does not loop the student in and out of class indefinitely.
+  const autoRecoveriesRef = useRef(0)
 
   const { data, loading: infoLoading, refetch: refetchInfo } = useFetch<SessionInfo>(`/api/sessions/${id}/info`, {
     errorMessage: false,
@@ -719,7 +807,20 @@ export default function ClassroomRoomPage({
       // failure this whole feature exists to make legible.
       onError: () => {
         setReconnecting(false)
-        setDisconnectKind((prev) => prev ?? (escalatingRef.current ? "blocked" : "lost"))
+        // The token request is an ordinary HTTPS call. If it failed because the
+        // link is down, that says nothing about whether this network permits
+        // live video — so wait for the link instead of declaring the classroom
+        // blocked, which is the wrong screen and the wrong advice.
+        if (linkIsDown()) {
+          setWaitingForNetwork(true)
+          escalatingRef.current = false
+          return
+        }
+        // "Blocked" is only honest once we have actually exhausted modes.
+        // `escalatingRef` is also set for an ordinary same-mode retry, so it is
+        // the wrong signal here — the set of modes already tried is the right
+        // one, and it is only ever added to on the escalation path.
+        setDisconnectKind((prev) => prev ?? (triedModesRef.current.size > 0 ? "blocked" : "lost"))
         escalatingRef.current = false
       },
     }
@@ -766,6 +867,24 @@ export default function ClassroomRoomPage({
     // Mid-escalation the room is torn down on purpose; the retry is already in
     // flight, so saying "connection lost" here would be both wrong and alarming.
     if (escalatingRef.current) return
+
+    // The link went away underneath us. LiveKit has already spent its own
+    // reconnect budget, but the student has not left and the class has not
+    // ended — so hold the seat and re-join by ourselves the moment the Wi-Fi is
+    // back. Walking out to "Connection lost" here is what turned a forty-second
+    // café outage into a student sitting in the lobby wondering whether the
+    // lesson is still running.
+    if (
+      !leaveClickedRef.current &&
+      reason !== DisconnectReason.DUPLICATE_IDENTITY &&
+      linkIsDown() &&
+      autoRecoveriesRef.current < AUTO_RECOVER_LIMIT
+    ) {
+      autoRecoveriesRef.current += 1
+      setWaitingForNetwork(true)
+      return
+    }
+
     setDisconnectKind((prev) => {
       if (prev !== null) return prev
       if (leaveClickedRef.current) return "left"
@@ -786,6 +905,29 @@ export default function ClassroomRoomPage({
    */
   const handleLiveKitError = (err: Error) => {
     console.warn("[classroom] connection error", err)
+
+    // Nothing about the route can be learned while there is no link. Escalating
+    // here would burn every mode against a network that is simply absent.
+    if (linkIsDown()) {
+      escalatingRef.current = false
+      setWaitingForNetwork(true)
+      return
+    }
+
+    // One retry on the path we already chose, before deciding the path is the
+    // problem. Public Wi-Fi drops a connection attempt often enough that a
+    // first failure is not evidence of anything.
+    if (sameModeRetriesRef.current < SAME_MODE_RETRIES) {
+      sameModeRetriesRef.current += 1
+      escalatingRef.current = true
+      setTokenData(null)
+      setReconnecting(true)
+      // A short pause: retrying into the same half-second that just failed
+      // usually fails the same way.
+      setTimeout(() => autoGetToken({}), 1_500)
+      return
+    }
+
     triedModesRef.current.add(netMode)
 
     let next = escalateNetworkMode(netMode)
@@ -819,6 +961,9 @@ export default function ClassroomRoomPage({
    */
   const handleLiveKitConnected = () => {
     escalatingRef.current = false
+    sameModeRetriesRef.current = 0
+    autoRecoveriesRef.current = 0
+    setWaitingForNetwork(false)
     if (triedModesRef.current.size > 0 && netMode !== readNetworkMode()) {
       writeNetworkMode(netMode)
       toast.success(`Connected using ${NETWORK_MODE_LABELS[netMode]}. Saved for this computer.`)
@@ -830,6 +975,9 @@ export default function ClassroomRoomPage({
   const handleReconnect = () => {
     leaveClickedRef.current = false
     escalatingRef.current = false
+    sameModeRetriesRef.current = 0
+    autoRecoveriesRef.current = 0
+    setWaitingForNetwork(false)
     triedModesRef.current.clear()
     setDisconnectKind(null)
     setTokenData(null)
@@ -842,7 +990,29 @@ export default function ClassroomRoomPage({
     if (tokenData) setReconnecting(false)
   }, [tokenData])
 
+  /**
+   * Back into class by ourselves the moment the link returns.
+   *
+   * The probe that decides "the link returned" lives in `lib/network-health.ts`
+   * and runs whether or not this page is doing anything, so the student does
+   * not have to press a button at the right moment — which on a link that comes
+   * and goes every minute is a game nobody wins.
+   */
+  useEffect(() => {
+    if (!waitingForNetwork) return
+    return subscribeNetworkRecovery(() => {
+      setWaitingForNetwork(false)
+      setDisconnectKind(null)
+      escalatingRef.current = false
+      setTokenData(null)
+      setReconnecting(true)
+      autoGetToken({})
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingForNetwork])
+
   if (disconnectKind === "left") return <SessionEndedScreen />
+  if (waitingForNetwork) return <WaitingForNetworkScreen onRetry={handleReconnect} />
   if (disconnectKind === "lost") return <ConnectionLostScreen onRetry={handleReconnect} />
   if (disconnectKind === "duplicate") return <ConnectionDuplicateScreen onReconnect={handleReconnect} />
   if (disconnectKind === "blocked") return <ConnectionBlockedScreen onRetry={handleReconnect} />

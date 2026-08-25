@@ -17,8 +17,41 @@ export const SCREEN_TOPIC    = "cls-screen"
 // backwards compatibility if client-side fallback is ever re-enabled.
 export const CAPTION_TOPIC   = "cls-captions"
 
-export const POINTER_SEND_INTERVAL_MS = 50  // throttle pointer moves to ~20 fps
-export const POINTER_AUTO_HIDE_MS     = 1500
+// ─── Hand pointer ─────────────────────────────────────────────────────────────
+// The tutor points at a slide and everyone sees a hand follow. Getting this to
+// feel immediate is mostly about not throwing away the last position.
+
+/** ~30 fps. Each packet is a few dozen bytes, so the cost of the extra rate is
+ *  negligible next to how much smoother the motion reads. */
+export const POINTER_SEND_INTERVAL_MS = 33
+
+/**
+ * Resend the current position even when the tutor's hand is still.
+ *
+ * A stationary cursor emits no `pointermove` events at all, so without this the
+ * last packet before the tutor stopped moving is the last thing anyone gets —
+ * and if that packet was one of the ones dropped by the lossy channel, students
+ * are left looking at a stale position while the tutor holds steady on the
+ * thing they are talking about. It also gets the pointer to anyone who joined
+ * or reconnected mid-gesture.
+ */
+export const POINTER_KEEPALIVE_MS = 700
+
+/**
+ * How long a student keeps showing the pointer with nothing arriving. Must be
+ * comfortably more than the keepalive so an ordinary dropped packet never
+ * blinks it out; the explicit `hide` on the reliable channel is what normally
+ * ends it.
+ */
+export const POINTER_AUTO_HIDE_MS     = 2500
+
+/**
+ * Student-side interpolation between samples. Matched to the send interval so
+ * the hand arrives at each position just as the next one lands — smooth, with
+ * no lag accumulating during a continuous sweep. Longer looked nicer standing
+ * still and read as drag while moving, which is the complaint this fixes.
+ */
+export const POINTER_SMOOTHING_MS = 45
 
 export const enc = new TextEncoder()
 export const dec = new TextDecoder()

@@ -1,17 +1,24 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { Loader2, AlertCircle } from "lucide-react"
+import { Loader2, AlertCircle, RotateCw } from "lucide-react"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PdfDocument = any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PdfPage = any
+import {
+  openPdf, safeRenderScale, PdfOpenTimeoutError,
+  type PdfDocument, type PdfPage,
+} from "@/lib/pdfjs"
 
 interface Props {
   fileUrl: string
   currentPage: number
   onTotalPages: (total: number) => void
+  /**
+   * Reports the element the slide is actually drawn into, so the classroom can
+   * place the tutor's hand pointer against the slide rather than against the
+   * panel around it — see `useSlideContentBox`. Called with null when there is
+   * nothing drawn. Must be a stable reference.
+   */
+  onContentElement?: (el: HTMLElement | null) => void
 }
 
 function isPptxUrl(url: string) {
@@ -61,7 +68,7 @@ type PptxViewerOptions = {
   onNodeError?: (nodeId: string, error: unknown) => void
 }
 
-function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
+function PptxViewer({ fileUrl, currentPage, onTotalPages, onContentElement }: Props) {
   const hostRef    = useRef<HTMLDivElement>(null)
   const viewerRef  = useRef<PptxViewerLike | null>(null)
   const slideCount = useRef(0)
@@ -200,6 +207,17 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
     }
   }, [status])
 
+  // The legacy path: decks are converted to PDF on upload, so this only runs
+  // for a .pptx URL saved before that. The renderer builds its own DOM inside
+  // the host and does not expose the slide node, so the best available answer
+  // is the host itself — which means the pointer is panel-relative here, as it
+  // was everywhere before. Accurate for the PDF path that everything now takes.
+  useEffect(() => {
+    if (status !== "ready") return
+    onContentElement?.(hostRef.current)
+    return () => onContentElement?.(null)
+  }, [status, onContentElement])
+
   return (
     <div className="w-full h-full flex items-center justify-center bg-white overflow-hidden p-2 relative">
       {/* Host element the library paints into — always mounted so the ref is live during load */}
@@ -231,7 +249,7 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages }: Props) {
 
 // ── PDF viewer (canvas via pdfjs-dist) ───────────────────────────────────────
 
-function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
+function PdfViewer({ fileUrl, currentPage, onTotalPages, onContentElement }: Props) {
   const canvasRef     = useRef<HTMLCanvasElement>(null)
   const pdfRef        = useRef<PdfDocument>(null)
   const renderTask    = useRef<{ cancel: () => void } | null>(null)
@@ -239,24 +257,21 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading")
   const [errorMsg, setErrorMsg] = useState("")
+  // Bumping this re-runs the load effect. That is the whole of "Try again":
+  // the student is usually one transient failure away from seeing the lesson,
+  // and asking them to reload the classroom would drop them out of the call.
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!fileUrl) return
 
     let cancelled = false
     setStatus("loading")
+    setErrorMsg("")
 
     async function load() {
       try {
-        const pdfjsLib = await import("pdfjs-dist")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-          `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-
-        const pdf: PdfDocument = await pdfjsLib.getDocument({
-          url: fileUrl,
-          withCredentials: false,
-        }).promise
+        const pdf: PdfDocument = await openPdf(fileUrl)
 
         if (cancelled) return
         pdfRef.current = pdf
@@ -265,15 +280,29 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
       } catch (err) {
         if (cancelled) return
         console.error("[PdfViewer] failed to load PDF", err)
-        setErrorMsg("Could not load the presentation. Make sure the file is a valid PDF.")
+        setErrorMsg(
+          err instanceof PdfOpenTimeoutError
+            ? "The slides are taking too long to load. This is usually the connection."
+            : "Could not load the presentation.",
+        )
         setStatus("error")
       }
     }
 
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      // Hand the document back. Each one holds a worker and the decoded pages;
+      // leaving them behind across a deck change or a retry is how a tab on a
+      // memory-tight tablet ends up unable to open the *next* deck.
+      renderTask.current?.cancel()
+      renderTask.current = null
+      const pdf = pdfRef.current
+      pdfRef.current = null
+      if (pdf) Promise.resolve(pdf.destroy()).catch(() => { /* already gone */ })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileUrl])
+  }, [fileUrl, attempt])
 
   const renderPage = useCallback(async (pageNum: number) => {
     const pdf    = pdfRef.current
@@ -291,8 +320,12 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
       const container = canvas.parentElement
       if (!container) return
 
-      const containerWidth  = container.clientWidth  || 800
-      const containerHeight = container.clientHeight || 600
+      // Measure with the real box. A zero here means the stage hasn't been laid
+      // out yet — Safari resolves percentage heights inside a flex item later
+      // than Chrome does — and rendering to a guessed size would only have to
+      // be thrown away. The ResizeObserver below calls us back once it is real.
+      const { width: containerWidth, height: containerHeight } = container.getBoundingClientRect()
+      if (containerWidth < 1 || containerHeight < 1) return
 
       const unscaled = page.getViewport({ scale: 1 })
       // Fit the whole page — `object-fit: contain` semantics — so nothing is cut off
@@ -301,24 +334,33 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
         containerWidth  / unscaled.width,
         containerHeight / unscaled.height,
       )
-      // Render at a higher pixel density so the downscaled canvas stays crisp
-      const dpr        = (typeof window !== "undefined" && window.devicePixelRatio) || 1
-      const renderScale = fitScale * dpr
-      const viewport   = page.getViewport({ scale: renderScale })
+      // Render at a higher pixel density so the downscaled canvas stays crisp,
+      // but never past what the browser will actually back with pixels: over
+      // Safari's ceiling the canvas paints blank instead of throwing.
+      const dpr         = (typeof window !== "undefined" && window.devicePixelRatio) || 1
+      const renderScale = safeRenderScale(fitScale * dpr, unscaled.width, unscaled.height)
+      if (renderScale <= 0) return
+      const viewport    = page.getViewport({ scale: renderScale })
 
       canvas.width  = viewport.width
       canvas.height = viewport.height
       canvas.style.width  = `${unscaled.width  * fitScale}px`
       canvas.style.height = `${unscaled.height * fitScale}px`
 
-      const ctx = canvas.getContext("2d")!
-      const task = page.render({ canvasContext: ctx, viewport })
+      const ctx = canvas.getContext("2d")
+      if (!ctx) throw new Error("Could not get a 2D canvas context")
+      const task = page.render({ canvas, canvasContext: ctx, viewport })
       renderTask.current = task
 
       await task.promise
     } catch (err: unknown) {
-      if ((err as { name?: string })?.name !== "RenderingCancelledException") {
-        console.error("[PdfViewer] render error", err)
+      if ((err as { name?: string })?.name === "RenderingCancelledException") return
+      console.error("[PdfViewer] render error", err)
+      // A page that will not draw is indistinguishable from a blank slide to
+      // the student, so say so rather than leaving them staring at white.
+      if (version === renderVersion.current) {
+        setErrorMsg("Could not draw this slide.")
+        setStatus("error")
       }
     }
   }, [status])
@@ -328,14 +370,23 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
   }, [currentPage, status, renderPage])
 
   useEffect(() => {
-    if (!canvasRef.current) return
-    const observer = new ResizeObserver(() => {
-      if (status === "ready") renderPage(currentPage)
-    })
-    const parent = canvasRef.current.parentElement
-    if (parent) observer.observe(parent)
+    if (status !== "ready") return
+    const canvas = canvasRef.current
+    const parent = canvas?.parentElement
+    if (!parent) return
+    const observer = new ResizeObserver(() => { renderPage(currentPage) })
+    observer.observe(parent)
     return () => observer.disconnect()
   }, [currentPage, status, renderPage])
+
+  // The canvas is sized in `renderPage` to exactly the fitted slide — its own
+  // box is the slide, with the letterbox falling outside it. So it is precisely
+  // the rectangle the hand pointer should be measured against.
+  useEffect(() => {
+    if (status !== "ready") return
+    onContentElement?.(canvasRef.current)
+    return () => onContentElement?.(null)
+  }, [status, onContentElement])
 
   if (status === "loading") {
     return (
@@ -351,6 +402,16 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
       <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-zinc-500 bg-zinc-950 px-8 text-center">
         <AlertCircle className="size-10 text-rose-500 opacity-70" />
         <p className="text-sm text-rose-400">{errorMsg}</p>
+        <button
+          type="button"
+          onClick={() => setAttempt((n) => n + 1)}
+          className="flex items-center gap-1.5 text-xs font-medium text-zinc-200 bg-zinc-800 hover:bg-zinc-700 rounded-full px-3 py-1.5 transition-colors"
+        >
+          <RotateCw className="size-3.5" /> Try again
+        </button>
+        <p className="text-xs text-zinc-600">
+          You are still in the lesson — this only reloads the slides.
+        </p>
       </div>
     )
   }
@@ -370,9 +431,9 @@ function PdfViewer({ fileUrl, currentPage, onTotalPages }: Props) {
 
 // ── Exported component — delegates to PDF or PPTX viewer ─────────────────────
 
-export function PptSlideViewer({ fileUrl, currentPage, onTotalPages }: Props) {
-  if (isPptxUrl(fileUrl)) {
-    return <PptxViewer fileUrl={fileUrl} currentPage={currentPage} onTotalPages={onTotalPages} />
+export function PptSlideViewer(props: Props) {
+  if (isPptxUrl(props.fileUrl)) {
+    return <PptxViewer {...props} />
   }
-  return <PdfViewer fileUrl={fileUrl} currentPage={currentPage} onTotalPages={onTotalPages} />
+  return <PdfViewer {...props} />
 }

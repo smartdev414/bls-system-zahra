@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Bell,
@@ -16,6 +16,9 @@ import {
   CalendarPlus,
   BellOff,
 } from "lucide-react"
+import { toast } from "sonner"
+import { usePoll } from "@/hooks/use-poll"
+import { netFetch, netJson, POLL_TIMEOUT_MS } from "@/lib/net-fetch"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -111,51 +114,67 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(false)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   async function fetchNotifications() {
     try {
-      const res = await fetch("/api/notifications")
-      if (!res.ok) return
-      const data = await res.json() as { notifications: Notification[]; unreadCount: number }
+      const data = await netJson<{ notifications: Notification[]; unreadCount: number }>(
+        "/api/notifications",
+        undefined,
+        // Background chatter: it must not hold a socket open on a stalled link,
+        // and it must not move the global connection banner on its own — the
+        // bell going quiet for a minute is not worth telling anyone about.
+        { timeoutMs: POLL_TIMEOUT_MS, retries: 0, report: false },
+      )
       setNotifications(data.notifications)
       setUnreadCount(data.unreadCount)
-    } catch {}
+    } catch { /* the next poll picks it up */ }
   }
 
-  useEffect(() => {
-    void fetchNotifications()
-    intervalRef.current = setInterval(() => void fetchNotifications(), POLL_INTERVAL)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [])
+  // Paused while the tab is hidden or the link is down, and caught up the
+  // instant either clears — so coming back to a laptop that slept shows the
+  // right badge immediately rather than up to half a minute later.
+  usePoll(fetchNotifications, POLL_INTERVAL)
 
   // Fetch fresh list when popover opens
   useEffect(() => {
     if (open) void fetchNotifications()
   }, [open])
 
+  // These now go through a request with a deadline, which can reject where a
+  // bare `fetch` would have hung. Each one keeps its own local state truthful
+  // rather than throwing into an event handler and leaving the list showing a
+  // change that never reached the server.
   async function markAllRead() {
     setLoading(true)
     try {
-      await fetch("/api/notifications", { method: "PATCH" })
+      await netFetch("/api/notifications", { method: "PATCH" })
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
       setUnreadCount(0)
+    } catch (err) {
+      toast.error((err as Error).message)
     } finally {
       setLoading(false)
     }
   }
 
   async function markRead(id: string) {
-    await fetch(`/api/notifications/${id}`, { method: "PATCH" })
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    )
-    setUnreadCount((c) => Math.max(0, c - 1))
+    try {
+      await netFetch(`/api/notifications/${id}`, { method: "PATCH" })
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      )
+      setUnreadCount((c) => Math.max(0, c - 1))
+    } catch { /* stays unread; the next poll or open re-syncs it */ }
   }
 
   async function dismiss(e: React.MouseEvent, id: string) {
     e.stopPropagation()
-    await fetch(`/api/notifications/${id}`, { method: "DELETE" })
+    try {
+      await netFetch(`/api/notifications/${id}`, { method: "DELETE" })
+    } catch (err) {
+      toast.error((err as Error).message)
+      return
+    }
     const wasUnread = notifications.find((n) => n.id === id)?.isRead === false
     setNotifications((prev) => prev.filter((n) => n.id !== id))
     if (wasUnread) setUnreadCount((c) => Math.max(0, c - 1))

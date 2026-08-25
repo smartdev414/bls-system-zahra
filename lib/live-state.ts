@@ -1,3 +1,7 @@
+"use client"
+
+import { netFetch, netJson, POLL_TIMEOUT_MS } from "./net-fetch"
+
 /**
  * Classroom stage state, persisted server-side.
  *
@@ -31,22 +35,51 @@ export type StagePayload = {
   videoTime?: number
 }
 
-/** Read the current stage. Returns null when nothing has ever been published. */
+/**
+ * Read the current stage. Returns null when nothing has ever been published —
+ * and also when the request failed, which callers already treat as "nothing to
+ * apply". Both are on a deadline: this runs on a repeating reconcile while a
+ * lesson is in progress, and an unbounded request here was one of the ways a
+ * student on café Wi-Fi ended up holding a stale slide with a spinner that
+ * never resolved.
+ */
 export async function fetchStageState(sessionId: string): Promise<StageState | null> {
-  const res = await fetch(`/api/sessions/${sessionId}/live-state`, { cache: "no-store" })
-  if (!res.ok) return null
-  const data = await res.json() as { state: StageState | null }
-  return data.state ?? null
+  try {
+    const data = await netJson<{ state: StageState | null }>(
+      `/api/sessions/${sessionId}/live-state`,
+      { cache: "no-store" },
+      { timeoutMs: POLL_TIMEOUT_MS, retries: 0, report: false },
+    )
+    return data.state ?? null
+  } catch {
+    return null
+  }
 }
 
-/** Publish the stage (tutor only — students get a 403). */
+/**
+ * Publish the stage (tutor only — students get a 403).
+ *
+ * Never retried. This is a fire-and-forget mirror of a change the tutor has
+ * already made locally and already sent over the data channel; a replay would
+ * race the next slide change and could put the class back a page.
+ */
 export async function publishStageState(
   sessionId: string,
   payload: StagePayload,
 ): Promise<void> {
-  await fetch(`/api/sessions/${sessionId}/live-state`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
+  try {
+    await netFetch(
+      `/api/sessions/${sessionId}/live-state`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      { timeoutMs: POLL_TIMEOUT_MS, retries: 0 },
+    )
+  } catch {
+    // The data channel already carried this to everyone connected; the stored
+    // copy only matters to someone who joins or reloads later, and the next
+    // stage change will write it again.
+  }
 }

@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 4000 --hostname 0.0.0.0",
-    "build": "prisma generate && next build",
+    "dev": "node scripts/copy-pdf-worker.mjs && next dev --port 4000 --hostname 0.0.0.0",
+    "build": "node scripts/copy-pdf-worker.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",

@@ -214,10 +214,10 @@ export function ConnectionCheckPanel() {
     }
   }
 
-  const verdictTone =
-    run?.verdict.recommendedMode === null ? "fail"
-      : run?.verdict.recommendedMode === "standard" ? "pass"
-        : "warn"
+  // The verdict carries its own tone. Deriving it from the recommended mode
+  // used to be equivalent, and stopped being so once a connection could be
+  // healthy in every routable sense and still too unsteady to teach on.
+  const verdictTone = run?.verdict.tone ?? "pass"
 
   return (
     <div className="flex flex-col gap-6">

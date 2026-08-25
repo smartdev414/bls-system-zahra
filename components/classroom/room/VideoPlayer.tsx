@@ -20,6 +20,14 @@ interface VideoPlayerProps {
   // moment the event fired.
   onPlayPause: (playing: boolean, currentTime: number) => void
   onSeek:      (currentTime: number) => void
+
+  /**
+   * Reports the `<video>` element so the classroom can place the tutor's hand
+   * pointer against the picture rather than the panel around it. `max-w-full
+   * max-h-full` sizes the element to the letterboxed picture exactly, so its
+   * own box is the right rectangle. Must be a stable reference.
+   */
+  onContentElement?: (el: HTMLElement | null) => void
 }
 
 // Threshold above which a student re-seeks to the tutor's position. Anything
@@ -36,6 +44,7 @@ export function VideoPlayer({
   asOf,
   onPlayPause,
   onSeek,
+  onContentElement,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [needsUnblock, setNeedsUnblock] = useState(false)
@@ -102,6 +111,11 @@ export function VideoPlayer({
       clearInterval(interval)
     }
   }, [isTutor, playing, currentTime, asOf, url])
+
+  useEffect(() => {
+    onContentElement?.(videoRef.current)
+    return () => onContentElement?.(null)
+  }, [onContentElement])
 
   const handleUnblock = async () => {
     const el = videoRef.current

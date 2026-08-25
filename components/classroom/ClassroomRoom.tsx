@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
+import { usePoll } from "@/hooks/use-poll"
 import { PptSlideViewer } from "./PptSlideViewer"
 import { SlidePicker } from "./SlidePicker"
 
@@ -25,7 +26,7 @@ import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
   BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC,
   BREAKOUT_WRAP_UP_SEC, CHAT_HISTORY_LIMIT,
-  POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS,
+  POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS, POINTER_KEEPALIVE_MS, POINTER_SMOOTHING_MS,
   enc, dec,
 } from "./room/constants"
 import type {
@@ -35,6 +36,8 @@ import type {
   BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
+import { ConnectionBanner }     from "./room/ConnectionBanner"
+import { useSlideContentBox }   from "./room/useSlideContentBox"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
 import { TutorCameraInset }     from "./room/TutorCameraInset"
 import { ParticipantsPanel }    from "./room/ParticipantsPanel"
@@ -296,11 +299,10 @@ export function ClassroomRoom({
     }
     lastSeenPendingIdsRef.current = new Set(pendingRequests.map((r) => r.id))
   }, [pendingRequests, isTutor])
-  useEffect(() => {
-    if (!isTutor) return
-    const interval = setInterval(() => refetchRequests(), 8000)
-    return () => clearInterval(interval)
-  }, [isTutor, refetchRequests])
+  // usePoll rather than a bare interval: on a weak link a stalled request must
+  // not be joined by a second one every eight seconds, and coming back to the
+  // tab should refresh at once rather than after the rest of the interval.
+  usePoll(() => refetchRequests(), 8000, { enabled: isTutor, immediate: false })
 
   const { execute: respondToRequest, loading: respondingToRequest } = usePatchCallback<
     { message: string },
@@ -605,6 +607,33 @@ export function ClassroomRoom({
   const slideAreaRef    = useRef<HTMLDivElement>(null)
   const lastPointerSent = useRef(0)
   const pointerHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // The element the slide is actually drawn into, reported by whichever viewer
+  // is mounted. Pointer coordinates are normalised against this rather than
+  // against the panel — see `useSlideContentBox` for why that matters.
+  const [slideContentEl, setSlideContentEl] = useState<HTMLElement | null>(null)
+  const handleSlideContentElement = useCallback((el: HTMLElement | null) => {
+    setSlideContentEl(el)
+  }, [])
+  const slideContentBox = useSlideContentBox(slideAreaRef, slideContentEl)
+  const slideContentBoxRef = useRef(slideContentBox)
+  slideContentBoxRef.current = slideContentBox
+
+  // Trailing edge of the send throttle. The original threw away every move
+  // inside the throttle window, which meant the *last* position before the
+  // tutor stopped moving was usually never sent at all — so students were left
+  // looking at wherever the pointer happened to be one sample earlier. Holding
+  // the most recent position and flushing it when the window closes is what
+  // makes the pointer land where the tutor is actually pointing.
+  const pendingPointer   = useRef<{ x: number; y: number } | null>(null)
+  const pointerFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Send counter, so a reordered datagram cannot drag the pointer backwards. */
+  const pointerSeq     = useRef(0)
+  const lastPointerSeq = useRef(-1)
+  const lastPointerAt  = useRef(0)
+  // Mirror for the keepalive timer, which fires outside React's render cycle.
+  const livePointerRef = useRef<{ x: number; y: number } | null>(null)
+  livePointerRef.current = livePointer
 
   // ── Background blur state ──────────────────────────────────────────────────
   // The actual processor instance is heavy (bundles MediaPipe) so it's lazily
@@ -949,11 +978,28 @@ export function ClassroomRoom({
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as PointerAction
       if (data.action === "move") {
+        // Moves ride the lossy channel, which is right for a cursor — a dropped
+        // sample is replaced 33ms later — but lossy also means unordered. An
+        // older packet arriving after a newer one used to yank the hand back to
+        // where it had already been, which reads exactly like lag.
+        if (typeof data.n === "number") {
+          // Reordering only happens between packets in flight together, so a
+          // pause longer than any plausible flight time means this is a fresh
+          // gesture — very often from a tutor who rejoined and whose counter
+          // has started again from zero. Trust it and resynchronise.
+          const stale = Date.now() - lastPointerAt.current > 1_000
+          const behind = lastPointerSeq.current - data.n
+          if (!stale && behind >= 0) return
+          lastPointerSeq.current = data.n
+          lastPointerAt.current = Date.now()
+        }
         setLivePointer({ x: data.x, y: data.y })
         if (pointerHideTimer.current) clearTimeout(pointerHideTimer.current)
         pointerHideTimer.current = setTimeout(() => setLivePointer(null), POINTER_AUTO_HIDE_MS)
       } else if (data.action === "hide") {
         setLivePointer(null)
+        lastPointerSeq.current = -1
+        lastPointerAt.current = 0
         if (pointerHideTimer.current) clearTimeout(pointerHideTimer.current)
       }
     } catch { /* ignore malformed */ }
@@ -1578,13 +1624,18 @@ export function ClassroomRoom({
   // and they would sit on a stale slide for the rest of the lesson with nothing
   // to correct them. So re-read the stored stage now and then, but only after a
   // quiet spell (never fight a tutor mid-deck) and only apply a real difference.
+  // Guards against overlapping reconciles. `fetchStageState` now has a deadline,
+  // but a link slow enough to take five seconds would still stack ticks.
+  const stageReconcileInFlight = useRef(false)
   useEffect(() => {
     if (isTutor || connectionState !== ConnectionState.Connected) return
     if (!pptActive) return
 
     const id = setInterval(() => {
       if (Date.now() - lastLiveStageRef.current < STAGE_QUIET_MS) return
+      if (stageReconcileInFlight.current) return
       void (async () => {
+        stageReconcileInFlight.current = true
         try {
           const state = await fetchStageState(sessionId)
           // The tutor may have spoken while the request was in flight.
@@ -1608,6 +1659,7 @@ export function ClassroomRoom({
             applyStageState(state)
           }
         } catch { /* transient — the next tick tries again */ }
+        finally { stageReconcileInFlight.current = false }
       })()
     }, STAGE_RECONCILE_MS)
 
@@ -2033,38 +2085,139 @@ export function ClassroomRoom({
     } catch { /* silently ignore — connection may have dropped */ }
   }, [connectionState, sendPointer])
 
+  /** Push the most recent position out now, and reset the throttle window. */
+  const flushPointer = useCallback(() => {
+    if (pointerFlushTimer.current) {
+      clearTimeout(pointerFlushTimer.current)
+      pointerFlushTimer.current = null
+    }
+    const p = pendingPointer.current
+    if (!p) return
+    pendingPointer.current = null
+    lastPointerSent.current = Date.now()
+    pointerSeq.current += 1
+    safeSendPointer({ action: "move", x: p.x, y: p.y, n: pointerSeq.current })
+  }, [safeSendPointer])
+
+  /**
+   * Throttle with a trailing edge. Sends immediately when the window is open,
+   * and otherwise holds the newest position and sends it the moment the window
+   * closes — so the final resting place of the tutor's hand always goes out,
+   * which is the position the students are being asked to look at.
+   */
+  const queuePointer = useCallback((x: number, y: number) => {
+    pendingPointer.current = { x, y }
+    const waited = Date.now() - lastPointerSent.current
+    if (waited >= POINTER_SEND_INTERVAL_MS) { flushPointer(); return }
+    if (pointerFlushTimer.current) return
+    pointerFlushTimer.current = setTimeout(flushPointer, POINTER_SEND_INTERVAL_MS - waited)
+  }, [flushPointer])
+
+  const cancelPendingPointer = useCallback(() => {
+    pendingPointer.current = null
+    if (pointerFlushTimer.current) {
+      clearTimeout(pointerFlushTimer.current)
+      pointerFlushTimer.current = null
+    }
+  }, [])
+
   const handleTogglePointer = useCallback(() => {
     const next = !pointerMode
     setPointerMode(next)
     if (!next) {
+      cancelPendingPointer()
       setLivePointer(null)
       safeSendPointer({ action: "hide" })
     }
-  }, [pointerMode, safeSendPointer])
+  }, [pointerMode, safeSendPointer, cancelPendingPointer])
 
   const handleSlidePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isTutor || !pointerMode) return
     const host = slideAreaRef.current
     if (!host) return
-    const rect = host.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
-    const x = (e.clientX - rect.left) / rect.width
-    const y = (e.clientY - rect.top)  / rect.height
-    if (x < 0 || x > 1 || y < 0 || y > 1) return
+    const hostRect = host.getBoundingClientRect()
+    if (hostRect.width === 0 || hostRect.height === 0) return
+
+    // Measure against the drawn slide when we know where it is. Falling back to
+    // the panel keeps the legacy PPTX path working exactly as before.
+    const box = slideContentBoxRef.current
+    const originX = hostRect.left + (box?.left ?? 0)
+    const originY = hostRect.top  + (box?.top  ?? 0)
+    const width   = box?.width  ?? hostRect.width
+    const height  = box?.height ?? hostRect.height
+    if (width < 1 || height < 1) return
+
+    // Clamped rather than discarded. Out of range means the cursor is over the
+    // letterbox beside the slide; freezing the hand at its last position there
+    // is precisely the "it doesn't follow me" complaint, whereas tracking to the
+    // slide edge is both truthful and what the tutor expects.
+    const x = Math.min(1, Math.max(0, (e.clientX - originX) / width))
+    const y = Math.min(1, Math.max(0, (e.clientY - originY) / height))
 
     setLivePointer({ x, y })
-
-    const now = Date.now()
-    if (now - lastPointerSent.current < POINTER_SEND_INTERVAL_MS) return
-    lastPointerSent.current = now
-    safeSendPointer({ action: "move", x, y })
-  }, [isTutor, pointerMode, safeSendPointer])
+    queuePointer(x, y)
+  }, [isTutor, pointerMode, queuePointer])
 
   const handleSlidePointerLeave = useCallback(() => {
     if (!isTutor || !pointerMode) return
+    cancelPendingPointer()
     setLivePointer(null)
     safeSendPointer({ action: "hide" })
+  }, [isTutor, pointerMode, safeSendPointer, cancelPendingPointer])
+
+  /**
+   * Keep saying where the hand is while it is still.
+   *
+   * A cursor that is not moving emits no events, so without this the students'
+   * copy rests on the last packet that happened to arrive — and one dropped
+   * datagram at the end of a gesture leaves them looking at the wrong place for
+   * as long as the tutor holds there, which is exactly when it matters most. It
+   * also delivers the pointer to anyone who joined or reconnected mid-gesture.
+   */
+  useEffect(() => {
+    if (!isTutor || !pointerMode) return
+    const id = setInterval(() => {
+      const p = livePointerRef.current
+      if (!p) return
+      pointerSeq.current += 1
+      safeSendPointer({ action: "move", x: p.x, y: p.y, n: pointerSeq.current })
+    }, POINTER_KEEPALIVE_MS)
+    return () => clearInterval(id)
   }, [isTutor, pointerMode, safeSendPointer])
+
+  // Never leave a scheduled send behind on unmount.
+  useEffect(() => cancelPendingPointer, [cancelPendingPointer])
+
+  /**
+   * Where to draw the hand. Positioned with a transform rather than percentage
+   * offsets: it is composited instead of triggering layout on every sample, and
+   * the smoothing transition is matched to the send interval so the hand glides
+   * between samples without falling behind during a continuous sweep.
+   */
+  const pointerStyle = useMemo<React.CSSProperties | null>(() => {
+    if (!livePointer) return null
+    const base: React.CSSProperties = {
+      filter: "drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000) drop-shadow(0 2px 6px rgba(0,0,0,0.85))",
+      // The tutor's own hand tracks their cursor exactly; only the copy that
+      // arrived over the network needs smoothing between samples.
+      transition: isTutor ? "none" : `transform ${POINTER_SMOOTHING_MS}ms linear`,
+      willChange: "transform",
+    }
+    // lucide's Pointer icon puts the index fingertip near (4, 2) of its 24×24
+    // viewBox, so the second translate moves that spot onto the coordinate.
+    const anchor = "translate(-16.7%, -8.3%)"
+    if (slideContentBox) {
+      const px = slideContentBox.left + livePointer.x * slideContentBox.width
+      const py = slideContentBox.top  + livePointer.y * slideContentBox.height
+      return { ...base, left: 0, top: 0, transform: `translate3d(${px}px, ${py}px, 0) ${anchor}` }
+    }
+    return {
+      ...base,
+      left: `${livePointer.x * 100}%`,
+      top:  `${livePointer.y * 100}%`,
+      transform: anchor,
+    }
+  }, [livePointer, slideContentBox, isTutor])
 
   // ── Background blur ────────────────────────────────────────────────────────
   // Returns the LocalVideoTrack the user is currently publishing (or null).
@@ -3180,6 +3333,10 @@ export function ClassroomRoom({
     >
       <AudioRenderer audibleIdentities={audibleIdentities} />
 
+      {/* Says out loud what a frozen picture means. Nothing is rendered while
+          the connection is healthy. */}
+      <ConnectionBanner />
+
       {/* Brand watermark — visible to all participants. Top-left so it doesn't
           collide with the controls bar at the bottom. */}
       <LogoWatermark className="top-3 left-3" size={44} />
@@ -3449,6 +3606,7 @@ export function ClassroomRoom({
                     asOf={videoAsOf}
                     onPlayPause={handleVideoPlayPause}
                     onSeek={handleVideoSeek}
+                    onContentElement={handleSlideContentElement}
                   />
                 ) : (
                   <PptSlideViewer
@@ -3457,25 +3615,16 @@ export function ClassroomRoom({
                     onTotalPages={(total) => {
                       if (total !== pptTotalPages) setPptTotalPages(total)
                     }}
+                    onContentElement={handleSlideContentElement}
                   />
                 )}
 
-                {/* Hand pointer overlay — shown to everyone while tutor is pointing.
-                    lucide's Pointer icon is a hand with the index fingertip near the
-                    top of the 24×24 viewBox (≈ (4, 2)), so we anchor that spot at
-                    the reported coordinate via the transform. */}
-                {livePointer && (
-                  <div
-                    className="absolute pointer-events-none z-40"
-                    style={{
-                      left: `${livePointer.x * 100}%`,
-                      top:  `${livePointer.y * 100}%`,
-                      transform: "translate(-16.7%, -8.3%)",
-                      filter: "drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000) drop-shadow(0 2px 6px rgba(0,0,0,0.85))",
-                      transition: isTutor ? "none" : "left 60ms linear, top 60ms linear",
-                    }}
-                    aria-hidden
-                  >
+                {/* Hand pointer overlay — shown to everyone while the tutor is
+                    pointing. Placed against the drawn slide, not this panel, so
+                    it lands on the same thing for everyone regardless of how
+                    their own layout letterboxes the slide. See `pointerStyle`. */}
+                {livePointer && pointerStyle && (
+                  <div className="absolute pointer-events-none z-40" style={pointerStyle} aria-hidden>
                     <Pointer
                       className="size-9 text-white"
                       strokeWidth={2.25}

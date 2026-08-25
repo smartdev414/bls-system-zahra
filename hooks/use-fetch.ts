@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
+import { netJson, NetError, DEFAULT_TIMEOUT_MS } from "@/lib/net-fetch";
+import { isLinkFailure, type NetFailureKind } from "@/lib/network-health";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -9,7 +11,25 @@ export type FetchError = {
   message: string;
   status?: number;
   details?: unknown;
+  /**
+   * What the network did, when it was the network. Callers that want to treat
+   * "your Wi-Fi dropped" differently from "the server refused" branch on this;
+   * everything else can keep reading `message`, which is already phrased for
+   * the person reading it.
+   */
+  kind?: NetFailureKind;
 };
+
+/**
+ * True when the request never reached us. Those are covered by the global
+ * connection banner, so a query failing this way stays quiet rather than
+ * stacking one toast per hook on the page — a dashboard with six queries
+ * produced six identical "failed to load" toasts every time a café link
+ * wobbled, which buried the one banner that could actually explain it.
+ */
+function isNetworkDrop(error: FetchError): boolean {
+  return !!error.kind && isLinkFailure(error.kind);
+}
 
 type MutationOptions<TData, TBody> = {
   /** Toast shown on success. Pass false to suppress. */
@@ -51,24 +71,12 @@ type QueryResult<TData> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function parseResponse<TData>(res: Response): Promise<TData> {
-  const contentType = res.headers.get("content-type") ?? "";
-  const body = contentType.includes("application/json")
-    ? await res.json()
-    : await res.text();
-
-  if (!res.ok) {
-    const message =
-      (typeof body === "object" && body !== null && "message" in body
-        ? String((body as { message: unknown }).message)
-        : null) ??
-      (typeof body === "string" && body.length ? body : null) ??
-      `Request failed (${res.status})`;
-
-    throw { message, status: res.status, details: body } satisfies FetchError;
+function toFetchError(err: unknown): FetchError {
+  if (err instanceof NetError) {
+    return { message: err.message, status: err.status, details: err.details, kind: err.kind };
   }
-
-  return body as TData;
+  const e = err as FetchError;
+  return { message: e?.message ?? "Something went wrong", status: e?.status, details: e?.details };
 }
 
 function buildMutationFetcher(method: string) {
@@ -76,12 +84,18 @@ function buildMutationFetcher(method: string) {
     url: string,
     body: TBody
   ): Promise<TData> {
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return parseResponse<TData>(res);
+    // No retries: a POST whose response was merely slow has very often already
+    // been applied, and replaying it enrols a student twice or double-posts a
+    // chat message. The deadline still applies, so it fails fast and visibly.
+    return netJson<TData>(
+      url,
+      {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      { retries: 0 }
+    );
   };
 }
 
@@ -90,8 +104,7 @@ const putFetcher = buildMutationFetcher("PUT");
 const patchFetcher = buildMutationFetcher("PATCH");
 
 async function deleteFetcher<TData>(url: string): Promise<TData> {
-  const res = await fetch(url, { method: "DELETE" });
-  return parseResponse<TData>(res);
+  return netJson<TData>(url, { method: "DELETE" }, { retries: 0 });
 }
 
 // ─── Core mutation hook ───────────────────────────────────────────────────────
@@ -130,12 +143,20 @@ function useMutation<TData, TBody>(
         onSuccess?.(result, body);
         return result;
       } catch (err) {
-        const fetchError = err as FetchError;
+        const fetchError = toFetchError(err);
         setError(fetchError);
 
         const { errorMessage, onError } = optionsRef.current;
         if (errorMessage !== false) {
-          toast.error(errorMessage ?? fetchError.message ?? "Something went wrong");
+          // A mutation is something the user pressed a button for, so it is
+          // always reported — but when the network dropped, say so plainly
+          // instead of the caller's generic "Could not save": the fix is to
+          // wait or to sign in to the Wi-Fi, and the action has not been lost.
+          toast.error(
+            isNetworkDrop(fetchError)
+              ? fetchError.message
+              : (errorMessage ?? fetchError.message ?? "Something went wrong")
+          );
         }
 
         onError?.(fetchError, body);
@@ -209,27 +230,51 @@ export function useFetch<TData = unknown>(
 
   const { immediate = true } = options;
 
+  // A superseded or unmounted query must not land: on a slow café link a
+  // request can outlive the component that asked for it, and writing its result
+  // back would flip a page the user has already navigated away from.
+  const abortRef = useRef<AbortController | null>(null);
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const refetch = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch(url);
-      const result = await parseResponse<TData>(res);
+      // Reads are safe to replay, so one retry rides out the single dropped
+      // packet that public Wi-Fi produces constantly.
+      const result = await netJson<TData>(url, undefined, {
+        signal: controller.signal,
+        retries: 1,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      });
+      if (controller.signal.aborted || !aliveRef.current) return;
       setData(result);
       optionsRef.current.onSuccess?.(result);
     } catch (err) {
-      const fetchError = err as FetchError;
+      if (controller.signal.aborted || !aliveRef.current) return;
+      const fetchError = toFetchError(err);
       setError(fetchError);
 
       const { errorMessage } = optionsRef.current;
-      if (errorMessage !== false) {
+      if (errorMessage !== false && !isNetworkDrop(fetchError)) {
         toast.error(errorMessage ?? fetchError.message ?? "Failed to load data");
       }
 
       optionsRef.current.onError?.(fetchError);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && aliveRef.current) setLoading(false);
     }
   }, [url]);
 

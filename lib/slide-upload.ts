@@ -10,16 +10,13 @@
 //   video → presigned S3 upload, registered, no page counting
 
 import type { UploadedSlides } from "@/components/classroom/room/types"
+import { openPdf } from "@/lib/pdfjs"
 
 export type UploadProgress = (message: string) => void
 
 /** Read a PDF's page count in the browser, without shipping it to the server. */
 export async function countPdfPages(url: string): Promise<number> {
-  const pdfjsLib = await import("pdfjs-dist")
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-    `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-  const pdf = await pdfjsLib.getDocument({ url, withCredentials: false }).promise
+  const pdf = await openPdf(url)
   return pdf.numPages
 }
 

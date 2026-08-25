@@ -61,8 +61,22 @@ export type PptAction =
   | { action: "video_stop" }
   | { action: "video_sync_response"; url: string; playing: boolean; currentTime: number; ts: number }
 
+/**
+ * The tutor's hand pointer.
+ *
+ * `x`/`y` are 0-1 **within the drawn slide**, not within the panel that holds
+ * it. That distinction is the whole ticket: the slide is letterboxed inside its
+ * panel, and every participant's panel is a different shape — chat open or
+ * closed, stacked on mobile, a pinned student changing the split. Normalising
+ * against the panel meant the same coordinate landed on a different part of the
+ * slide for every person in the room.
+ *
+ * `n` is a send counter. Moves go out on the lossy channel, where datagrams may
+ * arrive out of order; without it a stale packet overwrites a newer one and the
+ * pointer visibly jumps backwards.
+ */
 export type PointerAction =
-  | { action: "move"; x: number; y: number }  // x,y are 0-1 normalized slide coords
+  | { action: "move"; x: number; y: number; n?: number }
   | { action: "hide" }
 
 export type SpotlightAction =

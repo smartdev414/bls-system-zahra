@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, Loader2, PanelRightClose, PanelRightOpen, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { openPdf, safeRenderScale } from "@/lib/pdfjs"
 
 // Mirror PptSlideViewer's URL-based format detection so the tray doesn't need
 // the mimeType threaded through classroom state.
@@ -129,12 +130,7 @@ export function SlideTray({
             cleanups.push(() => ro.disconnect())
           }
         } else {
-          const pdfjsLib = await import("pdfjs-dist")
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-            `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-
-          const pdf = await pdfjsLib.getDocument({ url: fileUrl, withCredentials: false }).promise
+          const pdf = await openPdf(fileUrl)
           if (cancelled) return
 
           renderInto = async (slideIndex1, host) => {
@@ -145,7 +141,7 @@ export function SlideTray({
             const vp1   = page.getViewport({ scale: 1 })
             const fit   = Math.min(hostW / vp1.width, hostH / vp1.height)
             const dpr   = (typeof window !== "undefined" && window.devicePixelRatio) || 1
-            const vp    = page.getViewport({ scale: fit * dpr })
+            const vp    = page.getViewport({ scale: safeRenderScale(fit * dpr, vp1.width, vp1.height) })
 
             const canvas  = document.createElement("canvas")
             canvas.width  = vp.width

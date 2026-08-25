@@ -20,6 +20,7 @@
  */
 
 import { ConnectionCheck, type CheckInfo } from "livekit-client"
+import { looksLikeCaptivePortal } from "./network-health"
 import type { NetworkMode } from "./network-mode"
 
 /**
@@ -32,6 +33,7 @@ const CHECK_STATUS = { IDLE: 0, RUNNING: 1, SKIPPED: 2, SUCCESS: 3, FAILED: 4 } 
 export type CheckId =
   | "browser"
   | "platform"
+  | "stability"
   | "signalling"
   | "media"
   | "relay"
@@ -52,6 +54,11 @@ export type CheckResult = {
   detail: string[]
   /** True when class is impossible if this fails. */
   essential: boolean
+  /**
+   * A machine-readable cause, where one check has found something the verdict
+   * needs to act on specifically rather than by state alone.
+   */
+  code?: "captive-portal"
 }
 
 export type Verdict = {
@@ -59,6 +66,13 @@ export type Verdict = {
   recommendedMode: NetworkMode | null
   headline: string
   explanation: string
+  /**
+   * How the verdict should read. Not derivable from `recommendedMode`: an
+   * unsteady café link needs no mode change and is still bad news, and showing
+   * "too unsteady for a live class" in reassuring green is the kind of mixed
+   * message that makes a student ignore the page.
+   */
+   tone: "pass" | "warn" | "fail"
 }
 
 export type CheckRun = {
@@ -71,6 +85,7 @@ export type CheckRun = {
 const TITLES: Record<CheckId, string> = {
   browser:       "Browser support",
   platform:      "Platform reachable",
+  stability:     "Connection steadiness",
   signalling:    "Classroom connection",
   media:         "Live video path",
   relay:         "Secure-network fallback",
@@ -81,7 +96,7 @@ const TITLES: Record<CheckId, string> = {
 }
 
 const ESSENTIAL: Record<CheckId, boolean> = {
-  browser: true, platform: true, signalling: true, media: true,
+  browser: true, platform: true, stability: false, signalling: true, media: true,
   relay: false, reconnect: false, devices: false, storage: true, notifications: false,
 }
 
@@ -175,6 +190,29 @@ function checkBrowser(): CheckResult {
 async function checkPlatform(): Promise<CheckResult> {
   try {
     const res = await timeout(fetch("/api/health", { cache: "no-store" }), 15_000, "Platform check")
+
+    // A captive portal answers confidently in our place, so every naive check
+    // passes and the failure surfaces much later as a JSON parse error inside
+    // something unrelated. Catching it here is the difference between "sign in
+    // to the café Wi-Fi" and twenty minutes of blaming the platform.
+    if (looksLikeCaptivePortal(res)) {
+      return {
+        ...blank("platform"),
+        state: "fail",
+        code: "captive-portal",
+        summary:
+          "This Wi-Fi is intercepting your connection. Open a new tab, load any website, " +
+          "complete the Wi-Fi sign-in, then run this test again.",
+        detail: [
+          `HTTP ${res.status} from /api/health`,
+          `Final URL: ${res.url}`,
+          `Content-Type: ${res.headers.get("content-type") ?? "(none)"}`,
+          "A login or terms page answered instead of the platform. This is normal on café, " +
+          "hotel, airport and train Wi-Fi and is not a fault with your computer or with us.",
+        ],
+      }
+    }
+
     const body = await res.json().catch(() => null) as
       | { status?: string; db?: boolean; config?: Record<string, boolean> }
       | null
@@ -207,6 +245,120 @@ async function checkPlatform(): Promise<CheckResult> {
       summary: "Could not reach the platform. Your network may be blocking it.",
       detail: [String(err)],
     }
+  }
+}
+
+/**
+ * How steady the link is, as opposed to whether it exists.
+ *
+ * Every other check here answers a yes/no question — can we reach the signal
+ * server, does UDP get out, is the storage host allowed. A café connection
+ * passes all of them and still fails a lesson, because what it actually does is
+ * work, then not work, then work again. That is invisible to a single request
+ * and obvious over ten seconds of them.
+ *
+ * So: a short burst of small, uncached requests, timing each. Three numbers
+ * come out — how many never arrived, how long a round trip takes, and how much
+ * that varies. The third is the one that matters for live video. A steady 300ms
+ * link carries a class perfectly well; a link that swings between 40ms and
+ * 900ms is one that will freeze, because the jitter buffer has to choose
+ * between adding delay and dropping frames, and dropping frames is what
+ * destroys fingerspelling.
+ */
+async function checkStability(): Promise<CheckResult> {
+  const PROBES = 6
+  const PROBE_TIMEOUT_MS = 4_000
+  // Enough consecutive losses to call it: continuing just makes an already
+  // stuck student wait longer for a conclusion they can already guess.
+  const ABANDON_AFTER_FAILURES = 3
+
+  const rtts: number[] = []
+  let failures = 0
+  let portal = false
+
+  for (let i = 0; i < PROBES; i++) {
+    const started = performance.now()
+    try {
+      // A cache-busting query keeps a proxy from answering out of its own store,
+      // which would measure the proxy rather than the link.
+      const res = await timeout(
+        fetch(`/api/health?probe=${i}-${Math.random().toString(36).slice(2)}`, {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        }),
+        PROBE_TIMEOUT_MS,
+        "Steadiness probe",
+      )
+      if (looksLikeCaptivePortal(res)) { portal = true; break }
+      // Drain the body: timing the headers alone would miss a link that stalls
+      // partway through a response, which is the classic shared-Wi-Fi failure.
+      await res.text()
+      rtts.push(performance.now() - started)
+    } catch {
+      failures++
+      if (failures >= ABANDON_AFTER_FAILURES) break
+    }
+  }
+
+  if (portal) {
+    return {
+      ...blank("stability"),
+      state: "fail",
+      code: "captive-portal",
+      summary: "A Wi-Fi sign-in page is answering instead of us. Complete the Wi-Fi login and test again.",
+      detail: ["A captive portal intercepted the steadiness probes."],
+    }
+  }
+
+  if (rtts.length === 0) {
+    return {
+      ...blank("stability"),
+      state: "fail",
+      summary: "Nothing got through. Your connection is down or being blocked.",
+      detail: [`${failures} of ${PROBES} probes failed or timed out.`],
+    }
+  }
+
+  const sorted = [...rtts].sort((a, b) => a - b)
+  const median = sorted[Math.floor(sorted.length / 2)]
+  const spread = sorted[sorted.length - 1] - sorted[0]
+  const loss = failures / (rtts.length + failures)
+
+  const detail = [
+    `Probes: ${rtts.length + failures} sent, ${failures} lost`,
+    `Round trip: median ${Math.round(median)}ms, fastest ${Math.round(sorted[0])}ms, slowest ${Math.round(sorted[sorted.length - 1])}ms`,
+    `Variation: ${Math.round(spread)}ms`,
+  ]
+
+  // Thresholds are deliberately forgiving. This measures an HTTPS round trip
+  // through whatever proxy sits in the way, not raw network latency, so a
+  // healthy home line commonly reads 150-300ms here. The aim is to separate
+  // "unremarkable" from "this will visibly break", not to grade connections.
+  if (loss > 0.15 || median > 1_200 || spread > 1_500) {
+    return {
+      ...blank("stability"),
+      state: "fail",
+      summary:
+        "This connection is too unsteady for a live class. Video will freeze and you may be dropped.",
+      detail,
+    }
+  }
+
+  if (failures > 0 || median > 600 || spread > 600) {
+    return {
+      ...blank("stability"),
+      state: "warn",
+      summary:
+        "Your connection works but wobbles. Class will run; expect the picture to soften at times.",
+      detail,
+    }
+  }
+
+  return {
+    ...blank("stability"),
+    state: "pass",
+    summary: "Your connection is steady enough for live video.",
+    detail,
   }
 }
 
@@ -354,9 +506,25 @@ function decide(results: CheckResult[], udpAvailable: boolean | null): Verdict {
     return {
       recommendedMode: null,
       headline: "This browser can't run the classroom",
+      tone: "fail",
       explanation:
         "Ask your IT team for a current version of Chrome, Edge, Firefox or Safari. " +
         "No install or plugin is needed beyond the browser itself.",
+    }
+  }
+
+  // Before anything else: if a Wi-Fi login page is answering in our place, every
+  // other result below is a measurement of the portal, not of the network. The
+  // fix takes ten seconds and has nothing to do with us.
+  if (results.some((r) => r.code === "captive-portal")) {
+    return {
+      recommendedMode: null,
+      headline: "Sign in to this Wi-Fi first",
+      tone: "fail",
+      explanation:
+        "A Wi-Fi login or terms page is answering instead of the platform, so nothing here could be " +
+        "tested properly. Open a new tab, load any website, complete the Wi-Fi sign-in, then run this " +
+        "test again. This is normal on café, hotel, airport and train networks.",
     }
   }
 
@@ -364,6 +532,7 @@ function decide(results: CheckResult[], udpAvailable: boolean | null): Verdict {
     return {
       recommendedMode: null,
       headline: "This network is blocking the platform",
+      tone: "fail",
       explanation:
         "The site itself could not be reached. Send your IT team the requirements list below — " +
         "they need to allow our address before anything else can be tested.",
@@ -378,6 +547,7 @@ function decide(results: CheckResult[], udpAvailable: boolean | null): Verdict {
     return {
       recommendedMode: null,
       headline: "This network is blocking live classes",
+      tone: "fail",
       explanation:
         "The classroom connection could not be established. This is almost always a firewall or web filter " +
         "rather than a fault with your computer. Send the requirements list below to your IT team — " +
@@ -389,6 +559,7 @@ function decide(results: CheckResult[], udpAvailable: boolean | null): Verdict {
     return {
       recommendedMode: null,
       headline: "Live video is blocked on this network",
+      tone: "fail",
       explanation:
         "We can reach the classroom but no video path got through, including the port-443 fallback that " +
         "usually works on secure networks. Your IT team will need to allow the hosts listed below.",
@@ -399,6 +570,7 @@ function decide(results: CheckResult[], udpAvailable: boolean | null): Verdict {
     return {
       recommendedMode: "restricted",
       headline: "Use Restricted network mode",
+      tone: "warn",
       explanation:
         "The normal video path is blocked here, but the port-443 fallback works. Restricted network mode " +
         "uses it from the start, so you join quickly instead of waiting for the blocked path to time out.",
@@ -412,9 +584,26 @@ function decide(results: CheckResult[], udpAvailable: boolean | null): Verdict {
     return {
       recommendedMode: "restricted",
       headline: "Use Restricted network mode",
+      tone: "warn",
       explanation:
         "Your class will work, but your network blocks the direct media path, so everything is being relayed. " +
         "Restricted network mode chooses the working path immediately rather than waiting for the blocked one to fail.",
+    }
+  }
+
+  // The link works and the route works. What is left is whether the link is
+  // steady enough to hold a lesson — the question a café connection fails.
+  const stability = by("stability").state
+  if (stability === "fail") {
+    return {
+      recommendedMode: "standard",
+      headline: "This connection is too unsteady for a live class",
+      tone: "fail",
+      explanation:
+        "Everything is reachable, but the connection itself keeps stalling — video will freeze and you " +
+        "may be dropped mid-lesson. A phone hotspot is very often steadier than shared public Wi-Fi. " +
+        "If you have to stay on this network, sit closer to the router and close other tabs and devices " +
+        "using it. The classroom will lower your video quality by itself when it detects this.",
     }
   }
 
@@ -423,15 +612,30 @@ function decide(results: CheckResult[], udpAvailable: boolean | null): Verdict {
     return {
       recommendedMode: "standard",
       headline: "Live class works — lesson files don't",
+      tone: "warn",
       explanation:
         "You can join and take part, but slides, handouts and recordings are blocked on this network. " +
         "Send the requirements list below to your IT team and ask for the storage host to be allowed.",
     }
   }
 
+  if (stability === "warn") {
+    return {
+      recommendedMode: "standard",
+      headline: "Ready for class — but keep an eye on the connection",
+      tone: "warn",
+      explanation:
+        "Everything works and you can join now. Your connection is a little uneven, which usually shows " +
+        "up as the picture softening for a few seconds at a time. The classroom handles that by itself; " +
+        "it will tell you on screen if it has to reduce your video quality, and it will put you back into " +
+        "class automatically if the connection drops.",
+    }
+  }
+
   return {
     recommendedMode: "standard",
     headline: "You're ready for class",
+    tone: "pass",
     explanation:
       "Everything the classroom needs works on this network, on the fastest available path.",
   }
@@ -465,6 +669,9 @@ export async function runConnectivityCheck(config: Config, emit: Emit): Promise<
 
   running("platform")
   set("platform", await checkPlatform())
+
+  running("stability")
+  set("stability", await checkStability())
 
   let udpAvailable: boolean | null = null
 

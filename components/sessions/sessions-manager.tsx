@@ -13,6 +13,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import { usePoll } from "@/hooks/use-poll"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -860,11 +861,14 @@ function SessionCard({
 
   const recordingProcessing = isRecordingProcessing(session)
 
-  useEffect(() => {
-    if (!recordingProcessing || !onMutated) return
-    const id = window.setInterval(() => onMutated(), 5_000)
-    return () => window.clearInterval(id)
-  }, [recordingProcessing, onMutated, session.id])
+  // Waiting for a recording to finish processing. Paused while the tab is
+  // hidden or the link is down: a five-second poll is the fastest thing on the
+  // page and the first to stack up when a public Wi-Fi connection stalls.
+  usePoll(
+    () => { onMutated?.() },
+    5_000,
+    { enabled: recordingProcessing && !!onMutated, immediate: false },
+  )
 
   async function openRecording() {
     setRecordingLoading(true)
@@ -1532,11 +1536,11 @@ export function SessionsManager({
     return () => window.removeEventListener(SESSION_STATUS_EVENT, onStatus)
   }, [refetch])
 
-  useEffect(() => {
-    if (!sessions.some((s) => s.status === "LIVE")) return
-    const timer = setInterval(() => { void refetch() }, 30_000)
-    return () => clearInterval(timer)
-  }, [sessions, refetch])
+  usePoll(
+    () => refetch(),
+    30_000,
+    { enabled: sessions.some((s) => s.status === "LIVE"), immediate: false },
+  )
 
   return (
     <SessionsScopeContext.Provider value={scope}>
