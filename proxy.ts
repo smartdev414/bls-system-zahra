@@ -11,7 +11,17 @@ const PUBLIC_ROUTES = ["/login", "/register"]
 const ROLE_HOME: Record<string, string> = {
   STUDENT: "/student",
   TUTOR: "/tutor",
+  SUPPORT: "/support",
   ADMIN: "/admin",
+}
+
+// Each dashboard tree and the roles allowed inside it. Admins may look at any
+// of them; everyone else is bounced back to their own home.
+const TREE_ROLES: Record<string, string[]> = {
+  "/student": ["STUDENT"],
+  "/tutor": ["TUTOR"],
+  "/support": ["SUPPORT", "ADMIN"],
+  "/admin": ["ADMIN"],
 }
 
 export async function proxy(request: NextRequest) {
@@ -21,10 +31,10 @@ export async function proxy(request: NextRequest) {
   const session = token ? await verifyToken(token) : null
 
   const isPublic = PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"))
-  const isProtected =
-    pathname.startsWith("/student") ||
-    pathname.startsWith("/tutor") ||
-    pathname.startsWith("/admin")
+  const tree = Object.keys(TREE_ROLES).find(
+    (t) => pathname === t || pathname.startsWith(t + "/")
+  )
+  const isProtected = Boolean(tree)
 
   // Unauthenticated user hitting a protected route → send to login
   if (isProtected && !session) {
@@ -42,17 +52,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Authenticated user on the wrong role's dashboard → redirect to their own
-  if (session) {
-    const home = ROLE_HOME[session.role]
-    if (
-      (session.role === "STUDENT" && pathname.startsWith("/tutor")) ||
-      (session.role === "TUTOR" && pathname.startsWith("/student"))
-    ) {
-      const url = request.nextUrl.clone()
-      url.pathname = home
-      return NextResponse.redirect(url)
-    }
+  // Authenticated user on a dashboard their role doesn't own → send them home
+  if (session && tree && !TREE_ROLES[tree].includes(session.role)) {
+    const url = request.nextUrl.clone()
+    url.pathname = ROLE_HOME[session.role] ?? "/student"
+    return NextResponse.redirect(url)
   }
 
   return NextResponse.next()
@@ -73,6 +77,7 @@ export const config = {
     "/register",
     "/student/:path*",
     "/tutor/:path*",
+    "/support/:path*",
     "/admin/:path*",
   ],
 }

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "groups.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -47,7 +48,7 @@ async function handlePOST(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "groups.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

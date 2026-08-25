@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    // The sign dictionary is teaching material — office staff don't get it.
+    if (!can(session.role, "dictionary.view")) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
 
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
     const category = req.nextUrl.searchParams.get("category")?.trim() ?? ""

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "dashboard.view")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const [
       totalUsers,

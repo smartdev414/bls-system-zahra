@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { createNotification } from "@/lib/notifications"
 import { TicketStatus, TicketPriority } from "@/app/generated/prisma/enums"
@@ -28,7 +29,7 @@ async function handleGET(_req: NextRequest, { params }: { params: Promise<{ id: 
     if (!ticket) return NextResponse.json({ message: "Ticket not found" }, { status: 404 })
 
     // Non-admins can only see their own tickets
-    if (session.role !== "ADMIN" && ticket.submitterId !== session.sub) {
+    if (!can(session.role, "tickets.viewAll") && ticket.submitterId !== session.sub) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -43,7 +44,7 @@ async function handlePATCH(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "tickets.respond")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const { id } = await params
     const body = await req.json() as {
@@ -106,7 +107,7 @@ async function handleDELETE(_req: NextRequest, { params }: { params: Promise<{ i
     if (!ticket) return NextResponse.json({ message: "Ticket not found" }, { status: 404 })
 
     // Admins can delete any ticket; submitters can delete their own OPEN tickets
-    if (session.role !== "ADMIN" && ticket.submitterId !== session.sub) {
+    if (!can(session.role, "tickets.viewAll") && ticket.submitterId !== session.sub) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { createNotification } from "@/lib/notifications"
 
@@ -17,7 +18,7 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!ticket) return NextResponse.json({ message: "Ticket not found" }, { status: 404 })
 
     // Only admin or the submitter can comment
-    if (session.role !== "ADMIN" && ticket.submitterId !== session.sub) {
+    if (!can(session.role, "tickets.viewAll") && ticket.submitterId !== session.sub) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -30,7 +31,7 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
     })
 
     // Notify the ticket submitter when an admin replies (not when they comment on their own ticket)
-    if (session.role === "ADMIN" && ticket.submitterId !== session.sub) {
+    if (can(session.role, "tickets.respond") && ticket.submitterId !== session.sub) {
       const preview = content.trim().length > 120
         ? content.trim().slice(0, 120) + "…"
         : content.trim()

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleDELETE(
@@ -18,7 +19,7 @@ async function handleDELETE(
     })
     if (!comment) return NextResponse.json({ message: "Comment not found" }, { status: 404 })
 
-    if (session.role !== "ADMIN" && comment.authorId !== session.sub) {
+    if (!can(session.role, "tickets.respond") && comment.authorId !== session.sub) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

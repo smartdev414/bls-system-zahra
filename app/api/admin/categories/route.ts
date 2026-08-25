@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 function toSlug(name: string) {
@@ -11,7 +12,7 @@ async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "courses.view")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const categories = await prisma.category.findMany({
       orderBy: { name: "asc" },
@@ -36,7 +37,7 @@ async function handlePOST(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "categories.manage")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const { name } = await req.json() as { name: string }
     if (!name?.trim()) return NextResponse.json({ message: "Name is required" }, { status: 400 })

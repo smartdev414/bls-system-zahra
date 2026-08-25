@@ -6,7 +6,7 @@ import {
   Video, Mic, MicOff, VideoOff, PhoneOff,
   ChevronLeft, Loader2, AlertCircle, Clock,
   Camera, CheckCircle2, Download, FileText, Paperclip,
-  WifiOff, Sparkles, Send, Lock,
+  WifiOff, Wifi, Sparkles, Send, Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,9 +18,14 @@ import { usePostCallback, useFetch } from "@/hooks/use-fetch"
 import { LiveKitRoom } from "@livekit/components-react"
 import { createLocalVideoTrack, DisconnectReason, type LocalVideoTrack } from "livekit-client"
 import "@livekit/components-styles"
+import { toast } from "sonner"
 import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
 import { BLUR_PREF_KEY } from "@/components/classroom/blurPreference"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
+import {
+  connectOptionsFor, escalateNetworkMode, readNetworkMode, roomOptionsFor, writeNetworkMode,
+  NETWORK_MODE_LABELS, type NetworkMode,
+} from "@/lib/network-mode"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -163,11 +168,15 @@ function EntryScreen({
   session,
   onJoin,
   onRequestSent,
+  netMode,
+  onNetModeChange,
 }: {
   sessionId: string
   session: NonNullable<SessionInfo["session"]>
   onJoin: (data: TokenData) => void
   onRequestSent?: () => void
+  netMode: NetworkMode
+  onNetModeChange: (mode: NetworkMode) => void
 }) {
   const [videoEnabled, setVideoEnabled] = useState(false)
   const [requestOpen, setRequestOpen] = useState(false)
@@ -382,6 +391,42 @@ function EntryScreen({
             </div>
           </div>
 
+          {/* Network mode — the lobby is where a student on a locked-down work
+              machine finds out this is handled, rather than discovering it as a
+              failure to join. Only surfaced beyond a one-liner when it matters. */}
+          <div className="flex flex-col gap-2 text-xs bg-muted/40 rounded-lg px-3 py-2.5">
+            <div className="flex items-start gap-2">
+              <Wifi className="size-3.5 shrink-0 mt-0.5 text-zinc-500" />
+              <span className="text-muted-foreground">
+                Connection:{" "}
+                <span className="font-medium text-foreground">{NETWORK_MODE_LABELS[netMode]}</span>
+                {netMode === "standard" && " — joining from a hospital, police or council network?"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-3 pl-5">
+              {netMode !== "standard" ? (
+                <button
+                  type="button"
+                  onClick={() => onNetModeChange("standard")}
+                  className="text-primary hover:underline font-medium"
+                >
+                  Use standard quality
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onNetModeChange("restricted")}
+                  className="text-primary hover:underline font-medium"
+                >
+                  Use restricted network mode
+                </button>
+              )}
+              <Link href="/student/connection-check" className="text-primary hover:underline font-medium">
+                Check my connection
+              </Link>
+            </div>
+          </div>
+
           {/* Invite-only / access alerts */}
           {showInviteAlert && (
             <div className="flex items-start gap-2 text-destructive text-xs bg-destructive/10 rounded-xl px-3 py-3">
@@ -552,6 +597,49 @@ function ConnectionLostScreen({ onRetry }: { onRetry: () => void }) {
   )
 }
 
+/**
+ * Every network mode failed to connect.
+ *
+ * This is the locked-down-workplace case: an NHS or police network that blocks
+ * the classroom outright rather than intermittently. "Connection lost" would be
+ * a misleading and demoralising thing to show here — the student's internet is
+ * fine, and telling them to check it wastes the one thing they are short of.
+ * Send them to the diagnostics, which produce something IT can act on.
+ */
+function ConnectionBlockedScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center gap-6 text-center px-4">
+      <div className="size-24 rounded-full bg-destructive/10 flex items-center justify-center">
+        <Lock className="size-10 text-destructive" />
+      </div>
+
+      <div className="max-w-md">
+        <h2 className="text-2xl font-black">This network is blocking the classroom</h2>
+        <p className="text-muted-foreground mt-2 text-sm">
+          We tried every way in, including the port-443 route that works on most secure networks.
+          Your internet is working — something between this computer and us is refusing live video.
+          That is normal on hospital, police, school and council networks.
+        </p>
+        <ol className="text-left text-sm text-muted-foreground mt-4 space-y-2 list-decimal list-inside">
+          <li>Run the connection check — it produces a report your IT team can act on.</li>
+          <li>Send them the requirements page it links to; it names the exact hosts and ports.</li>
+          <li>If you can, try again from a home or mobile connection in the meantime.</li>
+        </ol>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button asChild size="lg">
+          <Link href="/student/connection-check">Run connection check</Link>
+        </Button>
+        <Button variant="outline" size="lg" onClick={onRetry}>Try again</Button>
+        <Button asChild variant="outline" size="lg">
+          <Link href="/student/classroom">Back to Classroom</Link>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /** Same-identity collision (another tab/device joined, or a stale ghost session) — offer a clean re-join here. */
 function ConnectionDuplicateScreen({ onReconnect }: { onReconnect: () => void }) {
   return (
@@ -594,8 +682,21 @@ export default function ClassroomRoomPage({
 }) {
   const { id } = use(params)
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
-  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost" | "duplicate">(null)
+  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost" | "duplicate" | "blocked">(null)
   const leaveClickedRef = useRef(false)
+
+  // How this device talks to the media servers. Read from storage on mount
+  // (not lazily during render) because storage is client-only and is itself
+  // sometimes disabled by policy on the machines this feature exists for.
+  const [netMode, setNetMode] = useState<NetworkMode>("standard")
+  useEffect(() => { setNetMode(readNetworkMode()) }, [])
+
+  // Modes already tried on this visit, so a connection that fails repeatedly
+  // walks down the list once instead of looping on the same broken path.
+  const triedModesRef = useRef<Set<NetworkMode>>(new Set())
+  // Set while we are deliberately tearing the room down to retry in another
+  // mode, so the resulting disconnect isn't reported to the student as a fault.
+  const escalatingRef = useRef(false)
   const [autoRejoin, setAutoRejoin] = useState(false)
   // Shown while we fetch a fresh token and remount after a recoverable drop.
   const [reconnecting, setReconnecting] = useState(false)
@@ -609,7 +710,19 @@ export default function ClassroomRoomPage({
   // autoRejoin gates the bypass.
   const { execute: autoGetToken } = usePostCallback<TokenData, Record<string, never>>(
     `/api/sessions/${id}/token`,
-    { successMessage: false, errorMessage: false, onSuccess: setTokenData }
+    {
+      successMessage: false,
+      errorMessage: false,
+      onSuccess: setTokenData,
+      // Without this the student sits on a "Reconnecting…" spinner for ever
+      // when the token request itself is what the network blocked — the exact
+      // failure this whole feature exists to make legible.
+      onError: () => {
+        setReconnecting(false)
+        setDisconnectKind((prev) => prev ?? (escalatingRef.current ? "blocked" : "lost"))
+        escalatingRef.current = false
+      },
+    }
   )
 
   // Read the one-shot flag on mount. Using an effect (not lazy initial state)
@@ -635,12 +748,24 @@ export default function ClassroomRoomPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRejoin, data, tokenData])
 
+  // A mode chosen by hand in the lobby is a deliberate choice about this
+  // machine, so it persists immediately — unlike an automatic escalation, which
+  // has to prove itself by connecting first.
+  const handleNetModeChange = (mode: NetworkMode) => {
+    setNetMode(mode)
+    writeNetworkMode(mode)
+    triedModesRef.current.clear()
+  }
+
   const handleLeaveRoom = () => {
     leaveClickedRef.current = true
     setDisconnectKind("left")
   }
 
   const handleLiveKitDisconnected = (reason?: DisconnectReason) => {
+    // Mid-escalation the room is torn down on purpose; the retry is already in
+    // flight, so saying "connection lost" here would be both wrong and alarming.
+    if (escalatingRef.current) return
     setDisconnectKind((prev) => {
       if (prev !== null) return prev
       if (leaveClickedRef.current) return "left"
@@ -653,10 +778,59 @@ export default function ClassroomRoomPage({
     })
   }
 
+  /**
+   * A connection error is the moment we learn the network is restricted — so
+   * act on it rather than reporting it. Escalating to the next mode retries
+   * over TURN on TCP/TLS 443, which is what gets a student on a hospital or
+   * police network into class. Only once every mode has failed do we say so.
+   */
+  const handleLiveKitError = (err: Error) => {
+    console.warn("[classroom] connection error", err)
+    triedModesRef.current.add(netMode)
+
+    let next = escalateNetworkMode(netMode)
+    while (next && triedModesRef.current.has(next)) next = escalateNetworkMode(next)
+
+    if (!next) {
+      escalatingRef.current = false
+      setDisconnectKind((prev) => prev ?? "blocked")
+      return
+    }
+
+    escalatingRef.current = true
+    setNetMode(next)
+    toast.info(`Your network blocked the usual route — retrying in ${NETWORK_MODE_LABELS[next]}…`)
+
+    // Take a fresh token rather than reusing this one. If the first attempt got
+    // as far as signalling before the media path failed, LiveKit Cloud holds
+    // that identity in its reconnect-grace window and rejects an immediate
+    // rejoin as revoked — which would look exactly like the network blocking us
+    // again, and would send the student to the "blocked" screen for the wrong
+    // reason. Every token issue mints a new identity, so this always lands.
+    setTokenData(null)
+    setReconnecting(true)
+    autoGetToken({})
+  }
+
+  /**
+   * Remember an escalated mode only once it has actually carried a connection.
+   * Persisting on the attempt instead would permanently downgrade a student's
+   * quality because of one bad afternoon on an otherwise fine network.
+   */
+  const handleLiveKitConnected = () => {
+    escalatingRef.current = false
+    if (triedModesRef.current.size > 0 && netMode !== readNetworkMode()) {
+      writeNetworkMode(netMode)
+      toast.success(`Connected using ${NETWORK_MODE_LABELS[netMode]}. Saved for this computer.`)
+    }
+  }
+
   // Tear down the dead room and pull a fresh token to remount cleanly. Used by
   // both the "Connection lost" and "Opened elsewhere" recovery buttons.
   const handleReconnect = () => {
     leaveClickedRef.current = false
+    escalatingRef.current = false
+    triedModesRef.current.clear()
     setDisconnectKind(null)
     setTokenData(null)
     setReconnecting(true)
@@ -671,6 +845,7 @@ export default function ClassroomRoomPage({
   if (disconnectKind === "left") return <SessionEndedScreen />
   if (disconnectKind === "lost") return <ConnectionLostScreen onRetry={handleReconnect} />
   if (disconnectKind === "duplicate") return <ConnectionDuplicateScreen onReconnect={handleReconnect} />
+  if (disconnectKind === "blocked") return <ConnectionBlockedScreen onRetry={handleReconnect} />
 
   if (infoLoading && !data) {
     return (
@@ -696,18 +871,26 @@ export default function ClassroomRoomPage({
         session={data.session}
         onJoin={setTokenData}
         onRequestSent={refetchInfo}
+        netMode={netMode}
+        onNetModeChange={handleNetModeChange}
       />
     )
   }
 
   return (
     <LiveKitRoom
-      key={tokenData.token}
+      // The mode is part of the key: changing it must build a new Room with the
+      // new ICE policy, which LiveKit only reads when the Room is constructed.
+      key={`${tokenData.token}:${netMode}`}
       token={tokenData.token}
       serverUrl={tokenData.wsUrl}
       connect={true}
       video={false}
       audio={false}
+      options={roomOptionsFor(netMode)}
+      connectOptions={connectOptionsFor(netMode)}
+      onConnected={handleLiveKitConnected}
+      onError={handleLiveKitError}
       onDisconnected={handleLiveKitDisconnected}
     >
       <ClassroomRoom

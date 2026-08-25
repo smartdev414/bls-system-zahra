@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "courses.view")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const status = req.nextUrl.searchParams.get("status")?.toUpperCase()
     const q = req.nextUrl.searchParams.get("q")?.trim()
@@ -66,7 +67,7 @@ async function handlePATCH(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "courses.edit")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const { id, status } = await req.json() as {
       id: string

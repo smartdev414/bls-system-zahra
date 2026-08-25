@@ -22,6 +22,11 @@ export function Footer() {
           <Link href="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
           <Separator orientation="vertical" className="h-3" />
           <Link href="/support" className="hover:text-foreground transition-colors">Contact Support</Link>
+          <Separator orientation="vertical" className="h-3" />
+          {/* Public and login-free: the IT team who has to approve a firewall
+              exception has no account here, so the student must be able to send
+              them a working link. */}
+          <Link href="/it-requirements" className="hover:text-foreground transition-colors">Network Requirements</Link>
         </div>
       </div>
     </footer>

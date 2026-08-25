@@ -8,6 +8,9 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { LiveKitRoom } from "@livekit/components-react"
+import {
+  connectOptionsFor, readNetworkMode, roomOptionsFor, type NetworkMode,
+} from "@/lib/network-mode"
 import { createLocalVideoTrack, type LocalVideoTrack } from "livekit-client"
 import "@livekit/components-styles"
 import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
@@ -303,6 +306,15 @@ export default function TutorClassroomPage({
   const router = useRouter()
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
   const [ended, setEnded] = useState(false)
+
+  // Tutors hit restricted networks too — a co-teacher joining from a hospital
+  // training room, or a tutor working from a school. The stored per-device mode
+  // applies here as well. Automatic escalation is deliberately student-only:
+  // this page navigates away on any disconnect, and quietly rebuilding the room
+  // under a host who is mid-lesson would be more disruptive than helpful. A
+  // tutor who needs another mode sets it once via /tutor/connection-check.
+  const [netMode, setNetMode] = useState<NetworkMode>("standard")
+  useEffect(() => { setNetMode(readNetworkMode()) }, [])
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
   const [leavingBusy, setLeavingBusy] = useState(false)
   const [autoRejoin, setAutoRejoin] = useState(false)
@@ -450,11 +462,14 @@ export default function TutorClassroomPage({
 
   return (
     <LiveKitRoom
+      key={`${tokenData.token}:${netMode}`}
       token={tokenData.token}
       serverUrl={tokenData.wsUrl}
       connect={true}
       video={true}
       audio={true}
+      options={roomOptionsFor(netMode)}
+      connectOptions={connectOptionsFor(netMode)}
       onDisconnected={handleDisconnected}
     >
       <ClassroomRoom

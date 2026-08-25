@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can, ownerScope } from "@/lib/permissions"
 import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
@@ -31,14 +32,14 @@ async function handleGET(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.view")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...ownerScope(session) },
       include: {
         course: { select: { id: true, title: true } },
         attendances: {
@@ -87,12 +88,12 @@ async function handlePATCH(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.edit")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
-    const existing = await prisma.liveSession.findFirst({ where: { id, tutorId: session.sub } })
+    const existing = await prisma.liveSession.findFirst({ where: { id, ...ownerScope(session) } })
     if (!existing) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     const body = await req.json() as {
@@ -272,12 +273,12 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.delete")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
-    const existing = await prisma.liveSession.findFirst({ where: { id, tutorId: session.sub } })
+    const existing = await prisma.liveSession.findFirst({ where: { id, ...ownerScope(session) } })
     if (!existing) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     // Notify audience before deleting

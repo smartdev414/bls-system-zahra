@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can, ownerScope } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
@@ -11,9 +12,10 @@ import { withAudit } from "@/lib/audit"
 // in mid-lesson. The token route (app/api/sessions/[id]/token) grants any
 // listed co-tutor full tutor permissions when they join.
 
-async function loadOwnedSession(id: string, sub: string) {
+async function loadOwnedSession(session: { role: string; sub: string }, id: string) {
   // Owner-only: scope by tutorId so co-tutors can't invite further co-tutors.
-  return prisma.liveSession.findFirst({ where: { id, tutorId: sub } })
+  // Staff manage the timetable, so they aren't scoped to a single tutor.
+  return prisma.liveSession.findFirst({ where: { id, ...ownerScope(session) } })
 }
 
 async function handlePOST(
@@ -23,7 +25,7 @@ async function handlePOST(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.invite")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -34,7 +36,7 @@ async function handlePOST(
       return NextResponse.json({ message: "tutorId or tutorIds is required" }, { status: 400 })
     }
 
-    const liveSession = await loadOwnedSession(id, session.sub)
+    const liveSession = await loadOwnedSession(session, id)
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
     if (liveSession.status === "COMPLETED" || liveSession.status === "CANCELLED") {
       return NextResponse.json({ message: "Session is no longer active" }, { status: 400 })
@@ -93,12 +95,12 @@ async function handleGET(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.invite")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
-    const liveSession = await loadOwnedSession(id, session.sub)
+    const liveSession = await loadOwnedSession(session, id)
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     const coTutors = await prisma.liveSessionCoTutor.findMany({
@@ -128,7 +130,7 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.invite")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -136,7 +138,7 @@ async function handleDELETE(
     const { tutorId } = await req.json() as { tutorId: string }
     if (!tutorId) return NextResponse.json({ message: "tutorId is required" }, { status: 400 })
 
-    const liveSession = await loadOwnedSession(id, session.sub)
+    const liveSession = await loadOwnedSession(session, id)
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     await prisma.liveSessionCoTutor.deleteMany({ where: { sessionId: id, tutorId } })

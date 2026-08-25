@@ -23,6 +23,47 @@ didn't build it.
 | Session recording | LiveKit Egress → S3 | LiveKit + S3 |
 | Email (invites, notifications) | Mailgun | `MAILGUN_API_KEY`, `MAILGUN_DOMAIN` |
 | Ops alerts | Webhook (Slack/Discord) | `ALERT_WEBHOOK_URL` |
+| Locked-down student networks (NHS, police, schools) | Network modes + connection check | (no extra config) — see `docs/SECURE-NETWORKS.md` |
+
+### 1.1 Roles & permissions
+
+Four roles, defined once in **`lib/permissions.ts`**. Routes ask for a
+*capability* (`can(session.role, "sessions.create")`), never for a role name, so
+changing what a role may do is one edit in `ROLE_CAPABILITIES` — not a sweep
+through 60 route handlers.
+
+| Role | Dashboard | What it's for |
+|---|---|---|
+| `STUDENT` | `/student` | Learners |
+| `TUTOR` | `/tutor` | Teaching staff — own their courses, lessons and classes |
+| `SUPPORT` | `/support` | **Support Team** — office staff |
+| `ADMIN` | `/admin` (and `/support`) | Full platform access |
+
+**Support Team** exists so office staff can run the day-to-day without seeing
+confidential material. They **can**:
+
+- schedule classes and build the timetable (they name the tutor who takes it)
+- create courses and enrol students onto them
+- add and edit student/tutor accounts, and send invites
+- run connection/webcam checks with someone on the phone
+- work the support-ticket queue
+
+They **cannot**:
+
+- open lesson resources, attach or download course materials, or play recordings
+- open the sign **dictionary**
+- enter a classroom or start/stop a live session
+- see audit logs, platform settings, categories or certifications
+- see or change `ADMIN`/`SUPPORT` accounts, or promote anyone to a staff role
+
+Creating one: an admin opens `/admin/users`, finds the person, and sets their
+role to **Support Team**. Only admins see that option — `users.assignStaffRole`
+is enforced server-side in `PATCH /api/admin/users/[id]`, not just hidden in
+the UI.
+
+Because support staff can't teach, `POST /api/tutor/sessions` and
+`POST /api/tutor/courses` require an explicit `tutorId` from them — a class
+always ends up owned by a real tutor.
 
 ---
 
@@ -133,6 +174,26 @@ testing against the cloud agent to avoid duplicate dispatch.
 
 **Do not run local + cloud transcriber at the same time** — they compete for the same room jobs.
 
+### 4.4b "It works at home but not at my hospital / station / school"
+
+The platform has first-class support for locked-down networks. Full detail in
+**`docs/SECURE-NETWORKS.md`**; the 30-second version:
+
+1. Send them to **`/student/connection-check`**, run **on the work computer**.
+   It makes a real classroom connection and reports what the network allows.
+2. If it recommends **Restricted network mode**, have them press the button.
+   That relays all media over TLS on TCP 443 instead of UDP.
+3. If it says the network is blocking us, have them press **Copy test report**
+   and send it, plus the public **`/it-requirements`** link, to their IT team.
+
+The classroom also escalates by itself: a student whose connection fails is
+retried in Restricted, then Minimal data, before being shown the blocked screen.
+So a report of "connection lost" is a *different* fault from "this network is
+blocking the classroom" — the second one means every path was tried.
+
+Key thing to tell an IT team: **UDP does not need to be opened.** Restricted
+mode is TLS on 443 to `*.livekit.cloud`, which is what most refusals are about.
+
 ### 4.5 Invites/notifications not received
 Email is **silently skipped** when Mailgun isn't configured (`/api/health` →
 `config.email: false`). The in-app notification (bell) is still created. Fix:
@@ -167,8 +228,8 @@ Check `DATABASE_URL` and that Postgres is reachable. After any change to
 ## 5. Deploys & schema changes
 
 - Build runs `prisma generate && next build` (see `package.json`).
-- This project syncs the DB with **`npx prisma db push`** (no migrations
-  folder). After editing `prisma/schema.prisma`:
+- This project syncs the DB with **`npx prisma db push`**. After editing
+  `prisma/schema.prisma`:
   1. `npx prisma generate`
   2. `npx prisma db push` (additive changes are safe; `--accept-data-loss` only
      if you intend destructive changes)

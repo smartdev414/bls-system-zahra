@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can, isStaff, ownerScope } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "courses.view")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const courses = await prisma.course.findMany({
-      where: { tutorId: session.sub },
+      where: { ...ownerScope(session) },
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { id: true, name: true } },
@@ -52,7 +53,7 @@ async function handlePOST(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "courses.create")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -62,12 +63,28 @@ async function handlePOST(req: NextRequest) {
       level: import("@/app/generated/prisma/client").CourseLevel
       categoryId?: string
       thumbnailUrl?: string
+      /** Staff only — the tutor who will run the course. */
+      tutorId?: string
     }
 
     const { title, description, level, categoryId, thumbnailUrl } = body
 
     if (!title?.trim() || !description?.trim()) {
       return NextResponse.json({ message: "Title and description are required" }, { status: 400 })
+    }
+
+    // Tutors own what they create; staff set a course up for a named tutor.
+    let ownerId = session.sub
+    if (isStaff(session.role)) {
+      if (!body.tutorId) {
+        return NextResponse.json({ message: "Choose the tutor who will run this course" }, { status: 400 })
+      }
+      const tutor = await prisma.user.findFirst({
+        where: { id: body.tutorId, role: "TUTOR" },
+        select: { id: true },
+      })
+      if (!tutor) return NextResponse.json({ message: "Tutor not found" }, { status: 400 })
+      ownerId = tutor.id
     }
 
     // Generate unique slug
@@ -84,7 +101,7 @@ async function handlePOST(req: NextRequest) {
 
     const course = await prisma.course.create({
       data: {
-        tutorId: session.sub,
+        tutorId: ownerId,
         title: title.trim(),
         slug,
         description: description.trim(),

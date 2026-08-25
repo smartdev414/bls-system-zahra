@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 // Lists other tutors on the platform so a tutor can pick a co-teacher to invite
@@ -11,7 +12,7 @@ async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.invite")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

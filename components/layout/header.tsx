@@ -6,7 +6,8 @@ import { useState } from "react"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
-  Sun, Moon, Activity, Ticket, Star, Menu, X,
+  Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
+  CalendarDays, UserPlus, Headset,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -26,8 +27,9 @@ import { cn } from "@/lib/utils"
 import { useDeleteCallback } from "@/hooks/use-fetch"
 import { NotificationBell } from "@/components/ui/notification-bell"
 import { MessagesBadge } from "@/components/layout/messages-badge"
+import { roleLabel } from "@/lib/permissions"
 
-type Role = "STUDENT" | "TUTOR" | "ADMIN"
+type Role = "STUDENT" | "TUTOR" | "SUPPORT" | "ADMIN"
 
 type NavItem = {
   label: string
@@ -48,6 +50,7 @@ const studentDropdownNav: NavItem[] = [
   { label: "Tests", href: "/student/tests", icon: FlaskConical },
   { label: "Resources", href: "/student/resources", icon: FolderOpen },
   { label: "Tickets", href: "/student/tickets", icon: Ticket },
+  { label: "Connection check", href: "/student/connection-check", icon: Wifi },
 ]
 
 const adminNav: NavItem[] = [
@@ -62,6 +65,23 @@ const adminNav: NavItem[] = [
 const adminDropdownNav: NavItem[] = [
   { label: "Dictionary", href: "/admin/signs", icon: Library },
   { label: "Tickets", href: "/admin/tickets", icon: Ticket },
+  { label: "Support desk", href: "/support", icon: Headset },
+]
+
+// Support Team — the timetable and the people on it. No dictionary, no lesson
+// resources, no audit logs: see SUPPORT_CAPABILITIES in lib/permissions.ts.
+const supportNav: NavItem[] = [
+  { label: "Dashboard", href: "/support", icon: LayoutDashboard },
+  { label: "Timetable", href: "/support/timetable", icon: CalendarDays },
+  { label: "Enrolments", href: "/support/enrolments", icon: UserPlus },
+  { label: "Courses", href: "/support/courses", icon: BookOpen },
+  { label: "Students", href: "/support/students", icon: Users },
+]
+
+const supportDropdownNav: NavItem[] = [
+  { label: "Users", href: "/support/users", icon: Users },
+  { label: "Tickets", href: "/support/tickets", icon: Ticket },
+  { label: "Connection check", href: "/support/connection-check", icon: Wifi },
 ]
 
 const tutorNav: NavItem[] = [
@@ -75,6 +95,7 @@ const tutorNav: NavItem[] = [
 const tutorDropdownNav: NavItem[] = [
   { label: "Dictionary", href: "/tutor/dictionary", icon: Library },
   { label: "Tickets", href: "/tutor/tickets", icon: Ticket },
+  { label: "Connection check", href: "/tutor/connection-check", icon: Wifi },
 ]
 
 type HeaderProps = {
@@ -107,8 +128,16 @@ export function Header({ role, user }: HeaderProps) {
   const router = useRouter()
   const isMessagesRole = role === "STUDENT" || role === "TUTOR"
 
-  const navItems = role === "TUTOR" ? tutorNav : role === "ADMIN" ? adminNav : studentNav
-  const dropdownNavItems = role === "TUTOR" ? tutorDropdownNav : role === "ADMIN" ? adminDropdownNav : studentDropdownNav
+  const navItems =
+    role === "TUTOR" ? tutorNav
+    : role === "ADMIN" ? adminNav
+    : role === "SUPPORT" ? supportNav
+    : studentNav
+  const dropdownNavItems =
+    role === "TUTOR" ? tutorDropdownNav
+    : role === "ADMIN" ? adminDropdownNav
+    : role === "SUPPORT" ? supportDropdownNav
+    : studentDropdownNav
 
   // Mobile nav panel — closed by default; closes when the user taps a link.
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -197,8 +226,8 @@ export function Header({ role, user }: HeaderProps) {
                   <span className="text-sm font-medium max-w-30 truncate leading-tight">
                     {user.name}
                   </span>
-                  <Badge variant="secondary" className="text-[10px] h-3.5 px-1 leading-none capitalize mt-0.5">
-                    {role.toLowerCase()}
+                  <Badge variant="secondary" className="text-[10px] h-3.5 px-1 leading-none mt-0.5">
+                    {roleLabel(role)}
                   </Badge>
                 </div>
                 <ChevronDown className="size-3.5 text-muted-foreground" />
@@ -210,15 +239,15 @@ export function Header({ role, user }: HeaderProps) {
                 <div className="flex flex-col gap-0.5">
                   <span className="font-semibold text-sm">{user.name}</span>
                   <span className="text-xs text-muted-foreground truncate">{user.email}</span>
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 capitalize w-fit mt-0.5">
-                    {role.toLowerCase()}
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 w-fit mt-0.5">
+                    {roleLabel(role)}
                   </Badge>
                 </div>
               </DropdownMenuLabel>
 
               <DropdownMenuSeparator />
 
-              {role !== "ADMIN" && (
+              {role !== "ADMIN" && role !== "SUPPORT" && (
                 <DropdownMenuItem asChild>
                   <Link href={`/${role.toLowerCase()}/settings`} className="cursor-pointer">
                     <Users className="size-4 mr-2" />

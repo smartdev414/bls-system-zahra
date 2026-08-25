@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { createNotifications } from "@/lib/notifications"
 import { TicketType, TicketPriority } from "@/app/generated/prisma/enums"
@@ -10,7 +11,7 @@ async function handleGET(req: NextRequest) {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
 
-    const isAdmin = session.role === "ADMIN"
+    const isAgent = can(session.role, "tickets.viewAll")
     const status = req.nextUrl.searchParams.get("status") ?? ""
     const type = req.nextUrl.searchParams.get("type") ?? ""
     const priority = req.nextUrl.searchParams.get("priority") ?? ""
@@ -20,8 +21,8 @@ async function handleGET(req: NextRequest) {
     const skip = (page - 1) * limit
 
     const where = {
-      // Non-admins can only see their own tickets
-      ...(!isAdmin ? { submitterId: session.sub } : {}),
+      // Anyone without the support-desk view only sees their own tickets
+      ...(!isAgent ? { submitterId: session.sub } : {}),
       ...(status ? { status: status as "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" } : {}),
       ...(type ? { type: type as TicketType } : {}),
       ...(priority ? { priority: priority as TicketPriority } : {}),
@@ -119,9 +120,9 @@ async function handlePOST(req: NextRequest) {
       },
     })
 
-    // Notify all admins
+    // Notify everyone who works the support desk
     const admins = await prisma.user.findMany({
-      where: { role: "ADMIN" },
+      where: { role: { in: ["ADMIN", "SUPPORT"] } },
       select: { id: true },
     })
     if (admins.length > 0) {

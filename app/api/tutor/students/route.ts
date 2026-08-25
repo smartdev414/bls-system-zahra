@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can, isStaff, ownerScope } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "students.view")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -23,7 +24,7 @@ async function handleGET(req: NextRequest) {
     // 1. All enrollments in this tutor's courses
     const enrollments = await prisma.enrollment.findMany({
       where: {
-        course: { tutorId: session.sub },
+        course: { ...ownerScope(session) },
         ...(q ? { student: nameEmailFilter } : {}),
       },
       include: {
@@ -36,10 +37,13 @@ async function handleGET(req: NextRequest) {
       orderBy: { enrolledAt: "desc" },
     })
 
-    // 2. Students invited by this tutor (accepted the invite — invitedById is set)
+    // 2. Students invited by this tutor (accepted the invite — invitedById is set).
+    //    Staff see everyone who came in through an invite, not just their own.
     const invitedStudents = await prisma.user.findMany({
       where: {
-        invitedById: session.sub,
+        ...(isStaff(session.role)
+          ? { role: "STUDENT" as const, invitedById: { not: null } }
+          : { invitedById: session.sub }),
         ...nameEmailFilter,
       },
       select: { id: true, name: true, email: true, avatarUrl: true, bslLevel: true, createdAt: true },

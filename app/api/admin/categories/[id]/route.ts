@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 function toSlug(name: string) {
@@ -14,7 +15,7 @@ async function handlePATCH(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "categories.manage")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const { id } = await params
     const { name } = await req.json() as { name: string }
@@ -43,7 +44,7 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "categories.manage")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const { id } = await params
 

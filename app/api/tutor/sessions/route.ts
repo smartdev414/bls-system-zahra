@@ -1,29 +1,60 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can, isStaff } from "@/lib/permissions"
 import { randomBytes } from "crypto"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
 import { reconcilePendingRecordings } from "@/lib/recording"
 
+/**
+ * Resolves the tutor a live session belongs to.
+ *
+ * A tutor owns what they create. Staff (admin, support) can't teach, so they
+ * pass the tutor explicitly — a support user with no `tutorId` is a 400 rather
+ * than a class silently owned by an office account.
+ */
+async function resolveSessionOwner(
+  session: { role: string; sub: string },
+  tutorId: string | undefined,
+): Promise<string | NextResponse> {
+  if (!isStaff(session.role)) return session.sub
+  if (!tutorId) {
+    return NextResponse.json(
+      { message: "Choose the tutor who will take this class" },
+      { status: 400 },
+    )
+  }
+  const tutor = await prisma.user.findFirst({
+    where: { id: tutorId, role: "TUTOR" },
+    select: { id: true },
+  })
+  if (!tutor) return NextResponse.json({ message: "Tutor not found" }, { status: 400 })
+  return tutor.id
+}
+
 async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.view")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     // Sessions this tutor owns, plus sessions they were invited to co-teach.
+    // Staff (admin, support) build the whole timetable, so they see every one.
     const sessionInclude = {
       course: { select: { id: true, title: true } },
+      tutor: { select: { id: true, name: true } },
       _count: { select: { attendances: true, invites: true } },
     } as const
 
+    const staff = isStaff(session.role)
+
     const [owned, coTutorLinks] = await Promise.all([
       prisma.liveSession.findMany({
-        where: { tutorId: session.sub },
+        where: staff ? {} : { tutorId: session.sub },
         orderBy: { scheduledAt: "desc" },
         include: sessionInclude,
       }),
@@ -82,6 +113,9 @@ async function handleGET() {
       recordingKey: s.recordingKey ?? null,
       egressId: s.egressId ?? null,
       isCoTutor,
+      // Only staff schedule on someone else's behalf, so only they need to
+      // know (and re-assign) who owns the class.
+      ...(staff ? { tutorId: s.tutorId, tutorName: s.tutor?.name ?? null } : {}),
     })
 
     // De-dupe defensively (the co-tutor route never lets the owner self-invite).
@@ -104,7 +138,7 @@ async function handlePOST(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.create")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -119,6 +153,8 @@ async function handlePOST(req: NextRequest) {
       invitedStudentIds?: string[]
       invitedTutorIds?: string[]
       repeatWeeks?: number
+      /** Staff only — the tutor who will take the class. */
+      tutorId?: string
     }
 
     const { title, description, scheduledAt, durationMins, maxStudents, courseId, visibility = "PUBLIC", invitedStudentIds = [], invitedTutorIds = [], repeatWeeks = 1 } = body
@@ -129,6 +165,11 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "durationMins must be at least 5" }, { status: 400 })
     }
 
+    // Who owns the class. Tutors always own the ones they create; support staff
+    // schedule on a tutor's behalf and must name them.
+    const ownerId = await resolveSessionOwner(session, body.tutorId)
+    if (typeof ownerId !== "string") return ownerId
+
     const occurrences = Math.min(Math.max(Math.floor(repeatWeeks) || 1, 1), 52)
     const baseDate = new Date(scheduledAt)
 
@@ -138,7 +179,7 @@ async function handlePOST(req: NextRequest) {
         occursAt.setDate(occursAt.getDate() + i * 7)
         return prisma.liveSession.create({
           data: {
-            tutorId: session.sub,
+            tutorId: ownerId,
             title: title.trim(),
             description: description?.trim() ?? null,
             scheduledAt: occursAt,
@@ -166,7 +207,7 @@ async function handlePOST(req: NextRequest) {
     const sessionLink = `/student/classroom`
 
     // Co-teacher invites (independent of student visibility)
-    const coTutorCandidateIds = [...new Set(invitedTutorIds)].filter((tid) => tid !== session.sub)
+    const coTutorCandidateIds = [...new Set(invitedTutorIds)].filter((tid) => tid !== ownerId)
     if (coTutorCandidateIds.length > 0) {
       const tutors = await prisma.user.findMany({
         where: { id: { in: coTutorCandidateIds }, role: "TUTOR" },

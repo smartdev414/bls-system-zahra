@@ -13,7 +13,7 @@ export type SessionPayload = {
   sub: string   // userId
   name: string
   email: string
-  role: "STUDENT" | "TUTOR" | "ADMIN"
+  role: "STUDENT" | "TUTOR" | "SUPPORT" | "ADMIN"
 }
 
 export async function signToken(payload: SessionPayload): Promise<string> {
@@ -59,6 +59,7 @@ export function clearSessionCookie(res: NextResponse): void {
 export function dashboardPath(role: SessionPayload["role"]): string {
   if (role === "TUTOR") return "/tutor"
   if (role === "ADMIN") return "/admin"
+  if (role === "SUPPORT") return "/support"
   return "/student"
 }
 

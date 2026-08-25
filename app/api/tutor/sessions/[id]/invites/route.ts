@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can, ownerScope } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 
@@ -11,7 +12,7 @@ async function handlePOST(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.invite")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -25,7 +26,7 @@ async function handlePOST(
     }
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...ownerScope(session) },
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
     if (liveSession.status !== "SCHEDULED") {
@@ -65,13 +66,13 @@ async function handleGET(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.invite")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...ownerScope(session) },
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
@@ -102,7 +103,7 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "sessions.invite")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -110,7 +111,7 @@ async function handleDELETE(
     const { studentId } = await req.json() as { studentId: string }
     if (!studentId) return NextResponse.json({ message: "studentId is required" }, { status: 400 })
 
-    const liveSession = await prisma.liveSession.findFirst({ where: { id, tutorId: session.sub } })
+    const liveSession = await prisma.liveSession.findFirst({ where: { id, ...ownerScope(session) } })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     await prisma.liveSessionInvite.deleteMany({

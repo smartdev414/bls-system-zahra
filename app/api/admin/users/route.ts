@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { can, type AppRole } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    if (!can(session.role, "users.view")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const role = req.nextUrl.searchParams.get("role")?.toUpperCase()
     const q = req.nextUrl.searchParams.get("q")?.trim()
@@ -15,8 +16,17 @@ async function handleGET(req: NextRequest) {
     const limit = 20
     const skip = (page - 1) * limit
 
+    // Support Team staff manage students and tutors; other staff accounts are
+    // out of scope for them, so they never appear in the list or the filter.
+    const visibleRoles: AppRole[] = can(session.role, "users.assignStaffRole")
+      ? ["STUDENT", "TUTOR", "SUPPORT", "ADMIN"]
+      : ["STUDENT", "TUTOR"]
+    const requestedRole = role as AppRole | undefined
+
     const where = {
-      ...(role ? { role: role as "STUDENT" | "TUTOR" | "ADMIN" } : {}),
+      role: requestedRole && visibleRoles.includes(requestedRole)
+        ? requestedRole
+        : { in: visibleRoles },
       ...(q
         ? {
             OR: [
