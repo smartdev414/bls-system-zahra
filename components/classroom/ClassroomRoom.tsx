@@ -10,7 +10,7 @@ import {
   useTracks,
   useRoomContext,
 } from "@livekit/components-react"
-import { ConnectionState, Track } from "livekit-client"
+import { ConnectionState, RoomEvent, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Radio, Users, Users2, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
@@ -26,7 +26,7 @@ import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
   BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC,
   BREAKOUT_WRAP_UP_SEC, CHAT_HISTORY_LIMIT,
-  POINTER_SEND_INTERVAL_MS, POINTER_AUTO_HIDE_MS, POINTER_KEEPALIVE_MS, POINTER_SMOOTHING_MS,
+  POINTER_SEND_INTERVAL_MS, POINTER_STALE_MS, POINTER_KEEPALIVE_MS, POINTER_SMOOTHING_MS,
   enc, dec,
 } from "./room/constants"
 import type {
@@ -38,6 +38,9 @@ import type {
 import { AudioRenderer }        from "./room/AudioRenderer"
 import { ConnectionBanner }     from "./room/ConnectionBanner"
 import { useSlideContentBox }   from "./room/useSlideContentBox"
+import {
+  useStageSplit, splitDirectionClass, splitDividerClass,
+} from "./room/useStageSplit"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
 import { TutorCameraInset }     from "./room/TutorCameraInset"
 import { ParticipantsPanel }    from "./room/ParticipantsPanel"
@@ -121,11 +124,20 @@ const TldrawBoard = dynamic(() => import("./room/TldrawBoard"), {
 
 export function ClassroomRoom({
   isTutor,
+  isOwner = true,
   sessionId,
   sessionTitle,
   onLeave,
 }: {
   isTutor: boolean
+  /**
+   * True for the teacher who owns the session, false for a co-teacher they
+   * invited. Both are `isTutor` and both get the teaching controls; the
+   * difference is the handful of things only the host may do — inviting a
+   * further co-teacher is one, and the API enforces it. Defaults to true so a
+   * caller that doesn't distinguish keeps today's behaviour.
+   */
+  isOwner?: boolean
   sessionId: string
   sessionTitle: string
   onLeave: () => void
@@ -616,6 +628,14 @@ export function ClassroomRoom({
     setSlideContentEl(el)
   }, [])
   const slideContentBox = useSlideContentBox(slideAreaRef, slideContentEl)
+
+  // Which way the stage is cut in half. Measured from the stage itself rather
+  // than from a viewport breakpoint, so the camera and the presentation come
+  // out the same shape as each other on every device — see `useStageSplit`.
+  const stageRowRef = useRef<HTMLDivElement>(null)
+  const splitAxis   = useStageSplit(stageRowRef)
+  const splitDirection = splitDirectionClass(splitAxis)
+  const splitDivider   = splitDividerClass(splitAxis)
   const slideContentBoxRef = useRef(slideContentBox)
   slideContentBoxRef.current = slideContentBox
 
@@ -631,6 +651,8 @@ export function ClassroomRoom({
   const pointerSeq     = useRef(0)
   const lastPointerSeq = useRef(-1)
   const lastPointerAt  = useRef(0)
+  /** Who is currently pointing, so the hand goes when they leave the room. */
+  const pointerOwner   = useRef<string | null>(null)
   // Mirror for the keepalive timer, which fires outside React's render cycle.
   const livePointerRef = useRef<{ x: number; y: number } | null>(null)
   livePointerRef.current = livePointer
@@ -978,6 +1000,7 @@ export function ClassroomRoom({
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as PointerAction
       if (data.action === "move") {
+        pointerOwner.current = msg.from?.identity ?? null
         // Moves ride the lossy channel, which is right for a cursor — a dropped
         // sample is replaced 33ms later — but lossy also means unordered. An
         // older packet arriving after a newer one used to yank the hand back to
@@ -995,9 +1018,12 @@ export function ClassroomRoom({
         }
         setLivePointer({ x: data.x, y: data.y })
         if (pointerHideTimer.current) clearTimeout(pointerHideTimer.current)
-        pointerHideTimer.current = setTimeout(() => setLivePointer(null), POINTER_AUTO_HIDE_MS)
+        // Not a fade-out: see POINTER_STALE_MS. This only fires when the
+        // keepalive has stopped entirely, which means the teacher is gone.
+        pointerHideTimer.current = setTimeout(() => setLivePointer(null), POINTER_STALE_MS)
       } else if (data.action === "hide") {
         setLivePointer(null)
+        pointerOwner.current = null
         lastPointerSeq.current = -1
         lastPointerAt.current = 0
         if (pointerHideTimer.current) clearTimeout(pointerHideTimer.current)
@@ -1010,6 +1036,24 @@ export function ClassroomRoom({
     if (!pptActive && pointerMode) setPointerMode(false)
     if (!pptActive) setLivePointer(null)
   }, [pptActive, pointerMode])
+
+  /**
+   * The pointer stays up until it is taken down — so something has to take it
+   * down when the person holding it walks out. Without this, a teacher who
+   * closes the tab mid-gesture leaves a hand stuck on everyone's slide until
+   * the stale guard eventually notices; this is the immediate, certain path.
+   */
+  useEffect(() => {
+    if (isTutor) return
+    const onLeft = (participant: { identity: string }) => {
+      if (pointerOwner.current !== participant.identity) return
+      pointerOwner.current = null
+      setLivePointer(null)
+      if (pointerHideTimer.current) clearTimeout(pointerHideTimer.current)
+    }
+    room.on(RoomEvent.ParticipantDisconnected, onLeft)
+    return () => { room.off(RoomEvent.ParticipantDisconnected, onLeft) }
+  }, [room, isTutor])
 
   // ── Data channel: spotlight ─────────────────────────────────────────────────
 
@@ -2158,12 +2202,12 @@ export function ClassroomRoom({
     queuePointer(x, y)
   }, [isTutor, pointerMode, queuePointer])
 
-  const handleSlidePointerLeave = useCallback(() => {
-    if (!isTutor || !pointerMode) return
-    cancelPendingPointer()
-    setLivePointer(null)
-    safeSendPointer({ action: "hide" })
-  }, [isTutor, pointerMode, safeSendPointer, cancelPendingPointer])
+  // There is deliberately no `onPointerLeave` handler any more. Taking the hand
+  // down when the teacher's cursor wandered off the slide meant it vanished
+  // every time they reached for the slide controls, the chat, or their notes —
+  // while they were still talking about the thing they had just marked. The
+  // pointer is a placed marker, not a cursor mirror: it stays where it was put
+  // until the teacher turns it off, ends the presentation, or leaves.
 
   /**
    * Keep saying where the hand is while it is still.
@@ -3279,6 +3323,11 @@ export function ClassroomRoom({
   const splitStageId = pinnedId ?? studentBreakoutMainId
   const splitCameraPanel = splitStageId ? (
     <PinnedVideoArea
+      // Half a split stage, beside slides or a whiteboard: fit the whole
+      // picture rather than cropping it to fill. A cropped signer loses their
+      // hands off the sides, and a filled camera next to a letterboxed slide is
+      // the mismatch teachers reported.
+      fit="contain"
       identity={splitStageId}
       localIdentity={localParticipant.identity}
       containerRef={videoContainerRef}
@@ -3395,7 +3444,7 @@ export function ClassroomRoom({
       )}
 
       {/* ── Invite second teacher (tutor only) ── */}
-      {isTutor && inviteCoTutorOpen && (
+      {isTutor && isOwner && inviteCoTutorOpen && (
         <InviteCoTutorModal
           sessionId={sessionId}
           sessionTitle={sessionTitle}
@@ -3410,6 +3459,7 @@ export function ClassroomRoom({
           mimeType={pickerData.mimeType}
           fileName={pickerData.fileName}
           totalPages={pickerData.total}
+          initialSelected={pickerData.selectedPages}
           onConfirm={handleSlidesPicked}
           onCancel={() => setPickerData(null)}
         />
@@ -3550,9 +3600,16 @@ export function ClassroomRoom({
         {/* Stage + participants — left column; chat sits alongside at full height. */}
         <div className="flex flex-1 flex-col overflow-hidden min-h-0 min-w-0">
 
-          {/* Stage row: slides / video / whiteboard. On phones we stack camera/content
-              vertically; from md+ we use the side-by-side BSL layout. */}
-          <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0 relative">
+          {/* Stage row: slides / video / whiteboard. The camera and the content sit
+              side by side on a wide stage — signer on the LEFT, the Deaf-culture
+              convention — and stacked with the signer on top when the stage is
+              taller than it is wide. Which of those applies is measured from
+              this box, not from the viewport, so the two panels always come out
+              the same shape as each other. See `useStageSplit`. */}
+          <div
+            ref={stageRowRef}
+            className={cn("flex flex-1 overflow-hidden min-h-0 relative", splitDirection)}
+          >
 
           {whiteboardActive ? (
             // ── Whiteboard mode: same deaf-first layout as PPT. Tutor camera on
@@ -3562,7 +3619,10 @@ export function ClassroomRoom({
                 {splitCameraPanel}
               </div>
 
-              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800">
+              <div className={cn(
+                "flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-zinc-800",
+                splitDivider,
+              )}>
                 <TldrawBoard
                   isTutor={isTutor}
                   canWrite={canWriteWhiteboard}
@@ -3592,9 +3652,11 @@ export function ClassroomRoom({
               {/* Presentation column — RIGHT. Slides or video, decided by `presentKind`. */}
               <div
                 ref={slideAreaRef}
-                className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-t md:border-t-0 md:border-l border-zinc-800"
+                className={cn(
+                  "flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-zinc-800",
+                  splitDivider,
+                )}
                 onPointerMove={handleSlidePointerMove}
-                onPointerLeave={handleSlidePointerLeave}
                 style={isTutor && pointerMode ? { cursor: "none" } : undefined}
               >
                 {presentKind === "video" ? (
@@ -3672,7 +3734,7 @@ export function ClassroomRoom({
               <div
                 className={cn(
                   "flex-1 min-w-0 min-h-0 overflow-hidden relative bg-zinc-950",
-                  !screenWideActive && "md:basis-0 border-t md:border-t-0 md:border-l border-zinc-800",
+                  !screenWideActive && cn("md:basis-0 border-zinc-800", splitDivider),
                 )}
               >
                 {screenShareHidden ? (
@@ -3926,6 +3988,7 @@ export function ClassroomRoom({
           onUnmuteAll={handleUnmuteAll}
           onRefreshAll={handleRefreshAll}
           onRefreshSelf={handleRefreshSelf}
+          canInviteCoTutor={isOwner}
           onInviteCoTutor={() => setInviteCoTutorOpen(true)}
           onRequestToSpeak={handleRequestToSpeak}
           pptActive={pptActive}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { PlayCircle } from "lucide-react"
+import { AlertTriangle, PlayCircle } from "lucide-react"
 
 interface VideoPlayerProps {
   isTutor: boolean
@@ -48,6 +48,15 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [needsUnblock, setNeedsUnblock] = useState(false)
+  /**
+   * Set when this browser cannot play the file at all. The usual cause is a
+   * WebM: Chrome and Firefox play it, Safari does not, and the failure is a
+   * black rectangle with no explanation — which reads as the platform being
+   * broken rather than as a codec the teacher can avoid. Driven by the
+   * element's own `error` event rather than guessed from the URL, so it is
+   * right about the browser it is actually running in.
+   */
+  const [playbackError, setPlaybackError] = useState<"format" | "other" | null>(null)
 
   // Tutor side: wire DOM events so every play/pause/seek broadcasts. We avoid
   // the mirroring effect below entirely so nothing fights the tutor.
@@ -126,11 +135,19 @@ export function VideoPlayer({
     } catch { /* ignore — surfaces again next mirror tick */ }
   }
 
+  const handleMediaError = () => {
+    const code = videoRef.current?.error?.code
+    // MEDIA_ERR_SRC_NOT_SUPPORTED — the container or codec is not one this
+    // browser decodes. Everything else is a fetch that went wrong.
+    setPlaybackError(code === 4 ? "format" : "other")
+  }
+
   return (
     <div className="w-full h-full flex items-center justify-center bg-black relative">
       <video
         ref={videoRef}
         src={url}
+        onError={handleMediaError}
         // Tutor gets full controls (scrubbing seeks broadcasts). Students are
         // read-only; playsInline keeps mobile Safari from going full-screen.
         controls={isTutor}
@@ -139,7 +156,33 @@ export function VideoPlayer({
         className="max-w-full max-h-full"
       />
 
-      {!isTutor && needsUnblock && (
+      {playbackError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-950 px-8 text-center">
+          <AlertTriangle className="size-9 text-amber-500 opacity-90" />
+          {playbackError === "format" ? (
+            <>
+              <p className="text-sm text-zinc-200 font-medium">
+                This browser can&apos;t play this video
+              </p>
+              <p className="text-xs text-zinc-500 max-w-xs">
+                The file is in a format Safari doesn&apos;t support. Opening the class in Chrome,
+                Edge or Firefox will play it — and please tell your tutor, so they can re-upload it
+                as MP4, which works everywhere.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-zinc-200 font-medium">The video couldn&apos;t load</p>
+              <p className="text-xs text-zinc-500 max-w-xs">
+                This is usually the connection. The rest of the class carries on — you have not been
+                disconnected.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {!isTutor && needsUnblock && !playbackError && (
         <button
           onClick={handleUnblock}
           className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm text-white"

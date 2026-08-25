@@ -58,7 +58,11 @@ async function handlePOST(
       skipDuplicates: true,
     })
 
-    void createNotifications(
+    // Awaited, unlike most notification sends: this one *is* the invitation. If
+    // it does not land there is nothing else telling the other teacher they are
+    // expected, so the host has to be told rather than shown a success message
+    // for something that did not happen.
+    const notified = await createNotifications(
       tutorIds,
       "SESSION_COTUTOR_INVITE",
       "You've been added as a co-teacher",
@@ -81,7 +85,10 @@ async function handlePOST(
       ),
     )
 
-    return NextResponse.json({ message: "Co-teacher(s) added", count: tutorIds.length }, { status: 201 })
+    return NextResponse.json(
+      { message: "Co-teacher(s) added", count: tutorIds.length, notified },
+      { status: 201 },
+    )
   } catch (err) {
     console.error("[POST /api/tutor/sessions/[id]/co-tutors]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

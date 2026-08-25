@@ -25,6 +25,7 @@ export function PinnedVideoArea({
   onToggleSpotlight,
   handRaised,
   onLowerHand,
+  fit = "cover",
 }: {
   identity: string
   localIdentity: string
@@ -39,6 +40,20 @@ export function PinnedVideoArea({
   // When provided (tutor view), the "Hand raised" pill becomes a button that
   // lowers the pinned participant's hand on click.
   onLowerHand?: (identity: string) => void
+  /**
+   * How a camera fills this tile.
+   *
+   * "cover" is right when the tile *is* the stage: a 16:9 camera in a 16:9
+   * stage crops next to nothing, and filling the frame looks better than bars.
+   *
+   * "contain" is right when the tile is one half of a split stage next to
+   * slides or a whiteboard. There the panel is nothing like 16:9, so cover
+   * crops hard — and it crops a signer, taking their hands off the sides of
+   * the frame. It also put the two halves visibly out of step with each other,
+   * one filled and one letterboxed, which is what teachers reported: a tall
+   * narrow camera beside wide short slides.
+   */
+  fit?: "cover" | "contain"
 }) {
   const allParticipants = useParticipants()
   const camTracks       = useTracks([Track.Source.Camera])
@@ -62,9 +77,11 @@ export function PinnedVideoArea({
           trackRef={active}
           className={localCameraClassName(
             mirrorLocalCamera,
-            // Cameras fill & crop (consistent with the lower strip); screen
-            // shares fit-whole so their content isn't cropped.
-            screenRef ? "w-full h-full object-contain" : "w-full h-full object-cover",
+            // A screen share is never cropped — its content is the point.
+            // A camera follows `fit`; see the note on the prop.
+            screenRef || fit === "contain"
+              ? "w-full h-full object-contain"
+              : "w-full h-full object-cover",
           )}
         />
       ) : (

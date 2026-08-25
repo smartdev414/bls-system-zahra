@@ -78,11 +78,40 @@ export function safeRenderScale(scale: number, width: number, height: number): n
   return Math.min(scale, sideLimit, areaLimit)
 }
 
+/**
+ * `Promise.withResolvers` for Safari before 17.4.
+ *
+ * pdf.js 5 uses it, and Safari only shipped it in March 2024 — so on iPadOS 16
+ * and 17.0-17.3, which covers a large share of the tablets students bring to
+ * class and every device an institution has pinned to an older OS, pdf.js
+ * throws `Promise.withResolvers is not a function` and no slide ever appears.
+ * The tutor on Chrome sees the deck and has no reason to suspect anything.
+ *
+ * Two copies of this shim exist by necessity: this one for the main thread, and
+ * one prepended to the worker by `scripts/copy-pdf-worker.mjs`, because a worker
+ * shares no globals with the page that starts it. Keep them in step.
+ */
+function installPromiseWithResolvers(): void {
+  const P = Promise as unknown as {
+    withResolvers?: unknown
+  }
+  if (typeof P.withResolvers === "function") return
+
+  P.withResolvers = function withResolvers<T>(this: PromiseConstructor) {
+    let resolve!: (value: T | PromiseLike<T>) => void
+    let reject!: (reason?: unknown) => void
+    const promise = new this<T>((res, rej) => { resolve = res; reject = rej })
+    return { promise, resolve, reject }
+  }
+}
+
 let pdfjsPromise: Promise<PdfjsModule> | null = null
 
 /** Load pdf.js once per page and point it at a worker it can actually start. */
 export function getPdfjs(): Promise<PdfjsModule> {
   pdfjsPromise ??= (async () => {
+    // Before the import, so nothing pdf.js runs on the way up can trip over it.
+    installPromiseWithResolvers()
     const pdfjsLib: PdfjsModule = await import("pdfjs-dist")
     pdfjsLib.GlobalWorkerOptions.workerSrc = await resolveWorkerSrc(pdfjsLib.version)
     return pdfjsLib
@@ -132,12 +161,13 @@ export class PdfOpenTimeoutError extends Error {
  * never arrives, the promise stays pending for the rest of the lesson. Callers
  * need a failure they can show and offer a retry for, so give them one.
  */
-export async function openPdf(
+async function attemptOpen(
   url: string,
-  { timeoutMs = PDF_OPEN_TIMEOUT_MS }: { timeoutMs?: number } = {},
+  timeoutMs: number,
+  extra: Record<string, unknown>,
 ): Promise<PdfDocument> {
   const pdfjsLib = await getPdfjs()
-  const task = pdfjsLib.getDocument({ url, withCredentials: false })
+  const task = pdfjsLib.getDocument({ url, withCredentials: false, ...extra })
   // Once we stop awaiting it — because the deadline won the race — a later
   // rejection has nobody listening, and an unhandled one is noise in the
   // console of every browser we are trying to read console output from.
@@ -158,5 +188,38 @@ export async function openPdf(
     throw err
   } finally {
     clearTimeout(timer)
+  }
+}
+
+export async function openPdf(
+  url: string,
+  { timeoutMs = PDF_OPEN_TIMEOUT_MS }: { timeoutMs?: number } = {},
+): Promise<PdfDocument> {
+  try {
+    return await attemptOpen(url, timeoutMs, {})
+  } catch (err) {
+    // A timeout is a slow link, and asking the same question again more slowly
+    // does not help. Anything else is worth one more try on the simplest
+    // possible request.
+    if (err instanceof PdfOpenTimeoutError) throw err
+
+    /**
+     * By default pdf.js streams the file in HTTP ranges, which is much kinder
+     * to a large deck. It also depends on the storage host returning
+     * `Access-Control-Expose-Headers` for `Content-Range`, `Accept-Ranges` and
+     * `Content-Length` — and a bucket whose CORS rules predate that, or a proxy
+     * that strips them, breaks the ranged path while leaving a plain GET
+     * perfectly healthy. Browsers differ in how much of that they paper over,
+     * which is exactly how a deck ends up working in one and not another.
+     *
+     * So: fall back to fetching the whole file in one request. Slower to first
+     * paint on a big deck, and it works wherever ordinary CORS works.
+     */
+    console.warn("[pdfjs] ranged load failed; retrying as a single request", err)
+    return attemptOpen(url, timeoutMs, {
+      disableRange: true,
+      disableStream: true,
+      disableAutoFetch: true,
+    })
   }
 }

@@ -22,7 +22,8 @@ export function ControlsBar({
   onRefreshAll,
   // Student self-refresh — reloads this tab and auto-rejoins without the lobby
   onRefreshSelf,
-  // Invite a second teacher to co-teach (tutor only)
+  // Invite a second teacher to co-teach (host only — the API is owner-scoped)
+  canInviteCoTutor = true,
   onInviteCoTutor,
   // Student asks the tutor to unmute them
   onRequestToSpeak,
@@ -83,6 +84,7 @@ export function ControlsBar({
   onUnmuteAll: () => void
   onRefreshAll: () => void
   onRefreshSelf: () => void
+  canInviteCoTutor?: boolean
   onInviteCoTutor: () => void
   onRequestToSpeak: () => void
   pptActive: boolean
@@ -264,7 +266,7 @@ export function ControlsBar({
       {/* Tutor-only: invite another teacher to co-teach this session. They get a
           notification (and email if configured) with a link that opens the
           classroom with full tutor controls — works mid-session. */}
-      {isTutor && (
+      {isTutor && canInviteCoTutor && (
         <button
           onClick={onInviteCoTutor}
           className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"
@@ -526,7 +528,12 @@ export function ControlsBar({
                 ? "bg-amber-500/25 text-amber-300 border-amber-500/50 animate-pulse"
                 : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
             )}
-            title={pointerMode ? "Turn off hand pointer" : "Point at the presentation — students will see a hand follow your cursor"}
+            // The hand stays where it was put — it is a marker, not a cursor
+            // mirror — so the label has to say that taking it down is a
+            // deliberate act, or a teacher will wait for it to fade.
+            title={pointerMode
+              ? "Take the hand pointer down"
+              : "Point at the presentation — a hand follows your cursor and stays where you leave it"}
           >
             <Pointer className="size-3.5" />
             {pointerMode ? "Pointing" : "Pointer"}

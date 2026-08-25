@@ -38,12 +38,23 @@ export const POINTER_SEND_INTERVAL_MS = 33
 export const POINTER_KEEPALIVE_MS = 700
 
 /**
- * How long a student keeps showing the pointer with nothing arriving. Must be
- * comfortably more than the keepalive so an ordinary dropped packet never
- * blinks it out; the explicit `hide` on the reliable channel is what normally
- * ends it.
+ * Last-resort guard on a pointer that will never be taken down.
+ *
+ * There is deliberately **no** timeout on a stationary pointer. A teacher who
+ * points at a diagram and then talks about it for a minute is doing the normal
+ * thing, and having the hand fade out under them is the opposite of useful —
+ * the whole point is to mark a spot and leave it marked. The pointer comes down
+ * when the teacher takes it down, and that instruction travels on the reliable
+ * channel, so it arrives.
+ *
+ * This value only covers the case where no instruction is ever coming: the
+ * teacher's browser was killed, or their machine slept, mid-gesture. Because
+ * the keepalive is still arriving every 700ms whenever the teacher is present
+ * and pointing, fifteen seconds of complete silence means they are not. It is
+ * long enough that it can never produce the "it faded while I was pointing at
+ * it" complaint this replaced.
  */
-export const POINTER_AUTO_HIDE_MS     = 2500
+export const POINTER_STALE_MS = 15_000
 
 /**
  * Student-side interpolation between samples. Matched to the send interval so

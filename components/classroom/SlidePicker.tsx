@@ -10,6 +10,12 @@ interface SlidePickerProps {
   mimeType:   string
   fileName:   string
   totalPages: number
+  /**
+   * Pages to tick on open. Defaults to all of them — the right answer for a
+   * deck nobody has looked at yet, and the wrong one for a deck being shown for
+   * the fifth time with the same six pages skipped every lesson.
+   */
+  initialSelected?: number[]
   onConfirm:  (selectedPages: number[]) => void   // 1-based slide numbers, ascending
   onCancel:   () => void
 }
@@ -35,10 +41,16 @@ export function SlidePicker({
   mimeType,
   fileName,
   totalPages,
+  initialSelected,
   onConfirm,
   onCancel,
 }: SlidePickerProps) {
   const [selected, setSelected] = useState<Set<number>>(() => {
+    // An empty remembered selection is treated as "not remembered": it would
+    // otherwise open with nothing ticked and the confirm button dead, which
+    // reads as a broken deck rather than as a previous choice.
+    const remembered = initialSelected?.filter((n) => n >= 1 && n <= totalPages) ?? []
+    if (remembered.length > 0) return new Set(remembered)
     const s = new Set<number>()
     for (let i = 1; i <= totalPages; i++) s.add(i)
     return s

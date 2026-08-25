@@ -77,11 +77,22 @@ export function InviteCoTutorModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tutorIds: [...selected] }),
       })
+      const payload = await res.json().catch(() => ({})) as { message?: string; notified?: boolean }
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { message?: string }
-        throw new Error(err.message ?? "Failed to invite co-teacher")
+        throw new Error(payload.message ?? "Failed to invite co-teacher")
       }
-      toast.success(`Invited ${selected.size} co-teacher${selected.size !== 1 ? "s" : ""} — they'll get a notification with a link to join.`)
+      const plural = selected.size !== 1 ? "s" : ""
+      if (payload.notified === false) {
+        // They are on the session and can join from a link, but nothing has
+        // actually reached them. Saying "invited" here would be a lie the host
+        // only discovers when their colleague never turns up.
+        toast.warning(
+          `Added ${selected.size} co-teacher${plural}, but we couldn't send the notification.`,
+          { description: "Send them the classroom link yourself, and let support know." },
+        )
+      } else {
+        toast.success(`Invited ${selected.size} co-teacher${plural} — they'll get a notification with a link to join.`)
+      }
       setSelected(new Set())
       await refetchCoTutors()
     } catch (e) {

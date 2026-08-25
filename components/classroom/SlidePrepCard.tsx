@@ -111,7 +111,10 @@ export function SlidePrepCard({ sessionId }: { sessionId: string }) {
     }
   }
 
-  // Re-open the picker for an already-prepared deck.
+  // Re-open the picker for an already-prepared deck, on the choice already
+  // made. Opening on "everything ticked" meant a tutor adjusting one page had
+  // to re-exclude all the others from scratch, and losing that work silently is
+  // worse than not offering the button.
   function handleReselect() {
     if (!prepared?.mimeType || !prepared.totalPages) return
     setPicking({
@@ -120,6 +123,7 @@ export function SlidePrepCard({ sessionId }: { sessionId: string }) {
       total: prepared.totalPages,
       mimeType: prepared.mimeType,
       fileName: prepared.fileName,
+      selectedPages: prepared.selectedPages ?? undefined,
     })
   }
 
@@ -224,6 +228,7 @@ export function SlidePrepCard({ sessionId }: { sessionId: string }) {
           mimeType={picking.mimeType}
           fileName={picking.fileName}
           totalPages={picking.total}
+          initialSelected={picking.selectedPages}
           onConfirm={handlePicked}
           onCancel={() => setPicking(null)}
         />

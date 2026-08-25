@@ -11,6 +11,7 @@ import {
   Award,
   XCircle,
   UserPlus,
+  Users2,
   Star,
   Radio,
   CalendarPlus,
@@ -37,6 +38,7 @@ type NotificationType =
   | "SESSION_CANCELLED"
   | "SESSION_DELETED"
   | "SESSION_INVITE"
+  | "SESSION_COTUTOR_INVITE"
   | "RECORDING_READY"
   | "COURSE_PUBLISHED"
   | "NEW_LESSON"
@@ -68,6 +70,7 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   SESSION_CANCELLED: XCircle,
   SESSION_DELETED: XCircle,
   SESSION_INVITE: Video,
+  SESSION_COTUTOR_INVITE: Users2,
   RECORDING_READY: Video,
   COURSE_PUBLISHED: BookOpen,
   NEW_LESSON: BookOpen,
@@ -90,6 +93,7 @@ const typeColor: Record<NotificationType, string> = {
   SESSION_CANCELLED: "text-destructive",
   SESSION_DELETED: "text-destructive",
   SESSION_INVITE: "text-blue-500",
+  SESSION_COTUTOR_INVITE: "text-primary",
   RECORDING_READY: "text-blue-500",
   COURSE_PUBLISHED: "text-primary",
   NEW_LESSON: "text-primary",

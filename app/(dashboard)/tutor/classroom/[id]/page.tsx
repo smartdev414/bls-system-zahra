@@ -556,6 +556,7 @@ export default function TutorClassroomPage({
     >
       <ClassroomRoom
         isTutor={true}
+        isOwner={isOwner}
         sessionId={id}
         sessionTitle={data?.session?.title ?? "Live Session"}
         onLeave={() => setLeaveDialogOpen(true)}

@@ -140,7 +140,16 @@ export type WhiteboardAction =
 //   - "video" skips the picker entirely; broadcast URL and mirror playback.
 // `total` is only meaningful for slides.
 export type UploadedSlides =
-  | { kind: "slides"; url: string; total: number; mimeType: string; fileName: string }
+  | {
+      kind: "slides"; url: string; total: number; mimeType: string; fileName: string
+      /**
+       * Pages the tutor kept the last time this deck was prepared or presented,
+       * when we know them. The picker opens on that choice instead of ticking
+       * all of them again — re-excluding the same twelve pages before every
+       * repeat of a lesson is exactly the work this is meant to save.
+       */
+      selectedPages?: number[]
+    }
   | { kind: "video";  url: string;                 mimeType: string; fileName: string }
 
 export type CaptionEntry = {
