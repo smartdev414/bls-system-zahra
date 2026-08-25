@@ -636,6 +636,22 @@ export function ClassroomRoom({
   const splitAxis   = useStageSplit(stageRowRef)
   const splitDirection = splitDirectionClass(splitAxis)
   const splitDivider   = splitDividerClass(splitAxis)
+
+  // How the stage is divided while a screen is being shared.
+  //
+  // A shared screen is mostly text, and text is only ever as big as the panel
+  // it lands in. An even split puts it in half of an already-narrow column,
+  // which is where "the students can't read it" comes from. So hand the content
+  // roughly two thirds and leave the signer a real panel — not the corner inset
+  // wide mode falls back to, which is too small to sign from in a BSL lesson.
+  //
+  // Only when the stage is cut left/right. A stacked stage gives each panel a
+  // wide, short box that already fits a 16:9 screen with almost nothing wasted,
+  // and there is far less height to take off the signer before they stop being
+  // legible. Anyone who wants more can still widen, zoom or go fullscreen.
+  const screenSplit = splitAxis === "row"
+    ? { camera: { flex: "35 1 0%" }, content: { flex: "65 1 0%" } }
+    : { camera: { flex: "1 1 0%" },  content: { flex: "1 1 0%"  } }
   const slideContentBoxRef = useRef(slideContentBox)
   slideContentBoxRef.current = slideContentBox
 
@@ -696,11 +712,12 @@ export function ClassroomRoom({
   }, [])
 
   // ── Wide shared screen (persisted per-user) ───────────────────────────────
-  // Text on a shared screen is only as big as the panel it lands in, and the
-  // default split gives it half the stage. Wide mode hands the whole stage to
-  // the share and drops the signer to a corner inset. Everyone chooses for
-  // themselves — a student squinting at a spreadsheet can widen it without
-  // changing what anyone else sees.
+  // The stage already leans toward the shared screen while one is running (see
+  // `screenSplit`), which is as far as it goes while the signer still needs a
+  // panel to sign in. Wide mode is the step past that: the whole stage to the
+  // share, signer down to a corner inset. Everyone chooses for themselves — a
+  // student squinting at a spreadsheet can widen it without changing what
+  // anyone else sees — and the choice is remembered for next lesson.
   const [screenWide, setScreenWide] = useState(false)
   useEffect(() => {
     try {
@@ -3721,21 +3738,26 @@ export function ClassroomRoom({
 
           ) : screenSharing ? (
             // ── Screen share mode: camera LEFT so the tutor can keep signing,
-            // screen content RIGHT. Students see a placeholder when private.
-            // In wide mode the share takes the whole stage and the signer moves
-            // to a corner inset, so small text on the share is twice the size.
+            // screen content RIGHT, and the content given the larger share of a
+            // left/right stage (see `screenSplit`). Students see a placeholder
+            // when private. Wide mode goes further still — the whole stage to
+            // the share, signer down to a corner inset — for anyone who wants it.
             <>
               {!screenWideActive && (
-                <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
+                <div
+                  className="min-w-0 min-h-0 overflow-hidden bg-zinc-900 relative"
+                  style={screenSplit.camera}
+                >
                   {splitCameraPanel}
                 </div>
               )}
 
               <div
                 className={cn(
-                  "flex-1 min-w-0 min-h-0 overflow-hidden relative bg-zinc-950",
-                  !screenWideActive && cn("md:basis-0 border-zinc-800", splitDivider),
+                  "min-w-0 min-h-0 overflow-hidden relative bg-zinc-950",
+                  !screenWideActive && cn("border-zinc-800", splitDivider),
                 )}
+                style={screenWideActive ? { flex: "1 1 0%" } : screenSplit.content}
               >
                 {screenShareHidden ? (
                   <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
