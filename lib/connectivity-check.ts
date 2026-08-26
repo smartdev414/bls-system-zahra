@@ -119,6 +119,25 @@ function fromCheckInfo(info: CheckInfo): { ok: boolean; detail: string[] } {
 }
 
 /**
+ * livekit-client appends one fixed line — "reconnection is only possible in
+ * Redis-based configurations" — to *every* failed reconnect probe, whatever the
+ * cause. It is written for people running a single-node self-hosted LiveKit,
+ * where Redis supplies the room-to-node routing table that lets a dropped
+ * client find its room again. We are on LiveKit Cloud, which is already
+ * multi-node and Redis-backed, so the line is never true here — and it reliably
+ * sends whoever reads this report hunting for a Redis URL to configure, of
+ * which there is none. Drop it and say what actually failed instead.
+ */
+const SDK_REDIS_HINT = /reconnection is only possible in Redis-based configurations/i
+
+/** What a failed reconnect probe on this deployment actually means, for IT. */
+const RECONNECT_NOTE =
+  "note: this test drops the connection and allows five seconds for it to recover fully. " +
+  "Failing it points at a slow link, or a proxy that is slow to re-open WebSocket connections — " +
+  "not at a fault in the classroom service, and a real lesson often reconnects fine. " +
+  "If the signalling check also failed, that is the problem to fix first."
+
+/**
  * LiveKit's WebRTC check logs every ICE candidate it sees, tagged with protocol
  * and type. A public (non-private) UDP candidate is direct evidence that this
  * network lets UDP out — which is the single fact that decides whether the
@@ -763,7 +782,9 @@ export async function runConnectivityCheck(config: Config, emit: Emit): Promise<
       }
 
       // Reconnect — proves the proxy will let a dropped session resume, rather
-      // than forcing the student back to the lobby every few minutes.
+      // than forcing the student back to the lobby every few minutes. The probe
+      // gives the room five seconds flat to come back, so a network that is
+      // merely slow fails it; that is why this is a warning and never a failure.
       running("reconnect")
       try {
         const { ok, detail } = fromCheckInfo(await check.checkReconnect())
@@ -771,8 +792,8 @@ export async function runConnectivityCheck(config: Config, emit: Emit): Promise<
           state: ok ? "pass" : "warn",
           summary: ok
             ? "A brief network wobble will recover on its own."
-            : "Reconnecting after a wobble may not work — you might have to rejoin manually.",
-          detail,
+            : "Recovery took longer than the five seconds this test allows — usually a slow link or a proxy that is slow to re-open the connection.",
+          detail: ok ? detail : [...detail.filter((d) => !SDK_REDIS_HINT.test(d)), RECONNECT_NOTE],
         })
       } catch (err) {
         set("reconnect", {
