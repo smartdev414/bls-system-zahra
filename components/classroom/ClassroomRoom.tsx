@@ -33,6 +33,7 @@ import type {
   ChatMsg, MsgType, RaisedHand, HandAction, JoinRequest,
   PptAction, PointerAction, SpotlightAction, MuteAction, SessionControlAction,
   UploadedSlides, WhiteboardAction, WhiteboardSnapshot, WhiteboardDiff,
+  WhiteboardPresence,
   BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
@@ -554,7 +555,11 @@ export function ClassroomRoom({
   // While the board is mounting, remote diffs/snapshots that arrive first are
   // buffered here and flushed once the bridge registers.
   const wbApiRef = useRef<WhiteboardApi | null>(null)
-  const wbPendingRef = useRef<{ snapshot?: WhiteboardSnapshot; changes: WhiteboardDiff[] }>({ changes: [] })
+  const wbPendingRef = useRef<{
+    snapshot?: WhiteboardSnapshot
+    changes: WhiteboardDiff[]
+    presence?: WhiteboardPresence
+  }>({ changes: [] })
   const registerWhiteboardApi = useCallback((api: WhiteboardApi | null) => {
     wbApiRef.current = api
     if (!api) return
@@ -565,6 +570,10 @@ export function ClassroomRoom({
     }
     for (const changes of pending.changes) api.applyChanges(changes)
     pending.changes = []
+    if (pending.presence) {
+      api.applyPresence(pending.presence)
+      pending.presence = undefined
+    }
   }, [])
 
   // ── Breakout rooms state ───────────────────────────────────────────────────
@@ -1349,6 +1358,11 @@ export function ClassroomRoom({
           active: state.active,
           studentWrite: state.studentWrite,
           snapshot: wbApiRef.current?.getSnapshot() ?? null,
+          // Presence carries the tutor's camera + screen bounds. Without it a
+          // late joiner (or a student whose board mounted after the first
+          // cursor frame) would stay at 100% zoom while the tutor is zoomed
+          // out around a picture.
+          presence: wbApiRef.current?.getPresence() ?? undefined,
         }
         try {
           sendWhiteboard(enc.encode(JSON.stringify(response)), { reliable: true })
@@ -1361,6 +1375,10 @@ export function ClassroomRoom({
         if (data.snapshot) {
           if (wbApiRef.current) wbApiRef.current.applySnapshot(data.snapshot)
           else wbPendingRef.current.snapshot = data.snapshot
+        }
+        if (data.presence) {
+          if (wbApiRef.current) wbApiRef.current.applyPresence(data.presence)
+          else wbPendingRef.current.presence = data.presence
         }
         return
       }
@@ -3833,6 +3851,7 @@ export function ClassroomRoom({
                   sessionId={sessionId}
                   localIdentity={localParticipant.identity}
                   localName={localName}
+                  followIdentity={isTutor ? null : tutorIdentity}
                   send={handleWhiteboardSend}
                   registerApi={registerWhiteboardApi}
                   onShareToChat={(attachment) =>

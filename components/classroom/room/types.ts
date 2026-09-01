@@ -124,8 +124,10 @@ export type WhiteboardDiff = {
 export type WhiteboardSnapshot = Record<string, unknown>
 
 // A serialised tldraw `TLInstancePresence` record — one peer's live cursor,
-// selection and camera. Carried opaquely; tldraw renders it as a collaborator
-// cursor once merged into the receiver's store. Broadcast lossily (high churn).
+// selection, camera and screen bounds. Carried opaquely; tldraw renders it as a
+// collaborator cursor once merged into the receiver's store. Students also use
+// the tutor's camera + screenBounds to follow their viewport, so a picture the
+// tutor zoomed-to-fit is the same size on every board. Broadcast lossily.
 export type WhiteboardPresence = Record<string, unknown>
 
 export type WhiteboardAction =
@@ -135,7 +137,7 @@ export type WhiteboardAction =
   | { action: "doc"; changes: WhiteboardDiff }                     // incremental tldraw store changes
   | { action: "presence"; presence: WhiteboardPresence }           // live cursor/presence for one peer
   | { action: "sync_request" }                                     // late joiner asks the tutor
-  | { action: "sync_response"; active: boolean; studentWrite: boolean; snapshot: WhiteboardSnapshot | null }
+  | { action: "sync_response"; active: boolean; studentWrite: boolean; snapshot: WhiteboardSnapshot | null; presence?: WhiteboardPresence }
 
 // Discriminates on `kind` so the classroom can branch after upload:
 //   - "slides" goes through SlidePicker, PptSlideViewer, next/prev, SlideTray.

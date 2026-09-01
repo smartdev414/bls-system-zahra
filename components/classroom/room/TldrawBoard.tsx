@@ -8,7 +8,9 @@ import {
   loadSnapshot,
   type Editor,
   type TLRecord,
+  type TLShape,
   type TLShapeId,
+  type TLTextShape,
 } from "tldraw"
 // These reactive primitives + presence helpers are re-exported by `tldraw` at
 // runtime, but its bundled .d.ts omits them — so we import each from its own
@@ -138,6 +140,8 @@ export type WhiteboardApi = {
   applyPresence: (presence: WhiteboardPresence) => void
   /** Drop a departed peer's cursor (called when they leave the room). */
   removePeer: (identity: string) => void
+  /** This client's current presence (camera + cursor) — tutors attach it to sync_response. */
+  getPresence: () => WhiteboardPresence | null
 }
 
 type TldrawBoardProps = {
@@ -150,6 +154,14 @@ type TldrawBoardProps = {
   /** Local participant identity + display name — used to attribute shapes and cursors. */
   localIdentity: string
   localName: string
+  /**
+   * LiveKit identity of the tutor whose viewport students should follow.
+   * tldraw sizes a dropped picture in page-space pixels and then *locally*
+   * zooms the tutor out to fit it; that camera change is session state, not a
+   * document diff, so without following the student stays at 100% and sees a
+   * cropped giant. `null` until the tutor is in the participant list.
+   */
+  followIdentity?: string | null
   onShareToChat: (attachment: ChatAttachment) => void
   /** Broadcast a whiteboard action over the LiveKit data channel. */
   send: (action: WhiteboardAction) => void
@@ -187,6 +199,84 @@ function preloadBoardFonts(editor: Editor) {
 /** Load whatever faces the shapes now on the board actually need. */
 function loadFontsForSeededBoard(editor: Editor) {
   void editor.fonts.loadRequiredFontsForCurrentPage().catch(() => { /* best-effort */ })
+}
+
+/**
+ * Keep typed text on the visible board.
+ *
+ * A click with tldraw's text tool creates an `autoSize` shape: the box grows
+ * to the right with each character and never wraps. The canvas itself is
+ * `overflow: clip`, and this board is only half the classroom stage, so a
+ * sentence that crosses the right edge is cut off — the teacher sees a clipped
+ * word, and students following the same viewport never see the rest.
+ *
+ * When the measured width would cross the viewport, freeze the left edge (the
+ * click) and turn the shape into wrapping text at the remaining width. A click
+ * jammed against the right edge is nudged left just enough to type; we don't
+ * slide text that already has room, or labels next to a diagram jump away.
+ */
+const TEXT_VIEWPORT_PAD_PX = 16
+const MIN_TEXT_WIDTH_PX = 120
+
+function keepTextOnTheBoard(editor: Editor, shape: TLShape): TLShape {
+  if (shape.type !== "text") return shape
+  const text = shape as TLTextShape
+  // Rotated text isn't a classroom typing path; leave the geometry alone.
+  if (Math.abs(text.rotation) > 0.01) return text
+
+  const viewport = editor.getViewportPageBounds()
+  const zoom = editor.getZoomLevel()
+  if (!viewport.isValid() || viewport.width <= 1 || !(zoom > 0)) return text
+
+  const pad = TEXT_VIEWPORT_PAD_PX / zoom
+  const minLeft = viewport.minX + pad
+  const maxRight = viewport.maxX - pad
+  const avail = maxRight - minLeft
+  if (avail <= 1) return text
+
+  const scale = text.props.scale || 1
+  const minPageW = Math.min(MIN_TEXT_WIDTH_PX / zoom, avail)
+
+  let x = text.x
+  let pageW = Math.max(text.props.w * scale, 1)
+  let autoSize = text.props.autoSize
+  const roomToTheRight = maxRight - x
+
+  if (roomToTheRight >= minPageW) {
+    if (pageW > roomToTheRight) {
+      pageW = roomToTheRight
+      autoSize = false
+    }
+  } else {
+    pageW = Math.max(Math.min(pageW, avail), minPageW)
+    x = maxRight - pageW
+    if (x < minLeft) {
+      x = minLeft
+      pageW = avail
+    }
+    autoSize = false
+  }
+
+  if (x < minLeft) {
+    x = minLeft
+    autoSize = false
+    if (x + pageW > maxRight) pageW = maxRight - x
+  }
+
+  const w = pageW / scale
+  if (
+    Math.abs(x - text.x) < 0.5 &&
+    Math.abs(w - text.props.w) < 0.5 &&
+    autoSize === text.props.autoSize
+  ) {
+    return text
+  }
+
+  return {
+    ...text,
+    x,
+    props: { ...text.props, w, autoSize },
+  }
 }
 
 /**
@@ -253,6 +343,15 @@ function createBoardAssetStore(sessionIdRef: React.RefObject<string>): TLAssetSt
   }
 }
 
+/** Load the shapes/assets only — never the tutor's camera, selection, or UI state. */
+function documentOnlySnapshot(snapshot: WhiteboardSnapshot): Parameters<typeof loadSnapshot>[1] {
+  const raw = snapshot as { document?: unknown }
+  if (raw && typeof raw === "object" && raw.document) {
+    return { document: raw.document } as Parameters<typeof loadSnapshot>[1]
+  }
+  return snapshot as Parameters<typeof loadSnapshot>[1]
+}
+
 export default function TldrawBoard({
   isTutor,
   canWrite,
@@ -262,6 +361,7 @@ export default function TldrawBoard({
   sessionId,
   localIdentity,
   localName,
+  followIdentity = null,
   onShareToChat,
   send,
   registerApi,
@@ -280,6 +380,8 @@ export default function TldrawBoard({
   const sessionIdRef = useRef(sessionId)
   const localIdentityRef = useRef(localIdentity)
   const localNameRef = useRef(localName)
+  const followIdentityRef = useRef(followIdentity)
+  const getLocalPresenceRef = useRef<() => TLInstancePresence | null>(() => null)
   useEffect(() => { sendRef.current = send }, [send])
   useEffect(() => { registerApiRef.current = registerApi }, [registerApi])
   useEffect(() => { isTutorRef.current = isTutor }, [isTutor])
@@ -287,6 +389,56 @@ export default function TldrawBoard({
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
   useEffect(() => { localIdentityRef.current = localIdentity }, [localIdentity])
   useEffect(() => { localNameRef.current = localName }, [localName])
+  useEffect(() => { followIdentityRef.current = followIdentity }, [followIdentity])
+
+  /**
+   * Point this client's camera at the tutor's viewport.
+   *
+   * tldraw already puts the tutor's camera + screenBounds on the presence
+   * record we merge in. `startFollowingUser` uses those to show the same
+   * page-space region the tutor sees, even when the two boards are different
+   * pixel sizes — copying zoom % would crop a smaller student canvas.
+   */
+  const tryFollowTutor = (editor: Editor) => {
+    if (isTutorRef.current) return
+    // Drawing students keep an independent camera so a tutor stroke doesn't
+    // yank the viewport. View-only is the "see what the teacher sees" mode.
+    if (canWriteRef.current) return
+    const identity = followIdentityRef.current
+    if (!identity) return
+    const presence = editor.store.get(
+      InstancePresenceRecordType.createId(identity),
+    ) as TLInstancePresence | undefined
+    if (!presence?.userId || !presence.camera || !presence.screenBounds) return
+    if (editor.getInstanceState().followingUserId === presence.userId) return
+    editor.startFollowingUser(presence.userId)
+  }
+
+  /**
+   * If the tutor's presence hasn't arrived yet, zoom out so a large picture
+   * isn't cropped at the default 100%. No-op once we're following, or when
+   * the student is allowed to pan around and draw.
+   */
+  const fitOverflowingContent = (editor: Editor) => {
+    if (isTutorRef.current || canWriteRef.current) return
+    if (editor.getInstanceState().followingUserId) return
+    const pageBounds = editor.getCurrentPageBounds()
+    if (!pageBounds) return
+    const viewport = editor.getViewportPageBounds()
+    if (viewport.contains(pageBounds)) return
+    editor.zoomToFit({ immediate: true, force: true })
+  }
+
+  const syncViewerCamera = (editor: Editor) => {
+    if (isTutorRef.current) return
+    // View-only students stay locked onto the tutor's view: a pan would
+    // otherwise call stopFollowingUser and leave them staring at a crop.
+    editor.setCameraOptions({ isLocked: !canWriteRef.current })
+    tryFollowTutor(editor)
+    fitOverflowingContent(editor)
+  }
+  const syncViewerCameraRef = useRef(syncViewerCamera)
+  syncViewerCameraRef.current = syncViewerCamera
 
   const [sharing, setSharing] = useState(false)
 
@@ -294,10 +446,20 @@ export default function TldrawBoard({
   // so a changing session id never forces tldraw to rebuild its own store.
   const assetStore = useMemo(() => createBoardAssetStore(sessionIdRef), [])
 
-  // Reflect the live permission into the editor whenever it changes.
+  // Reflect the live permission into the editor whenever it changes. Taking
+  // write access away also re-locks the camera onto the tutor's viewport.
   useEffect(() => {
-    editorRef.current?.updateInstanceState({ isReadonly: !canWrite })
+    const editor = editorRef.current
+    if (!editor) return
+    editor.updateInstanceState({ isReadonly: !canWrite })
+    syncViewerCamera(editor)
   }, [canWrite])
+
+  // Tutor identity can land after the board mounts (participant list fills in).
+  useEffect(() => {
+    const editor = editorRef.current
+    if (editor) tryFollowTutor(editor)
+  }, [followIdentity])
 
   // ── Persistence: debounced autosave of the full snapshot (tutor only) ───────
   const scheduleSave = useCallback(() => {
@@ -319,6 +481,9 @@ export default function TldrawBoard({
   const handleMount = useCallback((editor: Editor) => {
     editorRef.current = editor
     editor.updateInstanceState({ isReadonly: !canWriteRef.current })
+    if (!isTutorRef.current) {
+      editor.setCameraOptions({ isLocked: !canWriteRef.current })
+    }
 
     // Start fetching the text faces immediately: every measurement taken before
     // they land is taken against the wrong font. See preloadBoardFonts.
@@ -338,6 +503,23 @@ export default function TldrawBoard({
       return { ...shape, meta: { ...shape.meta, authorId, authorName, authorColor } }
     })
 
+    // Local typing only. Remote records already carry the sender's wrapped
+    // width; re-clamping them against this client's viewport would fight.
+    const stopClampTextCreate = editor.sideEffects.registerBeforeCreateHandler(
+      "shape",
+      (shape, source) => {
+        if (source !== "user" || applyingRemote.current) return shape
+        return keepTextOnTheBoard(editor, shape)
+      },
+    )
+    const stopClampTextChange = editor.sideEffects.registerBeforeChangeHandler(
+      "shape",
+      (_prev, next, source) => {
+        if (source !== "user" || applyingRemote.current) return next
+        return keepTextOnTheBoard(editor, next)
+      },
+    )
+
     // Live cursors: derive this user's presence record and broadcast it lossily
     // on change (throttled). Peers merge it into their store and tldraw renders
     // the collaborator cursor. A stable presence id keyed off the identity lets
@@ -350,6 +532,7 @@ export default function TldrawBoard({
     const $user = atom<TLUser | null>("wb-user", user)
     const presenceId = InstancePresenceRecordType.createId(authorId)
     const $presence = createPresenceStateDerivation($user, { instanceId: presenceId })(editor.store)
+    getLocalPresenceRef.current = () => $presence.get()
     let presencePending: TLInstancePresence | null = null
     let presenceTimer: ReturnType<typeof setTimeout> | null = null
     const flushPresence = () => {
@@ -421,18 +604,27 @@ export default function TldrawBoard({
         } finally {
           applyingRemote.current = false
         }
+        // A newly added picture is huge in page space; the tutor zooms out
+        // locally. Match that view (or at least fit the page) on this client.
+        syncViewerCameraRef.current(ed)
       },
       applySnapshot: (snapshot) => {
         const ed = editorRef.current
         if (!ed) return
         applyingRemote.current = true
-        try { loadSnapshot(ed.store, snapshot as Parameters<typeof loadSnapshot>[1]) }
+        try { loadSnapshot(ed.store, documentOnlySnapshot(snapshot)) }
         finally { applyingRemote.current = false }
+        ed.updateInstanceState({ isReadonly: !canWriteRef.current })
         loadFontsForSeededBoard(ed)
+        syncViewerCameraRef.current(ed)
       },
       getSnapshot: () => {
         const ed = editorRef.current
         return ed ? (getSnapshot(ed.store) as unknown as WhiteboardSnapshot) : null
+      },
+      getPresence: () => {
+        const presence = getLocalPresenceRef.current()
+        return presence ? (presence as unknown as WhiteboardPresence) : null
       },
       applyPresence: (presence) => {
         const ed = editorRef.current
@@ -444,6 +636,13 @@ export default function TldrawBoard({
             ed.store.put([presence as unknown as TLInstancePresence])
           })
         } catch { /* ignore a malformed presence frame */ }
+        const identity = followIdentityRef.current
+        if (
+          identity &&
+          (presence as { id?: string }).id === InstancePresenceRecordType.createId(identity)
+        ) {
+          syncViewerCameraRef.current(ed)
+        }
       },
       removePeer: (identity) => {
         const ed = editorRef.current
@@ -457,8 +656,11 @@ export default function TldrawBoard({
     return () => {
       unlisten()
       stopStamp()
+      stopClampTextCreate()
+      stopClampTextChange()
       stopPresence()
       if (presenceTimer) clearTimeout(presenceTimer)
+      getLocalPresenceRef.current = () => null
       registerApiRef.current(null)
       editorRef.current = null
     }
@@ -600,12 +802,19 @@ export default function TldrawBoard({
       </div>
 
       {/* tldraw fills the remaining space */}
-      <div className="relative flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0 overflow-hidden">
         <Tldraw
           onMount={handleMount}
           licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
           assets={assetStore}
-          components={{ InFrontOfTheCanvas: AuthorBadges, StylePanel: DraggableStylePanel }}
+          components={{
+            InFrontOfTheCanvas: AuthorBadges,
+            StylePanel: DraggableStylePanel,
+            // Following is automatic for students, not a user-initiated "watch
+            // this person" action — a coloured border around the board would
+            // look like a glitch.
+            FollowingIndicator: null,
+          }}
         />
       </div>
     </div>
