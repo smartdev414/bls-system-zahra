@@ -33,6 +33,8 @@ import {
   type Room,
   TrackSource,
 } from "@livekit/rtc-node"
+import { NoiseGate } from "./noise-gate.js"
+import { classifyTranscript } from "./transcript-filter.js"
 
 // Load repo-root .env when started via `npm run transcriber`.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
@@ -63,6 +65,8 @@ function makeStt() {
 class CaptionPublisher {
   private trackSid: string | undefined
   private segmentId: string
+  /** Whether anything for the current utterance has reached the clients yet. */
+  private published = false
 
   constructor(
     private readonly room: Room,
@@ -99,14 +103,40 @@ class CaptionPublisher {
   }
 
   async publish(text: string, final: boolean) {
+    const sent = await this.send(text, final)
+    if (sent) this.published = true
+    if (final) this.startNewSegment()
+  }
+
+  /**
+   * End the current utterance without publishing it — the filter decided it was
+   * background sound rather than speech.
+   *
+   * If interim text for that utterance is already on screen, an empty final is
+   * sent so the client can take the line back. Leaving it would be the worse
+   * outcome: a sentence nobody said, stuck mid-transcript with no final to
+   * replace it, indistinguishable from something the tutor actually spoke.
+   */
+  async endSegment(retract: boolean) {
+    if (retract && this.published) await this.send("", true)
+    this.startNewSegment()
+  }
+
+  private startNewSegment() {
+    this.segmentId = newSegmentId()
+    this.published = false
+  }
+
+  /** Returns whether the segment actually went out. */
+  private async send(text: string, final: boolean): Promise<boolean> {
     const local = this.room.localParticipant
-    if (!local || !this.room.isConnected) return
+    if (!local || !this.room.isConnected) return false
 
     if (!this.trackSid) {
       this.refreshTrackSid()
       if (!this.trackSid) {
         console.warn("[classroom-transcriber] skip publish — no mic trackSid", this.participantIdentity)
-        return
+        return false
       }
     }
 
@@ -125,12 +155,13 @@ class CaptionPublisher {
           },
         ],
       })
-      if (final) this.segmentId = newSegmentId()
+      return true
     } catch (err) {
       console.error("[classroom-transcriber] publishTranscription failed", {
         identity: this.participantIdentity,
         err,
       })
+      return false
     }
   }
 
@@ -257,6 +288,8 @@ class SpeakerTranscriber {
   private readonly audioCapture: SpeakerAudioCapture
   private readonly captions: CaptionPublisher
   private readonly speechStream: stt.SpeechStream
+  /** Per-speaker, because each microphone sits in a different room. */
+  private readonly gate = new NoiseGate()
   private readonly tasks: Promise<void>[] = []
 
   constructor(
@@ -270,7 +303,10 @@ class SpeakerTranscriber {
       this.room,
       participant.identity,
       (frame) => {
-        if (!this.closed) this.speechStream.pushFrame(frame)
+        if (this.closed) return
+        // Only what the gate judges to be speech reaches the recogniser; the
+        // rest arrives as silence, which keeps endpointing on schedule.
+        for (const gated of this.gate.push(frame)) this.speechStream.pushFrame(gated)
       },
       (trackSid) => this.captions.setTrackSid(trackSid),
     )
@@ -282,21 +318,45 @@ class SpeakerTranscriber {
       for await (const event of this.speechStream) {
         if (this.closed) break
 
-        const text = event.alternatives?.[0]?.text?.trim()
-        if (!text) continue
-
         if (
-          event.type === stt.SpeechEventType.INTERIM_TRANSCRIPT ||
-          event.type === stt.SpeechEventType.FINAL_TRANSCRIPT
-        ) {
-          const isFinal = event.type === stt.SpeechEventType.FINAL_TRANSCRIPT
-          console.info("[classroom-transcriber] transcript", {
-            identity,
-            final: isFinal,
-            text: text.slice(0, 80),
-          })
-          await this.captions.publish(text, isFinal)
+          event.type !== stt.SpeechEventType.INTERIM_TRANSCRIPT &&
+          event.type !== stt.SpeechEventType.FINAL_TRANSCRIPT
+        ) continue
+
+        const isFinal = event.type === stt.SpeechEventType.FINAL_TRANSCRIPT
+        const alternative = event.alternatives?.[0]
+        const text = alternative?.text?.trim() ?? ""
+        const confidence = alternative?.confidence ?? 1
+
+        const verdict = classifyTranscript(text, confidence)
+        if (!verdict.publish) {
+          if (text) {
+            console.info("[classroom-transcriber] filtered", {
+              identity,
+              final: isFinal,
+              reason: verdict.reason,
+              confidence,
+              // The tracked room level for this speaker. If captions go missing
+              // for someone, this is the number that says whether the gate is
+              // the reason. See docs/RUNBOOK.md § captions.
+              noiseFloorDb: this.gate.noiseFloorDb?.toFixed(1),
+              text: text.slice(0, 80),
+            })
+          }
+          // A rejected final still ends the utterance: the next thing said has
+          // to start a new line rather than overwrite this one. Retract only
+          // when there was something to reject — a final with no text at all is
+          // ordinary endpointing on silence, not a verdict on anything.
+          if (isFinal) await this.captions.endSegment(text.length > 0)
+          continue
         }
+
+        console.info("[classroom-transcriber] transcript", {
+          identity,
+          final: isFinal,
+          text: text.slice(0, 80),
+        })
+        await this.captions.publish(text, isFinal)
       }
     } catch (err) {
       if (!this.closed) {
@@ -309,9 +369,14 @@ class SpeakerTranscriber {
   }
 
   async close() {
+    await this.audioCapture.close()
+    // Let the tail of the last sentence out of the lookahead buffer before the
+    // stream is closed, or the final few words never reach the recogniser.
+    try {
+      for (const gated of this.gate.flush()) this.speechStream.pushFrame(gated)
+    } catch { /* stream already gone */ }
     this.closed = true
     this.captions.close()
-    await this.audioCapture.close()
     try {
       this.speechStream.endInput()
       this.speechStream.close()

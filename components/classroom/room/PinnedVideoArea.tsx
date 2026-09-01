@@ -20,6 +20,8 @@ export function PinnedVideoArea({
   isFullscreen,
   onToggleFullscreen,
   onUnpin,
+  unpinLabel = "Back to tutor",
+  unpinTitle = "Back to tutor — return to the tutor's camera view",
   showSpotlight,
   spotlightActive,
   onToggleSpotlight,
@@ -29,10 +31,21 @@ export function PinnedVideoArea({
 }: {
   identity: string
   localIdentity: string
-  containerRef: React.RefObject<HTMLDivElement | null>
+  /**
+   * Fullscreen target. Omitted when this tile is one half of a `StagePair` —
+   * there the pair owns the ref, so fullscreen keeps both signers on screen.
+   */
+  containerRef?: React.RefObject<HTMLDivElement | null>
   isFullscreen: boolean
   onToggleFullscreen: () => void
   onUnpin: () => void
+  /**
+   * Wording for the dismiss button. The default assumes this tile replaced the
+   * tutor's camera; beside the tutor in a `StagePair` it hasn't, so the caller
+   * passes something that doesn't promise a view the viewer is already looking at.
+   */
+  unpinLabel?: string
+  unpinTitle?: string
   showSpotlight?: boolean
   spotlightActive?: boolean
   onToggleSpotlight?: () => void
@@ -97,11 +110,11 @@ export function PinnedVideoArea({
         <button
           onClick={onUnpin}
           className="flex items-center gap-1.5 bg-black/70 hover:bg-black/90 text-white text-xs font-semibold px-3 py-2 rounded-full backdrop-blur-sm transition-colors shadow-lg ring-1 ring-white/10"
-          title="Back to tutor — return to the tutor's camera view"
-          aria-label="Unpin and return to tutor view"
+          title={unpinTitle}
+          aria-label={unpinTitle}
         >
           <ArrowLeft className="size-3.5" />
-          Back to tutor
+          {unpinLabel}
         </button>
 
         {showSpotlight && (

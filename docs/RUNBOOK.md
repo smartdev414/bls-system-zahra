@@ -174,6 +174,37 @@ testing against the cloud agent to avoid duplicate dispatch.
 
 **Do not run local + cloud transcriber at the same time** — they compete for the same room jobs.
 
+### 4.4a Captions show things nobody said
+
+Background sound is the usual cause. A speech model handed a fan, a corridor, a
+keyboard or a television does not return nothing — it returns its best guess at
+words, and that guess lands in the transcript looking exactly like speech. Three
+things now stand between the room and the caption:
+
+1. **Microphone processing** (`lib/network-mode.ts`, `audioCaptureDefaults`) —
+   echo cancellation, noise suppression, auto gain, and `voiceIsolation` where
+   the browser has it. Echo cancellation is also what stops the tutor's voice
+   coming back out of a student's speakers and being captioned as the student.
+2. **A noise gate** (`agents/classroom-transcriber/noise-gate.ts`) — the STT only
+   receives audio while someone is actually speaking; the rest of the time it
+   receives silence. The threshold adapts to each microphone's own room level.
+3. **A transcript filter** (`agents/classroom-transcriber/transcript-filter.ts`) —
+   drops low-confidence output, bracketed sound tags, and the stock phrases a
+   recogniser falls back on when the audio isn't speech ("you", "thank you").
+
+**If someone's captions stop appearing**, check the agent log for
+`[classroom-transcriber] filtered` lines for their identity. The `reason` says
+which stage rejected it, and `noiseFloorDb` is the room level the gate has
+tracked for that microphone — speech has to land about 10 dB above it. A floor
+above roughly -35 dB means a genuinely loud room (or a very hot mic), and the
+gate is doing what it should; ask them to move somewhere quieter or use a
+headset. No `filtered` lines and no `transcript` lines at all means the audio
+never arrived — that is §4.4, not this.
+
+Both thresholds are constants at the top of their files. Loosen the gate by
+lowering `marginDb`; loosen the filter by lowering `MIN_CONFIDENCE`. Redeploy the
+agent afterwards (`npm run transcriber:deploy`).
+
 ### 4.4b "It works at home but not at my hospital / station / school"
 
 The platform has first-class support for locked-down networks. Full detail in
@@ -209,9 +240,37 @@ and Mailgun's sending domain/allowed-recipients in the Mailgun dashboard.
   "Co-teaching".
 
 ### 4.7 Chat file upload fails
-Allowed: images, video, PDF, Word, PowerPoint, Excel, .txt; **max 50 MB**.
-Larger or other types are rejected client-side. If all uploads fail, check
-`config.storage` and the S3 bucket's CORS (must allow PUT from the app origin).
+Allowed: images, video, PDF, Word, PowerPoint, Excel, .txt. **There is no size
+limit** — the only ceiling is S3's own 5 TB per object. Unsupported types are
+rejected client-side.
+
+Files up to 8 MB go up as one presigned PUT
+(`/api/sessions/[id]/chat-upload-presign`). Anything larger is split into parts
+the browser PUTs straight to S3 via
+`/api/sessions/[id]/chat-upload-multipart` (`create` → `sign` → `complete`, or
+`abort` when cancelled). Nothing streams through the app server, so Next.js and
+Caddy body limits don't apply.
+
+If all uploads fail, check `config.storage` and the bucket's CORS. The rules
+must allow PUT from the app origin **and expose `ETag`** — the browser needs
+each part's ETag to complete a multipart upload, and without `ExposeHeaders`
+large files fail with *"Storage did not return an ETag"* while small ones still
+work:
+
+```json
+[{
+  "AllowedOrigins": ["https://<app-origin>"],
+  "AllowedMethods": ["GET", "PUT", "HEAD"],
+  "AllowedHeaders": ["*"],
+  "ExposeHeaders": ["ETag"],
+  "MaxAgeSeconds": 3000
+}]
+```
+
+Add a lifecycle rule that aborts incomplete multipart uploads after ~7 days so
+parts from cancelled uploads stop accruing storage cost. The client already
+calls `abort` on cancel/failure; the rule catches the cases it can't (closed
+tab, lost connection).
 
 ### 4.8 Database errors / `/api/health` 503
 Check `DATABASE_URL` and that Postgres is reachable. After any change to

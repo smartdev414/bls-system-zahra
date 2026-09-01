@@ -45,6 +45,7 @@ import { TutorVideoArea }       from "./room/TutorVideoArea"
 import { TutorCameraInset }     from "./room/TutorCameraInset"
 import { ParticipantsPanel }    from "./room/ParticipantsPanel"
 import { PinnedVideoArea }      from "./room/PinnedVideoArea"
+import { StagePair }            from "./room/StagePair"
 import { FloatingVideoWindow }  from "./room/FloatingVideoWindow"
 import { ChatPanel }            from "./room/ChatPanel"
 import { SlideUploadPanel }     from "./room/SlideUploadPanel"
@@ -853,8 +854,22 @@ export function ClassroomRoom({
         setHandRaised(data.raised)
       }
       if (isTutor) {
-        if (data.raised) setPinnedId(data.identity)
-        else setPinnedId((prev) => prev === data.identity ? null : prev)
+        // A raised hand used to pin the student to the main stage on the spot,
+        // which wiped out the slide, board or video the tutor was mid-sentence
+        // on. Announce it quietly in the side toast rail instead and let the
+        // tutor bring the student up when they reach a natural break.
+        if (data.raised) {
+          toast.info(`${data.name} raised their hand ✋`, {
+            id: `hand-${data.identity}`,
+            description: "They'll wait — bring them up when you're ready.",
+            duration: 8000,
+            action: { label: "Show", onClick: () => setPinnedId(data.identity) },
+          })
+        } else {
+          // Hand's down: drop the stale prompt, and the pin if it was taken.
+          toast.dismiss(`hand-${data.identity}`)
+          setPinnedId((prev) => prev === data.identity ? null : prev)
+        }
       }
       const text = data.raised ? `${data.name} raised their hand ✋` : `${data.name} lowered their hand`
       setMessages((prev) => [
@@ -1111,12 +1126,18 @@ export function ClassroomRoom({
   // ── Data channel: tutor-controlled microphones ─────────────────────────────
   // Server permission updates can lag the data-channel command by a few hundred ms.
   // Retry enabling so publish doesn't fail silently while the UI still looks "on".
+  // `micEnableRunRef` supersedes an in-flight attempt when a newer one starts
+  // (the permission-change listener below can fire mid-retry) so two loops can't
+  // race to publish or both report the same failure.
+  const micEnableRunRef = useRef(0)
   const enableStudentMic = useCallback(async () => {
-    const retryDelaysMs = [0, 500, 1200, 2500]
+    const run = ++micEnableRunRef.current
+    const retryDelaysMs = [0, 500, 1200, 2500, 4000, 6000]
     for (let i = 0; i < retryDelaysMs.length; i++) {
       if (i > 0) {
         await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[i]! - retryDelaysMs[i - 1]!))
       }
+      if (run !== micEnableRunRef.current) return
       if (!micAllowedByTutorRef.current) return
       try {
         await localParticipant.setMicrophoneEnabled(true)
@@ -1125,6 +1146,7 @@ export function ClassroomRoom({
         // Permission may not have propagated yet — retry.
       }
     }
+    if (run !== micEnableRunRef.current) return
     micAllowedByTutorRef.current = false
     const micErr = localParticipant.lastMicrophoneError
     toast.error("Couldn't turn your microphone on", {
@@ -1162,9 +1184,9 @@ export function ClassroomRoom({
           { id: `sys-ask-${Date.now()}`, from: "system", text: `${data.name} is asking to speak 🎙️`, ts: Date.now(), type: "system" },
         ])
         toast.info(`${data.name} wants to speak`, {
-          description: "Accept to acknowledge them now, or deny. Their mic stays off until you enable it.",
+          description: "Accept to turn their microphone on, or deny to leave them muted.",
           duration: 20000,
-          action: { label: "Accept", onClick: () => handleAcceptSpeak(data.identity, data.name) },
+          action: { label: "Accept", onClick: () => { void handleAcceptSpeak(data.identity, data.name) } },
           cancel:  { label: "Deny",    onClick: () => handleDenySpeak(data.identity, data.name) },
         })
         return
@@ -1194,7 +1216,7 @@ export function ClassroomRoom({
       }
       if (data.action === "accept-speak" && data.identity === localParticipant.identity) {
         toast.info(`${data.from} accepted your request`, {
-          description: "Your mic is still off for now. Your tutor can turn it on when they're ready.",
+          description: "Turning your microphone on\u2026",
         })
         return
       }
@@ -1216,6 +1238,27 @@ export function ClassroomRoom({
     micAllowedByTutorRef.current = false
     void localParticipant.setMicrophoneEnabled(false).catch(() => { /* ignore */ })
   }, [isTutor, connectionState, localParticipant])
+
+  // The tutor's `set-mic` command travels over the data channel while the matching
+  // publish permission travels over the signalling connection, and the command
+  // regularly wins that race — the student then tries to publish before the server
+  // will let them and the tutor's "yes" silently does nothing. LiveKit tells us the
+  // moment the new permission actually lands, so retry then instead of hoping one of
+  // the fixed retry delays happens to line up.
+  useEffect(() => {
+    if (isTutor) return
+    const onPermissionsChanged = (
+      _prev: unknown,
+      participant: { identity: string },
+    ) => {
+      if (participant.identity !== localParticipant.identity) return
+      if (!micAllowedByTutorRef.current) return
+      if (localParticipant.isMicrophoneEnabled) return
+      void enableStudentMic()
+    }
+    room.on(RoomEvent.ParticipantPermissionsChanged, onPermissionsChanged)
+    return () => { room.off(RoomEvent.ParticipantPermissionsChanged, onPermissionsChanged) }
+  }, [isTutor, room, localParticipant, enableStudentMic])
 
   // ── Data channel: session-level admin actions ─────────────────────────────
   // Tutor broadcasts `refresh`. Students react on receipt; the tutor performs
@@ -1542,9 +1585,14 @@ export function ClassroomRoom({
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as NudgeAction
       if (data.action !== "nudge") return
-      // Respect a targeted nudge: only show it to members of that group. The
-      // tutor always sees their own nudge echo so they know it fired.
-      if (data.groupId && !isTutor) {
+      // Respect a targeted nudge. A single-student nudge is the narrowest
+      // target and wins outright: nobody but that student renders it, tutors
+      // included — otherwise a private "look up" turns into a class-wide flash.
+      if (data.targetId) {
+        if (data.targetId !== localBaseId) return
+      } else if (data.groupId && !isTutor) {
+        // Group nudge: only members of that group. The tutor always sees their
+        // own nudge echo so they know it fired.
         const own = breakoutStateRef.current.groups.find((g) => g.memberIds.includes(localBaseId))
         if (!own || own.id !== data.groupId) return
       }
@@ -1876,6 +1924,9 @@ export function ClassroomRoom({
     sendHand(enc.encode(JSON.stringify(evt)), { reliable: true })
     setRaisedHands((prev) => prev.filter((h) => h.identity !== identity))
     setPinnedId((prev) => (prev === identity ? null : prev))
+    // Our own send doesn't come back through the receiver, so clear the side
+    // prompt here — otherwise it lingers for a hand that is already down.
+    toast.dismiss(`hand-${identity}`)
   }, [isTutor, raisedHands, sendHand])
 
   const handleLowerAllHands = useCallback(() => {
@@ -1884,6 +1935,7 @@ export function ClassroomRoom({
       const evt = { identity: h.identity, name: h.name, raised: false }
       sendHand(enc.encode(JSON.stringify(evt)), { reliable: true })
     }
+    for (const h of raisedHands) toast.dismiss(`hand-${h.identity}`)
     setRaisedHands([])
     // If the currently-pinned participant had a raised hand, drop the pin too.
     setPinnedId((prev) => (prev && raisedHands.some((h) => h.identity === prev) ? null : prev))
@@ -2591,18 +2643,16 @@ export function ClassroomRoom({
   }, [isTutor, patchParticipantMic, broadcastMicControl, localName])
 
   // ── Request-to-speak (tutor approves/denies; student asks) ─────────────────
-  const handleAcceptSpeak = useCallback((identity: string, name: string) => {
+  // Accepting a request IS the permission to speak: it grants the mic. Sending
+  // only an acknowledgement left the student muted with no way to talk, so from
+  // their side the tutor's "yes" did nothing. `accept-speak` still goes out
+  // first so they see the answer even if the mic grant itself then fails.
+  const handleAcceptSpeak = useCallback(async (identity: string, name: string) => {
     if (!isTutor) return
     setSpeakRequests((prev) => prev.filter((r) => r.identity !== identity))
-    const ok = broadcastMicControl({ action: "accept-speak", identity, from: localName })
-    if (!ok) {
-      toast.error("Could not notify the student")
-      return
-    }
-    toast.success(`Accepted ${name}'s request`, {
-      description: "Their microphone stays off until you enable it from the participant controls.",
-    })
-  }, [isTutor, broadcastMicControl, localName])
+    broadcastMicControl({ action: "accept-speak", identity, from: localName })
+    await handleSetParticipantMic(identity, name, true)
+  }, [isTutor, broadcastMicControl, localName, handleSetParticipantMic])
 
   const handleDenySpeak = useCallback((identity: string, name: string) => {
     if (!isTutor) return
@@ -3067,19 +3117,31 @@ export function ClassroomRoom({
   }, [isTutor, breakoutsActive, breakoutClosingAt, safeSendBreakout])
 
   // ── Nudge handler (tutor only) ─────────────────────────────────────────────
-  // Sends a short attention signal to the whole class, or to a specific
-  // breakout group when `groupId` is provided. Also echoes locally so the
-  // tutor visually confirms the ping went out.
-  const handleNudge = useCallback((opts?: { groupId?: string | null; message?: string }) => {
+  // Sends a short attention signal to the whole class, to a specific breakout
+  // group when `groupId` is provided, or to a single student when `identity`
+  // is provided. Also echoes locally so the tutor visually confirms the ping
+  // went out.
+  const handleNudge = useCallback((opts?: {
+    identity?: string | null
+    name?: string
+    groupId?: string | null
+    message?: string
+  }) => {
     if (!isTutor) return
     if (connectionState !== ConnectionState.Connected) {
       toast.error("Not connected yet — try again in a second.")
       return
     }
+    // Send the *base* id so the nudge still lands on a student who reconnected
+    // under a fresh identity between the tutor opening the menu and clicking.
+    const targetId = opts?.identity ? participantBaseId(opts.identity) : null
     const payload: NudgeAction = {
       action: "nudge",
       from: localName,
-      groupId: opts?.groupId ?? null,
+      targetId,
+      // A single-student nudge is never also a group nudge — receivers give
+      // `targetId` precedence, but don't send a contradictory pair.
+      groupId: targetId ? null : (opts?.groupId ?? null),
       message: opts?.message ?? null,
     }
     try {
@@ -3092,7 +3154,11 @@ export function ClassroomRoom({
     // "self" variant — the tutor is mid-lesson and shouldn't have their own view
     // blocked by the full-screen alert the students get.
     setActiveNudge({ id: Date.now(), from: localName, message: opts?.message ?? null, self: true })
-    if (opts?.groupId) {
+    if (targetId) {
+      toast.success(opts?.name ? `Nudged ${opts.name}` : "Nudge sent", {
+        description: "Only they can see it.",
+      })
+    } else if (opts?.groupId) {
       const g = breakoutStateRef.current.groups.find((x) => x.id === opts.groupId)
       toast.success(g ? `Nudged ${g.name}` : "Nudge sent")
     } else {
@@ -3149,6 +3215,21 @@ export function ClassroomRoom({
   const tutorIdentity = useMemo(
     () => participants.find((p) => p.metadata === "tutor")?.identity ?? null,
     [participants]
+  )
+
+  // Every teacher in the room, not just the first: with a co-tutor present,
+  // pairing the stage with "the tutor" must not put the same person on it twice.
+  const tutorIdentities = useMemo(
+    () => new Set(participants.filter((p) => p.metadata === "tutor").map((p) => p.identity)),
+    [participants]
+  )
+
+  // Is there a teacher camera to pair with at all? With every teacher camera
+  // off, a second panel would only hold a placeholder — better to give the
+  // whole stage to the person who is actually signing.
+  const tutorCameraLive = useMemo(
+    () => allCameraTracks.some((t) => t.participant.metadata === "tutor"),
+    [allCameraTracks]
   )
 
   const ownBreakoutGroup = useMemo(
@@ -3331,32 +3412,73 @@ export function ClassroomRoom({
 
   const studentCount = participants.filter((p) => p.metadata !== "tutor").length
 
+  // Should the person on the stage share it with the teacher's camera?
+  //
+  // Selecting a student to sign used to hand them the camera slot outright and
+  // take the teacher off screen, which leaves the class watching one side of a
+  // signed exchange. So whenever the stage camera belongs to somebody who isn't
+  // a teacher, the teacher keeps a panel beside them — for everyone in the
+  // room, not just for the teacher's own client.
+  //
+  // Skipped when there is no teacher camera to show, and during breakouts when
+  // this client isn't currently allowed to see the teacher at all: the second
+  // panel would be a placeholder taking half the stage off a live signer.
+  const pairWithTutor = (id: string | null): id is string =>
+    !!id && !tutorIdentities.has(id) && tutorCameraVisible && tutorCameraLive
+
+  /**
+   * The stage tile for whoever is pinned (or, in breakouts, the group-mate a
+   * student is put with).
+   *
+   * `fit` is how it fills its box when it has the box to itself; see the prop's
+   * own note. Sharing the box with the teacher always fits the whole picture —
+   * half a box is never the shape of a camera, and cropping to fill it takes a
+   * signer's hands off the sides. `paired` also hands fullscreen to the pair
+   * (going fullscreen on half a conversation drops the other half) and drops
+   * the "back to tutor" wording, which promises a view the viewer already has.
+   */
+  const stageCameraTile = (
+    id: string,
+    { fit, paired }: { fit: "cover" | "contain"; paired: boolean },
+  ) => (
+    <PinnedVideoArea
+      fit={paired ? "contain" : fit}
+      identity={id}
+      localIdentity={localParticipant.identity}
+      containerRef={paired ? undefined : videoContainerRef}
+      isFullscreen={isFullscreen}
+      onToggleFullscreen={toggleFullscreen}
+      onUnpin={() => setPinnedId(null)}
+      unpinLabel={paired ? "Close" : undefined}
+      unpinTitle={paired ? "Close — give the whole stage back to the teacher" : undefined}
+      showSpotlight={isTutor && id !== localParticipant.identity}
+      spotlightActive={spotlightedId === id}
+      onToggleSpotlight={handleToggleSpotlight}
+      handRaised={raisedHandIds.has(id)}
+      onLowerHand={isTutor ? handleLowerHand : undefined}
+    />
+  )
+
   // Camera panel shown beside the whiteboard, the slides, or a shared screen.
-  // Normally the tutor, so students can read BSL alongside the material. During
+  // Normally the tutor, so students can read BSL alongside the material — and,
+  // once a student is selected to sign, the tutor *and* that student. During
   // breakouts a student sees their own group here instead — the lesson material
   // stays on screen and they practise it with each other, which is the whole
   // point of sending them into a group. `studentBreakoutMainId` already resolves
   // to the visiting tutor when the tutor has joined that group.
   const splitStageId = pinnedId ?? studentBreakoutMainId
-  const splitCameraPanel = splitStageId ? (
-    <PinnedVideoArea
-      // Half a split stage, beside slides or a whiteboard: fit the whole
-      // picture rather than cropping it to fill. A cropped signer loses their
-      // hands off the sides, and a filled camera next to a letterboxed slide is
-      // the mismatch teachers reported.
-      fit="contain"
-      identity={splitStageId}
-      localIdentity={localParticipant.identity}
+  const splitCameraPanel = pairWithTutor(splitStageId) ? (
+    <StagePair
       containerRef={videoContainerRef}
-      isFullscreen={isFullscreen}
-      onToggleFullscreen={toggleFullscreen}
-      onUnpin={() => setPinnedId(null)}
-      showSpotlight={isTutor && splitStageId !== localParticipant.identity}
-      spotlightActive={spotlightedId === splitStageId}
-      onToggleSpotlight={handleToggleSpotlight}
-      handRaised={raisedHandIds.has(splitStageId)}
-      onLowerHand={isTutor ? handleLowerHand : undefined}
+      first={<TutorCameraInset />}
+      second={stageCameraTile(splitStageId, { fit: "contain", paired: true })}
     />
+  ) : splitStageId ? (
+    // Half a split stage, beside slides or a whiteboard: fit the whole picture
+    // rather than cropping it to fill. A cropped signer loses their hands off
+    // the sides, and a filled camera next to a letterboxed slide is the
+    // mismatch teachers reported.
+    stageCameraTile(splitStageId, { fit: "contain", paired: false })
   ) : (
     <TutorCameraInset
       hidden={!tutorCameraVisible}
@@ -3365,17 +3487,22 @@ export function ClassroomRoom({
   )
 
   // Whether the split camera panel is already showing this client's own camera.
-  // With nothing pinned it shows the tutor's camera (their own, for a teacher);
-  // any pin takes it away — including pinning yourself, since a pinned tile
-  // prefers the screen share over the camera.
+  // It shows the tutor's camera (their own, for a teacher) with nothing pinned,
+  // and still shows it beside a pinned student. What takes it away is pinning
+  // *a teacher* — including yourself, since a pinned tile prefers the screen
+  // share over the camera.
   const insetTutorCameraIdentity = useMemo(() => {
     const tutorCams = allCameraTracks.filter((t) => t.participant.metadata === "tutor")
     const own = tutorCams.find((t) => t.participant.identity === localParticipant.identity)
     return (own ?? tutorCams[0])?.participant.identity ?? null
   }, [allCameraTracks, localParticipant.identity])
 
+  // A pinned tile used to take the panel away outright; paired with the teacher
+  // it no longer does, so a sharing teacher already has their own feed on stage.
   const splitPanelShowsMyCamera =
-    !splitStageId && tutorCameraVisible && insetTutorCameraIdentity === localParticipant.identity
+    (!splitStageId || pairWithTutor(splitStageId)) &&
+    tutorCameraVisible &&
+    insetTutorCameraIdentity === localParticipant.identity
 
   // Self-view for whoever is sharing their screen, shown only when their camera
   // isn't already on the stage. Without it a teacher who has pinned a student
@@ -3593,9 +3720,9 @@ export function ClassroomRoom({
             <span key={r.identity} className="flex items-center gap-1 bg-sky-500/20 rounded-full pl-2.5 pr-1 py-0.5">
               <span className="text-xs text-sky-100">{r.name}</span>
               <button
-                onClick={() => handleAcceptSpeak(r.identity, r.name)}
+                onClick={() => { void handleAcceptSpeak(r.identity, r.name) }}
                 className="flex items-center gap-0.5 text-[11px] font-semibold text-emerald-200 hover:text-white bg-emerald-500/30 hover:bg-emerald-500/60 rounded-full px-1.5 py-0.5 transition-colors"
-                title={`Accept ${r.name}'s request without turning their microphone on`}
+                title={`Accept ${r.name}'s request and turn their microphone on`}
               >
                 <Check className="size-3" /> Accept
               </button>
@@ -3793,22 +3920,20 @@ export function ClassroomRoom({
               <div className="flex-1 overflow-hidden">
                 {(() => {
                   const mainStageId = pinnedId ?? studentBreakoutMainId
-                  if (mainStageId) {
+                  // A student selected to sign shares the stage with the teacher
+                  // rather than replacing them, so the class watches both halves
+                  // of the exchange. See `pairWithTutor`.
+                  if (pairWithTutor(mainStageId)) {
                     return (
-                      <PinnedVideoArea
-                        identity={mainStageId}
-                        localIdentity={localParticipant.identity}
+                      <StagePair
                         containerRef={videoContainerRef}
-                        isFullscreen={isFullscreen}
-                        onToggleFullscreen={toggleFullscreen}
-                        onUnpin={() => setPinnedId(null)}
-                        showSpotlight={isTutor && mainStageId !== localParticipant.identity}
-                        spotlightActive={spotlightedId === mainStageId}
-                        onToggleSpotlight={handleToggleSpotlight}
-                        handRaised={raisedHandIds.has(mainStageId)}
-                        onLowerHand={isTutor ? handleLowerHand : undefined}
+                        first={<TutorCameraInset />}
+                        second={stageCameraTile(mainStageId, { fit: "contain", paired: true })}
                       />
                     )
+                  }
+                  if (mainStageId) {
+                    return stageCameraTile(mainStageId, { fit: "cover", paired: false })
                   }
                   // Unassigned student while the tutor is off visiting a group:
                   // there is nobody for them to watch, so don't fall through to
@@ -3874,6 +3999,11 @@ export function ClassroomRoom({
               poppedOutIds={poppedOutIds}
               onRemoveParticipant={handleRequestRemove}
               onToggleParticipantMic={isTutor ? handleSetParticipantMic : undefined}
+              onNudgeParticipant={
+                isTutor
+                  ? (identity, name) => handleNudge({ identity, name })
+                  : undefined
+              }
               raisedHandIds={raisedHandIds}
               onLowerHand={isTutor ? handleLowerHand : undefined}
               visibleIdentities={visibleIdentities}

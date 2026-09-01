@@ -10,6 +10,12 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { QUICK_REACTIONS } from "./constants"
 import type { ChatAttachment, ChatMsg, MsgType, RaisedHand } from "./types"
+import {
+  MULTIPART_THRESHOLD,
+  uploadFileDirect,
+  uploadFileInParts,
+  isUploadAborted,
+} from "@/lib/multipart-upload"
 
 // ─── Per-user appearance ────────────────────────────────────────────────────
 // Chat readability is personal — colour-blind and low-vision students need to
@@ -138,7 +144,9 @@ const FILE_ACCEPT = [
   ".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx", ".txt",
 ].join(",")
 
-const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+// No app-level size cap: anything over MULTIPART_THRESHOLD is chunked and PUT
+// straight to S3 part by part, so a full-length lesson recording goes through
+// the same paperclip as a screenshot.
 
 // Some browsers report an empty/generic MIME for Office files — fall back to the
 // extension so the upload still validates against the (extension-agnostic) server.
@@ -167,7 +175,8 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
 function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
@@ -306,6 +315,11 @@ export function ChatPanel({
   const [atBottom, setAtBottom] = useState(true)
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null)
   const [uploading, setUploading] = useState(false)
+  // Percent for the in-flight attachment. Multi-gigabyte videos take minutes, so
+  // a bare spinner isn't enough — show progress and let people back out.
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadName, setUploadName] = useState("")
+  const uploadAbortRef = useRef<AbortController | null>(null)
   // Default to dark to match the classroom chrome; restore saved choice on mount.
   const [theme, setTheme] = useState<ChatThemeName>("dark")
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
@@ -413,30 +427,45 @@ export function ChatPanel({
       toast.error(`"${file.name}" is not supported. Use images, video, PDF, Word, PowerPoint, Excel, or text.`)
       return
     }
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      toast.error(`"${file.name}" exceeds 50 MB`)
-      return
-    }
-
+    const controller = new AbortController()
+    uploadAbortRef.current = controller
     setUploading(true)
-    try {
-      const presignRes = await fetch(`/api/sessions/${sessionId}/chat-upload-presign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, contentType, fileSize: file.size }),
-      })
-      if (!presignRes.ok) {
-        const err = await presignRes.json() as { message?: string }
-        throw new Error(err.message ?? "Could not get upload URL")
-      }
-      const { presignedUrl, fileUrl } = await presignRes.json() as { presignedUrl: string; fileUrl: string }
+    setUploadPercent(0)
+    setUploadName(file.name)
 
-      const uploadRes = await fetch(presignedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": contentType },
-        body: file,
-      })
-      if (!uploadRes.ok) throw new Error("Upload failed")
+    try {
+      let fileUrl: string
+
+      if (file.size > MULTIPART_THRESHOLD) {
+        // Big file: chunked straight into S3, no size ceiling.
+        fileUrl = await uploadFileInParts({
+          endpoint: `/api/sessions/${sessionId}/chat-upload-multipart`,
+          file,
+          contentType,
+          signal: controller.signal,
+          onProgress: (p) => setUploadPercent(p.percent),
+        })
+      } else {
+        const presignRes = await fetch(`/api/sessions/${sessionId}/chat-upload-presign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: file.name, contentType, fileSize: file.size }),
+          signal: controller.signal,
+        })
+        if (!presignRes.ok) {
+          const err = await presignRes.json() as { message?: string }
+          throw new Error(err.message ?? "Could not get upload URL")
+        }
+        const presigned = await presignRes.json() as { presignedUrl: string; fileUrl: string }
+        await uploadFileDirect({
+          presignedUrl: presigned.presignedUrl,
+          file,
+          contentType,
+          signal: controller.signal,
+          onProgress: (p) => setUploadPercent(p.percent),
+        })
+        fileUrl = presigned.fileUrl
+      }
 
       setPendingAttachment({
         fileUrl,
@@ -445,12 +474,20 @@ export function ChatPanel({
         mimeType: contentType,
       })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Upload failed")
+      // A cancel is the user's own doing — don't shout about it.
+      if (!isUploadAborted(e)) {
+        toast.error(e instanceof Error ? e.message : "Upload failed")
+      }
     } finally {
+      uploadAbortRef.current = null
       setUploading(false)
+      setUploadPercent(0)
+      setUploadName("")
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }
+
+  const cancelUpload = () => uploadAbortRef.current?.abort()
 
   const handleSend = () => {
     const text = input.trim()
@@ -635,6 +672,32 @@ export function ChatPanel({
           </button>
         ))}
       </div>
+
+      {uploading && (
+        <div className={cn("shrink-0 px-3 pt-2 flex items-center gap-2", t.pendingBar)}>
+          <div className={cn("flex items-center gap-2 flex-1 min-w-0 rounded-lg border px-2.5 py-1.5", t.pendingChip)}>
+            <Loader2 className={cn("size-3.5 shrink-0 animate-spin", t.pendingMeta)} />
+            <div className="flex-1 min-w-0">
+              <span className={cn("text-xs truncate block", t.pendingName)}>{uploadName}</span>
+              <div className="mt-1 h-1 rounded-full bg-current/15 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-200"
+                  style={{ width: `${uploadPercent}%` }}
+                />
+              </div>
+            </div>
+            <span className={cn("text-[10px] shrink-0 tabular-nums", t.pendingMeta)}>{uploadPercent}%</span>
+            <button
+              onClick={cancelUpload}
+              className={cn("shrink-0 hover:text-rose-400 transition-colors", t.pendingMeta)}
+              title="Cancel upload"
+              aria-label="Cancel upload"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {pendingAttachment && (
         <div className={cn("shrink-0 px-3 pt-2 flex items-center gap-2", t.pendingBar)}>

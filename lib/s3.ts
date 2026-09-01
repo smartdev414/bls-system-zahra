@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, type ListObjectsV2CommandOutput, type PutObjectCommandInput } from "@aws-sdk/client-s3"
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, type ListObjectsV2CommandOutput, type PutObjectCommandInput } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 const REGION = process.env.AWS_REGION ?? "eu-west-2"
@@ -75,6 +75,73 @@ export async function objectExists(key: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+// ─── Multipart uploads ───────────────────────────────────────────────────────
+// A single presigned PUT tops out at 5 GB and gives the browser no way to
+// resume or report progress. Multipart splits the file into parts the browser
+// PUTs independently, which is what lets classroom chat take a full-length
+// video instead of a 50 MB clip.
+
+/** S3 hard limits — the client sizes its parts against these. */
+export const MULTIPART_MIN_PART_SIZE = 5 * 1024 * 1024      // S3 minimum (all but the last part)
+export const MULTIPART_MAX_PARTS = 10_000                    // S3 maximum parts per upload
+
+export type CompletedPart = { PartNumber: number; ETag: string }
+
+/** Begin a multipart upload. Returns the uploadId the parts are attached to. */
+export async function createMultipartUpload(key: string, contentType: string): Promise<string> {
+  const res = await s3.send(new CreateMultipartUploadCommand({
+    Bucket: BUCKET,
+    Key: key,
+    ContentType: contentType,
+  }))
+  if (!res.UploadId) throw new Error("S3 did not return an UploadId")
+  return res.UploadId
+}
+
+/**
+ * Presign PUT URLs for the given part numbers, valid for 1 hour.
+ *
+ * Parts are signed in batches as the upload walks the file rather than all at
+ * once: a 5 TB file is 10,000 parts, and URLs signed at the start of a
+ * multi-hour upload would expire long before the last part is reached.
+ */
+export async function getPresignedUploadPartUrls(
+  key: string,
+  uploadId: string,
+  partNumbers: number[],
+  expiresIn = 3600,
+): Promise<{ partNumber: number; url: string }[]> {
+  return Promise.all(
+    partNumbers.map(async (partNumber) => ({
+      partNumber,
+      url: await getSignedUrl(
+        s3,
+        new UploadPartCommand({ Bucket: BUCKET, Key: key, UploadId: uploadId, PartNumber: partNumber }),
+        { expiresIn },
+      ),
+    })),
+  )
+}
+
+/** Stitch the uploaded parts into the final object. Parts must be in ascending order. */
+export async function completeMultipartUpload(
+  key: string,
+  uploadId: string,
+  parts: CompletedPart[],
+): Promise<void> {
+  await s3.send(new CompleteMultipartUploadCommand({
+    Bucket: BUCKET,
+    Key: key,
+    UploadId: uploadId,
+    MultipartUpload: { Parts: [...parts].sort((a, b) => a.PartNumber - b.PartNumber) },
+  }))
+}
+
+/** Discard an in-flight multipart upload so its parts stop being billed. */
+export async function abortMultipartUpload(key: string, uploadId: string): Promise<void> {
+  await s3.send(new AbortMultipartUploadCommand({ Bucket: BUCKET, Key: key, UploadId: uploadId }))
 }
 
 /** Upload a buffer directly to S3 */

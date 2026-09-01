@@ -151,6 +151,23 @@ export function roomOptionsFor(mode: NetworkMode): RoomOptions {
     // layers nobody is watching. Both cut a restricted line's load sharply.
     adaptiveStream: true,
     dynacast:       true,
+
+    // Microphone processing, asked for explicitly rather than left to the
+    // browser's defaults. It is what the room hears, and — because captions are
+    // transcribed from these same tracks — it is also what the captions are
+    // written from: a fan, a television or the tutor's voice coming back out of
+    // a student's speakers all end up in the transcript looking like speech.
+    //
+    // `voiceIsolation` is the stronger, newer form of noise suppression and is
+    // not available everywhere, so it is asked for as `ideal`: browsers that
+    // have it use it, browsers that don't fall back to `noiseSuppression`
+    // instead of failing the capture outright.
+    audioCaptureDefaults: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl:  true,
+      voiceIsolation:   { ideal: true },
+    },
   }
 
   if (mode === "standard") return base

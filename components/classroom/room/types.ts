@@ -91,9 +91,11 @@ export type SpotlightAction =
 export type MuteAction =
   | { action: "mute-all"; from: string }
   | { action: "set-mic"; identity: string; enabled: boolean; from: string }
-  // Student → tutor: ask to speak. The tutor can acknowledge without unmuting.
+  // Student → tutor: ask to speak.
   | { action: "request-speak"; identity: string; name: string }
-  // Tutor → student: the request was acknowledged; mic stays off until enabled.
+  // Tutor → student: the request was granted. Sent alongside the `set-mic`
+  // that actually turns the mic on, so the student sees the answer even if the
+  // permission update behind it fails.
   | { action: "accept-speak"; identity: string; from: string }
   // Tutor → student: their request was declined (mic stays off).
   | { action: "deny-speak"; identity: string; from: string }
@@ -185,14 +187,19 @@ export type BreakoutGroup = {
 }
 
 // ─── Attention nudge ──────────────────────────────────────────────────────────
-// Tutor pings everyone (or a specific breakout group) with a short visual
-// flash + toast. Targeted at BSL classrooms where audio cues are unreliable —
-// a screen-wide flash is far more likely to land than a chime.
+// Tutor pings everyone (or a specific breakout group, or one student) with a
+// short visual flash + toast. Targeted at BSL classrooms where audio cues are
+// unreliable — a screen-wide flash is far more likely to land than a chime.
 
 export type NudgeAction =
   | {
       action: "nudge"
       from: string
+      // When set, only that one participant renders the alert. Carries the
+      // *base* id (`participantBaseId(identity)`) so a student who dropped and
+      // rejoined under a fresh identity still matches. Takes precedence over
+      // `groupId`. `null` or undefined → not targeted at an individual.
+      targetId?: string | null
       // When set, only clients in that group render the alert. `null` or
       // undefined → broadcast to everyone in the room.
       groupId?: string | null

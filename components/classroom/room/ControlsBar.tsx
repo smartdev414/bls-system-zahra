@@ -351,8 +351,9 @@ export function ControlsBar({
 
       {/* Tutor-only: ping every student's screen with a visual flash. BSL
           classrooms can't rely on sound, so the flash is the attention cue.
-          Hooked up to the class by default; per-group nudges live in the
-          breakout monitor. */}
+          This button is always the whole class; per-group nudges live in the
+          breakout monitor, and a single student can be nudged from their tile's
+          right-click menu in the participants strip. */}
       {isTutor && (
         <button
           onClick={onNudgeClass}

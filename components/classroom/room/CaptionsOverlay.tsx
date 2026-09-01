@@ -138,7 +138,19 @@ export function CaptionsOverlay() {
     participant?: Participant | null,
   ) => {
     const text = (segment.text ?? "").trim()
-    if (!text) return
+    if (!text) {
+      // An empty final segment is the transcriber taking an utterance back: its
+      // noise filter only got a verdict once the recogniser committed, and by
+      // then interim text may already be on screen. Drop the line rather than
+      // leave a sentence up that nobody said — with no final to replace it, it
+      // would sit there looking exactly like something the tutor spoke.
+      if (segment.final) {
+        const lineId = segmentToLine.current.get(segment.id)
+        segmentToLine.current.delete(segment.id)
+        if (lineId) setLines((prev) => prev.filter((l) => l.id !== lineId))
+      }
+      return
+    }
 
     const speakerId = participant?.identity ?? "unknown"
     const speakerName = participant?.name ?? participant?.identity ?? "Unknown"

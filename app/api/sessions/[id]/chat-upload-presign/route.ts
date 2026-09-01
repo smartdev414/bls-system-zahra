@@ -1,97 +1,29 @@
 import { NextRequest, NextResponse } from "next/server"
-import prisma from "@/lib/prisma"
-import { getSession } from "@/lib/auth"
 import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
 import { withAudit } from "@/lib/audit"
 import { uniqueUploadKey } from "@/lib/upload-filename"
+import {
+  ALLOWED_CHAT_UPLOAD_TYPES,
+  UNSUPPORTED_TYPE_MESSAGE,
+  authorizeChatUpload,
+  chatUploadPrefix,
+} from "@/lib/chat-upload-access"
 
-const ALLOWED: Record<string, true> = {
-  // Images
-  "image/jpeg": true,
-  "image/png": true,
-  "image/webp": true,
-  "image/gif": true,
-  // Video
-  "video/mp4": true,
-  "video/webm": true,
-  "video/quicktime": true,
-  // Documents
-  "application/pdf": true,
-  // PowerPoint
-  "application/vnd.ms-powerpoint": true,
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
-  // Word
-  "application/msword": true,
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
-  // Excel
-  "application/vnd.ms-excel": true,
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
-  // Plain text
-  "text/plain": true,
-}
-
-// 50 MB cap for classroom chat attachments — large enough for short clips and
-// slide decks; full-length videos should go through the Present/resources flow.
-const MAX_SIZE = 50 * 1024 * 1024
+// A single presigned PUT is capped by S3 itself at 5 GB. There is no app-level
+// size limit on chat attachments any more: anything past SINGLE_PUT_MAX_SIZE —
+// and, in practice, anything past a few MB — goes through the multipart route
+// next door, which has no ceiling worth naming.
+const SINGLE_PUT_MAX_SIZE = 5 * 1024 * 1024 * 1024
 
 async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await getSession()
-    if (!auth) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-
     const { id: sessionId } = await params
 
-    const liveSession = await prisma.liveSession.findUnique({
-      where: { id: sessionId },
-      select: {
-        id: true,
-        tutorId: true,
-        status: true,
-        visibility: true,
-        coTutors: { select: { tutorId: true } },
-      },
-    })
-
-    if (!liveSession) {
-      return NextResponse.json({ message: "Session not found" }, { status: 404 })
-    }
-
-    if (liveSession.status === "CANCELLED" || liveSession.status === "COMPLETED") {
-      return NextResponse.json({ message: "Session is no longer active" }, { status: 410 })
-    }
-
-    // Every tutor who can be in the room may attach files: the owning tutor and
-    // any co-tutor they invited to this session. The token route grants both the
-    // same tutor rights, so the upload gate has to match it — otherwise a
-    // co-teacher sees the paperclip but gets a 403 on send.
-    const isTutor =
-      auth.role === "TUTOR" &&
-      (auth.sub === liveSession.tutorId ||
-        liveSession.coTutors.some((c) => c.tutorId === auth.sub))
-    const isStudent = auth.role === "STUDENT"
-
-    if (!isTutor && !isStudent) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
-    }
-
-    if (isStudent && liveSession.visibility === "INVITE_ONLY") {
-      const [invite, approvedRequest] = await Promise.all([
-        prisma.liveSessionInvite.findUnique({
-          where: { sessionId_studentId: { sessionId, studentId: auth.sub } },
-          select: { id: true },
-        }),
-        prisma.sessionJoinRequest.findFirst({
-          where: { sessionId, studentId: auth.sub, status: "APPROVED" },
-          select: { id: true },
-        }),
-      ])
-      if (!invite && !approvedRequest) {
-        return NextResponse.json({ message: "Forbidden" }, { status: 403 })
-      }
-    }
+    const access = await authorizeChatUpload(sessionId)
+    if (!access.ok) return access.response
 
     const { fileName, contentType, fileSize } = await req.json() as {
       fileName: string
@@ -103,19 +35,22 @@ async function handlePOST(
       return NextResponse.json({ message: "fileName and contentType are required" }, { status: 400 })
     }
 
-    if (!ALLOWED[contentType]) {
+    if (!ALLOWED_CHAT_UPLOAD_TYPES[contentType]) {
       return NextResponse.json(
-        { message: `File type "${contentType}" is not supported. Use images, video, PDF, Word, PowerPoint, Excel, or text files.` },
+        { message: `File type "${contentType}" ${UNSUPPORTED_TYPE_MESSAGE}` },
         { status: 400 },
       )
     }
 
-    if (fileSize > MAX_SIZE) {
-      return NextResponse.json({ message: "File too large (max 50 MB)" }, { status: 400 })
+    if (fileSize > SINGLE_PUT_MAX_SIZE) {
+      return NextResponse.json(
+        { message: "Files over 5 GB must be uploaded in parts" },
+        { status: 400 },
+      )
     }
 
     // Preserve the original filename in the S3 key (UUID folder keeps it unique).
-    const key = uniqueUploadKey(`classroom-chat/${sessionId}/${auth.sub}`, fileName)
+    const key = uniqueUploadKey(chatUploadPrefix(sessionId, access.userId), fileName)
 
     const presignedUrl = await getPresignedUploadUrl(key, contentType)
     const fileUrl = publicUrl(key)

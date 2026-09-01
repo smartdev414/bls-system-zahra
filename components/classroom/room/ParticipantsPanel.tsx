@@ -12,6 +12,7 @@ import { Track } from "livekit-client"
 import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
   Megaphone, UserMinus, GripVertical, HandMetal, Minus, Plus, Mic, MicOff, Monitor,
+  Bell,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
@@ -41,6 +42,7 @@ export function ParticipantsPanel({
   poppedOutIds,
   onRemoveParticipant,
   onToggleParticipantMic,
+  onNudgeParticipant,
   raisedHandIds,
   onLowerHand,
   visibleIdentities,
@@ -59,6 +61,9 @@ export function ParticipantsPanel({
   poppedOutIds: string[]
   onRemoveParticipant: (identity: string, name: string) => void
   onToggleParticipantMic?: (identity: string, name: string, enabled: boolean) => void
+  // Tutor-only: flash an attention alert on this one student's screen. Nobody
+  // else in the room sees it.
+  onNudgeParticipant?: (identity: string, name: string) => void
   raisedHandIds: Set<string>
   onLowerHand?: (identity: string) => void
   // Breakout-aware: when provided, only tiles whose identity is in the set are
@@ -453,6 +458,11 @@ export function ParticipantsPanel({
                 }
               : undefined
           }
+          onNudge={
+            onNudgeParticipant
+              ? () => { onNudgeParticipant(menu.identity, menu.name); setMenu(null) }
+              : undefined
+          }
           onRemove={() => { onRemoveParticipant(menu.identity, menu.name); setMenu(null) }}
         />
       )}
@@ -472,6 +482,7 @@ function ContextMenu({
   onPopOut,
   onToggleSpotlight,
   onToggleMic,
+  onNudge,
   onRemove,
 }: {
   menu: MenuState
@@ -485,6 +496,7 @@ function ContextMenu({
   onPopOut: () => void
   onToggleSpotlight: () => void
   onToggleMic?: () => void
+  onNudge?: () => void
   onRemove: () => void
 }) {
   // Show Remove / Spotlight only for tutors, and never on the tutor's own card
@@ -495,7 +507,7 @@ function ContextMenu({
 
   // Clamp menu position within the viewport so it doesn't overflow off-screen.
   const approxWidth = 220
-  const approxHeight = 200
+  const approxHeight = 232
   const x = typeof window !== "undefined"
     ? Math.min(menu.x, window.innerWidth - approxWidth - 8)
     : menu.x
@@ -539,6 +551,12 @@ function ContextMenu({
           variant={isSpotlighted ? "warn" : "default"}
         >
           {isSpotlighted ? "Stop spotlighting" : "Spotlight for everyone"}
+        </MenuItem>
+      )}
+
+      {canManage && onNudge && (
+        <MenuItem icon={<Bell className="size-3.5" />} onClick={onNudge}>
+          Nudge just this student
         </MenuItem>
       )}
 

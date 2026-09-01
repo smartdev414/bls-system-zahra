@@ -11,10 +11,17 @@ import { Track } from "livekit-client"
 import { X, Move, Camera, HandMetal } from "lucide-react"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
 
+/**
+ * The window is sized from its width alone so the picture inside it is always
+ * 16:9. Dragging the corner freely let it be pulled into a tall box, and a
+ * camera cropped to fill one loses the space a signer's hands move through —
+ * the picture has to stay landscape for the signing to be readable at all.
+ */
 const MIN_W = 200
-const MIN_H = 150
-const DEFAULT_W = 280
-const DEFAULT_H = 210
+const DEFAULT_W = 300
+const HEADER_H = 28          // the drag bar above the video (h-7)
+const videoHeight = (width: number) => Math.round((width * 9) / 16)
+const boxHeight   = (width: number) => videoHeight(width) + HEADER_H
 
 type Box = { x: number; y: number; width: number; height: number }
 
@@ -36,7 +43,7 @@ export function FloatingVideoWindow({
   const [box, setBox] = useState<Box>(() => {
     // Keep the window fully on-screen on first paint.
     const width = DEFAULT_W
-    const height = DEFAULT_H
+    const height = boxHeight(width)
     const maxX = typeof window !== "undefined" ? window.innerWidth - width - 8 : initial.x
     const maxY = typeof window !== "undefined" ? window.innerHeight - height - 8 : initial.y
     return {
@@ -83,11 +90,12 @@ export function FloatingVideoWindow({
       if (resizeRef.current) {
         const dx = e.clientX - resizeRef.current.startX
         const dy = e.clientY - resizeRef.current.startY
-        setBox((prev) => ({
-          ...prev,
-          width:  Math.max(MIN_W, resizeRef.current!.startW + dx),
-          height: Math.max(MIN_H, resizeRef.current!.startH + dy),
-        }))
+        // One dimension drives both. Whichever way the corner is pulled hardest
+        // sets the width; the height follows from it, so the window can't leave
+        // 16:9 no matter how the handle is dragged.
+        const delta = Math.abs(dy) * (16 / 9) > Math.abs(dx) ? (dy * 16) / 9 : dx
+        const width = Math.max(MIN_W, resizeRef.current.startW + delta)
+        setBox((prev) => ({ ...prev, width, height: boxHeight(width) }))
       }
     }
     const onUp = () => {
@@ -158,8 +166,10 @@ export function FloatingVideoWindow({
             trackRef={trackRef}
             className={localCameraClassName(
               mirrorLocalCamera,
-              // Camera fills & crops like the strip; screen share fits whole.
-              screenRef ? "w-full h-full object-contain" : "w-full h-full object-cover",
+              // Neither is cropped. The box is already 16:9, so a 16:9 camera
+              // fills it either way — and a 4:3 one letterboxes rather than
+              // losing the top of a head and the sides of a sign.
+              "w-full h-full object-contain",
             )}
           />
         ) : (
