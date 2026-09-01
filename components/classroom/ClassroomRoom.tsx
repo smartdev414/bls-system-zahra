@@ -4071,7 +4071,7 @@ export function ClassroomRoom({
 
         {/* Chat column — full-height sidebar on desktop; mobile full-screen overlay. */}
         <div className={cn(
-          "flex flex-col overflow-hidden bg-zinc-900 transition-all duration-200 border-zinc-800",
+          "flex flex-col overflow-hidden bg-zinc-900 transition-all duration-200 border-zinc-800 min-w-0",
           "md:relative md:h-full md:shrink-0 md:border-l md:flex",
           chatOpen ? "md:w-72" : "md:w-10",
           chatOpen

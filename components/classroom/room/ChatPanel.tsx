@@ -184,13 +184,13 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
   const isVideo = attachment.mimeType.startsWith("video/")
 
   return (
-    <div className="mt-1.5 overflow-hidden rounded-xl border border-white/10 bg-black/20">
+    <div className="mt-1.5 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-white/10 bg-black/20">
       {isImage && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={attachment.fileUrl}
           alt={attachment.fileName}
-          className="max-h-48 w-full object-contain bg-zinc-950"
+          className="max-h-48 w-full max-w-full object-contain bg-zinc-950"
         />
       )}
       {isVideo && (
@@ -198,7 +198,7 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
           src={attachment.fileUrl}
           controls
           playsInline
-          className="max-h-48 w-full bg-zinc-950"
+          className="max-h-48 w-full max-w-full bg-zinc-950"
           preload="metadata"
         />
       )}
@@ -256,14 +256,23 @@ function MessageBubble({ msg, isOwn, t }: { msg: ChatMsg; isOwn: boolean; t: Cha
     )
   }
 
+  const hasAttachment = !!msg.attachment
+
   return (
-    <div className={cn("flex flex-col gap-0.5", isOwn ? "items-end self-end" : "items-start self-start", "max-w-[88%]")}>
+    <div
+      className={cn(
+        "flex flex-col gap-0.5 min-w-0 max-w-[88%]",
+        isOwn ? "items-end self-end" : "items-start self-start",
+        hasAttachment && "w-full",
+      )}
+    >
       {!isOwn && (
         <span className={cn("text-[11px] font-semibold px-1 leading-none", t.senderName)}>{msg.from}</span>
       )}
       <div
         className={cn(
-          "px-3 py-2 text-sm leading-snug wrap-break-word",
+          "min-w-0 max-w-full overflow-hidden px-3 py-2 text-sm leading-snug wrap-break-word",
+          hasAttachment && "w-full",
           isOwn
             ? "bg-primary text-primary-foreground rounded-2xl rounded-br-sm"
             : cn(t.bubbleOther, "rounded-2xl rounded-bl-sm")
@@ -629,7 +638,7 @@ export function ChatPanel({
       <div
         ref={listRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2 min-h-0"
+        className="flex-1 overflow-x-hidden overflow-y-auto px-3 py-3 flex flex-col gap-2 min-h-0 min-w-0"
       >
         {messages.length === 0 ? (
           <div className={cn("flex flex-col items-center justify-center h-full gap-3 select-none", t.emptyText)}>
