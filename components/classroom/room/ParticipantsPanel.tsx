@@ -86,6 +86,12 @@ export function ParticipantsPanel({
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  // Your own tile keeps its place in the room-wide order, so on a long strip it
+  // can start out scrolled off the end. Bring it into view once on join —
+  // that's what pinning yourself to the front was really for.
+  const ownTileRef = useRef<HTMLDivElement>(null)
+  const scrolledToOwnTile = useRef(false)
+
   // Tutor-only: manual display order established by drag-and-drop. When
   // populated, this takes precedence over the default (camera-on first) sort.
   // New participants fall to the end; leavers are pruned on next effect tick.
@@ -127,20 +133,27 @@ export function ParticipantsPanel({
           const camRef = camTracks.find(
             (t) => t.participant.identity === p.identity && isTrackReference(t),
           )
-          // Everyone else's tile prefers their screen share — that's the
-          // interesting feed. Your own tile prefers your camera: you are already
-          // looking at the screen you're sharing, and a teacher who is sharing
-          // still needs to see themselves signing.
+          // Every tile prefers the camera, for everyone looking at it. The
+          // preference used to depend on who was looking — your own tile showed
+          // your camera, everyone else's showed their screen share — so a
+          // sharing teacher saw themselves signing in a slot where the class saw
+          // a cropped desktop. The strip is the register of who is in the room,
+          // which means faces, in the same landscape frame, in the same slot for
+          // all of us; the share is already on the stage, and the "Screen" chip
+          // below says who is driving it.
           const isLocal  = p.identity === localParticipant.identity
-          const trackRef = isLocal ? (camRef ?? screenRef) : (screenRef ?? camRef)
+          const trackRef = camRef ?? screenRef
           const camOn = !!trackRef
           return {
             p,
             trackRef,
             camOn,
             sharingScreen: !!screenRef,
+            // A shared desktop is not 16:9 and cropping it to fill the tile
+            // leaves an unreadable corner — fit the whole frame instead.
+            isScreenTrack: !camRef && !!screenRef,
             // Only mirror when the tile is actually showing your own camera.
-            showingOwnCamera: isLocal && trackRef === camRef,
+            showingOwnCamera: isLocal && !!camRef,
           }
         }),
     [allParticipants, camTracks, screenTracks, visibleIdentities, localParticipant.identity],
@@ -176,13 +189,31 @@ export function ParticipantsPanel({
       })
       return ordered
     }
+    // One order, computed the same way on every client — nothing here asks who
+    // is looking. Sorting yourself to the front gave each person a different
+    // strip from everyone else's, so "third along" meant a different student to
+    // the teacher than to the class, and the teacher's own view of the room
+    // stopped matching the one they were teaching to. Your own tile is marked
+    // instead (see `isLocal` below) and scrolled into view on join, which is
+    // what finding yourself actually needed.
     return [...withTracks].sort((a, b) => {
       if (a.camOn !== b.camOn) return a.camOn ? -1 : 1
       if (a.p.metadata === "tutor" && b.p.metadata !== "tutor") return -1
       if (b.p.metadata === "tutor" && a.p.metadata !== "tutor") return 1
-      return 0
+      // Identity as the final tiebreak: LiveKit hands each client its own
+      // participant list in its own order, so without this two people with
+      // their cameras on could still sit in opposite slots.
+      return a.p.identity < b.p.identity ? -1 : a.p.identity > b.p.identity ? 1 : 0
     })
   }, [manualOrder, withTracks])
+
+  useEffect(() => {
+    if (collapsed || scrolledToOwnTile.current) return
+    const el = ownTileRef.current
+    if (!el) return
+    scrolledToOwnTile.current = true
+    el.scrollIntoView({ block: "nearest", inline: "center" })
+  }, [collapsed, sorted])
 
   function reorder(sourceId: string, targetId: string) {
     if (sourceId === targetId) return
@@ -255,7 +286,7 @@ export function ParticipantsPanel({
       </div>
 
       <div className="overflow-x-auto flex items-center gap-2 px-2 py-2 min-w-0 flex-1">
-        {sorted.map(({ p, trackRef, camOn, sharingScreen, showingOwnCamera }) => {
+        {sorted.map(({ p, trackRef, camOn, sharingScreen, isScreenTrack, showingOwnCamera }) => {
           const isLocal     = p.identity === localParticipant.identity
           const isPinned    = pinnedId === p.identity
           const isTutor     = p.metadata === "tutor"
@@ -270,6 +301,7 @@ export function ParticipantsPanel({
           return (
             <div
               key={p.identity}
+              ref={isLocal ? ownTileRef : undefined}
               draggable={canDrag}
               onDragStart={(e) => {
                 if (!canDrag) return
@@ -308,6 +340,9 @@ export function ParticipantsPanel({
                   : "border-zinc-700 hover:border-zinc-500 cursor-pointer",
                 isDragging && "opacity-40",
                 isDropTarget && "ring-2 ring-sky-400 border-sky-400",
+                // Marks your own tile without moving it out of the room-wide
+                // order. Inset so it reads on top of a light camera frame.
+                isLocal && !isPinned && "ring-2 ring-inset ring-white/70",
               )}
               onContextMenu={(e) => {
                 e.preventDefault()
@@ -337,7 +372,12 @@ export function ParticipantsPanel({
                 <>
                   <VideoTrack
                     trackRef={trackRef}
-                    className={localCameraClassName(showingOwnCamera)}
+                    className={localCameraClassName(
+                      showingOwnCamera,
+                      isScreenTrack
+                        ? "w-full h-full object-contain"
+                        : "w-full h-full object-cover",
+                    )}
                   />
                   <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-1.5 pb-0.5 pointer-events-none">
                     <p className="text-[9px] text-white truncate font-medium">
@@ -376,7 +416,11 @@ export function ParticipantsPanel({
                 </div>
               )}
 
-              {sharingScreen && (!isTutor || isLocal) && (
+              {/* Shown on every sharer's tile, including a teacher's, and to
+                  everyone. It used to be hidden on a remote teacher's tile, so
+                  the class had no sign of who was driving the screen while the
+                  teacher had one on their own. */}
+              {sharingScreen && (
                 <div className="absolute bottom-7 left-1 bg-emerald-600/90 text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 z-10">
                   <Monitor className="size-2.5" />
                   {isLocal ? "Sharing" : "Screen"}

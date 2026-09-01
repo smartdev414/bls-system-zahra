@@ -26,8 +26,17 @@
  */
 
 import { useEffect, useState } from "react"
+import type { CSSProperties } from "react"
 
 export type SplitAxis = "row" | "column"
+
+/** The measured stage, plus the axis chosen for it. */
+export type StageSplit = {
+  axis: SplitAxis | null
+  /** Stage box in CSS pixels; 0 until the first measurement lands. */
+  width: number
+  height: number
+}
 
 /**
  * The shape each half is aiming for. Cameras publish 16:9, most modern decks
@@ -55,8 +64,8 @@ function cost(aspect: number): number {
  * keep the existing breakpoint classes for the first paint. Committing to an
  * axis before measuring would show one frame of the wrong layout on every join.
  */
-export function useStageSplit(ref: React.RefObject<HTMLElement | null>): SplitAxis | null {
-  const [axis, setAxis] = useState<SplitAxis | null>(null)
+export function useStageSplit(ref: React.RefObject<HTMLElement | null>): StageSplit {
+  const [split, setSplit] = useState<StageSplit>({ axis: null, width: 0, height: 0 })
 
   useEffect(() => {
     const el = ref.current
@@ -72,11 +81,18 @@ export function useStageSplit(ref: React.RefObject<HTMLElement | null>): SplitAx
       const rowCost = cost(width / (2 * height))
       const columnCost = cost((2 * width) / height)
 
-      setAxis((current) => {
+      setSplit((current) => {
         const preferred: SplitAxis = rowCost <= columnCost ? "row" : "column"
-        if (current === null) return preferred
-        if (preferred === current) return current
-        return Math.abs(rowCost - columnCost) < HYSTERESIS ? current : preferred
+        const axis =
+          current.axis === null || preferred === current.axis
+            ? preferred
+            : Math.abs(rowCost - columnCost) < HYSTERESIS
+              ? current.axis
+              : preferred
+        if (axis === current.axis && width === current.width && height === current.height) {
+          return current
+        }
+        return { axis, width, height }
       })
     })
 
@@ -84,7 +100,53 @@ export function useStageSplit(ref: React.RefObject<HTMLElement | null>): SplitAx
     return () => observer.disconnect()
   }, [ref])
 
-  return axis
+  return split
+}
+
+/**
+ * How wide (or tall) the teacher's camera panel should be next to slides or the
+ * whiteboard.
+ *
+ * Cutting the stage exactly in half is the wrong rule for the camera half. What
+ * lands in it is a 16:9 picture, so half of a stage that isn't ~32:9 gives the
+ * camera a box the wrong shape — the picture shrinks to fit inside it and the
+ * leftover becomes black bars that belong to nobody. On a phone or a portrait
+ * tablet, where the stage stacks, that is most of the camera panel: the signer
+ * comes out small *and* the slide underneath loses height it could have used.
+ *
+ * So give the camera the share that makes its panel 16:9 and hand everything
+ * else to the content. Where geometry won't allow it — a stage close to square,
+ * where a 16:9 camera panel would need well over half the stage — the share is
+ * capped and the picture letterboxes exactly as it does today, which is the
+ * best either panel can do with that box. The floor keeps a signer readable if
+ * the stage is ever wide enough for the ideal share to come out tiny.
+ *
+ * Returns empty styles until the stage has been measured, so the first paint
+ * keeps the caller's breakpoint classes rather than committing to a share.
+ */
+const CAMERA_MIN_SHARE = 0.25
+const CAMERA_MAX_SHARE = 0.5
+
+export function landscapeCameraSplit(
+  split: StageSplit,
+): { camera: CSSProperties; content: CSSProperties } {
+  const { axis, width, height } = split
+  if (axis === null || width < 1 || height < 1) return { camera: {}, content: {} }
+
+  // Along the split axis the two panels divide `total`; `across` is the
+  // dimension they both keep in full.
+  const total  = axis === "row" ? width : height
+  const across = axis === "row" ? height : width
+  const ideal  = axis === "row" ? across * TARGET_ASPECT : across / TARGET_ASPECT
+
+  const share = Math.min(Math.max(ideal / total, CAMERA_MIN_SHARE), CAMERA_MAX_SHARE)
+  // Rounded so a sub-pixel resize doesn't rewrite the style on every frame.
+  const percent = Math.round(share * 1000) / 10
+
+  return {
+    camera:  { flex: `0 0 ${percent}%` },
+    content: { flex: "1 1 0%" },
+  }
 }
 
 /** Flex direction for the stage row. Falls back to the viewport breakpoint. */

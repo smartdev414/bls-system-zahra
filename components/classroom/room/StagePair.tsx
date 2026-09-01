@@ -43,7 +43,7 @@ export function StagePair({
   // (beside slides or a whiteboard), so the stage's own axis says nothing about
   // which way *this* one should be cut.
   const boxRef = useRef<HTMLDivElement>(null)
-  const axis = useStageSplit(boxRef)
+  const { axis } = useStageSplit(boxRef)
 
   return (
     <div ref={containerRef} className="w-full h-full bg-zinc-950">

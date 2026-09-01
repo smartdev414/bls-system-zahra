@@ -7,6 +7,7 @@ import { useTracks, useLocalParticipant, VideoTrack } from "@livekit/components-
 import { Track } from "livekit-client"
 import { Camera, Users2 } from "lucide-react"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { BreakoutSelfStage } from "./BreakoutSelfStage"
 
 // `hidden` is set for a student whose breakout group the tutor has not joined:
 // the tutor is elsewhere, so this slot shows where they are instead of a feed.
@@ -32,23 +33,18 @@ export function TutorCameraInset({
   const mirrorLocal = tutorCam?.participant.identity === localParticipant.identity
 
   if (hidden) {
+    // In a breakout the slot belongs to the student's own group: show their own
+    // camera (and the switch to turn it on) rather than an explanation they
+    // can't act on without going looking for their tile.
+    if (breakoutGroupName) {
+      return <BreakoutSelfStage groupName={breakoutGroupName} compact />
+    }
     return (
       <div className="flex flex-col items-center justify-center w-full h-full gap-2 bg-zinc-900 text-zinc-600 px-3 text-center">
         <Users2 className="size-8 opacity-20" />
-        {breakoutGroupName ? (
-          <>
-            <span className="text-xs font-semibold text-zinc-400">
-              You&apos;re in {breakoutGroupName}
-            </span>
-            <span className="text-[11px] opacity-60 max-w-52">
-              Turn your camera on — your group appears here, and the lesson stays on the right.
-            </span>
-          </>
-        ) : (
-          <span className="text-xs opacity-60">
-            Tutor isn&apos;t in your group right now
-          </span>
-        )}
+        <span className="text-xs opacity-60">
+          Tutor isn&apos;t in your group right now
+        </span>
       </div>
     )
   }

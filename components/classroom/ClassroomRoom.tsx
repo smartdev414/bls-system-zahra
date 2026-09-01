@@ -39,7 +39,7 @@ import { AudioRenderer }        from "./room/AudioRenderer"
 import { ConnectionBanner }     from "./room/ConnectionBanner"
 import { useSlideContentBox }   from "./room/useSlideContentBox"
 import {
-  useStageSplit, splitDirectionClass, splitDividerClass,
+  useStageSplit, landscapeCameraSplit, splitDirectionClass, splitDividerClass,
 } from "./room/useStageSplit"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
 import { TutorCameraInset }     from "./room/TutorCameraInset"
@@ -58,6 +58,8 @@ import type { WhiteboardApi }   from "./room/TldrawBoard"
 import { BreakoutsPanel }       from "./room/BreakoutsPanel"
 import { BreakoutMonitor }      from "./room/BreakoutMonitor"
 import { BreakoutBanner }       from "./room/BreakoutBanner"
+import { BreakoutCountdown }    from "./room/BreakoutCountdown"
+import { BreakoutSelfStage }    from "./room/BreakoutSelfStage"
 import { NudgeOverlay }          from "./room/NudgeOverlay"
 import { SelfViewInset }        from "./room/SelfViewInset"
 import { ScreenShareView }      from "./room/ScreenShareView"
@@ -372,7 +374,6 @@ export function ClassroomRoom({
       setPptTotalPages(saved.total > 0 ? saved.total : 0)
       setSelectedSlides(Array.isArray(saved.selected) ? saved.selected : [])
       setPptActive(true)
-      setParticipantsOpen(false)
       restoredPresentationRef.current = true
     } catch { /* corrupt or unavailable storage — come up with a blank stage */ }
   }, [sessionId])
@@ -480,7 +481,6 @@ export function ClassroomRoom({
       setPptCurrentPage(state.page > 0 ? state.page : 1)
       if (state.selectedPages.length > 0) setSelectedSlides(state.selectedPages)
       setPptActive(true)
-      setParticipantsOpen(false)
       return
     }
     if (state.active && state.kind === "video" && state.url) {
@@ -493,7 +493,6 @@ export function ClassroomRoom({
       // server clock against this browser's. The tutor re-broadcasts
       // `video_state` every few seconds, which corrects any drift.
       setVideoAsOf(Date.now())
-      setParticipantsOpen(false)
       return
     }
     // Nothing on stage. Reached when a student restored a slide from storage
@@ -503,7 +502,6 @@ export function ClassroomRoom({
     setPptUrl(null)
     setPptCurrentPage(1)
     setPptTotalPages(0)
-    setParticipantsOpen(true)
   }, [])
 
   const hydrateStage = useCallback(async () => {
@@ -607,11 +605,22 @@ export function ClassroomRoom({
   // classroom, and on phones/tablets it starts collapsed, so a student sent
   // into a breakout would otherwise land in a room with no visible way to talk
   // to their group.
+  //
+  // The same applies on the way back: when breakouts end, everyone lands in the
+  // main room at once and expects to see each other. Leaving the strip however
+  // it happened to be left — collapsed to a 36px bar, easy to miss — had
+  // students hunting for the control instead of watching the class, so the
+  // strip is reopened for everybody as the groups close.
+  const breakoutsWereActive = useRef(false)
   useEffect(() => {
     if (!isTutor && breakoutsActive) {
       setParticipantsOpen(true)
       setChatOpen(true)
     }
+    if (breakoutsWereActive.current && !breakoutsActive) {
+      setParticipantsOpen(true)
+    }
+    breakoutsWereActive.current = breakoutsActive
   }, [isTutor, breakoutsActive])
 
   // ── Finger pointer state ───────────────────────────────────────────────────
@@ -634,9 +643,15 @@ export function ClassroomRoom({
   // than from a viewport breakpoint, so the camera and the presentation come
   // out the same shape as each other on every device — see `useStageSplit`.
   const stageRowRef = useRef<HTMLDivElement>(null)
-  const splitAxis   = useStageSplit(stageRowRef)
+  const stageSplit  = useStageSplit(stageRowRef)
+  const splitAxis   = stageSplit.axis
   const splitDirection = splitDirectionClass(splitAxis)
   const splitDivider   = splitDividerClass(splitAxis)
+
+  // How the stage is divided while slides or the whiteboard are up: the camera
+  // gets the share that keeps its own panel landscape, the material gets the
+  // rest. See `landscapeCameraSplit`.
+  const cameraSplit = landscapeCameraSplit(stageSplit)
 
   // How the stage is divided while a screen is being shared.
   //
@@ -909,8 +924,6 @@ export function ClassroomRoom({
         setPptTotalPages(data.total)
         setPptCurrentPage(data.page)
         setPptActive(true)
-        // Collapse participants to give slides more room
-        setParticipantsOpen(false)
         return
       }
 
@@ -925,7 +938,6 @@ export function ClassroomRoom({
         setPptUrl(null)
         setPptCurrentPage(1)
         setPptTotalPages(0)
-        setParticipantsOpen(true)
         return
       }
 
@@ -937,7 +949,6 @@ export function ClassroomRoom({
         setVideoPlaying(false)
         setVideoCurrentTime(0)
         setVideoAsOf(Date.now())
-        setParticipantsOpen(false)
         return
       }
 
@@ -956,7 +967,6 @@ export function ClassroomRoom({
         setPptUrl(null)
         setVideoPlaying(false)
         setVideoCurrentTime(0)
-        setParticipantsOpen(true)
         return
       }
 
@@ -1008,7 +1018,6 @@ export function ClassroomRoom({
         setPptTotalPages(data.total)
         setPptCurrentPage(data.page)
         setPptActive(true)
-        setParticipantsOpen(false)
         return
       }
 
@@ -1019,7 +1028,6 @@ export function ClassroomRoom({
         setVideoPlaying(data.playing)
         setVideoCurrentTime(data.currentTime)
         setVideoAsOf(data.ts)
-        setParticipantsOpen(false)
         return
       }
     } catch { /* ignore malformed */ }
@@ -1995,7 +2003,6 @@ export function ClassroomRoom({
     setVideoPlaying(false)
     setVideoCurrentTime(0)
     setVideoAsOf(now)
-    setParticipantsOpen(false)
     videoStateRef.current = { url, playing: false, currentTime: 0, ts: now }
 
     safeSendPpt({ action: "video_start", url })
@@ -2038,7 +2045,6 @@ export function ClassroomRoom({
     setPptTotalPages(total)
     setPptCurrentPage(firstPage)
     setPptActive(true)
-    setParticipantsOpen(false)
     setSlideTrayOpen(true)
 
     safeSendPpt({ action: "start", url, total, page: firstPage })
@@ -2581,7 +2587,6 @@ export function ClassroomRoom({
     setPptCurrentPage(1)
     setPptTotalPages(0)
     setSelectedSlides([])
-    setParticipantsOpen(true)
     setVideoPlaying(false)
     setVideoCurrentTime(0)
     videoStateRef.current = { url: "", playing: false, currentTime: 0, ts: 0 }
@@ -3074,6 +3079,15 @@ export function ClassroomRoom({
     setVisitingGroupId(groupId)
     safeSendBreakout({ action: "visit", groupId })
     if (groupId) {
+      // Joining a group means being *in* the room with them, so drop the
+      // full-screen overlays the visit was launched from. Left open they sit on
+      // top of the classroom: the teacher loses their own camera and the chat
+      // sidebar behind a grid of student tiles, which is exactly what teachers
+      // reported. The controls bar reopens either overlay in one click.
+      setBreakoutMonitorOpen(false)
+      setBreakoutsPanelOpen(false)
+      setChatOpen(true)
+      setParticipantsOpen(true)
       const g = breakoutStateRef.current.groups.find((x) => x.id === groupId)
       if (g) toast.info(`You joined ${g.name}`, { description: "Students in this group hear your mic now." })
     } else {
@@ -3605,7 +3619,10 @@ export function ClassroomRoom({
           totalPages={pickerData.total}
           initialSelected={pickerData.selectedPages}
           onConfirm={handleSlidesPicked}
-          onCancel={() => setPickerData(null)}
+          // Back to the library, not back to an empty stage. Cancelling here
+          // almost always means "wrong deck", and dropping the tutor into the
+          // room made them reopen the panel and start the search again.
+          onCancel={() => { setPickerData(null); setShowUpload(true) }}
         />
       )}
 
@@ -3709,6 +3726,28 @@ export function ClassroomRoom({
         )
       )}
 
+      {/* ── Teacher breakout banner ──
+          The teacher stays in the ordinary classroom while visiting a group
+          (their own camera on stage, chat to the right), so this is the only
+          thing that tells them where they are — and gets them back out again
+          without reopening the monitor. */}
+      {isTutor && breakoutsActive && visitingGroupId && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 max-w-[90%] flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/80 border border-emerald-500/40 backdrop-blur-sm shadow-lg">
+          <Users2 className="size-4 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold text-white truncate">
+            You&apos;re in {breakoutGroups.find((g) => g.id === visitingGroupId)?.name ?? "a group"}
+          </span>
+          {breakoutEndsAt && <BreakoutCountdown endsAt={breakoutEndsAt} variant="compact" />}
+          <button
+            onClick={() => handleVisitBreakout(null)}
+            className="text-[11px] font-semibold text-emerald-200 hover:text-white bg-emerald-500/25 hover:bg-emerald-500/50 rounded-full px-2.5 py-0.5 transition-colors"
+            title="Leave this group and go back to the main room"
+          >
+            Leave group
+          </button>
+        </div>
+      )}
+
       {/* ── Requests to speak (tutor only) ── */}
       {isTutor && speakRequests.length > 0 && (
         <div className="shrink-0 flex items-center gap-2 flex-wrap px-3 py-2 bg-sky-500/15 border-b border-sky-500/30">
@@ -3759,14 +3798,20 @@ export function ClassroomRoom({
             // ── Whiteboard mode: same deaf-first layout as PPT. Tutor camera on
             // the LEFT so signing stays visible while everyone draws on the RIGHT.
             <>
-              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
+              <div
+                className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative"
+                style={cameraSplit.camera}
+              >
                 {splitCameraPanel}
               </div>
 
-              <div className={cn(
-                "flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-zinc-800",
-                splitDivider,
-              )}>
+              <div
+                className={cn(
+                  "flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-zinc-800",
+                  splitDivider,
+                )}
+                style={cameraSplit.content}
+              >
                 <TldrawBoard
                   isTutor={isTutor}
                   canWrite={canWriteWhiteboard}
@@ -3789,7 +3834,10 @@ export function ClassroomRoom({
             // ── PPT mode: Deaf-culture convention — signer on the LEFT, content on the RIGHT.
             <>
               {/* Camera panel — LEFT. Pinned student if set, otherwise tutor for BSL */}
-              <div className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative">
+              <div
+                className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative"
+                style={cameraSplit.camera}
+              >
                 {splitCameraPanel}
               </div>
 
@@ -3801,7 +3849,11 @@ export function ClassroomRoom({
                   splitDivider,
                 )}
                 onPointerMove={handleSlidePointerMove}
-                style={isTutor && pointerMode ? { cursor: "none" } : undefined}
+                style={
+                  isTutor && pointerMode
+                    ? { ...cameraSplit.content, cursor: "none" }
+                    : cameraSplit.content
+                }
               >
                 {presentKind === "video" ? (
                   <VideoPlayer
@@ -3950,17 +4002,10 @@ export function ClassroomRoom({
                     )
                   }
                   if (breakoutsActive && !isTutor && ownBreakoutGroup) {
-                    return (
-                      <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-400 px-6 text-center">
-                        <Users2 className="size-12 opacity-30" />
-                        <p className="text-sm font-semibold text-zinc-200">
-                          You&apos;re in {ownBreakoutGroup.name}
-                        </p>
-                        <p className="text-xs text-zinc-500 max-w-sm">
-                          Turn on your camera — when teammates join, they&apos;ll appear here and in the strip below.
-                        </p>
-                      </div>
-                    )
+                    // Own camera on the stage, with the switch built in — a
+                    // student who rejoins mid-breakout shouldn't have to hunt
+                    // down their own tile to get back on camera.
+                    return <BreakoutSelfStage groupName={ownBreakoutGroup.name} />
                   }
                   return (
                     <TutorVideoArea
@@ -3978,7 +4023,17 @@ export function ClassroomRoom({
           </div>
 
           {/* Bottom strip: participants row. Height grows with `tileSize` so the
-              tiles inside (16:9) scale with the strip. */}
+              tiles inside (16:9) scale with the strip.
+
+              Putting a deck, a video or the whiteboard on stage does NOT close
+              this strip. It used to — the extra pixels went to the slide — but
+              in a signing classroom the students vanishing the moment slides
+              come up is the wrong trade: the teacher loses the faces they read
+              for comprehension, and students lose each other. The strip is the
+              tutor's to collapse (the chevron) or resize (`tileSize`), and
+              whatever they chose survives the presentation starting and
+              stopping. Only phones still start it collapsed, and only breakouts
+              force it back open. */}
           <div className={cn(
             "shrink-0 border-t border-zinc-800 bg-zinc-900 transition-[height] duration-200 overflow-hidden",
             !participantsOpen && "h-9",

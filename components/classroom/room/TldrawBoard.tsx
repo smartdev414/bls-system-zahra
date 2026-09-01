@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Tldraw,
   allDefaultFontFaces,
@@ -17,10 +17,12 @@ import {
 import { atom, react } from "@tldraw/state"
 import { useValue } from "@tldraw/state-react"
 import { useEditor } from "@tldraw/editor"
+import { DraggableStylePanel } from "./DraggableStylePanel"
 import {
   InstancePresenceRecordType,
   UserRecordType,
   createPresenceStateDerivation,
+  type TLAssetStore,
   type TLInstancePresence,
   type TLUser,
 } from "@tldraw/tlschema"
@@ -187,6 +189,70 @@ function loadFontsForSeededBoard(editor: Editor) {
   void editor.fonts.loadRequiredFontsForCurrentPage().catch(() => { /* best-effort */ })
 }
 
+/**
+ * Put whiteboard pictures somewhere every client can actually fetch them from.
+ *
+ * tldraw's default asset store keeps an added image in the tab it was added in:
+ * the asset record ends up holding either a `blob:` URL, which resolves in that
+ * one tab and nowhere else, or a data URL of the whole file. This board syncs by
+ * putting tldraw's record diffs straight onto the LiveKit data channel, so both
+ * end the same way for everybody else in the room — a blob URL that resolves to
+ * nothing on their machine, or a diff far past the channel's per-message ceiling
+ * that never leaves the sender at all. Either way the class sees an empty frame
+ * where the teacher's picture should be.
+ *
+ * Uploading to S3 first and syncing the resulting https URL fixes both: the diff
+ * stays a few hundred bytes, every client loads the same file, and the picture is
+ * still there when the board is reopened from its saved snapshot next lesson.
+ */
+function createBoardAssetStore(sessionIdRef: React.RefObject<string>): TLAssetStore {
+  return {
+    async upload(_asset, file, abortSignal) {
+      const contentType = file.type || "application/octet-stream"
+      const fileName = file.name || `whiteboard-asset-${uid()}`
+      try {
+        const presignRes = await fetch(
+          `/api/sessions/${sessionIdRef.current}/whiteboard-asset-presign`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName, contentType, fileSize: file.size }),
+            signal: abortSignal,
+          },
+        )
+        if (!presignRes.ok) {
+          const err = (await presignRes.json().catch(() => null)) as { message?: string } | null
+          throw new Error(err?.message ?? "Could not get an upload URL")
+        }
+        const { presignedUrl, fileUrl } = (await presignRes.json()) as {
+          presignedUrl: string
+          fileUrl: string
+        }
+        const uploadRes = await fetch(presignedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": contentType },
+          body: file,
+          signal: abortSignal,
+        })
+        if (!uploadRes.ok) throw new Error("Upload failed")
+        return { src: fileUrl }
+      } catch (e) {
+        // A silent failure here reads as "the image just didn't appear", which
+        // is the same thing the class sees when it fails for them instead — so
+        // say plainly that nobody got it rather than leaving a broken frame.
+        if (!abortSignal?.aborted) {
+          toast.error(
+            e instanceof Error
+              ? `${e.message} — the picture wasn't added to the whiteboard.`
+              : "The picture wasn't added to the whiteboard.",
+          )
+        }
+        throw e
+      }
+    },
+  }
+}
+
 export default function TldrawBoard({
   isTutor,
   canWrite,
@@ -223,6 +289,10 @@ export default function TldrawBoard({
   useEffect(() => { localNameRef.current = localName }, [localName])
 
   const [sharing, setSharing] = useState(false)
+
+  // One store for the life of the board. `sessionIdRef` is read at upload time,
+  // so a changing session id never forces tldraw to rebuild its own store.
+  const assetStore = useMemo(() => createBoardAssetStore(sessionIdRef), [])
 
   // Reflect the live permission into the editor whenever it changes.
   useEffect(() => {
@@ -534,7 +604,8 @@ export default function TldrawBoard({
         <Tldraw
           onMount={handleMount}
           licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
-          components={{ InFrontOfTheCanvas: AuthorBadges }}
+          assets={assetStore}
+          components={{ InFrontOfTheCanvas: AuthorBadges, StylePanel: DraggableStylePanel }}
         />
       </div>
     </div>

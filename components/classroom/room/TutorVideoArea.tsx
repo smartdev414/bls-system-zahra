@@ -18,8 +18,18 @@ export function TutorVideoArea({
   const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
   const { localParticipant } = useLocalParticipant()
 
-  const tutorCam    = camTracks.find((t) => t.participant.metadata === "tutor")
-  const tutorScreen = screenTracks.find((t) => t.participant.metadata === "tutor")
+  // With a co-teacher in the room there are two "tutor" feeds. A teacher must
+  // always see their own on the main stage — otherwise a teacher who joins a
+  // breakout group (where this view is the only camera on screen) ends up
+  // watching their colleague instead of themselves. Students have no local
+  // tutor feed, so they fall through to the first one as before.
+  const preferLocal = <T extends { participant: { identity: string; metadata?: string } }>(tracks: T[]) => {
+    const tutors = tracks.filter((t) => t.participant.metadata === "tutor")
+    return tutors.find((t) => t.participant.identity === localParticipant.identity) ?? tutors[0]
+  }
+
+  const tutorCam    = preferLocal(camTracks)
+  const tutorScreen = preferLocal(screenTracks)
   const active      = tutorScreen ?? tutorCam
   // Fit the whole frame (no crop) for both camera and screen share: the tutor's
   // full head and signing hands must stay visible, and a full-width main view

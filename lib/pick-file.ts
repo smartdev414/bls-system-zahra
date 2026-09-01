@@ -19,6 +19,42 @@
 /** Stable across the whole app: all presentation picking shares one folder. */
 const PICKER_ID = "bsl-presentations"
 
+/**
+ * Which picker ids this device has already used.
+ *
+ * `startIn` and `id` both feed the same decision, and the browser is supposed to
+ * let a remembered folder win. Relying on that is not worth it: the cost of
+ * being wrong is exactly the bug teachers keep reporting — the dialog opening
+ * back at Documents every time. So once a folder has been chosen under an id,
+ * stop sending `startIn` at all and leave the browser nothing to prefer.
+ */
+const USED_IDS_KEY = "bsl:file-picker-used"
+
+function usedIds(): string[] {
+  try {
+    const raw = window.localStorage.getItem(USED_IDS_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : []
+  } catch {
+    // Site data disabled. Seeding `startIn` every time is the old behaviour,
+    // not a new failure.
+    return []
+  }
+}
+
+function hasPickedBefore(id: string): boolean {
+  if (typeof window === "undefined") return false
+  return usedIds().includes(id)
+}
+
+function markPickedBefore(id: string): void {
+  try {
+    const ids = usedIds()
+    if (ids.includes(id)) return
+    window.localStorage.setItem(USED_IDS_KEY, JSON.stringify([...ids, id]))
+  } catch { /* nothing to remember with — the id still works within the session */ }
+}
+
 type FilePickerAcceptType = {
   description?: string
   accept: Record<string, string[]>
@@ -78,17 +114,21 @@ export async function pickPresentationFile(): Promise<PickResult> {
   const picker = (window as WindowWithPicker).showOpenFilePicker
   if (typeof picker !== "function") return { status: "unsupported" }
 
+  const seedFolder = !hasPickedBefore(PICKER_ID)
+
   try {
     const [handle] = await picker({
       id: PICKER_ID,
-      // Only consulted the first time this id is used; after that the browser's
-      // memory of the last folder wins, which is the entire point.
-      startIn: "documents",
+      // Only on the very first pick. From then on the id alone decides, so the
+      // dialog reopens wherever the teacher was last time.
+      ...(seedFolder ? { startIn: "documents" as const } : {}),
       multiple: false,
       types: ACCEPT,
     })
     if (!handle) return { status: "cancelled" }
-    return { status: "picked", file: await handle.getFile() }
+    const file = await handle.getFile()
+    markPickedBefore(PICKER_ID)
+    return { status: "picked", file }
   } catch (err) {
     // AbortError is the teacher pressing Cancel — the overwhelmingly common
     // outcome, and not something to report. Anything else means the API is
