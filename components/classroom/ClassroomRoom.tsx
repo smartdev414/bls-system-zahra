@@ -42,6 +42,7 @@ import { useSlideContentBox }   from "./room/useSlideContentBox"
 import {
   useStageSplit, landscapeCameraSplit, splitDirectionClass, splitDividerClass,
 } from "./room/useStageSplit"
+import { useElementSize }        from "./room/participantGrid"
 import { TutorVideoArea }       from "./room/TutorVideoArea"
 import { TutorCameraInset }     from "./room/TutorCameraInset"
 import { ParticipantsPanel }    from "./room/ParticipantsPanel"
@@ -661,6 +662,47 @@ export function ClassroomRoom({
   // gets the share that keeps its own panel landscape, the material gets the
   // rest. See `landscapeCameraSplit`.
   const cameraSplit = landscapeCameraSplit(stageSplit)
+
+  // ── Where the class goes: beside the stage, or beneath it ──────────────────
+  //
+  // Beneath was the old answer and the only answer, and it is the one teachers
+  // objected to. A row of students under a 16:9 stage gets whatever height is
+  // left over, which is never much, so the tiles came out small and the row
+  // came out long — and a long row in a short box is why the class had to be
+  // swiped through. Standing the class up beside the stage instead gives it a
+  // box with real height, and height is what lets the packer stack tiles into
+  // rows rather than running them off the end.
+  //
+  // Measured, not a breakpoint, for the same reason the stage split is: what
+  // matters is the shape of the box this room actually got, and the chat
+  // sidebar can take 288px of it without the viewport changing at all. Beneath
+  // is kept for boxes too narrow to give the stage and the class a column each
+  // — a phone, or a portrait tablet with chat open — where side by side would
+  // leave both of them too thin to read a hand in.
+  const stageAreaRef = useRef<HTMLDivElement>(null)
+  const stageArea    = useElementSize(stageAreaRef)
+  const [studentsBeside, setStudentsBeside] = useState(true)
+  useEffect(() => {
+    const { width, height } = stageArea
+    if (width < 1 || height < 1) return
+    setStudentsBeside((prev) => {
+      // Dead band across the crossover. The chat sidebar animates 288px in and
+      // out, and without this a room sitting near the threshold would swing the
+      // whole layout — stage, class and all — every time chat was toggled.
+      if (width < 760) return false
+      if (width < 900) return prev
+      return width >= height
+    })
+  }, [stageArea])
+
+  // How much of the room the class gets. This is what the +/- control on the
+  // panel now moves: with nothing ever scrolled out of sight, how big the tiles
+  // come out is decided by the room's roster and the space the panel has, and
+  // the space is the only half of that a teacher can actually set.
+  const CLASS_SHARE: Record<TileSize, number> = { sm: 0.26, md: 0.36, lg: 0.46, xl: 0.56 }
+  // Stacked beneath the stage the same control sets a height instead. Taller
+  // than the old strip at every step: two rows of faces is the point.
+  const CLASS_BAND_PX: Record<TileSize, number> = { sm: 104, md: 148, lg: 200, xl: 264 }
 
   // How the stage is divided while a screen is being shared.
   //
@@ -3813,6 +3855,16 @@ export function ClassroomRoom({
         {/* Stage + participants — left column; chat sits alongside at full height. */}
         <div className="flex flex-1 flex-col overflow-hidden min-h-0 min-w-0">
 
+          {/* Stage and class, side by side. See `studentsBeside` for why the
+              class is no longer a strip along the bottom. */}
+          <div
+            ref={stageAreaRef}
+            className={cn(
+              "flex flex-1 overflow-hidden min-h-0 min-w-0",
+              studentsBeside ? "flex-row" : "flex-col",
+            )}
+          >
+
           {/* Stage row: slides / video / whiteboard. The camera and the content sit
               side by side on a wide stage — signer on the LEFT, the Deaf-culture
               convention — and stacked with the signer on top when the stage is
@@ -3821,7 +3873,7 @@ export function ClassroomRoom({
               the same shape as each other. See `useStageSplit`. */}
           <div
             ref={stageRowRef}
-            className={cn("flex flex-1 overflow-hidden min-h-0 relative", splitDirection)}
+            className={cn("flex flex-1 overflow-hidden min-h-0 min-w-0 relative", splitDirection)}
           >
 
           {whiteboardActive ? (
@@ -4053,26 +4105,34 @@ export function ClassroomRoom({
           <CaptionsOverlay />
           </div>
 
-          {/* Bottom strip: participants row. Height grows with `tileSize` so the
-              tiles inside (16:9) scale with the strip.
+          {/* The class. A column beside the stage on anything wide enough for
+              one, a band beneath it otherwise — see `studentsBeside`.
 
               Putting a deck, a video or the whiteboard on stage does NOT close
-              this strip. It used to — the extra pixels went to the slide — but
+              this panel. It used to — the extra pixels went to the slide — but
               in a signing classroom the students vanishing the moment slides
               come up is the wrong trade: the teacher loses the faces they read
-              for comprehension, and students lose each other. The strip is the
+              for comprehension, and students lose each other. The panel is the
               tutor's to collapse (the chevron) or resize (`tileSize`), and
               whatever they chose survives the presentation starting and
               stopping. Only phones still start it collapsed, and only breakouts
               force it back open. */}
-          <div className={cn(
-            "shrink-0 border-t border-zinc-800 bg-zinc-900 transition-[height] duration-200 overflow-hidden",
-            !participantsOpen && "h-9",
-            participantsOpen && tileSize === "sm" && "h-20",
-            participantsOpen && tileSize === "md" && "h-28",
-            participantsOpen && tileSize === "lg" && "h-40",
-            participantsOpen && tileSize === "xl" && "h-56",
-          )}>
+          <div
+            className={cn(
+              "shrink-0 grow-0 bg-zinc-900 overflow-hidden border-zinc-800 transition-[flex-basis,height] duration-200",
+              studentsBeside ? "border-l" : "border-t",
+            )}
+            style={
+              studentsBeside
+                ? {
+                    // Collapsed, the column is just wide enough for the rail
+                    // that brings the class back.
+                    flexBasis: participantsOpen ? `${CLASS_SHARE[tileSize] * 100}%` : "2.25rem",
+                    height: "100%",
+                  }
+                : { height: participantsOpen ? CLASS_BAND_PX[tileSize] : 36 }
+            }
+          >
             <ParticipantsPanel
               pinnedId={pinnedId}
               onPin={setPinnedId}
@@ -4096,7 +4156,9 @@ export function ClassroomRoom({
               groupLabels={groupLabels}
               tileSize={tileSize}
               onTileSizeChange={handleTileSizeChange}
+              orientation={studentsBeside ? "side" : "bottom"}
             />
+          </div>
           </div>
         </div>
 

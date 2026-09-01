@@ -16,6 +16,9 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
+import {
+  packGrid, useElementSize, tileRadius, DENSE_TILE_WIDTH,
+} from "./participantGrid"
 
 type MenuState = {
   identity: string
@@ -49,6 +52,7 @@ export function ParticipantsPanel({
   groupLabels,
   tileSize,
   onTileSizeChange,
+  orientation = "side",
 }: {
   pinnedId: string | null
   onPin: (identity: string | null) => void
@@ -77,6 +81,15 @@ export function ParticipantsPanel({
   // parent) and the in-tile chrome scaling here.
   tileSize: TileSize
   onTileSizeChange: (next: TileSize) => void
+  /**
+   * Where the parent has put this panel. "side" is a tall column beside the
+   * stage — the normal desktop case, and the one feedback #20 asked for. Only
+   * a viewport too narrow to give the stage and the class a column each falls
+   * back to "bottom". It changes the chrome (a vertical rail when collapsed
+   * rather than a horizontal bar); the grid itself needs no telling, because
+   * it reads the shape of whatever box it lands in.
+   */
+  orientation?: "side" | "bottom"
 }) {
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
@@ -86,11 +99,11 @@ export function ParticipantsPanel({
   const [menu, setMenu] = useState<MenuState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Your own tile keeps its place in the room-wide order, so on a long strip it
-  // can start out scrolled off the end. Bring it into view once on join —
-  // that's what pinning yourself to the front was really for.
-  const ownTileRef = useRef<HTMLDivElement>(null)
-  const scrolledToOwnTile = useRef(false)
+  // The box the tiles are packed into. Measured rather than assumed: the same
+  // panel is a tall column beside the stage on a laptop and a wide band beneath
+  // it on a phone, and the grid shape follows from which one it got.
+  const gridBoxRef = useRef<HTMLDivElement>(null)
+  const gridBox = useElementSize(gridBoxRef)
 
   // Tutor-only: manual display order established by drag-and-drop. When
   // populated, this takes precedence over the default (camera-on first) sort.
@@ -194,8 +207,8 @@ export function ParticipantsPanel({
     // strip from everyone else's, so "third along" meant a different student to
     // the teacher than to the class, and the teacher's own view of the room
     // stopped matching the one they were teaching to. Your own tile is marked
-    // instead (see `isLocal` below) and scrolled into view on join, which is
-    // what finding yourself actually needed.
+    // instead (see `isLocal` below), which is all that finding yourself needs
+    // now the whole class is on screen at once.
     return [...withTracks].sort((a, b) => {
       if (a.camOn !== b.camOn) return a.camOn ? -1 : 1
       if (a.p.metadata === "tutor" && b.p.metadata !== "tutor") return -1
@@ -207,13 +220,16 @@ export function ParticipantsPanel({
     })
   }, [manualOrder, withTracks])
 
-  useEffect(() => {
-    if (collapsed || scrolledToOwnTile.current) return
-    const el = ownTileRef.current
-    if (!el) return
-    scrolledToOwnTile.current = true
-    el.scrollIntoView({ block: "nearest", inline: "center" })
-  }, [collapsed, sorted])
+  // Every tile that exists, sized to fit the box it has — see `packGrid`. The
+  // gap is deliberately tight: at fourteen-plus tiles the space between them
+  // competes directly with the size of the faces inside them.
+  const GRID_GAP = 6
+  const pack = useMemo(
+    () => packGrid(gridBox.width, gridBox.height, sorted.length, { gap: GRID_GAP }),
+    [gridBox.width, gridBox.height, sorted.length],
+  )
+  const dense = pack.tileWidth < DENSE_TILE_WIDTH
+  const radius = tileRadius(pack.tileWidth)
 
   function reorder(sourceId: string, targetId: string) {
     if (sourceId === targetId) return
@@ -226,11 +242,31 @@ export function ParticipantsPanel({
   }
 
   if (collapsed) {
+    // Beside the stage the panel collapses to a vertical rail, so the handle
+    // that brings the class back is on the edge the class went behind.
+    if (orientation === "side") {
+      return (
+        <button
+          onClick={onToggleCollapse}
+          className="h-full w-full flex flex-col items-center gap-2 bg-zinc-900 hover:bg-zinc-800/60 transition-colors py-3"
+          title="Show the class"
+        >
+          <ChevronDown className="size-3 text-zinc-500 rotate-90 shrink-0" />
+          <Users className="size-3.5 text-primary shrink-0" />
+          <span
+            className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider whitespace-nowrap"
+            style={{ writingMode: "vertical-rl" }}
+          >
+            {allParticipants.length} in room
+          </span>
+        </button>
+      )
+    }
     return (
       <button
         onClick={onToggleCollapse}
         className="h-full w-full flex items-center justify-start gap-2 bg-zinc-900 hover:bg-zinc-800/60 transition-colors px-4 text-left"
-        title="Expand Participants"
+        title="Show the class"
       >
         <Users className="size-3.5 text-primary shrink-0" />
         <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
@@ -242,27 +278,32 @@ export function ParticipantsPanel({
   }
 
   return (
-    <div className="flex items-stretch h-full min-w-0 overflow-hidden bg-zinc-900">
-      <div className="shrink-0 w-36 border-r border-zinc-800 flex flex-col">
+    <div className="flex flex-col h-full w-full min-w-0 min-h-0 overflow-hidden bg-zinc-900">
+      {/* One compact bar across the top, so the whole of the rest of the panel
+          belongs to the faces. The old chrome was a 144px column down the left,
+          which cost a column of tiles for the life of every lesson. */}
+      <div className="shrink-0 h-8 flex items-center gap-1.5 px-2 border-b border-zinc-800">
         <button
           onClick={onToggleCollapse}
-          className="flex-1 px-3 flex flex-col justify-center hover:bg-zinc-800/60 transition-colors text-left"
+          className="flex items-center gap-1.5 min-w-0 flex-1 hover:text-white text-zinc-300 transition-colors text-left"
+          title="Hide the class"
         >
-          <div className="flex items-center gap-1.5">
-            <Users className="size-3.5 text-primary shrink-0" />
-            <span className="text-xs font-bold text-white">Participants</span>
-          </div>
-          <div className="flex items-center gap-1 mt-0.5 text-zinc-400">
-            <span className="text-[10px]">{allParticipants.length} in room</span>
-            <ChevronDown className="size-3 text-zinc-500 ml-auto" />
-          </div>
+          <Users className="size-3.5 text-primary shrink-0" />
+          <span className="text-[11px] font-bold truncate">
+            Class · {allParticipants.length}
+          </span>
+          <ChevronDown
+            className={cn("size-3 text-zinc-500 shrink-0", orientation === "side" && "-rotate-90")}
+          />
         </button>
 
-        {/* Tile size selector — bigger / smaller. Persists per-user via the
-            parent. Disabled at the boundaries. */}
-        <div className="flex items-center gap-1 px-2 pb-1.5">
+        {/* Sizes the panel itself, not the tiles — the tiles are sized by how
+            many people are in the room and how much room the panel has. Giving
+            the class more of the stage is the only lever that still makes
+            sense once nothing is ever scrolled out of sight. */}
+        <div className="flex items-center gap-1 shrink-0">
           <TileSizeButton
-            label="Smaller"
+            label="Give the class less room"
             disabled={tileSize === TILE_SIZE_ORDER[0]}
             onClick={() => {
               const i = TILE_SIZE_ORDER.indexOf(tileSize)
@@ -270,11 +311,8 @@ export function ParticipantsPanel({
             }}
             icon={<Minus className="size-3" />}
           />
-          <span className="text-[9px] text-zinc-500 font-mono uppercase flex-1 text-center">
-            {tileSize}
-          </span>
           <TileSizeButton
-            label="Bigger"
+            label="Give the class more room"
             disabled={tileSize === TILE_SIZE_ORDER[TILE_SIZE_ORDER.length - 1]}
             onClick={() => {
               const i = TILE_SIZE_ORDER.indexOf(tileSize)
@@ -285,7 +323,21 @@ export function ParticipantsPanel({
         </div>
       </div>
 
-      <div className="overflow-x-auto flex items-center gap-2 px-2 py-2 min-w-0 flex-1">
+      {/* The packing box. `overflow-hidden` rather than `auto` is the point of
+          the whole change: there is no axis to scroll on, because everything
+          already fits. */}
+      <div
+        ref={gridBoxRef}
+        className="flex-1 min-w-0 min-h-0 overflow-hidden p-1.5 flex items-center justify-center"
+      >
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: `repeat(${pack.cols}, ${pack.tileWidth}px)`,
+            gridAutoRows: `${pack.tileHeight}px`,
+            gap: GRID_GAP,
+          }}
+        >
         {sorted.map(({ p, trackRef, camOn, sharingScreen, isScreenTrack, showingOwnCamera }) => {
           const isLocal     = p.identity === localParticipant.identity
           const isPinned    = pinnedId === p.identity
@@ -301,7 +353,6 @@ export function ParticipantsPanel({
           return (
             <div
               key={p.identity}
-              ref={isLocal ? ownTileRef : undefined}
               draggable={canDrag}
               onDragStart={(e) => {
                 if (!canDrag) return
@@ -331,8 +382,13 @@ export function ParticipantsPanel({
                 setDraggingId(null)
                 setDropTargetId(null)
               }}
+              // Sized by the packer, not by the strip's height. A fixed
+              // `aspect-video` box that filled the row's height is what forced
+              // the overflow in the first place: past the tenth student the
+              // eleventh simply went off the end.
+              style={{ width: pack.tileWidth, height: pack.tileHeight, borderRadius: radius }}
               className={cn(
-                "relative rounded-xl overflow-hidden transition-all h-full aspect-video bg-zinc-800 border shrink-0 group",
+                "relative overflow-hidden transition-all bg-zinc-800 border group",
                 isTutor
                   ? "border-amber-500/30 cursor-default"
                   : isPinned
@@ -357,7 +413,7 @@ export function ParticipantsPanel({
                 })
               }}
             >
-              {canDrag && (
+              {canDrag && !dense && (
                 // Top-left hint; tutor tile occupies this slot, but student
                 // tiles (the only draggable ones) don't, so there's no clash.
                 <div
@@ -379,19 +435,40 @@ export function ParticipantsPanel({
                         : "w-full h-full object-cover",
                     )}
                   />
-                  <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-1.5 pb-0.5 pointer-events-none">
-                    <p className="text-[9px] text-white truncate font-medium">
+                  {/* The name plate survives every tile size — a teacher
+                      scanning a full class needs to name the student who looks
+                      lost, and it costs one strip along an edge the face isn't
+                      using. Everything else gives way first. */}
+                  <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-1 pb-0.5 pointer-events-none">
+                    <p
+                      className="text-white truncate font-medium leading-tight"
+                      style={{ fontSize: dense ? 7 : 9 }}
+                    >
                       {isLocal ? "You" : displayName}
                       {isTutor && <span className="ml-0.5 text-amber-400">•</span>}
                     </p>
                   </div>
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-1 px-1">
-                  <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                // Camera-off placeholder. The initial scales with the tile so a
+                // packed class doesn't end up with circles clipped by their own
+                // frames — at 60px a fixed 32px avatar plus a name is taller
+                // than the tile it sits in.
+                <div className="flex flex-col items-center justify-center h-full gap-0.5 px-1 overflow-hidden">
+                  <div
+                    className="rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold shrink-0"
+                    style={{
+                      width:    Math.max(14, Math.round(pack.tileHeight * 0.38)),
+                      height:   Math.max(14, Math.round(pack.tileHeight * 0.38)),
+                      fontSize: Math.max(8,  Math.round(pack.tileHeight * 0.2)),
+                    }}
+                  >
                     {displayName[0]?.toUpperCase()}
                   </div>
-                  <p className="text-[9px] font-semibold text-white truncate max-w-full px-1">
+                  <p
+                    className="font-semibold text-white truncate max-w-full px-1 leading-tight"
+                    style={{ fontSize: dense ? 7 : 9 }}
+                  >
                     {isLocal ? "You" : displayName}
                   </p>
                 </div>
@@ -410,7 +487,13 @@ export function ParticipantsPanel({
                 </div>
               )}
 
-              {isPinned && (
+              {/* Word-badges below. Each of them is dropped on a packed grid —
+                  they'd cover most of a small tile, and every one of them is
+                  already said a second way that costs no pixels: pinned and
+                  tutor tiles carry a coloured border, and a group becomes a
+                  colour dot. Faces win the space; labels come back the moment
+                  the class is small enough to afford them. */}
+              {isPinned && !dense && (
                 <div className="absolute top-1 right-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold">
                   Pinned
                 </div>
@@ -421,23 +504,37 @@ export function ParticipantsPanel({
                   the class had no sign of who was driving the screen while the
                   teacher had one on their own. */}
               {sharingScreen && (
-                <div className="absolute bottom-7 left-1 bg-emerald-600/90 text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 z-10">
+                <div
+                  className={cn(
+                    "absolute z-10 bg-emerald-600/90 text-white font-bold flex items-center gap-0.5",
+                    dense
+                      ? "top-0.5 left-0.5 rounded p-0.5"
+                      : "bottom-7 left-1 text-[8px] px-1.5 py-0.5 rounded-full",
+                  )}
+                  title={isLocal ? "You are sharing your screen" : `${displayName} is sharing their screen`}
+                >
                   <Monitor className="size-2.5" />
-                  {isLocal ? "Sharing" : "Screen"}
+                  {!dense && (isLocal ? "Sharing" : "Screen")}
                 </div>
               )}
 
-              {isTutor && (
+              {isTutor && !dense && (
                 <div className="absolute top-1 right-1 text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30 z-10">
                   Tutor
                 </div>
               )}
 
               {/* Breakout-group chip — tiny colour tag so a tutor can tell which
-                  breakout a student is in without opening the manager. */}
+                  breakout a student is in without opening the manager. Shrinks
+                  to a bare colour dot rather than disappearing: which group a
+                  student is in is the one thing a tutor is scanning the grid
+                  for while breakouts run. */}
               {!isTutor && groupLabels?.get(p.identity) && (
                 <div
-                  className="absolute top-1 left-1 text-[8px] px-1.5 py-0.5 rounded-full font-bold border max-w-[80%] truncate"
+                  className={cn(
+                    "absolute top-1 left-1 rounded-full font-bold border",
+                    dense ? "size-2" : "text-[8px] px-1.5 py-0.5 max-w-[80%] truncate",
+                  )}
                   style={{
                     background:   `${groupLabels.get(p.identity)!.color}33`,
                     color:        groupLabels.get(p.identity)!.color,
@@ -445,7 +542,7 @@ export function ParticipantsPanel({
                   }}
                   title={`In ${groupLabels.get(p.identity)!.name}`}
                 >
-                  {groupLabels.get(p.identity)!.name}
+                  {!dense && groupLabels.get(p.identity)!.name}
                 </div>
               )}
 
@@ -456,29 +553,38 @@ export function ParticipantsPanel({
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onLowerHand(p.identity) }}
-                    className="absolute bottom-1 right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand"
+                    className={cn(
+                      "absolute bottom-1 right-1 z-20 flex items-center justify-center rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand",
+                      // Never dropped, at any size — a raised hand is the one
+                      // thing in the grid that is asking for an answer.
+                      dense ? "size-4" : "size-6",
+                    )}
                     title={`Click to lower ${displayName}'s hand`}
                     aria-label={`Lower ${displayName}'s hand`}
                   >
-                    <HandMetal className="size-3.5 group-hover/hand:hidden" />
+                    <HandMetal className={cn("group-hover/hand:hidden", dense ? "size-2.5" : "size-3.5")} />
                     <span className="hidden group-hover/hand:block text-[10px] font-bold">✕</span>
                   </button>
                 ) : (
                   <div
-                    className="absolute bottom-1 right-1 z-20 flex items-center justify-center size-6 rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none"
+                    className={cn(
+                      "absolute bottom-1 right-1 z-20 flex items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none",
+                      dense ? "size-4" : "size-6",
+                    )}
                     title={`${displayName} raised their hand`}
                     aria-label={`${displayName} has their hand raised`}
                   >
-                    <HandMetal className="size-3.5" />
+                    <HandMetal className={dense ? "size-2.5" : "size-3.5"} />
                   </div>
                 )
               )}
             </div>
           )
         })}
+        </div>
 
         {allParticipants.length === 0 && (
-          <p className="text-xs text-zinc-600 px-3 whitespace-nowrap">No one else here yet</p>
+          <p className="text-xs text-zinc-600 px-3 text-center">No one else here yet</p>
         )}
       </div>
 
