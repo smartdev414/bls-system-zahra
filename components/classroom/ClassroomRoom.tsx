@@ -3130,6 +3130,18 @@ export function ClassroomRoom({
     })
   }, [isTutor, breakoutsActive, breakoutClosingAt, safeSendBreakout])
 
+  // When a student is pinned on the tutor's stage, the class-nudge button
+  // targets only that student. The tutor is already focused on them, and a
+  // room-wide flash would interrupt everyone else. Unpinning restores the
+  // whole-class ping. Tutors and the local participant are never a target —
+  // those tiles can't be pinned from the UI, but keep the guard anyway.
+  const pinnedStudent = useMemo(() => {
+    if (!pinnedId || pinnedId === localParticipant.identity) return null
+    const p = participants.find((x) => x.identity === pinnedId)
+    if (!p || p.metadata === "tutor") return null
+    return { identity: p.identity, name: p.name ?? p.identity }
+  }, [pinnedId, participants, localParticipant.identity])
+
   // ── Nudge handler (tutor only) ─────────────────────────────────────────────
   // Sends a short attention signal to the whole class, to a specific breakout
   // group when `groupId` is provided, or to a single student when `identity`
@@ -4223,7 +4235,12 @@ export function ClassroomRoom({
           breakoutsActive={breakoutsActive}
           onOpenBreakoutsPanel={() => setBreakoutsPanelOpen(true)}
           onOpenBreakoutMonitor={() => setBreakoutMonitorOpen(true)}
-          onNudgeClass={() => handleNudge()}
+          onNudgeClass={() =>
+            pinnedStudent
+              ? handleNudge({ identity: pinnedStudent.identity, name: pinnedStudent.name })
+              : handleNudge()
+          }
+          nudgeTargetName={pinnedStudent?.name ?? null}
           screenSharing={screenSharing}
           screenPrivate={screenPrivate}
           onToggleScreenPrivacy={handleToggleScreenPrivacy}

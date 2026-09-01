@@ -63,6 +63,8 @@ export function ControlsBar({
   onOpenBreakoutMonitor,
   // Attention nudge (tutor only)
   onNudgeClass,
+  // When a student is pinned, the class-nudge button targets only them.
+  nudgeTargetName = null,
   // Screen share privacy (tutor only)
   screenSharing,
   screenPrivate,
@@ -109,6 +111,7 @@ export function ControlsBar({
   onOpenBreakoutsPanel: () => void
   onOpenBreakoutMonitor: () => void
   onNudgeClass: () => void
+  nudgeTargetName?: string | null
   screenSharing: boolean
   screenPrivate: boolean
   onToggleScreenPrivacy: () => void
@@ -349,20 +352,24 @@ export function ControlsBar({
         </button>
       )}
 
-      {/* Tutor-only: ping every student's screen with a visual flash. BSL
-          classrooms can't rely on sound, so the flash is the attention cue.
-          This button is always the whole class; per-group nudges live in the
-          breakout monitor, and a single student can be nudged from their tile's
-          right-click menu in the participants strip. */}
+      {/* Tutor-only: ping screens with a visual flash. BSL classrooms can't
+          rely on sound, so the flash is the attention cue. With nobody pinned
+          this is the whole class; with a student pinned it targets only them.
+          Per-group nudges live in the breakout monitor, and any student can
+          still be nudged from their tile's right-click menu. */}
       {isTutor && (
         <button
           onClick={onNudgeClass}
           className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
-          title="Flash a short visual attention alert on every student's screen"
-          aria-label="Nudge the whole class"
+          title={
+            nudgeTargetName
+              ? `Flash a short visual attention alert on ${nudgeTargetName}'s screen only`
+              : "Flash a short visual attention alert on every student's screen"
+          }
+          aria-label={nudgeTargetName ? `Nudge ${nudgeTargetName}` : "Nudge the whole class"}
         >
           <Bell className="size-3.5" />
-          Nudge class
+          {nudgeTargetName ? "Nudge student" : "Nudge class"}
         </button>
       )}
 
