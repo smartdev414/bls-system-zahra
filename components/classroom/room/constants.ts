@@ -13,6 +13,9 @@ export const BREAKOUT_TOPIC       = "cls-breakouts"
 export const BREAKOUT_WRAP_UP_SEC = 30
 export const NUDGE_TOPIC     = "cls-nudge"
 export const SCREEN_TOPIC    = "cls-screen"
+/** Tutor's drag-to-reorder of the class grid, mirrored to every client so the
+ *  teacher and the class are looking at the same room in the same order. */
+export const ORDER_TOPIC     = "cls-order"
 // Live captions are server-side (Deepgram + LiveKit agent). This topic is kept for
 // backwards compatibility if client-side fallback is ever re-enabled.
 export const CAPTION_TOPIC   = "cls-captions"

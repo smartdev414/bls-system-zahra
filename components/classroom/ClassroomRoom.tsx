@@ -24,7 +24,7 @@ import { SlidePicker } from "./SlidePicker"
 
 import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
-  BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC,
+  BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC, ORDER_TOPIC,
   BREAKOUT_WRAP_UP_SEC, CHAT_HISTORY_LIMIT,
   POINTER_SEND_INTERVAL_MS, POINTER_STALE_MS, POINTER_KEEPALIVE_MS, POINTER_SMOOTHING_MS,
   enc, dec,
@@ -34,7 +34,7 @@ import type {
   PptAction, PointerAction, SpotlightAction, MuteAction, SessionControlAction,
   UploadedSlides, WhiteboardAction, WhiteboardSnapshot, WhiteboardDiff,
   WhiteboardPresence,
-  BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction,
+  BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction, OrderAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
 import { ConnectionBanner }     from "./room/ConnectionBanner"
@@ -802,6 +802,17 @@ export function ClassroomRoom({
   // ── Spotlight state (tutor-initiated, seen by everyone) ───────────────────
   const [spotlightedId, setSpotlightedId] = useState<string | null>(null)
   const spotlightRef = useRef<string | null>(null)
+
+  // ── Class order (tutor-initiated, seen by everyone) ───────────────────────
+  // The tutor's drag-to-reorder of the participants grid. Null until they drag,
+  // which leaves everyone on the default sort — computed identically on every
+  // client, so the room already agrees without anyone sending anything.
+  //
+  // It lives up here rather than in the panel because it is room state, not
+  // view state: an order held locally by the teacher is exactly the thing that
+  // made the teacher's room stop matching the class's.
+  const [classOrder, setClassOrder] = useState<string[] | null>(null)
+  const classOrderRef = useRef<string[] | null>(null)
   // Remember uploaded slides so tutor can resume without re-uploading
   const uploadedSlidesRef = useRef<UploadedSlides | null>(null)
 
@@ -1177,6 +1188,34 @@ export function ClassroomRoom({
           setSpotlightedId(data.identity)
           setPinnedId(data.identity)
         }
+        return
+      }
+    } catch { /* ignore malformed */ }
+  })
+
+  // ── Data channel: class order ──────────────────────────────────────────────
+  // Only the tutor sends `set`; everyone applies it. A student who joins late
+  // asks for the current arrangement, and the tutor answers from the ref so the
+  // reply doesn't depend on this closure's copy of the state.
+
+  const { send: sendOrder } = useDataChannel(ORDER_TOPIC, (msg) => {
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as OrderAction
+
+      if (data.action === "set") {
+        if (isTutor) return // our own arrangement; already applied locally
+        setClassOrder(Array.isArray(data.order) ? data.order : null)
+        return
+      }
+      if (data.action === "sync_request" && isTutor) {
+        const response: OrderAction = { action: "sync_response", order: classOrderRef.current }
+        try {
+          sendOrder(enc.encode(JSON.stringify(response)), { reliable: true })
+        } catch { /* ignore */ }
+        return
+      }
+      if (data.action === "sync_response" && !isTutor) {
+        setClassOrder(Array.isArray(data.order) ? data.order : null)
         return
       }
     } catch { /* ignore malformed */ }
@@ -1692,6 +1731,12 @@ export function ClassroomRoom({
       }
     } catch { /* ignore malformed */ }
   })
+
+  // Keep classOrderRef in sync so the sync_response handler answers with the
+  // arrangement that is live now, not the one captured when it was registered.
+  useEffect(() => {
+    classOrderRef.current = classOrder
+  }, [classOrder])
 
   // Keep spotlightRef in sync so data channel handler sees current value
   useEffect(() => {
@@ -2535,6 +2580,51 @@ export function ClassroomRoom({
 
     return () => { cancelled = true }
   }, [blurEnabled, localCameraTrack])
+
+  // ── Class order handler (tutor only) ───────────────────────────────────────
+
+  const safeSendOrder = useCallback((data: OrderAction) => {
+    if (connectionState !== ConnectionState.Connected) return
+    if (typeof sendOrder !== "function") return
+    try {
+      const result = sendOrder(enc.encode(JSON.stringify(data)), { reliable: true }) as unknown as Promise<void> | void
+      if (result && typeof (result as Promise<void>).catch === "function") {
+        ;(result as Promise<void>).catch(() => { /* ignore */ })
+      }
+    } catch { /* ignore */ }
+  }, [connectionState, sendOrder])
+
+  // Applied locally first so the tile lands under the cursor without waiting for
+  // the round trip, then mirrored to the room.
+  const handleReorderClass = useCallback((order: string[]) => {
+    if (!isTutor) return
+    setClassOrder(order)
+    classOrderRef.current = order
+    safeSendOrder({ action: "set", order })
+  }, [isTutor, safeSendOrder])
+
+  // A student who joins (or reloads) mid-lesson asks for the arrangement the
+  // room is already using. Without it they sit on the default sort while
+  // everyone else is on the tutor's, which is the same mismatch by another
+  // route. Delayed like the hand sync so it doesn't race the data channel
+  // coming up.
+  useEffect(() => {
+    if (isTutor || connectionState !== ConnectionState.Connected) return
+    const timer = setTimeout(() => {
+      safeSendOrder({ action: "sync_request" })
+    }, 1400)
+    return () => clearTimeout(timer)
+  }, [isTutor, connectionState, safeSendOrder])
+
+  // A tutor who reloads comes back on the default sort, so there is nothing to
+  // re-announce; if they still hold an arrangement after a reconnect, the room
+  // gets it again rather than drifting until the next drag.
+  useEffect(() => {
+    if (!isTutor || connectionState !== ConnectionState.Connected) return
+    const order = classOrderRef.current
+    if (!order) return
+    safeSendOrder({ action: "set", order })
+  }, [isTutor, connectionState, safeSendOrder])
 
   // ── Spotlight handler (tutor only) ─────────────────────────────────────────
 
@@ -4157,6 +4247,8 @@ export function ClassroomRoom({
               tileSize={tileSize}
               onTileSizeChange={handleTileSizeChange}
               orientation={studentsBeside ? "side" : "bottom"}
+              classOrder={classOrder}
+              onReorderClass={isTutor ? handleReorderClass : undefined}
             />
           </div>
           </div>

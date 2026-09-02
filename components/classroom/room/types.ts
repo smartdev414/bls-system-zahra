@@ -85,6 +85,22 @@ export type SpotlightAction =
   | { action: "sync_request" }
   | { action: "sync_response"; identity: string | null }
 
+// Tutor's manual ordering of the class grid.
+//
+// The order the tiles come out in is the room's, not each viewer's: "third
+// along" has to mean the same student to the teacher as to the class, or the
+// teacher ends up teaching to a room they can't point at. The default sort is
+// already computed identically everywhere; drag-to-reorder is the one thing
+// that can move a tile, so the tutor's arrangement is broadcast rather than
+// kept locally.
+//
+// `order` is the full list of identities in display order. A late joiner asks
+// for it, and a tutor who reloads re-announces the one they still hold.
+export type OrderAction =
+  | { action: "set"; order: string[] }
+  | { action: "sync_request" }
+  | { action: "sync_response"; order: string[] | null }
+
 // Tutor-driven microphone control. Students cannot toggle their own mic in the UI;
 // they apply these commands locally and the tutor also updates LiveKit permissions
 // server-side so unmute can't be bypassed.
