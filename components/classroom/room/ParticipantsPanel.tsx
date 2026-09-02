@@ -53,6 +53,8 @@ export function ParticipantsPanel({
   tileSize,
   onTileSizeChange,
   orientation = "side",
+  classOrder,
+  onReorderClass,
 }: {
   pinnedId: string | null
   onPin: (identity: string | null) => void
@@ -90,6 +92,18 @@ export function ParticipantsPanel({
    * it reads the shape of whatever box it lands in.
    */
   orientation?: "side" | "bottom"
+  /**
+   * The room's manual tile order, set by the tutor dragging and mirrored to
+   * everyone. Null means nobody has dragged and the default sort stands.
+   *
+   * It is owned by the room rather than by this panel because the order has to
+   * be the same for the teacher and the class — a teacher who rearranged their
+   * own copy ended up pointing at "the third one along" and meaning a different
+   * student to everyone watching.
+   */
+  classOrder: string[] | null
+  /** Tutor only: publish a new order to the room. Absent for students. */
+  onReorderClass?: (order: string[]) => void
 }) {
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
@@ -105,10 +119,8 @@ export function ParticipantsPanel({
   const gridBoxRef = useRef<HTMLDivElement>(null)
   const gridBox = useElementSize(gridBoxRef)
 
-  // Tutor-only: manual display order established by drag-and-drop. When
-  // populated, this takes precedence over the default (camera-on first) sort.
-  // New participants fall to the end; leavers are pruned on next effect tick.
-  const [manualOrder, setManualOrder] = useState<string[] | null>(null)
+  // Drag state is local — it is the gesture in progress, not the result. The
+  // result (`classOrder`) belongs to the room and arrives as a prop.
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
@@ -172,43 +184,14 @@ export function ParticipantsPanel({
     [allParticipants, camTracks, screenTracks, visibleIdentities, localParticipant.identity],
   )
 
-  // Keep manualOrder in sync with the live participant list: drop anyone who
-  // left, append any newcomer to the end of the manual ordering. Derived in
-  // render rather than in an effect — see React docs "Adjusting state when a
-  // prop changes". The bail-out condition ensures setState is called at most
-  // once per participant-set change, so we don't infinite-loop.
-  if (manualOrder) {
-    const liveIds = new Set(allParticipants.map((p) => p.identity))
-    const filtered = manualOrder.filter((id) => liveIds.has(id))
-    const appended = allParticipants
-      .map((p) => p.identity)
-      .filter((id) => !filtered.includes(id))
-    if (filtered.length !== manualOrder.length || appended.length > 0) {
-      setManualOrder([...filtered, ...appended])
-    }
-  }
-
-  const sorted = useMemo(() => {
-    if (manualOrder) {
-      const byId = new Map(withTracks.map((w) => [w.p.identity, w]))
-      const ordered = manualOrder
-        .map((id) => byId.get(id))
-        .filter((w): w is NonNullable<typeof w> => !!w)
-      // Safety net: include any tile that isn't in the manual order yet
-      // (e.g., between a newcomer joining and the sync effect running).
-      const seen = new Set(ordered.map((w) => w.p.identity))
-      withTracks.forEach((w) => {
-        if (!seen.has(w.p.identity)) ordered.push(w)
-      })
-      return ordered
-    }
-    // One order, computed the same way on every client — nothing here asks who
-    // is looking. Sorting yourself to the front gave each person a different
-    // strip from everyone else's, so "third along" meant a different student to
-    // the teacher than to the class, and the teacher's own view of the room
-    // stopped matching the one they were teaching to. Your own tile is marked
-    // instead (see `isLocal` below), which is all that finding yourself needs
-    // now the whole class is on screen at once.
+  // One order, computed the same way on every client — nothing here asks who is
+  // looking. Sorting yourself to the front gave each person a different strip
+  // from everyone else's, so "third along" meant a different student to the
+  // teacher than to the class, and the teacher's own view of the room stopped
+  // matching the one they were teaching to. Your own tile is marked instead
+  // (see `isLocal` below), which is all that finding yourself needs now the
+  // whole class is on screen at once.
+  const defaultSorted = useMemo(() => {
     return [...withTracks].sort((a, b) => {
       if (a.camOn !== b.camOn) return a.camOn ? -1 : 1
       if (a.p.metadata === "tutor" && b.p.metadata !== "tutor") return -1
@@ -218,7 +201,24 @@ export function ParticipantsPanel({
       // their cameras on could still sit in opposite slots.
       return a.p.identity < b.p.identity ? -1 : a.p.identity > b.p.identity ? 1 : 0
     })
-  }, [manualOrder, withTracks])
+  }, [withTracks])
+
+  // The tutor's arrangement, applied on top. It is read rather than stored:
+  // someone who left simply isn't in `withTracks` any more, and a newcomer the
+  // tutor hasn't placed yet falls in behind those they have, in the default
+  // order. Nothing is written back, so the list the room agreed on stays the
+  // list the room agreed on — every client turns it into the same grid.
+  const sorted = useMemo(() => {
+    if (!classOrder || classOrder.length === 0) return defaultSorted
+    const rank = new Map(classOrder.map((id, i) => [id, i]))
+    // Stable sort, so tiles with no place in the arrangement keep the default
+    // order among themselves instead of falling back on LiveKit's per-client one.
+    return [...defaultSorted].sort((a, b) => {
+      const ra = rank.get(a.p.identity) ?? Number.POSITIVE_INFINITY
+      const rb = rank.get(b.p.identity) ?? Number.POSITIVE_INFINITY
+      return ra === rb ? 0 : ra - rb
+    })
+  }, [classOrder, defaultSorted])
 
   // Every tile that exists, sized to fit the box it has — see `packGrid`. The
   // gap is deliberately tight: at fourteen-plus tiles the space between them
@@ -232,13 +232,15 @@ export function ParticipantsPanel({
   const radius = tileRadius(pack.tileWidth)
 
   function reorder(sourceId: string, targetId: string) {
-    if (sourceId === targetId) return
-    const baseOrder = manualOrder ?? sorted.map((w) => w.p.identity)
+    if (!onReorderClass || sourceId === targetId) return
+    // Built from what is on screen right now rather than from `classOrder`, so
+    // a drop onto someone who joined after the last drag still lands: everyone
+    // visible has a place in this list, which is what the room is sent.
+    const baseOrder = sorted.map((w) => w.p.identity)
     const without = baseOrder.filter((id) => id !== sourceId)
     const targetIdx = without.indexOf(targetId)
     if (targetIdx === -1) return
-    const next = [...without.slice(0, targetIdx), sourceId, ...without.slice(targetIdx)]
-    setManualOrder(next)
+    onReorderClass([...without.slice(0, targetIdx), sourceId, ...without.slice(targetIdx)])
   }
 
   if (collapsed) {
@@ -346,7 +348,7 @@ export function ParticipantsPanel({
           const displayName = p.name ?? p.identity
           // Only the local tutor can drag, and only student tiles can be
           // dragged or used as a drop target — the tutor tile stays put.
-          const canDrag = isLocalTutor && !isTutor
+          const canDrag = isLocalTutor && !isTutor && !!onReorderClass
           const isDragging = draggingId === p.identity
           const isDropTarget = dropTargetId === p.identity && draggingId && draggingId !== p.identity
 

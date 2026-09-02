@@ -1203,7 +1203,10 @@ export function ClassroomRoom({
       const data = JSON.parse(dec.decode(msg.payload)) as OrderAction
 
       if (data.action === "set") {
-        if (isTutor) return // our own arrangement; already applied locally
+        // Applied by everyone, co-teachers included: a room where one teacher
+        // rearranges and the other doesn't move is the same split this fixes.
+        // Our own sends never come back to us, so this can't clobber the drag
+        // that produced it.
         setClassOrder(Array.isArray(data.order) ? data.order : null)
         return
       }
@@ -2583,16 +2586,24 @@ export function ClassroomRoom({
 
   // ── Class order handler (tutor only) ───────────────────────────────────────
 
+  // `useDataChannel` memoises its sender on the message callback, which is a
+  // fresh closure every render — so `sendOrder` has a new identity every render
+  // too. Held in a ref and read at call time, so `safeSendOrder` stays stable
+  // and the effects below can schedule a timer that actually survives to fire.
+  const sendOrderRef = useRef(sendOrder)
+  useEffect(() => { sendOrderRef.current = sendOrder })
+
   const safeSendOrder = useCallback((data: OrderAction) => {
     if (connectionState !== ConnectionState.Connected) return
-    if (typeof sendOrder !== "function") return
+    const send = sendOrderRef.current
+    if (typeof send !== "function") return
     try {
-      const result = sendOrder(enc.encode(JSON.stringify(data)), { reliable: true }) as unknown as Promise<void> | void
+      const result = send(enc.encode(JSON.stringify(data)), { reliable: true }) as unknown as Promise<void> | void
       if (result && typeof (result as Promise<void>).catch === "function") {
         ;(result as Promise<void>).catch(() => { /* ignore */ })
       }
     } catch { /* ignore */ }
-  }, [connectionState, sendOrder])
+  }, [connectionState])
 
   // Applied locally first so the tile lands under the cursor without waiting for
   // the round trip, then mirrored to the room.
@@ -2618,11 +2629,18 @@ export function ClassroomRoom({
 
   // A tutor who reloads comes back on the default sort, so there is nothing to
   // re-announce; if they still hold an arrangement after a reconnect, the room
-  // gets it again rather than drifting until the next drag.
+  // gets it again rather than drifting until the next drag. The ref is cleared
+  // on the way down so each connected episode re-announces exactly once.
+  const orderRebroadcastRef = useRef(false)
   useEffect(() => {
-    if (!isTutor || connectionState !== ConnectionState.Connected) return
+    if (connectionState !== ConnectionState.Connected) {
+      orderRebroadcastRef.current = false
+      return
+    }
+    if (!isTutor || orderRebroadcastRef.current) return
     const order = classOrderRef.current
     if (!order) return
+    orderRebroadcastRef.current = true
     safeSendOrder({ action: "set", order })
   }, [isTutor, connectionState, safeSendOrder])
 
