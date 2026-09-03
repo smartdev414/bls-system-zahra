@@ -65,7 +65,8 @@ export function isLinkFailure(kind: NetFailureKind): boolean {
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 // One failure is noise — a single request can lose a race with a Wi-Fi roam.
-// Two in a row, or one that took the full deadline, is a link that is down.
+// Two in a row, or the browser telling us the interface itself is down, is a
+// link that is down.
 const FAILURES_BEFORE_OFFLINE = 2
 
 // Probe backoff while we look cut off. Starts fast because most café outages
@@ -83,6 +84,12 @@ const listeners = new Set<() => void>()
 const recoveryListeners = new Set<() => void>()
 
 let started = false
+/**
+ * True from the moment the page starts going away. A navigation or a tab close
+ * kills every request still in flight, and those rejections reach
+ * `reportNetworkFailure` looking exactly like an outage.
+ */
+let unloading = false
 let probeTimer: ReturnType<typeof setTimeout> | null = null
 let probeAttempt = 0
 
@@ -166,6 +173,10 @@ export function reportNetworkSuccess(): void {
 export function reportNetworkFailure(kind: NetFailureKind): void {
   if (!isLinkFailure(kind)) return
 
+  // Nothing a page reports on its way out says anything about the network, and
+  // a red bar painted over a page that is already leaving helps nobody.
+  if (unloading) return
+
   if (kind === "captive-portal") {
     patch({ status: "captive-portal", failures: snapshot.failures + 1 })
     scheduleProbe()
@@ -173,11 +184,25 @@ export function reportNetworkFailure(kind: NetFailureKind): void {
   }
 
   const failures = snapshot.failures + 1
-  // A request that ran out its full deadline is not ambiguous — something is
-  // swallowing traffic. Don't make the user wait for a second one.
-  const down = failures >= FAILURES_BEFORE_OFFLINE || kind === "offline"
+  // Only the browser saying the interface itself is down earns the banner on a
+  // single failure. Everything else that arrives here as "offline" is a request
+  // that died in transit — torn down by a navigation, cancelled by an
+  // extension, caught by a Wi-Fi roam, or a DNS or TLS blip — and from inside
+  // `fetch` all of those are indistinguishable from a real outage. They are
+  // also over before a second one happens, so they wait out the debounce like
+  // any other failure instead of flashing a red bar across a working page.
+  const interfaceDown = typeof navigator !== "undefined" && navigator.onLine === false
+  const down = failures >= FAILURES_BEFORE_OFFLINE || interfaceDown
   patch({ status: down ? "offline" : "unstable", failures })
-  if (down) scheduleProbe()
+
+  // Probe on the first failure too, not just once we've decided we're down.
+  // "unstable" shows nothing, so without this a page that makes one request and
+  // then goes quiet — an idle classroom — would sit in it forever, never
+  // confirming and never telling anyone. The probe is the confirmation: it
+  // clears the count silently if the link is fine, and drops us straight to
+  // "offline" if it is not, so the bar appears on evidence rather than on a
+  // tally of how many requests the page happened to make.
+  scheduleProbe()
 }
 
 // ─── Recovery probe ───────────────────────────────────────────────────────────
@@ -288,12 +313,23 @@ function start() {
   // things well.
   window.addEventListener("offline", () => {
     patch({ status: "offline", failures: snapshot.failures + 1 })
+    // Without this the bar has nothing to clear it. Browsers drop the matching
+    // `online` event often enough — laptop sleep, VPN, a Linux link flap — that
+    // relying on it left the banner up until the user happened to click
+    // something, which is the whole complaint.
+    scheduleProbe()
   })
   window.addEventListener("online", () => {
     probeAttempt = 0
     cancelProbe()
     void probe()
   })
+
+  // A page restored from the back/forward cache carries on with the same module
+  // state, so the teardown flag has to be lifted again or nothing will ever be
+  // reported for the rest of its life.
+  window.addEventListener("pagehide", () => { unloading = true })
+  window.addEventListener("pageshow", () => { unloading = false })
 
   // Coming back to a backgrounded tab is the other moment worth rechecking:
   // laptops suspend, Wi-Fi reassociates on a different AP, and every socket the
