@@ -496,7 +496,14 @@ export function ParticipantsPanel({
                   colour dot. Faces win the space; labels come back the moment
                   the class is small enough to afford them. */}
               {isPinned && !dense && (
-                <div className="absolute top-1 right-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold">
+                <div
+                  className={cn(
+                    "absolute top-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold",
+                    // A raised hand takes this corner; the border already marks
+                    // the pin, so just slide the label left of the badge.
+                    handRaised ? "right-8" : "right-1",
+                  )}
+                >
                   Pinned
                 </div>
               )}
@@ -548,15 +555,15 @@ export function ParticipantsPanel({
                 </div>
               )}
 
-              {/* Raised-hand badge — bottom-right so it stays clear of "Pinned"
-                  and other top-corner chips. Tutors can click to lower. */}
+              {/* Raised-hand badge — top-right, matching the tutor chip on the
+                  neighbouring tile. Tutors can click to lower. */}
               {handRaised && !isTutor && (
                 isLocalTutor && onLowerHand ? (
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onLowerHand(p.identity) }}
                     className={cn(
-                      "absolute bottom-1 right-1 z-20 flex items-center justify-center rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand",
+                      "absolute top-1 right-1 z-20 flex items-center justify-center rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand",
                       // Never dropped, at any size — a raised hand is the one
                       // thing in the grid that is asking for an answer.
                       dense ? "size-4" : "size-6",
@@ -570,7 +577,7 @@ export function ParticipantsPanel({
                 ) : (
                   <div
                     className={cn(
-                      "absolute bottom-1 right-1 z-20 flex items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none",
+                      "absolute top-1 right-1 z-20 flex items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none",
                       dense ? "size-4" : "size-6",
                     )}
                     title={`${displayName} raised their hand`}
