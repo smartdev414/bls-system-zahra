@@ -14,7 +14,7 @@ import { ConnectionState, RoomEvent, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Radio, Users, Users2, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
-  MessageSquare, X, HandMetal, Mic, Check,
+  MessageSquare, X, HandMetal, Mic, Check, PencilLine, Maximize2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
@@ -55,6 +55,7 @@ import { VideoPlayer }          from "./room/VideoPlayer"
 import { ControlsBar }          from "./room/ControlsBar"
 import { CaptionsOverlay }      from "./room/CaptionsOverlay"
 import { JoinRequestsPopover }  from "./room/JoinRequestsPopover"
+import { RaisedHandsPopover }   from "./room/RaisedHandsPopover"
 import type { WhiteboardApi }   from "./room/TldrawBoard"
 import { BreakoutsPanel }       from "./room/BreakoutsPanel"
 import { BreakoutMonitor }      from "./room/BreakoutMonitor"
@@ -269,6 +270,11 @@ export function ClassroomRoom({
   const [participantsOpen, setParticipantsOpen] = useState(true)
   const [chatOpen,         setChatOpen]         = useState(true)
   const [requestsOpen,     setRequestsOpen]     = useState(false)
+  // Tutor-only: a dedicated queue of raised hands, separate from the chat
+  // panel's inline strip — the strip scrolls out of view once messages pile
+  // up, and taking turns fairly means the tutor can check who's been waiting
+  // longest without hunting through the conversation for it.
+  const [raisedHandsOpen,  setRaisedHandsOpen]  = useState(false)
   // Tutor-only: "Invite a second teacher" modal.
   const [inviteCoTutorOpen, setInviteCoTutorOpen] = useState(false)
 
@@ -537,6 +543,14 @@ export function ClassroomRoom({
   const [whiteboardActive, setWhiteboardActive] = useState(false)
   // Students can draw only after the tutor presses "Let them write".
   const [whiteboardStudentWrite, setWhiteboardStudentWrite] = useState(false)
+  // Local-only: the "–" button hides the board from this client's stage without
+  // ending it for the class (that's what Close is for). Not synced or saved —
+  // a view preference, same as the style panel's dragged position — and it
+  // resets whenever the board closes so the next open starts visible.
+  const [whiteboardMinimized, setWhiteboardMinimized] = useState(false)
+  useEffect(() => {
+    if (!whiteboardActive) setWhiteboardMinimized(false)
+  }, [whiteboardActive])
   const tutorIdentityRef = useRef<string | null>(null)
   useEffect(() => {
     tutorIdentityRef.current =
@@ -3824,6 +3838,36 @@ export function ClassroomRoom({
           {isTutor && (
             <div className="relative">
               <button
+                onClick={() => setRaisedHandsOpen((v) => !v)}
+                className={cn(
+                  "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-colors",
+                  raisedHands.length > 0
+                    ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40"
+                    : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                )}
+                aria-label="Raised hands"
+              >
+                <HandMetal className="size-3" />
+                <span className="hidden sm:inline">Raised Hands</span>
+                {raisedHands.length > 0 && (
+                  <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[10px] font-bold text-zinc-950 flex items-center justify-center">
+                    {raisedHands.length}
+                  </span>
+                )}
+              </button>
+              {raisedHandsOpen && (
+                <RaisedHandsPopover
+                  raisedHands={raisedHands}
+                  onLowerHand={handleLowerHand}
+                  onLowerAllHands={handleLowerAllHands}
+                  onClose={() => setRaisedHandsOpen(false)}
+                />
+              )}
+            </div>
+          )}
+          {isTutor && (
+            <div className="relative">
+              <button
                 onClick={() => setRequestsOpen((v) => !v)}
                 className={cn(
                   "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-colors",
@@ -3951,10 +3995,15 @@ export function ClassroomRoom({
           {whiteboardActive ? (
             // ── Whiteboard mode: same deaf-first layout as PPT. Tutor camera on
             // the LEFT so signing stays visible while everyone draws on the RIGHT.
+            //
+            // Minimizing (the "–" button) is local-only: the board stays mounted
+            // and fully live (still receiving/broadcasting diffs) so nothing is
+            // lost, it's just given zero space and the camera takes the stage
+            // back until this client asks for it again via the restore chip.
             <>
               <div
                 className="flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden bg-zinc-900 relative"
-                style={cameraSplit.camera}
+                style={whiteboardMinimized ? { flex: "1 1 100%" } : cameraSplit.camera}
               >
                 {splitCameraPanel}
               </div>
@@ -3963,6 +4012,7 @@ export function ClassroomRoom({
                 className={cn(
                   "flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-zinc-800",
                   splitDivider,
+                  whiteboardMinimized && "hidden",
                 )}
                 style={cameraSplit.content}
               >
@@ -3972,6 +4022,7 @@ export function ClassroomRoom({
                   studentsCanWrite={whiteboardStudentWrite}
                   onToggleStudentWrite={handleToggleStudentWrite}
                   onStop={handleToggleWhiteboard}
+                  onMinimize={() => setWhiteboardMinimized(true)}
                   sessionId={sessionId}
                   localIdentity={localParticipant.identity}
                   localName={localName}
@@ -3983,6 +4034,19 @@ export function ClassroomRoom({
                   }
                 />
               </div>
+
+              {whiteboardMinimized && (
+                <button
+                  type="button"
+                  onClick={() => setWhiteboardMinimized(false)}
+                  className="absolute bottom-3 right-3 z-30 flex items-center gap-1.5 px-3 h-9 rounded-full bg-zinc-800/95 text-white text-xs font-medium shadow-lg ring-1 ring-zinc-700 hover:bg-zinc-700 transition-colors"
+                  title="Show the whiteboard"
+                >
+                  <PencilLine className="size-3.5 text-amber-400" />
+                  Whiteboard hidden
+                  <Maximize2 className="size-3.5" />
+                </button>
+              )}
             </>
 
           ) : pptActive && pptUrl ? (

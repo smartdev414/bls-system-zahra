@@ -29,7 +29,7 @@ import {
   type TLUser,
 } from "@tldraw/tlschema"
 import "tldraw/tldraw.css"
-import { PencilLine, Users, Share2, Download, X, Loader2 } from "lucide-react"
+import { PencilLine, Users, Share2, Download, Minus, X, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type {
@@ -150,6 +150,8 @@ type TldrawBoardProps = {
   studentsCanWrite: boolean
   onToggleStudentWrite: () => void
   onStop: () => void
+  /** Hide the board locally without ending it for the class — see the "–" button. */
+  onMinimize: () => void
   sessionId: string
   /** Local participant identity + display name — used to attribute shapes and cursors. */
   localIdentity: string
@@ -358,6 +360,7 @@ export default function TldrawBoard({
   studentsCanWrite,
   onToggleStudentWrite,
   onStop,
+  onMinimize,
   sessionId,
   localIdentity,
   localName,
@@ -786,6 +789,16 @@ export default function TldrawBoard({
             title="Download a PNG snapshot"
           >
             <Download className="size-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onMinimize}
+            className="flex items-center justify-center size-8 rounded-lg text-xs font-medium bg-zinc-700/60 text-zinc-300 hover:bg-zinc-700 transition-colors"
+            title="Hide the whiteboard — reopen it from the stage whenever you need it"
+            aria-label="Hide the whiteboard"
+          >
+            <Minus className="size-3.5" />
           </button>
 
           {isTutor && (
