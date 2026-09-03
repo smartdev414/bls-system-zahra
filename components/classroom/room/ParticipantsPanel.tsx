@@ -11,7 +11,7 @@ import {
 import { Track } from "livekit-client"
 import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
-  Megaphone, UserMinus, GripVertical, HandMetal, Minus, Plus, Mic, MicOff, Monitor,
+  Megaphone, UserMinus, GripVertical, Minus, Plus, Mic, MicOff, Monitor,
   Bell,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -19,6 +19,7 @@ import { localCameraClassName } from "@/components/classroom/localCameraView"
 import {
   packGrid, useElementSize, tileRadius, DENSE_TILE_WIDTH,
 } from "./participantGrid"
+import { RaisedHandBadge } from "./RaisedHandBadge"
 
 type MenuState = {
   identity: string
@@ -229,6 +230,9 @@ export function ParticipantsPanel({
     [gridBox.width, gridBox.height, sorted.length],
   )
   const dense = pack.tileWidth < DENSE_TILE_WIDTH
+  // Large enough to scan at a glance. Floored so a packed class still gets a
+  // real emoji, capped so it doesn't swallow a generous tile.
+  const handBadgePx = Math.max(28, Math.min(52, Math.round(pack.tileWidth * 0.32)))
   const radius = tileRadius(pack.tileWidth)
 
   function reorder(sourceId: string, targetId: string) {
@@ -401,6 +405,10 @@ export function ParticipantsPanel({
                 // Marks your own tile without moving it out of the room-wide
                 // order. Inset so it reads on top of a light camera frame.
                 isLocal && !isPinned && "ring-2 ring-inset ring-white/70",
+                // Raised hand wins the frame — the gold edge is what a teacher
+                // actually sees when scanning twenty faces for who asked.
+                handRaised && !isTutor && !isDropTarget &&
+                  "border-amber-400 border-2 ring-2 ring-inset ring-amber-300",
               )}
               onContextMenu={(e) => {
                 e.preventDefault()
@@ -446,6 +454,9 @@ export function ParticipantsPanel({
                       className="text-white truncate font-medium leading-tight"
                       style={{ fontSize: dense ? 7 : 9 }}
                     >
+                      {handRaised && !isTutor && (
+                        <span className="mr-0.5" aria-hidden>✋</span>
+                      )}
                       {isLocal ? "You" : displayName}
                       {isTutor && <span className="ml-0.5 text-amber-400">•</span>}
                     </p>
@@ -471,6 +482,9 @@ export function ParticipantsPanel({
                     className="font-semibold text-white truncate max-w-full px-1 leading-tight"
                     style={{ fontSize: dense ? 7 : 9 }}
                   >
+                    {handRaised && !isTutor && (
+                      <span className="mr-0.5" aria-hidden>✋</span>
+                    )}
                     {isLocal ? "You" : displayName}
                   </p>
                 </div>
@@ -497,12 +511,12 @@ export function ParticipantsPanel({
                   the class is small enough to afford them. */}
               {isPinned && !dense && (
                 <div
-                  className={cn(
-                    "absolute top-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold",
+                  className="absolute top-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold"
+                  style={{
                     // A raised hand takes this corner; the border already marks
                     // the pin, so just slide the label left of the badge.
-                    handRaised ? "right-8" : "right-1",
-                  )}
+                    right: handRaised ? handBadgePx + 6 : 4,
+                  }}
                 >
                   Pinned
                 </div>
@@ -555,37 +569,26 @@ export function ParticipantsPanel({
                 </div>
               )}
 
-              {/* Raised-hand badge — top-right, matching the tutor chip on the
-                  neighbouring tile. Tutors can click to lower. */}
+              {/* Raised-hand badge — top-right. Never dropped, at any size:
+                  a raised hand is the one thing in the grid asking for an
+                  answer. Tutors can click the badge to lower it. */}
               {handRaised && !isTutor && (
-                isLocalTutor && onLowerHand ? (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onLowerHand(p.identity) }}
-                    className={cn(
-                      "absolute top-1 right-1 z-20 flex items-center justify-center rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors group/hand",
-                      // Never dropped, at any size — a raised hand is the one
-                      // thing in the grid that is asking for an answer.
-                      dense ? "size-4" : "size-6",
-                    )}
-                    title={`Click to lower ${displayName}'s hand`}
-                    aria-label={`Lower ${displayName}'s hand`}
-                  >
-                    <HandMetal className={cn("group-hover/hand:hidden", dense ? "size-2.5" : "size-3.5")} />
-                    <span className="hidden group-hover/hand:block text-[10px] font-bold">✕</span>
-                  </button>
-                ) : (
+                <>
                   <div
-                    className={cn(
-                      "absolute top-1 right-1 z-20 flex items-center justify-center rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none",
-                      dense ? "size-4" : "size-6",
-                    )}
-                    title={`${displayName} raised their hand`}
-                    aria-label={`${displayName} has their hand raised`}
-                  >
-                    <HandMetal className={dense ? "size-2.5" : "size-3.5"} />
-                  </div>
-                )
+                    className="absolute inset-0 z-10 pointer-events-none bg-linear-to-bl from-amber-400/40 via-amber-400/5 to-transparent"
+                    aria-hidden
+                  />
+                  <RaisedHandBadge
+                    name={displayName}
+                    size={handBadgePx}
+                    className="absolute top-0.5 right-0.5"
+                    onLower={
+                      isLocalTutor && onLowerHand
+                        ? () => onLowerHand(p.identity)
+                        : undefined
+                    }
+                  />
+                </>
               )}
             </div>
           )

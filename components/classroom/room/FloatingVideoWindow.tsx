@@ -8,8 +8,10 @@ import {
   isTrackReference,
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { X, Move, Camera, HandMetal } from "lucide-react"
+import { X, Move, Camera } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { RaisedHandBadge } from "./RaisedHandBadge"
 
 /**
  * The window is sized from its width alone so the picture inside it is always
@@ -137,7 +139,10 @@ export function FloatingVideoWindow({
 
   return (
     <div
-      className="fixed z-[60] bg-zinc-950 rounded-lg shadow-2xl ring-1 ring-white/10 overflow-hidden flex flex-col"
+      className={cn(
+        "fixed z-[60] bg-zinc-950 rounded-lg shadow-2xl overflow-hidden flex flex-col",
+        handRaised ? "ring-2 ring-amber-400" : "ring-1 ring-white/10",
+      )}
       style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
       role="dialog"
       aria-label={`${displayName} video`}
@@ -148,7 +153,10 @@ export function FloatingVideoWindow({
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <Move className="size-3 text-zinc-400 shrink-0" />
-          <span className="text-xs text-white truncate font-medium">{displayName}</span>
+          <span className="text-xs text-white truncate font-medium">
+            {handRaised && <span className="mr-1" aria-hidden>✋</span>}
+            {displayName}
+          </span>
         </div>
         <button
           onClick={onClose}
@@ -185,24 +193,12 @@ export function FloatingVideoWindow({
         )}
 
         {handRaised && (
-          onLowerHand ? (
-            <button
-              onClick={() => onLowerHand(identity)}
-              className="absolute top-2 right-2 flex items-center justify-center size-7 rounded-full bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white shadow-md ring-2 ring-amber-300/70 hover:ring-rose-300/70 animate-pulse hover:animate-none transition-colors"
-              title={`Click to lower ${displayName}'s hand`}
-              aria-label={`Lower ${displayName}'s hand`}
-            >
-              <HandMetal className="size-4" />
-            </button>
-          ) : (
-            <span
-              className="absolute top-2 right-2 flex items-center justify-center size-7 rounded-full bg-amber-400 text-zinc-950 shadow-md ring-2 ring-amber-300/70 animate-pulse pointer-events-none"
-              title={`${displayName} raised their hand`}
-              aria-label={`${displayName} has their hand raised`}
-            >
-              <HandMetal className="size-4" />
-            </span>
-          )
+          <RaisedHandBadge
+            name={displayName}
+            size={44}
+            className="absolute top-1.5 right-1.5"
+            onLower={onLowerHand ? () => onLowerHand(identity) : undefined}
+          />
         )}
       </div>
 

@@ -8,10 +8,11 @@ import {
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import {
-  ArrowLeft, Megaphone, Info, Maximize2, Minimize2, HandMetal,
+  ArrowLeft, Megaphone, Info, Maximize2, Minimize2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { RaisedHandBadge } from "./RaisedHandBadge"
 
 export function PinnedVideoArea({
   identity,
@@ -84,7 +85,13 @@ export function PinnedVideoArea({
   const mirrorLocalCamera = identity === localIdentity && !screenRef
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden group">
+    <div
+      ref={containerRef}
+      className={cn(
+        "relative w-full h-full bg-zinc-950 overflow-hidden group",
+        handRaised && "ring-4 ring-inset ring-amber-400",
+      )}
+    >
       {active ? (
         <VideoTrack
           trackRef={active}
@@ -165,36 +172,49 @@ export function PinnedVideoArea({
 
       <div className="absolute bottom-10 left-3 flex items-center gap-2">
         <span className="bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
+          {handRaised && <span className="mr-1" aria-hidden>✋</span>}
           {displayName}
         </span>
         {handRaised && (
           onLowerHand ? (
             <button
               onClick={() => onLowerHand(identity)}
-              className="group/hand flex items-center gap-1 bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-md ring-2 ring-amber-300/60 hover:ring-rose-300/60 animate-pulse hover:animate-none transition-colors"
+              className="group/hand flex items-center gap-1 bg-amber-400 hover:bg-rose-500 text-zinc-950 hover:text-white text-sm font-semibold px-3 py-1.5 rounded-full shadow-md ring-2 ring-amber-300/60 hover:ring-rose-300/60 transition-colors"
               title={`Click to lower ${displayName}'s hand`}
               aria-label={`Lower ${displayName}'s hand`}
             >
-              <HandMetal className="size-3.5" />
+              <span className="text-base leading-none" aria-hidden>✋</span>
               <span className="group-hover/hand:hidden">Hand raised</span>
               <span className="hidden group-hover/hand:inline">Lower hand</span>
             </button>
           ) : (
             <span
-              className="flex items-center gap-1 bg-amber-400 text-zinc-950 text-xs font-semibold px-2.5 py-1 rounded-full shadow-md ring-2 ring-amber-300/60 animate-pulse"
+              className="flex items-center gap-1 bg-amber-400 text-zinc-950 text-sm font-semibold px-3 py-1.5 rounded-full shadow-md ring-2 ring-amber-300/60"
               title={`${displayName} raised their hand`}
               aria-label={`${displayName} has their hand raised`}
             >
-              <HandMetal className="size-3.5" />
+              <span className="text-base leading-none" aria-hidden>✋</span>
               Hand raised
             </span>
           )
         )}
       </div>
 
+      {handRaised && (
+        <RaisedHandBadge
+          name={displayName}
+          size={56}
+          className="absolute top-3 right-3"
+          onLower={onLowerHand ? () => onLowerHand(identity) : undefined}
+        />
+      )}
+
       <button
         onClick={onToggleFullscreen}
-        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white rounded-lg p-1.5 backdrop-blur-sm"
+        className={cn(
+          "absolute top-3 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white rounded-lg p-1.5 backdrop-blur-sm",
+          handRaised ? "right-[4.75rem]" : "right-3",
+        )}
         title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
       >
         {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
