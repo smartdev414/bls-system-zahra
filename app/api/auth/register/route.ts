@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma"
 import { signToken, setSessionCookie, dashboardPath } from "@/lib/auth"
 import { Role } from "@/app/generated/prisma/enums"
 import { withAudit } from "@/lib/audit"
+import { sendLoginAlertEmail } from "@/lib/email"
 
 async function handlePOST(req: NextRequest) {
   try {
@@ -78,6 +79,8 @@ async function handlePOST(req: NextRequest) {
       email: user.email,
       role: user.role,
     })
+
+    void sendLoginAlertEmail(user, { method: "Password", isNewAccount: true, req })
 
     const res = NextResponse.json(
       { redirectTo: dashboardPath(user.role) },

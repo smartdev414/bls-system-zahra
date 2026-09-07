@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs"
 import prisma from "@/lib/prisma"
 import { signToken, setSessionCookie, dashboardPath } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { sendLoginAlertEmail } from "@/lib/email"
 
 async function handlePOST(req: NextRequest) {
   try {
@@ -44,6 +45,8 @@ async function handlePOST(req: NextRequest) {
       email: user.email,
       role: user.role,
     })
+
+    void sendLoginAlertEmail(user, { method: "Password", req })
 
     const res = NextResponse.json({ redirectTo: dashboardPath(user.role) })
     setSessionCookie(res, token)

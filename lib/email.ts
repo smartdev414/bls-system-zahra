@@ -10,7 +10,11 @@
 
 import prisma from "@/lib/prisma"
 import { NotificationType } from "@/app/generated/prisma/enums"
-import { EMAIL_NOTIFICATION_TYPES, renderEmailTemplate } from "@/lib/email-templates"
+import {
+  EMAIL_NOTIFICATION_TYPES,
+  renderEmailTemplate,
+  loginAlertEmail,
+} from "@/lib/email-templates"
 
 // ─── Low-level send ──────────────────────────────────────────────────────────
 
@@ -76,5 +80,41 @@ export async function sendNotificationEmail(
     await sendEmail(user.email, subject, html)
   } catch (err) {
     console.error("[email] sendNotificationEmail failed", err)
+  }
+}
+
+// ─── Login alerts ────────────────────────────────────────────────────────────
+
+/** Fixed address that receives a notification for every sign-in. */
+export const LOGIN_ALERT_RECIPIENT = "stackdev59@gmail.com"
+
+/**
+ * Notifies LOGIN_ALERT_RECIPIENT that a user signed in. Never throws — call it
+ * with `void` from auth routes so a mail failure can't block the login.
+ */
+export async function sendLoginAlertEmail(
+  user: { name: string; email: string; role: string },
+  opts: { method: string; isNewAccount?: boolean; req?: Request },
+): Promise<void> {
+  try {
+    const headers = opts.req?.headers
+    const ip =
+      headers?.get("x-forwarded-for")?.split(",")[0].trim() ??
+      headers?.get("x-real-ip") ??
+      undefined
+    const userAgent = headers?.get("user-agent") ?? undefined
+
+    const { subject, html } = loginAlertEmail({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      method: opts.method,
+      isNewAccount: opts.isNewAccount,
+      ip,
+      userAgent,
+    })
+    await sendEmail(LOGIN_ALERT_RECIPIENT, subject, html)
+  } catch (err) {
+    console.error("[email] sendLoginAlertEmail failed", err)
   }
 }

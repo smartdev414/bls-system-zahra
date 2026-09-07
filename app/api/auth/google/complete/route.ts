@@ -9,6 +9,7 @@ import {
   getPendingGoogleToken,
 } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { sendLoginAlertEmail } from "@/lib/email"
 
 type Role = "STUDENT" | "TUTOR"
 
@@ -52,6 +53,8 @@ async function handlePOST(req: NextRequest) {
         email: user.email,
         role: user.role,
       })
+      void sendLoginAlertEmail(user, { method: "Google", req })
+
       const res = NextResponse.json({ redirectTo: dashboardPath(user.role) })
       setSessionCookie(res, token)
       clearPendingGoogleCookie(res)
@@ -78,6 +81,8 @@ async function handlePOST(req: NextRequest) {
       email: user.email,
       role: user.role,
     })
+
+    void sendLoginAlertEmail(user, { method: "Google", isNewAccount: true, req })
 
     const res = NextResponse.json(
       { redirectTo: dashboardPath(user.role) },
