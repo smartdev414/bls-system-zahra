@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   Video, Mic, MicOff, VideoOff, PhoneOff,
   ChevronLeft, Loader2, AlertCircle, Clock,
-  Camera, CheckCircle2, Download, FileText, Paperclip,
+  Camera, CheckCircle2,
   WifiOff, Wifi, Sparkles, Send, Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -35,11 +35,6 @@ import { cn } from "@/lib/utils"
 
 type TokenData = { token: string; wsUrl: string; roomName: string }
 
-type SessionResource = {
-  id: string; title: string; fileUrl: string; fileName: string
-  fileSize: number | null; mimeType: string | null
-}
-
 type SessionInfo = {
   session: {
     id: string
@@ -51,7 +46,6 @@ type SessionInfo = {
     scheduledAt: string
     tutor: { name: string }
     course: { title: string } | null
-    resources: SessionResource[]
     _count?: { attendances: number }
     isInvited?: boolean
     joinRequest?: { id: string; status: "PENDING" | "APPROVED" | "REJECTED" } | null
@@ -352,33 +346,6 @@ function EntryScreen({
               </div>
             )}
           </div>
-
-          {/* Resource files */}
-          {session.resources && session.resources.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-semibold flex items-center gap-1.5 text-muted-foreground">
-                <Paperclip className="size-3.5" /> Session Materials
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {session.resources.map((r) => (
-                  <a
-                    key={r.id}
-                    href={r.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download={r.fileName}
-                    className="flex items-center gap-2.5 rounded-lg border bg-muted/40 hover:bg-muted/70 px-3 py-2 transition-colors group"
-                  >
-                    <FileText className="size-4 text-muted-foreground shrink-0" />
-                    <span className="flex-1 min-w-0 text-xs font-medium truncate group-hover:text-primary transition-colors">
-                      {r.fileName}
-                    </span>
-                    <Download className="size-3.5 text-muted-foreground shrink-0" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Ready label */}
           <div className="flex flex-col gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5">

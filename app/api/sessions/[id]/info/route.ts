@@ -26,11 +26,17 @@ async function handleGET(
         scheduledAt: true,
         tutor: { select: { name: true } },
         course: { select: { id: true, title: true } },
-        resources: {
-          where: { title: { not: "__presentation__" } },
-          select: { id: true, title: true, fileUrl: true, fileName: true, fileSize: true, mimeType: true },
-          orderBy: { createdAt: "asc" },
-        },
+        // Resource files are the tutor's teaching copies. Students must not
+        // receive URLs — they are for presenting in class, not downloading.
+        ...(auth.role !== "STUDENT"
+          ? {
+              resources: {
+                where: { title: { not: "__presentation__" } },
+                select: { id: true, title: true, fileUrl: true, fileName: true, fileSize: true, mimeType: true },
+                orderBy: { createdAt: "asc" as const },
+              },
+            }
+          : {}),
         _count: { select: { attendances: true } },
         ...(auth.role === "STUDENT"
           ? {

@@ -48,7 +48,7 @@ const S3_UPLOAD_GRACE_MS = 3 * 60 * 1000
 export type SessionsScope = {
   /** Enter the room, start/end it, and play or download its recording. */
   canTeach: boolean
-  /** Attach and remove downloadable resource files. */
+  /** Attach and remove teaching-material files used in the classroom. */
   canManageResources: boolean
   /** Dashboard root the classroom links hang off (e.g. "/tutor"). */
   basePath: string
@@ -724,7 +724,7 @@ function ScheduleSessionDialog({
           <div className="flex flex-col gap-2">
             <Label className="flex items-center gap-1.5">
               <Paperclip className="size-3.5" /> Resource Files
-              <span className="text-muted-foreground font-normal text-xs">(students can download before joining)</span>
+              <span className="text-muted-foreground font-normal text-xs">(for presenting in class — students cannot download)</span>
             </Label>
 
             {/* Saved resources (edit mode) */}
