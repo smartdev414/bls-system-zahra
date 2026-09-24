@@ -311,8 +311,22 @@ export function CaptionsOverlay({
   // Collapsing returns to the live end of the transcript.
   useEffect(() => { if (!expanded) stickRef.current = true }, [expanded])
 
+  // What this tutor has typed, newest last. Shown in the composer itself, so
+  // they always see what went out — whether or not captions are on for them.
+  const sent = lines
+    .filter((l) => l.typed && l.speakerId === localParticipant.identity)
+    .slice(-3)
+    .map((l) => ({ id: l.id, text: l.text }))
+
   const composer = localIsTutor && composerOpen
-    ? <CaptionComposer onSend={sendTypedCaption} onClose={() => setCaptionComposerOpen(false)} />
+    ? (
+      <CaptionComposer
+        onSend={sendTypedCaption}
+        onClose={() => setCaptionComposerOpen(false)}
+        sent={sent}
+        captionsHidden={!captionsEnabled}
+      />
+    )
     : null
 
   // Turned off by this viewer. Captions keep being collected underneath, so

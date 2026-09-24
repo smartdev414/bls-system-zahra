@@ -51,9 +51,13 @@ async function savePrepared(captions: string[]): Promise<string[]> {
 type Props = {
   onSend: (text: string) => void
   onClose: () => void
+  /** The tutor's own recent typed captions, newest last. */
+  sent: { id: string; text: string }[]
+  /** Captions are switched off on this tutor's screen (students still see them). */
+  captionsHidden: boolean
 }
 
-export function CaptionComposer({ onSend, onClose }: Props) {
+export function CaptionComposer({ onSend, onClose, sent, captionsHidden }: Props) {
   const [prepared, setPrepared] = useState<string[]>(cachedPrepared)
   const [text, setText] = useState("")
   const [editing, setEditing] = useState(false)
@@ -141,6 +145,30 @@ export function CaptionComposer({ onSend, onClose }: Props) {
         </div>
       ) : (
         <>
+          {/* What went out — the tutor sees it here as well as in the captions. */}
+          {sent.length > 0 && (
+            <div className="flex flex-col gap-0.5 px-1" aria-live="polite">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">Sent to the class</p>
+              {sent.map((l, i) => (
+                <p
+                  key={l.id}
+                  className={cn(
+                    "flex items-start gap-1.5 text-sm leading-snug",
+                    i === sent.length - 1 ? "text-white" : "text-white/55",
+                  )}
+                >
+                  <Check className="size-3.5 mt-0.5 shrink-0 text-emerald-400" aria-hidden />
+                  <span className="break-words min-w-0">{l.text}</span>
+                </p>
+              ))}
+            </div>
+          )}
+          {captionsHidden && (
+            <p className="px-1 text-[11px] text-amber-300/90">
+              Captions are turned off on your screen, so you won&apos;t see these at the bottom — the class still does.
+            </p>
+          )}
+
           {/* Prepared: one click sends */}
           <div className="flex items-center gap-1.5 overflow-x-auto">
             {prepared.map((p, i) => (

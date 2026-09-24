@@ -108,6 +108,10 @@ function readStoredBreakoutGroupId(sessionId: string): string | null {
 // the presentation — without this, "refresh the classroom" wipes the slides for
 // everyone and nobody can put them back except by re-uploading.
 const presentationStorageKey = (sessionId: string) => `classroom:presentation:${sessionId}`
+// Last slide shown for each deck this session, keyed by deck URL, so closing the
+// slides (say, to go to gallery) and presenting the same deck again resumes
+// where the tutor left off instead of back at the start.
+const deckPositionsStorageKey = (sessionId: string) => `classroom:deck-positions:${sessionId}`
 
 // How long the stage must be quiet — no slide/video event from the tutor — before
 // a student double-checks the stored stage against what they're showing, and how
@@ -449,6 +453,24 @@ export function ClassroomRoom({
       sessionStorage.removeItem(presentationStorageKey(sessionId))
     } catch { /* storage disabled — the presentation just won't survive a reload */ }
   }, [pptActive, pptUrl, presentKind, pptCurrentPage, pptTotalPages, selectedSlides, sessionId])
+
+  // ── Resume a deck where it was left ────────────────────────────────────────
+  const deckPositionsRef = useRef<Record<string, number>>({})
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(deckPositionsStorageKey(sessionId))
+      const saved = raw ? JSON.parse(raw) : null
+      deckPositionsRef.current = saved && typeof saved === "object" ? saved : {}
+    } catch { deckPositionsRef.current = {} }
+  }, [sessionId])
+  useEffect(() => {
+    if (!pptActive || presentKind !== "slides" || !pptUrl) return
+    if (deckPositionsRef.current[pptUrl] === pptCurrentPage) return
+    deckPositionsRef.current = { ...deckPositionsRef.current, [pptUrl]: pptCurrentPage }
+    try {
+      sessionStorage.setItem(deckPositionsStorageKey(sessionId), JSON.stringify(deckPositionsRef.current))
+    } catch { /* storage disabled — resume still works until the page reloads */ }
+  }, [pptActive, presentKind, pptUrl, pptCurrentPage, sessionId])
 
   // Position of the currently-shown page within the tutor-selected subset.
   // -1 if the tutor has live-excluded the current slide from the sequence.
@@ -2231,7 +2253,10 @@ export function ClassroomRoom({
     if (selected.length === 0) return
 
     const { url, total } = deck
-    const firstPage = selected[0]
+    // Same deck as before → pick up on the slide it was closed on, as long as
+    // that slide is still in the chosen set.
+    const lastPage = deckPositionsRef.current[url]
+    const firstPage = lastPage && selected.includes(lastPage) ? lastPage : selected[0]
 
     setPickerData(null)
     setPresentKind("slides")
