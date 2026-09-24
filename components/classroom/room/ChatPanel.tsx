@@ -231,7 +231,9 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
   )
 }
 
-function MessageBubble({ msg, isOwn, t }: { msg: ChatMsg; isOwn: boolean; t: ChatThemeClasses }) {
+function MessageBubble({
+  msg, isOwn, t, showGroup,
+}: { msg: ChatMsg; isOwn: boolean; t: ChatThemeClasses; showGroup: boolean }) {
   const time = new Date(msg.ts).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -266,8 +268,14 @@ function MessageBubble({ msg, isOwn, t }: { msg: ChatMsg; isOwn: boolean; t: Cha
         hasAttachment && "w-full",
       )}
     >
-      {!isOwn && (
-        <span className={cn("text-[11px] font-semibold px-1 leading-none", t.senderName)}>{msg.from}</span>
+      {(!isOwn || (showGroup && msg.groupName)) && (
+        <span className={cn("text-[11px] font-semibold px-1 leading-none", t.senderName)}>
+          {!isOwn && msg.from}
+          {/* Teachers see every group's chat in one list; say which group. */}
+          {showGroup && msg.groupName && (
+            <span className="ml-1 font-normal opacity-70">{!isOwn && "· "}{msg.groupName}</span>
+          )}
+        </span>
       )}
       <div
         className={cn(
@@ -291,6 +299,8 @@ function MessageBubble({ msg, isOwn, t }: { msg: ChatMsg; isOwn: boolean; t: Cha
 
 export function ChatPanel({
   messages,
+  audienceLabel = null,
+  showGroupLabels = false,
   localName,
   raisedHands,
   onSend,
@@ -303,6 +313,10 @@ export function ChatPanel({
   onLowerAllHands,
 }: {
   messages: ChatMsg[]
+  /** During breakouts, who a message sent now reaches. Null outside breakouts. */
+  audienceLabel?: string | null
+  /** Label each bubble with its breakout group (teachers, who see them all). */
+  showGroupLabels?: boolean
   localName: string
   raisedHands: RaisedHand[]
   onSend: (text: string, type: MsgType, attachment?: ChatAttachment) => void
@@ -652,7 +666,7 @@ export function ChatPanel({
           </div>
         ) : (
           messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} isOwn={m.from === localName} t={t} />
+            <MessageBubble key={m.id} msg={m} isOwn={m.from === localName} t={t} showGroup={showGroupLabels} />
           ))
         )}
       </div>
@@ -666,6 +680,14 @@ export function ChatPanel({
             <ChevronDown className="size-3.5" />
             {unread > 0 ? `${unread} new message${unread > 1 ? "s" : ""}` : "Scroll to latest"}
           </button>
+        </div>
+      )}
+
+      {/* The placeholder disappears once you type, and "who will see this?" is
+          exactly the question in a breakout — so say it where it stays put. */}
+      {audienceLabel && (
+        <div className={cn("shrink-0 px-3 pt-2 text-[11px] leading-none", t.timeText)} aria-live="polite">
+          Messages go to <span className="font-semibold">{audienceLabel}</span>
         </div>
       )}
 
@@ -738,7 +760,7 @@ export function ChatPanel({
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
           className={cn("shrink-0 size-9 rounded-xl border flex items-center justify-center disabled:opacity-40 transition-colors", t.iconBtn)}
-          title="Attach a file for everyone to open or download"
+          title={audienceLabel ? `Attach a file for ${audienceLabel}` : "Attach a file for everyone to open or download"}
           aria-label="Attach file"
         >
           {uploading ? (
@@ -758,7 +780,7 @@ export function ChatPanel({
             }
           }}
           rows={1}
-          placeholder="Type a message or attach a file…"
+          placeholder={audienceLabel ? `Message ${audienceLabel}…` : "Type a message or attach a file…"}
           className={cn("flex-1 resize-none rounded-xl border text-sm px-3 py-2 outline-none transition-colors max-h-24 overflow-y-auto leading-snug", t.inputField)}
           style={{ fieldSizing: "content" } as React.CSSProperties}
         />

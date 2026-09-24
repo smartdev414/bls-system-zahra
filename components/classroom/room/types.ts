@@ -14,6 +14,10 @@ export type ChatMsg = {
   ts: number
   type: MsgType
   attachment?: ChatAttachment
+  // Set on a message sent inside a breakout: only that group (and teachers)
+  // receive it. Absent = the whole class.
+  groupId?: string
+  groupName?: string
 }
 
 export type RaisedHand = {

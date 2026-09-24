@@ -81,6 +81,14 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 
+// Where a chat message goes during breakouts. See `chatAudience` in the room.
+type ChatAudience = {
+  groupId: string
+  groupName: string
+  /** LiveKit identities the live message is addressed to. */
+  identities: string[]
+}
+
 // Which breakout group this student was last in, remembered per session and per
 // tab so a reload or a re-login after a dropped connection can put them back.
 const breakoutGroupStorageKey = (sessionId: string) => `classroom:breakout-group:${sessionId}`
@@ -821,6 +829,26 @@ export function ClassroomRoom({
   // over LiveKit for live delivery. Stable client-generated `id`s keep the two
   // paths from duplicating the same bubble after a refresh / late join.
 
+  // Breakout chat is scoped to the group it was sent in: a message typed in
+  // Group A used to appear in every group, live and again after a reload.
+  // Sending addresses the live message to the group only (see `chatAudience`),
+  // and history is fetched for the groups this student has been placed in —
+  // remembered per tab so a reload mid-breakout still brings their group's
+  // conversation back, and kept after breakouts end so it stays readable.
+  const chatGroupsStorageKey = `classroom:chat-groups:${sessionId}`
+  const chatGroupIdsRef = useRef<Set<string>>(new Set())
+  const chatGroupsLoadedRef = useRef(false)
+  if (!chatGroupsLoadedRef.current) {
+    chatGroupsLoadedRef.current = true
+    try {
+      const saved = typeof window !== "undefined" ? sessionStorage.getItem(chatGroupsStorageKey) : null
+      const parsed = saved ? (JSON.parse(saved) as unknown) : null
+      if (Array.isArray(parsed)) chatGroupIdsRef.current = new Set(parsed.filter((g) => typeof g === "string"))
+    } catch { /* storage unavailable — group history just won't survive a reload */ }
+  }
+  // Where a message typed right now goes. Null = the whole class.
+  const chatAudienceRef = useRef<ChatAudience | null>(null)
+
   const { send: sendChat } = useDataChannel(CHAT_TOPIC, (msg) => {
     try {
       const raw = JSON.parse(dec.decode(msg.payload)) as Partial<ChatMsg> & { ts?: unknown }
@@ -837,6 +865,9 @@ export function ClassroomRoom({
         ts,
         type,
         ...(raw.attachment ? { attachment: raw.attachment } : {}),
+        ...(typeof raw.groupId === "string" && raw.groupId
+          ? { groupId: raw.groupId, ...(typeof raw.groupName === "string" ? { groupName: raw.groupName } : {}) }
+          : {}),
       }
       setMessages((prev) => {
         if (prev.some((m) => m.id === data.id)) return prev
@@ -852,7 +883,11 @@ export function ClassroomRoom({
   // carry stable client-generated ids, so merging can never double up a bubble.
   const hydrateChat = useCallback(async () => {
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/chat`, { cache: "no-store" })
+      // Students get only their own breakout groups' messages back — see
+      // `chatGroupIdsRef` below.
+      const groups = [...chatGroupIdsRef.current].join(",")
+      const qs = groups ? `?groups=${encodeURIComponent(groups)}` : ""
+      const res = await fetch(`/api/sessions/${sessionId}/chat${qs}`, { cache: "no-store" })
       if (!res.ok) return
       const body = await res.json() as { messages?: ChatMsg[] }
       const history = Array.isArray(body.messages) ? body.messages : []
@@ -1933,13 +1968,26 @@ export function ClassroomRoom({
         type,
         attachment,
       }
+      const audience = chatAudienceRef.current
+      if (audience) {
+        msg.groupId = audience.groupId
+        msg.groupName = audience.groupName
+      }
       // Optimistic local append + live fan-out.
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev
         return [...prev, msg]
       })
       try {
-        sendChat(enc.encode(JSON.stringify(msg)), { reliable: true })
+        if (!audience) {
+          sendChat(enc.encode(JSON.stringify(msg)), { reliable: true })
+        } else if (audience.identities.length > 0) {
+          // Never send with an empty list: LiveKit reads that as "everyone".
+          sendChat(enc.encode(JSON.stringify(msg)), {
+            reliable: true,
+            destinationIdentities: audience.identities,
+          })
+        }
       } catch { /* connection may have dropped */ }
 
       // Persist so refreshes / late joiners can hydrate. Fire-and-forget; the
@@ -3427,6 +3475,57 @@ export function ClassroomRoom({
     [breakoutGroups, localBaseId]
   )
 
+  // Who chat reaches during breakouts, mirroring who can hear whom:
+  //   - a student in a group → that group, plus the teachers;
+  //   - a student left unassigned → the others left in the main room, plus the
+  //     teachers;
+  //   - a teacher visiting a group → that group;
+  //   - a teacher not visiting → everyone, so announcements still land.
+  // Teachers receive every group's messages so they can follow all of them.
+  const chatAudience = useMemo<ChatAudience | null>(() => {
+    if (!breakoutsActive) return null
+    const teacherIds = participants.filter((p) => p.metadata === "tutor").map((p) => p.identity)
+    const withTeachers = (ids: string[]) =>
+      [...new Set([...ids, ...teacherIds])].filter((id) => id !== localParticipant.identity)
+
+    if (isTutor) {
+      const visiting = visitingGroupId ? breakoutGroups.find((g) => g.id === visitingGroupId) : null
+      if (!visiting) return null
+      return { groupId: visiting.id, groupName: visiting.name, identities: withTeachers(liveIdentitiesFor(visiting.memberIds)) }
+    }
+    if (ownBreakoutGroup) {
+      return {
+        groupId: ownBreakoutGroup.id,
+        groupName: ownBreakoutGroup.name,
+        identities: withTeachers(liveIdentitiesFor(ownBreakoutGroup.memberIds)),
+      }
+    }
+    const assigned = new Set(breakoutGroups.flatMap((g) => g.memberIds))
+    const mainRoom = participants
+      .filter((p) => p.metadata !== "tutor" && !assigned.has(participantBaseId(p.identity)))
+      .map((p) => p.identity)
+    return {
+      // Per breakout round, so one round's main-room chat doesn't follow a
+      // student who is placed in a group the next time.
+      groupId: `main-${breakoutStartedAt ?? 0}`,
+      groupName: "Main room",
+      identities: withTeachers(mainRoom),
+    }
+  }, [breakoutsActive, participants, isTutor, visitingGroupId, breakoutGroups, ownBreakoutGroup, breakoutStartedAt, liveIdentitiesFor, localParticipant.identity])
+
+  useEffect(() => {
+    chatAudienceRef.current = chatAudience
+    // A student placed in a group they haven't been in before: remember it, and
+    // fetch history again so a reload mid-breakout gets the group's earlier
+    // messages back (the first fetch ran before we knew the group).
+    if (isTutor || !chatAudience || chatGroupIdsRef.current.has(chatAudience.groupId)) return
+    chatGroupIdsRef.current.add(chatAudience.groupId)
+    try {
+      sessionStorage.setItem(chatGroupsStorageKey, JSON.stringify([...chatGroupIdsRef.current]))
+    } catch { /* storage unavailable */ }
+    void hydrateChat()
+  }, [chatAudience, isTutor, chatGroupsStorageKey, hydrateChat])
+
   // Student: remember which breakout group we're in. `sessionStorage` outlives a
   // reload and a re-login in the same tab, which is what lets the sync handler
   // above tell a return apart from a first placement.
@@ -4327,6 +4426,12 @@ export function ClassroomRoom({
         )}>
           <ChatPanel
             messages={messages}
+            audienceLabel={
+              !breakoutsActive ? null
+                : chatAudience ? chatAudience.groupName
+                : "everyone (all groups)"
+            }
+            showGroupLabels={isTutor}
             localName={localName}
             raisedHands={raisedHands}
             onSend={handleSend}

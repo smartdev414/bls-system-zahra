@@ -6,6 +6,8 @@ import { withAudit } from "@/lib/audit"
 import { assertCanAccessSession } from "@/lib/session-access"
 
 const MAX_MESSAGES = 500
+// A student is in one group per breakout round; this only bounds the query.
+const MAX_GROUP_FILTER = 50
 const ALLOWED_TYPES = new Set(["text", "reaction", "system"])
 
 type AttachmentBody = {
@@ -21,6 +23,8 @@ function serializeMessage(row: {
   text: string
   type: string
   attachment: Prisma.JsonValue | null
+  breakoutGroupId: string | null
+  breakoutGroupName: string | null
   createdAt: Date
 }) {
   const attachment =
@@ -40,11 +44,25 @@ function serializeMessage(row: {
     type: row.type,
     ts: row.createdAt.getTime(),
     ...(attachment ? { attachment } : {}),
+    ...(row.breakoutGroupId
+      ? { groupId: row.breakoutGroupId, groupName: row.breakoutGroupName ?? undefined }
+      : {}),
   }
 }
 
+const MESSAGE_SELECT = {
+  id: true,
+  fromName: true,
+  text: true,
+  type: true,
+  attachment: true,
+  breakoutGroupId: true,
+  breakoutGroupName: true,
+  createdAt: true,
+} satisfies Prisma.LiveSessionChatMessageSelect
+
 async function handleGET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -55,21 +73,36 @@ async function handleGET(
     const access = await assertCanAccessSession(auth, sessionId)
     if (access.error) return access.error
 
+    // Teachers read every group's chat. A student reads the whole-class chat,
+    // their own messages, and the groups they tell us they were placed in —
+    // breakout membership exists only in the room's client state, so the
+    // client supplies it. That is the same trust boundary as breakout audio and
+    // video, which are also separated in the browser, not on the media server.
+    const groupIds = (req.nextUrl.searchParams.get("groups") ?? "")
+      .split(",")
+      .map((g) => g.trim())
+      .filter((g) => g && g.length <= 64)
+      .slice(0, MAX_GROUP_FILTER)
+
+    const where: Prisma.LiveSessionChatMessageWhereInput = access.isTutor
+      ? { sessionId }
+      : {
+          sessionId,
+          OR: [
+            { breakoutGroupId: null },
+            { senderId: auth.sub },
+            ...(groupIds.length ? [{ breakoutGroupId: { in: groupIds } }] : []),
+          ],
+        }
+
     const rows = await prisma.liveSessionChatMessage.findMany({
-      where: { sessionId },
+      where,
       // Newest-first with a cap, reversed below: a busy lesson can outgrow
       // MAX_MESSAGES, and a late joiner needs the recent conversation rather
       // than the first minutes of class.
       orderBy: { createdAt: "desc" },
       take: MAX_MESSAGES,
-      select: {
-        id: true,
-        fromName: true,
-        text: true,
-        type: true,
-        attachment: true,
-        createdAt: true,
-      },
+      select: MESSAGE_SELECT,
     })
 
     return NextResponse.json({ messages: rows.reverse().map(serializeMessage) })
@@ -105,12 +138,18 @@ async function handlePOST(
       type?: unknown
       ts?: unknown
       attachment?: AttachmentBody | null
+      groupId?: unknown
+      groupName?: unknown
     }
 
     const id = typeof body.id === "string" ? body.id.trim() : ""
     const fromName = typeof body.from === "string" ? body.from.trim() : ""
     const text = typeof body.text === "string" ? body.text : ""
     const type = typeof body.type === "string" ? body.type : "text"
+    const groupId =
+      typeof body.groupId === "string" && body.groupId.trim() ? body.groupId.trim().slice(0, 64) : null
+    const groupName =
+      groupId && typeof body.groupName === "string" ? body.groupName.trim().slice(0, 120) || null : null
 
     if (!id || id.length > 64) {
       return NextResponse.json({ message: "id is required" }, { status: 400 })
@@ -165,17 +204,12 @@ async function handlePOST(
         text,
         type,
         attachment,
+        breakoutGroupId: groupId,
+        breakoutGroupName: groupName,
         createdAt,
       },
       update: {},
-      select: {
-        id: true,
-        fromName: true,
-        text: true,
-        type: true,
-        attachment: true,
-        createdAt: true,
-      },
+      select: MESSAGE_SELECT,
     })
 
     return NextResponse.json({ message: serializeMessage(row) })

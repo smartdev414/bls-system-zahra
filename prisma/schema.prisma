@@ -410,6 +410,12 @@ model LiveSessionChatMessage {
   type      String   // "text" | "reaction" | "system"
   // Optional file attachment (JSON: { fileUrl, fileName, fileSize, mimeType })
   attachment Json?
+  // Set when the message was sent inside a breakout group, so history only
+  // hydrates for that group (and teachers). Null = whole class. Breakout groups
+  // live only in the room's client state, so the id is the client's group id
+  // and the name is kept alongside for labelling after the groups are gone.
+  breakoutGroupId   String?
+  breakoutGroupName String?
   createdAt DateTime @default(now())
 
   session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -417,6 +423,7 @@ model LiveSessionChatMessage {
 
   @@index([sessionId, createdAt])
   @@index([senderId])
+  @@index([sessionId, breakoutGroupId])
 }
 
 // Persisted tldraw whiteboard for a live session. One snapshot per session
