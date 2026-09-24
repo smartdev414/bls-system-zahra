@@ -9,6 +9,7 @@ import {
   useConnectionState,
   useTracks,
   useRoomContext,
+  useIsRecording,
 } from "@livekit/components-react"
 import { ConnectionState, RoomEvent, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
@@ -743,6 +744,15 @@ export function ClassroomRoom({
   const [recordingPaused, setRecordingPaused]     = useState(false)
   const [recordingBusy, setRecordingBusy]         = useState(false)
   const recordingReminderShown = useRef(false)
+  // What everyone else sees. LiveKit flags the room while an egress is running,
+  // so students learn they are on camera in a recording without the tutor's
+  // local state being broadcast. Pausing stops the egress, which clears it.
+  const roomIsRecording = useIsRecording()
+  // The tutor's own flag lives in component state, so a reload (theirs, or
+  // "Refresh all") dropped it while the egress kept running: the header lost
+  // its badge and the button offered "Start Rec" for a recording that could no
+  // longer be paused. The room flag carries it across the reload.
+  const recordingActive = recordingStarted || roomIsRecording
 
   // ── Participant tile size (persisted per-user) ─────────────────────────────
   // Drives the height of the bottom participants strip and, transitively, the
@@ -2495,13 +2505,14 @@ export function ClassroomRoom({
     if (!isTutor || recordingBusy) return
     setRecordingBusy(true)
 
-    const prevStarted = recordingStarted
+    const prevStarted = recordingActive
     const prevPaused = recordingPaused
 
-    if (!recordingStarted) {
+    if (!recordingActive) {
       setRecordingStarted(true)
       setRecordingPaused(false)
     } else {
+      setRecordingStarted(true)
       setRecordingPaused(!recordingPaused)
     }
 
@@ -2529,7 +2540,7 @@ export function ClassroomRoom({
     } finally {
       setRecordingBusy(false)
     }
-  }, [isTutor, recordingBusy, recordingStarted, recordingPaused, sessionId])
+  }, [isTutor, recordingBusy, recordingActive, recordingPaused, sessionId])
 
   // Attach the processor to the local camera track. One effect handles three
   // cases: (a) first publish after joining when the lobby pref is on, (b)
@@ -3792,11 +3803,13 @@ export function ClassroomRoom({
       )}
 
       {/* ── Top bar ── */}
-      <header className="h-11 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-2 sm:px-4 shrink-0 gap-2">
+      {/* Left padding clears the 44px logo watermark pinned at top-3 left-3 —
+          without it the badge sat on top of the live dot and title. */}
+      <header className="h-11 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between pl-16 pr-2 sm:pr-4 shrink-0 gap-2">
         <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           <Radio className="size-3.5 text-rose-500 animate-pulse shrink-0" />
           <span className="font-bold text-sm truncate max-w-[40vw] sm:max-w-xs">{sessionTitle}</span>
-          {isTutor && recordingStarted && (
+          {isTutor && recordingActive && (
             <span
               className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/55 border border-white/15 text-[10px] font-semibold text-white shrink-0"
               aria-live="polite"
@@ -3808,6 +3821,17 @@ export function ClassroomRoom({
                 )}
               />
               {recordingPaused ? "Paused" : "Recording"}
+            </span>
+          )}
+          {!isTutor && roomIsRecording && (
+            <span
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/55 border border-white/15 text-[10px] font-semibold text-white shrink-0"
+              title="This lesson is being recorded"
+              aria-live="polite"
+            >
+              <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
+              <span className="hidden sm:inline">Recording</span>
+              <span className="sm:hidden">REC</span>
             </span>
           )}
           {pptActive && (
@@ -4060,19 +4084,23 @@ export function ClassroomRoom({
                 {splitCameraPanel}
               </div>
 
-              {/* Presentation column — RIGHT. Slides or video, decided by `presentKind`. */}
+              {/* Presentation column — RIGHT. Slides or video, decided by `presentKind`.
+                  Always a row, so the tutor's thumbnail tray sits beside the
+                  slide whichever way the stage is split. As a direct child of a
+                  stacked (column) stage the tray took the full height and
+                  squeezed the tutor's own slide down to a 1px strip. */}
               <div
-                ref={slideAreaRef}
                 className={cn(
-                  "flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden relative border-zinc-800",
+                  "flex-1 min-w-0 min-h-0 md:basis-0 overflow-hidden flex border-zinc-800",
                   splitDivider,
                 )}
+                style={cameraSplit.content}
+              >
+              <div
+                ref={slideAreaRef}
+                className="flex-1 min-w-0 min-h-0 overflow-hidden relative"
                 onPointerMove={handleSlidePointerMove}
-                style={
-                  isTutor && pointerMode
-                    ? { ...cameraSplit.content, cursor: "none" }
-                    : cameraSplit.content
-                }
+                style={isTutor && pointerMode ? { cursor: "none" } : undefined}
               >
                 {presentKind === "video" ? (
                   <VideoPlayer
@@ -4132,6 +4160,7 @@ export function ClassroomRoom({
                   onToggleCollapse={() => setSlideTrayOpen((v) => !v)}
                 />
               )}
+              </div>
             </>
 
           ) : screenSharing ? (
@@ -4453,7 +4482,7 @@ export function ClassroomRoom({
           blurEnabled={blurEnabled}
           blurBusy={blurBusy}
           onToggleBlur={handleToggleBlur}
-          recordingStarted={recordingStarted}
+          recordingStarted={recordingActive}
           recordingPaused={recordingPaused}
           recordingBusy={recordingBusy}
           onToggleRecording={handleToggleRecording}

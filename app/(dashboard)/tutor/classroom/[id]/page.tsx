@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useEffect, useCallback, useRef } from "react"
+import { use, useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import {
   Loader2, AlertCircle, Camera, Mic, MicOff, Video, VideoOff, Sparkles,
@@ -15,6 +15,7 @@ import { createLocalVideoTrack, type LocalVideoTrack } from "livekit-client"
 import "@livekit/components-styles"
 import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
 import { BLUR_PREF_KEY } from "@/components/classroom/blurPreference"
+import { readDevicePreference, writeDevicePreference } from "@/components/classroom/devicePreference"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -154,6 +155,9 @@ function TutorEntryScreen({
 }) {
   const [videoEnabled, setVideoEnabled] = useState(true)
   const [audioEnabled, setAudioEnabled] = useState(true)
+  // The room reads these when it connects — see devicePreference.
+  useEffect(() => { writeDevicePreference("camera", videoEnabled) }, [videoEnabled])
+  useEffect(() => { writeDevicePreference("mic", audioEnabled) }, [audioEnabled])
   const [blurEnabled, setBlurEnabled] = useState(() => {
     if (typeof window === "undefined") return false
     try { return window.localStorage.getItem(BLUR_PREF_KEY) === "1" } catch { return false }
@@ -318,6 +322,15 @@ export default function TutorClassroomPage({
   const { id } = use(params)
   const router = useRouter()
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
+  // Read once per connection, not on every render: the in-room buttons write
+  // the same keys, and changing `video` / `audio` props would fight them.
+  const joinDevices = useMemo(
+    () => ({
+      video: tokenData ? readDevicePreference("camera", true) : true,
+      audio: tokenData ? readDevicePreference("mic", true) : true,
+    }),
+    [tokenData],
+  )
   const [ended, setEnded] = useState(false)
 
   // Tutors hit restricted networks too — a co-teacher joining from a hospital
@@ -548,8 +561,8 @@ export default function TutorClassroomPage({
       token={tokenData.token}
       serverUrl={tokenData.wsUrl}
       connect={true}
-      video={true}
-      audio={true}
+      video={joinDevices.video}
+      audio={joinDevices.audio}
       options={roomOptionsFor(netMode)}
       connectOptions={connectOptionsFor(netMode)}
       onDisconnected={handleDisconnected}

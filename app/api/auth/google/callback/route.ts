@@ -8,7 +8,6 @@ import {
   setPendingGoogleCookie,
 } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { sendLoginAlertEmail } from "@/lib/email"
 
 type GoogleUserInfo = {
   id: string
@@ -87,7 +86,6 @@ async function handleGET(req: NextRequest) {
         email: user.email,
         role: user.role,
       })
-      void sendLoginAlertEmail(user, { method: "Google", req })
 
       const res = NextResponse.redirect(`${appUrl}${dashboardPath(user.role)}`)
       setSessionCookie(res, token)

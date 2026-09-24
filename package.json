@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/copy-pdf-worker.mjs && next dev --port 4000 --hostname 0.0.0.0",
+    "postinstall": "node -e \"require('fs').existsSync('scripts/copy-pdf-worker.mjs') && import('./scripts/copy-pdf-worker.mjs')\"",
     "build": "node scripts/copy-pdf-worker.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",

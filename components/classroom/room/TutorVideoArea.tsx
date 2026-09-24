@@ -1,8 +1,9 @@
 "use client"
 
-import { useTracks, useLocalParticipant, VideoTrack } from "@livekit/components-react"
+import { useTracks, useLocalParticipant, useIsMuted, useParticipants, VideoTrack } from "@livekit/components-react"
+import type { TrackReference } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { Camera, Maximize2, Minimize2 } from "lucide-react"
+import { Camera, CameraOff, Maximize2, Minimize2 } from "lucide-react"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
 
 export function TutorVideoArea({
@@ -37,18 +38,25 @@ export function TutorVideoArea({
   // Mirror the local camera for self-view; never mirror a screen share.
   const isScreen    = !!tutorScreen
   const mirrorLocal = !isScreen && active?.participant.identity === localParticipant.identity
+  // Tells "the teacher isn't here yet" apart from "the teacher is here with no
+  // camera published" — the old single message blamed the camera for both.
+  const tutorPresent = useParticipants().some((p) => p.metadata === "tutor")
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden group">
       {active ? (
-        <VideoTrack
+        <TutorFeed
           trackRef={active}
-          className={localCameraClassName(mirrorLocal, "w-full h-full object-contain")}
+          mirror={mirrorLocal}
+          isScreen={isScreen}
+          isSelf={active.participant.identity === localParticipant.identity}
         />
       ) : (
-        <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-700">
-          <Camera className="size-14 opacity-20" />
-          <span className="text-sm opacity-60">Waiting for tutor camera…</span>
+        <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-500">
+          <Camera className="size-14 opacity-30" />
+          <span className="text-sm">
+            {tutorPresent ? "Waiting for the tutor's camera…" : "Waiting for the tutor to join…"}
+          </span>
         </div>
       )}
 
@@ -66,5 +74,39 @@ export function TutorVideoArea({
         {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
       </button>
     </div>
+  )
+}
+
+// A camera that is switched off stays published, just muted — rendered as-is it
+// is a black rectangle, which in a signed lesson reads as a frozen or broken
+// feed. Say what is actually happening instead.
+function TutorFeed({
+  trackRef,
+  mirror,
+  isScreen,
+  isSelf,
+}: {
+  trackRef: TrackReference
+  mirror: boolean
+  isScreen: boolean
+  isSelf: boolean
+}) {
+  const muted = useIsMuted(trackRef)
+  if (muted && !isScreen) {
+    const name = trackRef.participant.name || "The tutor"
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-400">
+        <CameraOff className="size-12 opacity-60" />
+        <span className="text-sm">
+          {isSelf ? "Your camera is off — students can't see you" : `${name} has turned their camera off`}
+        </span>
+      </div>
+    )
+  }
+  return (
+    <VideoTrack
+      trackRef={trackRef}
+      className={localCameraClassName(mirror, "w-full h-full object-contain")}
+    />
   )
 }

@@ -1,15 +1,17 @@
 "use client"
 
-import { TrackToggle, useLocalParticipant } from "@livekit/components-react"
+import { useLocalParticipant, useTrackToggle } from "@livekit/components-react"
 import { Track } from "livekit-client"
+import type { ReactNode } from "react"
 import {
-  Mic, MicOff, Camera, Monitor, PhoneOff,
+  Mic, MicOff, Camera, CameraOff, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles, Upload,
   Circle, Pause, UserPlus, HandMetal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
+import { writeDevicePreference } from "@/components/classroom/devicePreference"
 
 export function ControlsBar({
   isTutor,
@@ -129,12 +131,15 @@ export function ControlsBar({
   return (
     <div className="flex items-center gap-2 w-full min-w-0 overflow-x-auto overflow-y-hidden">
       {isTutor ? (
-        <TrackToggle
+        <MediaToggle
           source={Track.Source.Microphone}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=false]:bg-rose-900/50 data-[enabled=false]:text-rose-400 whitespace-nowrap"
-        >
-          <Mic className="size-3.5" /> Mic
-        </TrackToggle>
+          onIcon={<Mic className="size-3.5" />}
+          offIcon={<MicOff className="size-3.5" />}
+          onLabel="Mic"
+          offLabel="Mic off"
+          onTitle="Turn your microphone off"
+          offTitle="Turn your microphone on"
+        />
       ) : (
         <div className="flex items-center gap-2">
           <div
@@ -162,12 +167,15 @@ export function ControlsBar({
         </div>
       )}
 
-      <TrackToggle
+      <MediaToggle
         source={Track.Source.Camera}
-        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=false]:bg-rose-900/50 data-[enabled=false]:text-rose-400 whitespace-nowrap"
-      >
-        <Camera className="size-3.5" /> Camera
-      </TrackToggle>
+        onIcon={<Camera className="size-3.5" />}
+        offIcon={<CameraOff className="size-3.5" />}
+        onLabel="Camera"
+        offLabel="Camera off"
+        onTitle="Turn your camera off"
+        offTitle={isTutor ? "Turn your camera on" : "Turn your camera on so your tutor can see you sign"}
+      />
 
       {/* Background blur — toggles a server-side blur processor on the local
           camera track so other participants see the blurred background too.
@@ -192,21 +200,24 @@ export function ControlsBar({
         {blurEnabled ? "Blur on" : "Blur"}
       </button>
 
-      <TrackToggle
+      <MediaToggle
         source={Track.Source.ScreenShare}
         // Capture and publish at text-readable quality — see the constants for
         // why the defaults aren't good enough for slides and documents.
         captureOptions={SCREEN_SHARE_CAPTURE}
         publishOptions={SCREEN_SHARE_PUBLISH}
-        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors data-[enabled=true]:bg-emerald-900/50 data-[enabled=true]:text-emerald-400 whitespace-nowrap"
-        title={
+        activeWhenOn
+        onIcon={<Monitor className="size-3.5" />}
+        offIcon={<Monitor className="size-3.5" />}
+        onLabel="Stop sharing"
+        offLabel="Screen"
+        onTitle="Stop sharing your screen"
+        offTitle={
           isTutor
             ? "Share your screen with the class"
             : "Share your screen — your tutor can pin and show it to everyone"
         }
-      >
-        <Monitor className="size-3.5" /> Screen
-      </TrackToggle>
+      />
 
       {/* Privacy toggle — only shown while the tutor is actively screen-sharing.
           "Private" hides the feed from students (they see a placeholder) without
@@ -565,5 +576,67 @@ export function ControlsBar({
         <PhoneOff className="size-3.5" /> Leave
       </button>
     </div>
+  )
+}
+
+// Plain button over LiveKit's useTrackToggle. The stock <TrackToggle> adds the
+// unlayered `.lk-button` class, which beats our Tailwind utilities — the
+// buttons came out transparent at 16px, with LiveKit's own icon doubled up
+// next to ours, and the red "camera off" state never showed at all.
+function MediaToggle({
+  source,
+  captureOptions,
+  publishOptions,
+  activeWhenOn = false,
+  onIcon,
+  offIcon,
+  onLabel,
+  offLabel,
+  onTitle,
+  offTitle,
+}: {
+  source: Track.Source.Microphone | Track.Source.Camera | Track.Source.ScreenShare
+  captureOptions?: typeof SCREEN_SHARE_CAPTURE
+  publishOptions?: typeof SCREEN_SHARE_PUBLISH
+  // Screen share is off by default, so "on" is the state worth highlighting;
+  // for mic and camera it's "off" that needs to stand out.
+  activeWhenOn?: boolean
+  onIcon: ReactNode
+  offIcon: ReactNode
+  onLabel: string
+  offLabel: string
+  onTitle: string
+  offTitle: string
+}) {
+  const { enabled, pending, toggle } = useTrackToggle({
+    source,
+    captureOptions,
+    publishOptions,
+    // Remembered so a reload ("Refresh all" included) rejoins the same way.
+    onChange: (on, userInitiated) => {
+      if (!userInitiated) return
+      if (source === Track.Source.Camera) writeDevicePreference("camera", on)
+      if (source === Track.Source.Microphone) writeDevicePreference("mic", on)
+    },
+  })
+  return (
+    <button
+      type="button"
+      onClick={() => void toggle()}
+      disabled={pending}
+      aria-pressed={enabled}
+      title={enabled ? onTitle : offTitle}
+      className={cn(
+        "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border disabled:opacity-60 disabled:cursor-wait",
+        activeWhenOn && enabled
+          ? "bg-emerald-900/50 text-emerald-300 border-emerald-700/50 hover:bg-emerald-900/70"
+          : !activeWhenOn && !enabled
+            ? "bg-rose-900/50 text-rose-300 border-rose-700/50 hover:bg-rose-900/70"
+            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+      )}
+    >
+      {enabled ? onIcon : offIcon}
+      {enabled ? onLabel : offLabel}
+    </button>
   )
 }

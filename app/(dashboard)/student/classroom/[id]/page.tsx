@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useRef, useEffect } from "react"
+import { use, useState, useRef, useEffect, useMemo } from "react"
 import Link from "next/link"
 import {
   Video, Mic, MicOff, VideoOff, PhoneOff,
@@ -21,6 +21,7 @@ import "@livekit/components-styles"
 import { toast } from "sonner"
 import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
 import { BLUR_PREF_KEY } from "@/components/classroom/blurPreference"
+import { readDevicePreference, writeDevicePreference } from "@/components/classroom/devicePreference"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
 import {
   connectOptionsFor, escalateNetworkMode, readNetworkMode, roomOptionsFor, writeNetworkMode,
@@ -176,6 +177,8 @@ function EntryScreen({
   onNetModeChange: (mode: NetworkMode) => void
 }) {
   const [videoEnabled, setVideoEnabled] = useState(false)
+  // The room reads this when it connects — see devicePreference.
+  useEffect(() => { writeDevicePreference("camera", videoEnabled) }, [videoEnabled])
   const [requestOpen, setRequestOpen] = useState(false)
   const [requestMsg, setRequestMsg] = useState("")
   // Read the persisted blur preference so a returning user keeps their choice.
@@ -728,6 +731,12 @@ export default function ClassroomRoomPage({
 }) {
   const { id } = use(params)
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
+  // Read once per connection, not on every render: the in-room camera button
+  // writes the same key, and a changing `video` prop would fight it.
+  const joinWithCamera = useMemo(
+    () => (tokenData ? readDevicePreference("camera", false) : false),
+    [tokenData],
+  )
   const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost" | "duplicate" | "blocked">(null)
   const leaveClickedRef = useRef(false)
 
@@ -1022,7 +1031,7 @@ export default function ClassroomRoomPage({
       token={tokenData.token}
       serverUrl={tokenData.wsUrl}
       connect={true}
-      video={false}
+      video={joinWithCamera}
       audio={false}
       options={roomOptionsFor(netMode)}
       connectOptions={connectOptionsFor(netMode)}
