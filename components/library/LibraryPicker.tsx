@@ -8,7 +8,7 @@
  * change: the stored file is shared, and only its reference is copied.
  */
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import {
   Search, FileText, Video, Image as ImageIcon, Music, Check, Loader2, FolderOpen,
@@ -59,21 +59,22 @@ function toUploadedFile(item: LibraryItem): UploadedFile {
   }
 }
 
-export function LibraryPicker({ open, onOpenChange, onPick, allowedTypes, attachedUrls = [] }: Props) {
-  const { data, loading, refetch } = useFetch<{ items: LibraryItem[] }>("/api/tutor/library", {
-    immediate: false,
+export function LibraryPicker({ open, onOpenChange, ...rest }: Props) {
+  // The body mounts each time the dialog opens, so every opening starts with an
+  // empty selection and a fresh list — files may have been added in another tab.
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open && <PickerBody onOpenChange={onOpenChange} {...rest} />}
+    </Dialog>
+  )
+}
+
+function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: Omit<Props, "open">) {
+  const { data, loading } = useFetch<{ items: LibraryItem[] }>("/api/tutor/library", {
     errorMessage: "Could not load your library",
   })
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState<Set<string>>(new Set())
-
-  // Load fresh each time it opens: files may have been added in another tab.
-  useEffect(() => {
-    if (!open) return
-    setQuery("")
-    setSelected(new Set())
-    void refetch()
-  }, [open, refetch])
 
   const attached = useMemo(() => new Set(attachedUrls), [attachedUrls])
 
@@ -152,7 +153,6 @@ export function LibraryPicker({ open, onOpenChange, onPick, allowedTypes, attach
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Choose from library</DialogTitle>
@@ -216,6 +216,5 @@ export function LibraryPicker({ open, onOpenChange, onPick, allowedTypes, attach
           </div>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
   )
 }
