@@ -25,7 +25,7 @@ import { SlidePicker } from "./SlidePicker"
 
 import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
-  BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC, ORDER_TOPIC,
+  BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC, ORDER_TOPIC, VIEW_TOPIC,
   BREAKOUT_WRAP_UP_SEC, CHAT_HISTORY_LIMIT,
   POINTER_SEND_INTERVAL_MS, POINTER_STALE_MS, POINTER_KEEPALIVE_MS, POINTER_SMOOTHING_MS,
   enc, dec,
@@ -36,6 +36,7 @@ import type {
   UploadedSlides, WhiteboardAction, WhiteboardSnapshot, WhiteboardDiff,
   WhiteboardPresence,
   BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction, OrderAction,
+  ViewAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
 import { ConnectionBanner }     from "./room/ConnectionBanner"
@@ -281,10 +282,13 @@ export function ClassroomRoom({
   // Gallery view: the class takes the whole stage and nobody is shown big. A
   // teacher asked for it — in spotlight they mostly watch their own camera
   // filling the screen, when what they want is every student's face at once.
-  // Local to each viewer, and not remembered: the next lesson starts back in
-  // spotlight, where the signer is. The stage stays mounted underneath (just
-  // hidden), so a whiteboard or deck on it keeps running while it is away.
+  // The tutor chooses and the class follows (see the view data channel), and
+  // it is not remembered: the next lesson starts back in spotlight, where the
+  // signer is. The stage stays mounted underneath (just hidden), so a
+  // whiteboard or deck on it keeps running while it is away.
   const [galleryView,      setGalleryView]      = useState(false)
+  const galleryViewRef = useRef(false)
+  useEffect(() => { galleryViewRef.current = galleryView }, [galleryView])
   // Gallery is the class panel, so it is open whatever the chevron last said.
   const classPanelOpen = participantsOpen || galleryView
   const [chatOpen,         setChatOpen]         = useState(true)
@@ -1266,6 +1270,29 @@ export function ClassroomRoom({
       if (data.action === "sync_response" && !isTutor) {
         setClassOrder(Array.isArray(data.order) ? data.order : null)
         return
+      }
+    } catch { /* ignore malformed */ }
+  })
+
+  // ── Data channel: gallery / spotlight ──────────────────────────────────────
+  // Only tutors send `set`; everyone applies it, co-teachers included. Answers
+  // to a late joiner come from the ref, not this closure's copy of the state.
+
+  const { send: sendView } = useDataChannel(VIEW_TOPIC, (msg) => {
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as ViewAction
+      if (data.action === "set" || (data.action === "sync_response" && !isTutor)) {
+        setGalleryView(data.view === "gallery")
+        return
+      }
+      if (data.action === "sync_request" && isTutor) {
+        const response: ViewAction = {
+          action: "sync_response",
+          view: galleryViewRef.current ? "gallery" : "spotlight",
+        }
+        try {
+          sendView(enc.encode(JSON.stringify(response)), { reliable: true })
+        } catch { /* ignore */ }
       }
     } catch { /* ignore malformed */ }
   })
@@ -2704,6 +2731,59 @@ export function ClassroomRoom({
     orderRebroadcastRef.current = true
     safeSendOrder({ action: "set", order })
   }, [isTutor, connectionState, safeSendOrder])
+
+  // ── Gallery / spotlight (tutor sets it for the room) ──────────────────────
+  // Same stable-sender arrangement as `safeSendOrder`.
+  const sendViewRef = useRef(sendView)
+  useEffect(() => { sendViewRef.current = sendView })
+
+  const safeSendView = useCallback((data: ViewAction) => {
+    if (connectionState !== ConnectionState.Connected) return
+    const send = sendViewRef.current
+    if (typeof send !== "function") return
+    try {
+      const result = send(enc.encode(JSON.stringify(data)), { reliable: true }) as unknown as Promise<void> | void
+      if (result && typeof (result as Promise<void>).catch === "function") {
+        ;(result as Promise<void>).catch(() => { /* ignore */ })
+      }
+    } catch { /* ignore */ }
+  }, [connectionState])
+
+  // Tutor: switch locally, then take the room with them. A student's own
+  // switch (only a pin can cause one) stays on their screen until the tutor
+  // next changes the view.
+  const handleSetGalleryView = useCallback((next: boolean) => {
+    setGalleryView(next)
+    galleryViewRef.current = next
+    if (isTutor) safeSendView({ action: "set", view: next ? "gallery" : "spotlight" })
+  }, [isTutor, safeSendView])
+
+  // A student joining (or reloading) mid-lesson asks which view the room is in.
+  useEffect(() => {
+    if (isTutor || connectionState !== ConnectionState.Connected) return
+    const timer = setTimeout(() => {
+      safeSendView({ action: "sync_request" })
+    }, 1400)
+    return () => clearTimeout(timer)
+  }, [isTutor, connectionState, safeSendView])
+
+  // A tutor announces their view once per connected episode. Unlike the class
+  // order this includes spotlight: a tutor who reloads comes back in
+  // spotlight, and a class left in gallery would otherwise stay there with no
+  // way back.
+  const viewAnnouncedRef = useRef(false)
+  useEffect(() => {
+    if (connectionState !== ConnectionState.Connected) {
+      viewAnnouncedRef.current = false
+      return
+    }
+    if (!isTutor || viewAnnouncedRef.current) return
+    const timer = setTimeout(() => {
+      viewAnnouncedRef.current = true
+      safeSendView({ action: "set", view: galleryViewRef.current ? "gallery" : "spotlight" })
+    }, 1400)
+    return () => clearTimeout(timer)
+  }, [isTutor, connectionState, safeSendView])
 
   // ── Spotlight handler (tutor only) ─────────────────────────────────────────
 
@@ -4445,12 +4525,13 @@ export function ClassroomRoom({
               onPin={(identity) => {
                 setPinnedId(identity)
                 // Pinning puts someone on the stage, so show the stage.
-                if (identity) setGalleryView(false)
+                if (identity && galleryView) handleSetGalleryView(false)
               }}
               collapsed={!classPanelOpen}
               onToggleCollapse={() => setParticipantsOpen((v) => !v)}
               view={galleryView ? "gallery" : "spotlight"}
-              onToggleView={() => setGalleryView((v) => !v)}
+              // The tutor's to switch; the class follows it.
+              onToggleView={isTutor ? () => handleSetGalleryView(!galleryView) : undefined}
               isLocalTutor={isTutor}
               spotlightedId={spotlightedId}
               onToggleSpotlight={handleToggleSpotlightFor}

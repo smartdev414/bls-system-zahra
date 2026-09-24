@@ -16,6 +16,9 @@ export const SCREEN_TOPIC    = "cls-screen"
 /** Tutor's drag-to-reorder of the class grid, mirrored to every client so the
  *  teacher and the class are looking at the same room in the same order. */
 export const ORDER_TOPIC     = "cls-order"
+/** Tutor's gallery / spotlight choice, mirrored so the class sees the room the
+ *  way the teacher has it laid out. */
+export const VIEW_TOPIC      = "cls-view"
 // Live captions are server-side (Deepgram + LiveKit agent). This topic is kept for
 // backwards compatibility if client-side fallback is ever re-enabled.
 export const CAPTION_TOPIC   = "cls-captions"

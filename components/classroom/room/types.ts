@@ -105,6 +105,15 @@ export type OrderAction =
   | { action: "sync_request" }
   | { action: "sync_response"; order: string[] | null }
 
+// Gallery (the whole class, nobody big) or spotlight (the normal stage). The
+// tutor chooses and the class follows, same shape as `OrderAction`: a late
+// joiner asks, and a tutor who (re)connects announces what they have.
+export type ClassView = "spotlight" | "gallery"
+export type ViewAction =
+  | { action: "set"; view: ClassView }
+  | { action: "sync_request" }
+  | { action: "sync_response"; view: ClassView }
+
 // Tutor-driven microphone control. Students cannot toggle their own mic in the UI;
 // they apply these commands locally and the tutor also updates LiveKit permissions
 // server-side so unmute can't be bypassed.
