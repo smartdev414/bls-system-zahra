@@ -539,6 +539,34 @@ function SessionEndedScreen() {
   )
 }
 
+/** The tutor removed this student from the live room. */
+function RemovedFromSessionScreen() {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center gap-6 text-center px-4">
+      <div className="size-24 rounded-full bg-muted flex items-center justify-center">
+        <PhoneOff className="size-10 text-muted-foreground" />
+      </div>
+
+      <div className="max-w-md">
+        <h2 className="text-2xl font-black">You were removed from the session</h2>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Your tutor removed you from this live class. If you think this was a mistake,
+          send them a message before trying to join again.
+        </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button asChild size="lg">
+          <Link href="/student/classroom">Back to Classroom</Link>
+        </Button>
+        <Button asChild variant="outline" size="lg">
+          <Link href="/student/messages">Message your tutor</Link>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /** LiveKit disconnected without an explicit Leave tap — offer reconnect steps (student-side crash / network protocol). */
 /**
  * The link is down and we are waiting for it, rather than blaming anyone.
@@ -737,7 +765,7 @@ export default function ClassroomRoomPage({
     () => (tokenData ? readDevicePreference("camera", false) : false),
     [tokenData],
   )
-  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost" | "duplicate" | "blocked">(null)
+  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost" | "duplicate" | "blocked" | "removed">(null)
   const leaveClickedRef = useRef(false)
 
   // How this device talks to the media servers. Read from storage on mount
@@ -768,6 +796,16 @@ export default function ClassroomRoomPage({
   const { data, loading: infoLoading, refetch: refetchInfo } = useFetch<SessionInfo>(`/api/sessions/${id}/info`, {
     errorMessage: false,
   })
+
+  // An approved join request only reached the student as a notification; the
+  // lobby kept saying "Request Pending" until they thought to reload. Re-check
+  // while it is pending so "Join Session" appears by itself.
+  const requestPending = !tokenData && data?.session?.joinRequest?.status === "PENDING"
+  useEffect(() => {
+    if (!requestPending) return
+    const t = setInterval(() => { void refetchInfo() }, 5_000)
+    return () => clearInterval(t)
+  }, [requestPending, refetchInfo])
 
   // Parallel token fetch used only for auto-rejoin. EntryScreen still runs its
   // own getToken for the manual path; the two never fire together because
@@ -869,6 +907,9 @@ export default function ClassroomRoomPage({
       // the network. The server evicts ghost sessions on token issue, so this only
       // fires for a genuinely concurrent second connection.
       if (reason === DisconnectReason.DUPLICATE_IDENTITY) return "duplicate"
+      // The tutor removed this student. "Connection lost" told them it was a
+      // network blip and offered to reconnect them straight back in.
+      if (reason === DisconnectReason.PARTICIPANT_REMOVED) return "removed"
       return "lost"
     })
   }
@@ -992,6 +1033,7 @@ export default function ClassroomRoomPage({
   if (disconnectKind === "lost") return <ConnectionLostScreen onRetry={handleReconnect} />
   if (disconnectKind === "duplicate") return <ConnectionDuplicateScreen onReconnect={handleReconnect} />
   if (disconnectKind === "blocked") return <ConnectionBlockedScreen onRetry={handleReconnect} />
+  if (disconnectKind === "removed") return <RemovedFromSessionScreen />
 
   if (infoLoading && !data) {
     return (

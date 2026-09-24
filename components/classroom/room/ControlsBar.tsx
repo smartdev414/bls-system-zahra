@@ -2,7 +2,7 @@
 
 import { useLocalParticipant, useTrackToggle } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import {
   Mic, MicOff, Camera, CameraOff, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
@@ -12,6 +12,15 @@ import {
 import { cn } from "@/lib/utils"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
 import { writeDevicePreference } from "@/components/classroom/devicePreference"
+
+// The bar is one row that scrolls sideways once it runs out of room, with Leave
+// pinned to the right. With every button fully labelled a tutor needed ~2300px:
+// on a 1440px laptop Whiteboard, Breakouts, Present, Pointer and End Slides were
+// all off-screen, and on a phone a student could not reach Camera at all.
+// Core controls keep their words from `sm` up; the tutor's tools go icon-only
+// below 2xl and rely on their tooltip / aria-label.
+const CORE_LABEL = "hidden sm:inline"
+const TOOL_LABEL = "hidden 2xl:inline"
 
 export function ControlsBar({
   isTutor,
@@ -128,6 +137,15 @@ export function ControlsBar({
   const { localParticipant } = useLocalParticipant()
   const micEnabled = !!localParticipant.isMicrophoneEnabled
 
+  // "Ask to speak" gave no sign it had worked, so students pressed it again and
+  // the tutor got a toast for every press. Hold it in an "Asked" state instead.
+  const [askedToSpeak, setAskedToSpeak] = useState(false)
+  useEffect(() => {
+    if (!askedToSpeak) return
+    const t = setTimeout(() => setAskedToSpeak(false), 30_000)
+    return () => clearTimeout(t)
+  }, [askedToSpeak])
+
   return (
     <div className="flex items-center gap-2 w-full min-w-0 overflow-x-auto overflow-y-hidden">
       {isTutor ? (
@@ -150,18 +168,22 @@ export function ControlsBar({
                 : "bg-zinc-800/80 text-zinc-500 border-zinc-700/60",
             )}
             title={micEnabled ? "Microphone is ON (controlled by tutor)" : "Microphone is OFF (controlled by tutor)"}
+            aria-label={micEnabled ? "Microphone on, controlled by your tutor" : "Microphone off, controlled by your tutor"}
           >
             {micEnabled ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
-            Mic ({micEnabled ? "on" : "off"} · tutor controlled)
+            <span className={CORE_LABEL}>Mic {micEnabled ? "on" : "off"}</span>
           </div>
           {/* When muted, a student can ask the tutor to turn their mic on. */}
           {!micEnabled && (
             <button
-              onClick={onRequestToSpeak}
-              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors whitespace-nowrap"
-              title="Ask your tutor to turn your microphone on"
+              onClick={() => { onRequestToSpeak(); setAskedToSpeak(true) }}
+              disabled={askedToSpeak}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors whitespace-nowrap disabled:bg-sky-900/60 disabled:text-sky-200 disabled:cursor-default"
+              title={askedToSpeak ? "Your tutor has been asked — waiting for them" : "Ask your tutor to turn your microphone on"}
+              aria-label={askedToSpeak ? "Asked to speak" : "Ask to speak"}
             >
-              <HandMetal className="size-3.5" /> Request to speak
+              <HandMetal className="size-3.5" />
+              <span className={CORE_LABEL}>{askedToSpeak ? "Asked" : "Ask to speak"}</span>
             </button>
           )}
         </div>
@@ -195,9 +217,10 @@ export function ControlsBar({
             ? "Turn background blur off"
             : "Blur your background — students and tutor see the blurred feed"
         }
+        aria-label={blurEnabled ? "Turn background blur off" : "Blur background"}
       >
         <Sparkles className="size-3.5" />
-        {blurEnabled ? "Blur on" : "Blur"}
+        <span className={CORE_LABEL}>{blurEnabled ? "Blur on" : "Blur"}</span>
       </button>
 
       <MediaToggle
@@ -239,7 +262,7 @@ export function ControlsBar({
           }
         >
           {screenPrivate ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          {screenPrivate ? "Private" : "Visible"}
+          <span className={CORE_LABEL}>{screenPrivate ? "Private" : "Visible"}</span>
         </button>
       )}
 
@@ -258,7 +281,7 @@ export function ControlsBar({
             aria-label="Mute all students"
           >
             <MicOff className="size-3.5" />
-            Mute all
+            <span className={TOOL_LABEL}>Mute all</span>
           </button>
           <button
             onClick={onUnmuteAll}
@@ -272,7 +295,7 @@ export function ControlsBar({
             aria-label="Unmute all students"
           >
             <Mic className="size-3.5" />
-            Unmute all
+            <span className={TOOL_LABEL}>Unmute all</span>
           </button>
         </>
       )}
@@ -288,7 +311,7 @@ export function ControlsBar({
           aria-label="Invite a second teacher"
         >
           <UserPlus className="size-3.5" />
-          Invite teacher
+          <span className={TOOL_LABEL}>Invite teacher</span>
         </button>
       )}
 
@@ -302,7 +325,7 @@ export function ControlsBar({
           aria-label="Refresh the classroom for everyone"
         >
           <RefreshCw className="size-3.5" />
-          Refresh all
+          <span className={TOOL_LABEL}>Refresh all</span>
         </button>
       )}
 
@@ -316,7 +339,7 @@ export function ControlsBar({
           aria-label="Refresh your classroom"
         >
           <RefreshCw className="size-3.5" />
-          Refresh
+          <span className={CORE_LABEL}>Refresh</span>
         </button>
       )}
 
@@ -343,21 +366,22 @@ export function ControlsBar({
                 ? "Resume recording — starts a new segment"
                 : "Pause recording — the next break won't be saved"
           }
+          aria-label={!recordingStarted ? "Start recording" : recordingPaused ? "Resume recording" : "Pause recording"}
         >
           {!recordingStarted ? (
             <>
               <Circle className="size-3.5 fill-current" />
-              Start Rec
+              <span className={TOOL_LABEL}>Start Rec</span>
             </>
           ) : recordingPaused ? (
             <>
               <Circle className="size-3.5 fill-current" />
-              Resume Rec
+              <span className={TOOL_LABEL}>Resume Rec</span>
             </>
           ) : (
             <>
               <Pause className="size-3.5" />
-              Pause Rec
+              <span className={TOOL_LABEL}>Pause Rec</span>
             </>
           )}
         </button>
@@ -380,7 +404,7 @@ export function ControlsBar({
           aria-label={nudgeTargetName ? `Nudge ${nudgeTargetName}` : "Nudge the whole class"}
         >
           <Bell className="size-3.5" />
-          {nudgeTargetName ? "Nudge student" : "Nudge class"}
+          <span className={TOOL_LABEL}>{nudgeTargetName ? "Nudge student" : "Nudge class"}</span>
         </button>
       )}
 
@@ -405,9 +429,10 @@ export function ControlsBar({
                 ? "Close the whiteboard for everyone"
                 : "Open a shared whiteboard — tutor draws; students view until you let them write"
           }
+          aria-label={whiteboardActive ? "Close the whiteboard" : "Whiteboard"}
         >
           <PencilLine className="size-3.5" />
-          {whiteboardActive ? "Close Board" : "Whiteboard"}
+          <span className={TOOL_LABEL}>{whiteboardActive ? "Close Board" : "Whiteboard"}</span>
         </button>
       )}
 
@@ -428,9 +453,10 @@ export function ControlsBar({
               ? "Edit, visit, or end the active breakouts"
               : "Split students into small groups for pair or group work"
           }
+          aria-label={breakoutsActive ? "Breakouts live" : "Breakouts"}
         >
           <Users2 className="size-3.5" />
-          {breakoutsActive ? "Breakouts live" : "Breakouts"}
+          <span className={TOOL_LABEL}>{breakoutsActive ? "Breakouts live" : "Breakouts"}</span>
         </button>
       )}
 
@@ -439,9 +465,10 @@ export function ControlsBar({
           onClick={onOpenBreakoutMonitor}
           className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 transition-colors whitespace-nowrap"
           title="Open the monitor grid — watch every student's signing across all groups"
+          aria-label="Breakout monitor"
         >
           <Eye className="size-3.5" />
-          Monitor
+          <span className={TOOL_LABEL}>Monitor</span>
         </button>
       )}
 
@@ -497,6 +524,7 @@ export function ControlsBar({
             disabled={!hasPrevSlide}
             className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Previous slide"
+            aria-label="Previous slide"
           >
             <ChevronLeft className="size-4" />
           </button>
@@ -520,6 +548,7 @@ export function ControlsBar({
             disabled={!hasNextSlide}
             className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Next slide"
+            aria-label="Next slide"
           >
             <ChevronRight className="size-4" />
           </button>
@@ -571,9 +600,10 @@ export function ControlsBar({
 
       <button
         onClick={onLeave}
+        aria-label="Leave the class"
         className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors whitespace-nowrap ml-auto sticky right-0 shrink-0 shadow-[-12px_0_12px_-8px_rgb(9_9_11)]"
       >
-        <PhoneOff className="size-3.5" /> Leave
+        <PhoneOff className="size-3.5" /> <span className={CORE_LABEL}>Leave</span>
       </button>
     </div>
   )
@@ -625,6 +655,7 @@ function MediaToggle({
       onClick={() => void toggle()}
       disabled={pending}
       aria-pressed={enabled}
+      aria-label={enabled ? onLabel : offLabel}
       title={enabled ? onTitle : offTitle}
       className={cn(
         "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border disabled:opacity-60 disabled:cursor-wait",
@@ -636,7 +667,7 @@ function MediaToggle({
       )}
     >
       {enabled ? onIcon : offIcon}
-      {enabled ? onLabel : offLabel}
+      <span className={CORE_LABEL}>{enabled ? onLabel : offLabel}</span>
     </button>
   )
 }
