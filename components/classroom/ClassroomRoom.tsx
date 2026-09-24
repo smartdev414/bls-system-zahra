@@ -39,6 +39,7 @@ import type {
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
 import { ConnectionBanner }     from "./room/ConnectionBanner"
+import { NoiseFilter }          from "./room/NoiseFilter"
 import { useSlideContentBox }   from "./room/useSlideContentBox"
 import {
   useStageSplit, landscapeCameraSplit, splitDirectionClass, splitDividerClass,
@@ -1193,14 +1194,20 @@ export function ClassroomRoom({
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as SpotlightAction
 
+      // The ref is written here as well as by its sync effect: a clear that
+      // lands right behind a set would otherwise read the stale value and
+      // leave the student pinned to someone nobody is spotlighting.
       if (data.action === "set") {
+        spotlightRef.current = data.identity
         setSpotlightedId(data.identity)
         if (!isTutor) setPinnedId(data.identity)
         return
       }
       if (data.action === "clear") {
+        const was = spotlightRef.current
+        spotlightRef.current = null
         setSpotlightedId(null)
-        if (!isTutor) setPinnedId((prev) => (prev === spotlightRef.current ? null : prev))
+        if (!isTutor && was) setPinnedId((prev) => (prev === was ? null : prev))
         return
       }
       if (data.action === "sync_request" && isTutor) {
@@ -1315,6 +1322,7 @@ export function ClassroomRoom({
           { id: `sys-ask-${Date.now()}`, from: "system", text: `${data.name} is asking to speak 🎙️`, ts: Date.now(), type: "system" },
         ])
         toast.info(`${data.name} wants to speak`, {
+          id: `speak-${data.identity}`,
           description: "Accept to turn their microphone on, or deny to leave them muted.",
           duration: 20000,
           action: { label: "Accept", onClick: () => { void handleAcceptSpeak(data.identity, data.name) } },
@@ -2715,12 +2723,19 @@ export function ClassroomRoom({
   // Spotlight directly on a specific identity (used from the right-click
   // context menu, where we act on the clicked participant rather than on
   // whoever happens to be pinned).
+  //
+  // Pins the student on the tutor's own stage too. Without that the tutor was
+  // the one person in the room who didn't see the pair, and the "tutor
+  // unpinned, so stop the spotlight" effect below cleared it straight away —
+  // sending a clear the students' stage never acted on, leaving them stuck.
   const handleToggleSpotlightFor = useCallback((identity: string) => {
     if (!isTutor) return
     if (spotlightedId === identity) {
       setSpotlightedId(null)
+      setPinnedId((prev) => (prev === identity ? null : prev))
       safeSendSpotlight({ action: "clear" })
     } else {
+      setPinnedId(identity)
       setSpotlightedId(identity)
       safeSendSpotlight({ action: "set", identity })
     }
@@ -2853,6 +2868,12 @@ export function ClassroomRoom({
       }
       const ok = broadcastMicControl({ action: "set-mic", identity, enabled, from: localName })
       if (!ok) throw new Error("Could not notify the student")
+      // Turning the mic on from the participant menu answers a pending request
+      // too — otherwise its banner and toast stayed on the tutor's screen.
+      if (enabled) {
+        setSpeakRequests((prev) => prev.filter((r) => r.identity !== identity))
+        toast.dismiss(`speak-${identity}`)
+      }
       toast.success(enabled ? `${name}'s microphone is on` : `${name}'s microphone is off`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not update microphone")
@@ -2867,6 +2888,7 @@ export function ClassroomRoom({
   const handleAcceptSpeak = useCallback(async (identity: string, name: string) => {
     if (!isTutor) return
     setSpeakRequests((prev) => prev.filter((r) => r.identity !== identity))
+    toast.dismiss(`speak-${identity}`)
     broadcastMicControl({ action: "accept-speak", identity, from: localName })
     await handleSetParticipantMic(identity, name, true)
   }, [isTutor, broadcastMicControl, localName, handleSetParticipantMic])
@@ -2874,6 +2896,7 @@ export function ClassroomRoom({
   const handleDenySpeak = useCallback((identity: string, name: string) => {
     if (!isTutor) return
     setSpeakRequests((prev) => prev.filter((r) => r.identity !== identity))
+    toast.dismiss(`speak-${identity}`)
     broadcastMicControl({ action: "deny-speak", identity, from: localName })
     toast.info(`Declined ${name}'s request to speak`)
   }, [isTutor, broadcastMicControl, localName])
@@ -3818,6 +3841,7 @@ export function ClassroomRoom({
       {/* Says out loud what a frozen picture means. Nothing is rendered while
           the connection is healthy. */}
       <ConnectionBanner />
+      <NoiseFilter />
 
       {/* Brand watermark — visible to all participants. Top-left so it doesn't
           collide with the controls bar at the bottom. */}
@@ -3941,7 +3965,10 @@ export function ClassroomRoom({
           )}
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {!isTutor && (
+          {/* The student's raise-hand button lives on their own tile in the
+              class panel (top-right). It only comes back up here while that
+              panel is hidden, so it is never out of reach. */}
+          {!isTutor && !participantsOpen && (
             <button
               type="button"
               onClick={handleToggleHand}
@@ -4403,6 +4430,7 @@ export function ClassroomRoom({
               }
               raisedHandIds={raisedHandIds}
               onLowerHand={isTutor ? handleLowerHand : undefined}
+              onToggleOwnHand={isTutor ? undefined : handleToggleHand}
               visibleIdentities={visibleIdentities}
               groupLabels={groupLabels}
               tileSize={tileSize}

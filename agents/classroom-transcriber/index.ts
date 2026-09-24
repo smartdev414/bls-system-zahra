@@ -46,17 +46,50 @@ const LIVEKIT_URL = process.env.LIVEKIT_WS_URL ?? process.env.LIVEKIT_URL ?? ""
 const AUDIO_SAMPLE_RATE = 24000
 const AUDIO_CHANNELS = 1
 
+/**
+ * Words these lessons use constantly that a general English model mishears —
+ * "BSL" came out as "BSO"/"be sell", "fingerspelling" split into two words.
+ * Nova-3 keyterm prompting biases recognition toward them. Extend per
+ * deployment with CAPTION_KEYTERMS (comma-separated) without a code change.
+ */
+const CAPTION_KEYTERMS = [
+  "BSL",
+  "British Sign Language",
+  "Deaf",
+  "Deaf Signs",
+  "fingerspelling",
+  "fingerspell",
+  "signing",
+  "signer",
+  "lip-reading",
+  "interpreter",
+  "breakout room",
+  "whiteboard",
+  ...(process.env.CAPTION_KEYTERMS ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean),
+].slice(0, 100)
+
+/**
+ * The class is taught and spoken in the UK. "en-GB" gets British accents and
+ * spelling ("colour", "practise") right more often than generic "en".
+ * Overridable with CAPTION_LANGUAGE.
+ */
+const CAPTION_LANGUAGE = process.env.CAPTION_LANGUAGE ?? "en-GB"
+
 /** Low-latency streaming via LiveKit Inference (Deepgram Nova-3 under the hood). */
 function makeStt() {
   return new inference.STT({
     model: "deepgram/nova-3",
-    language: "en",
+    language: CAPTION_LANGUAGE,
     modelOptions: {
       interim_results: true,
       punctuate: true,
       smart_format: true,
       endpointing: 200,
       filler_words: false,
+      keyterms: CAPTION_KEYTERMS,
     },
   })
 }
@@ -151,7 +184,7 @@ class CaptionPublisher {
             final,
             startTime: BigInt(0),
             endTime: BigInt(0),
-            language: "en",
+            language: CAPTION_LANGUAGE,
           },
         ],
       })

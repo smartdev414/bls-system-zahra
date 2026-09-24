@@ -64,7 +64,33 @@ function cost(aspect: number): number {
  * keep the existing breakpoint classes for the first paint. Committing to an
  * axis before measuring would show one frame of the wrong layout on every join.
  */
-export function useStageSplit(ref: React.RefObject<HTMLElement | null>): StageSplit {
+/**
+ * How much smaller, at most, each camera may come out side by side before the
+ * pair stacks instead. Only used with `preferSideBySide`.
+ */
+const SIDE_BY_SIDE_MIN_SIZE = 0.8
+
+/**
+ * Width a 16:9 picture gets when fitted whole into each half of the box.
+ */
+function pictureWidth(axis: SplitAxis, width: number, height: number): number {
+  const halfW = axis === "row" ? width / 2 : width
+  const halfH = axis === "row" ? height : height / 2
+  return Math.min(halfW, halfH * TARGET_ASPECT)
+}
+
+export function useStageSplit(
+  ref: React.RefObject<HTMLElement | null>,
+  /**
+   * Two cameras (a teacher and the student selected to sign) read as one
+   * conversation side by side, which is what the class asked for. Cutting by
+   * box shape alone stacked them on an ordinary laptop stage, where each half
+   * then came out a letterbox strip. With this set, left/right wins unless it
+   * would shrink each picture noticeably compared with stacking — a phone or
+   * a portrait tablet still stacks.
+   */
+  preferSideBySide = false,
+): StageSplit {
   const [split, setSplit] = useState<StageSplit>({ axis: null, width: 0, height: 0 })
 
   useEffect(() => {
@@ -80,13 +106,20 @@ export function useStageSplit(ref: React.RefObject<HTMLElement | null>): StageSp
       // Halving along an axis halves that dimension for both panels.
       const rowCost = cost(width / (2 * height))
       const columnCost = cost((2 * width) / height)
+      const sideBySideRatio =
+        pictureWidth("row", width, height) / Math.max(1, pictureWidth("column", width, height))
 
       setSplit((current) => {
-        const preferred: SplitAxis = rowCost <= columnCost ? "row" : "column"
+        const preferred: SplitAxis = preferSideBySide
+          ? sideBySideRatio >= SIDE_BY_SIDE_MIN_SIZE ? "row" : "column"
+          : rowCost <= columnCost ? "row" : "column"
+        const undecided = preferSideBySide
+          ? Math.abs(Math.log(sideBySideRatio / SIDE_BY_SIDE_MIN_SIZE)) < HYSTERESIS
+          : Math.abs(rowCost - columnCost) < HYSTERESIS
         const axis =
           current.axis === null || preferred === current.axis
             ? preferred
-            : Math.abs(rowCost - columnCost) < HYSTERESIS
+            : undecided
               ? current.axis
               : preferred
         if (axis === current.axis && width === current.width && height === current.height) {
@@ -98,7 +131,7 @@ export function useStageSplit(ref: React.RefObject<HTMLElement | null>): StageSp
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [ref])
+  }, [ref, preferSideBySide])
 
   return split
 }

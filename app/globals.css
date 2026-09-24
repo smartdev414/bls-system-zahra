@@ -131,3 +131,14 @@
     @apply font-sans;
   }
 }
+/*
+ * LiveKit's stylesheet forces `object-fit: cover` on every landscape camera
+ * (`.lk-participant-media-video[data-lk-orientation=landscape]`). That rule is
+ * unlayered, so it beats Tailwind's layered `object-contain` whatever the
+ * specificity — every "fit the whole signer" panel was being cropped anyway,
+ * taking heads and hands off the edges. Kept unlayered on purpose so it wins.
+ */
+.lk-participant-media-video.object-contain,
+.lk-participant-media-video[data-lk-orientation].object-contain {
+  object-fit: contain;
+}

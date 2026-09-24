@@ -8,13 +8,12 @@
  * it, and a layout that swaps one for the other shows the class only half the
  * conversation. Both panels stay on screen for everyone in the room.
  *
- * The axis is measured from this box with `useStageSplit`, the same rule the
- * stage itself uses, so the two halves come out as close to 16:9 as the box
- * allows — a landscape camera in a tall narrow half is the "portrait video"
- * complaint, and it costs a signer the width their hands need. On a wide box
- * that means left/right with the teacher on the LEFT (the Deaf-culture
- * convention the rest of the room follows); on a tall one it stacks with the
- * teacher on top.
+ * The axis is measured from this box with `useStageSplit` in its
+ * side-by-side mode: left/right, teacher on the LEFT (the Deaf-culture
+ * convention the rest of the room follows), unless that would make each
+ * picture noticeably smaller than stacking — then, as on a phone, it stacks
+ * with the teacher on top. Both pictures are fitted whole, never cropped: a
+ * cropped signer loses their hands.
  *
  * Panels are handed in as nodes so this file owns geometry only — who is shown
  * in each half, and how, stays with the caller.
@@ -43,7 +42,7 @@ export function StagePair({
   // (beside slides or a whiteboard), so the stage's own axis says nothing about
   // which way *this* one should be cut.
   const boxRef = useRef<HTMLDivElement>(null)
-  const { axis } = useStageSplit(boxRef)
+  const { axis } = useStageSplit(boxRef, true)
 
   return (
     <div ref={containerRef} className="w-full h-full bg-zinc-950">

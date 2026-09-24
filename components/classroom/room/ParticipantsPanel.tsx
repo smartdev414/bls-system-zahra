@@ -13,6 +13,7 @@ import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
   Megaphone, UserMinus, GripVertical, Minus, Plus, Mic, MicOff, Monitor,
   Bell, MoreHorizontal,
+  HandMetal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
@@ -56,6 +57,7 @@ export function ParticipantsPanel({
   orientation = "side",
   classOrder,
   onReorderClass,
+  onToggleOwnHand,
 }: {
   pinnedId: string | null
   onPin: (identity: string | null) => void
@@ -105,6 +107,12 @@ export function ParticipantsPanel({
   classOrder: string[] | null
   /** Tutor only: publish a new order to the room. Absent for students. */
   onReorderClass?: (order: string[]) => void
+  /**
+   * Student only: raise or lower their own hand. Given, the student's own tile
+   * carries the button in its top-right corner — where the class asked for it,
+   * on the video they are already watching, rather than up in the header.
+   */
+  onToggleOwnHand?: () => void
 }) {
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
@@ -355,6 +363,7 @@ export function ParticipantsPanel({
           const canDrag = isLocalTutor && !isTutor && !!onReorderClass
           const isDragging = draggingId === p.identity
           const isDropTarget = dropTargetId === p.identity && draggingId && draggingId !== p.identity
+          const ownHandButton = !isTutor && !!onToggleOwnHand
 
           return (
             <div
@@ -541,9 +550,10 @@ export function ParticipantsPanel({
                 <div
                   className="absolute top-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold"
                   style={{
-                    // A raised hand takes this corner; the border already marks
-                    // the pin, so just slide the label left of the badge.
-                    right: handRaised ? handBadgePx + 6 : 4,
+                    // A raised hand (or your own raise-hand button) takes this
+                    // corner; the border already marks the pin, so just slide
+                    // the label left of the badge.
+                    right: handRaised || (isLocal && ownHandButton) ? handBadgePx + 6 : 4,
                   }}
                 >
                   Pinned
@@ -600,13 +610,42 @@ export function ParticipantsPanel({
               {/* Raised-hand badge — top-right. Never dropped, at any size:
                   a raised hand is the one thing in the grid asking for an
                   answer. Tutors can click the badge to lower it. */}
+              {/* Your own raise-hand button, top-right of your own tile. Raised,
+                  it is the same gold badge the tutor sees, and clicking it
+                  lowers the hand again. */}
+              {isLocal && ownHandButton && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleOwnHand?.()
+                  }}
+                  className={cn(
+                    "absolute top-0.5 right-0.5 z-30 flex items-center justify-center rounded-full transition-colors",
+                    handRaised
+                      ? "bg-amber-400 text-zinc-950 ring-2 ring-white shadow-[0_0_12px_rgba(251,191,36,0.95)] hover:bg-rose-500 hover:text-white"
+                      : "bg-black/60 text-amber-300 ring-1 ring-white/30 hover:bg-amber-400 hover:text-zinc-950",
+                  )}
+                  style={{ width: handBadgePx, height: handBadgePx }}
+                  title={handRaised ? "Lower your hand" : "Raise your hand — your tutor will be notified"}
+                  aria-label={handRaised ? "Lower hand" : "Raise hand"}
+                  aria-pressed={handRaised}
+                >
+                  {handRaised ? (
+                    <span className="leading-none" style={{ fontSize: Math.max(16, Math.round(handBadgePx * 0.72)) }} aria-hidden>✋</span>
+                  ) : (
+                    <HandMetal style={{ width: handBadgePx * 0.5, height: handBadgePx * 0.5 }} aria-hidden />
+                  )}
+                </button>
+              )}
+
               {handRaised && !isTutor && (
                 <>
                   <div
                     className="absolute inset-0 z-10 pointer-events-none bg-linear-to-bl from-amber-400/40 via-amber-400/5 to-transparent"
                     aria-hidden
                   />
-                  <RaisedHandBadge
+                  {!(isLocal && ownHandButton) && <RaisedHandBadge
                     name={displayName}
                     size={handBadgePx}
                     className="absolute top-0.5 right-0.5"
@@ -615,7 +654,7 @@ export function ParticipantsPanel({
                         ? () => onLowerHand(p.identity)
                         : undefined
                     }
-                  />
+                  />}
                 </>
               )}
             </div>

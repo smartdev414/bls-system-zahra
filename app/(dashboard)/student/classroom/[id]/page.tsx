@@ -176,7 +176,11 @@ function EntryScreen({
   netMode: NetworkMode
   onNetModeChange: (mode: NetworkMode) => void
 }) {
-  const [videoEnabled, setVideoEnabled] = useState(false)
+  // Starts from what the student had in class, so a reload or a rejoin brings
+  // their camera back as they left it. Starting from "off" also wrote "off"
+  // straight over that preference, and a student coming back into a breakout
+  // had to go and find their own tile to switch the camera on again.
+  const [videoEnabled, setVideoEnabled] = useState(() => readDevicePreference("camera", false))
   // The room reads this when it connects — see devicePreference.
   useEffect(() => { writeDevicePreference("camera", videoEnabled) }, [videoEnabled])
   const [requestOpen, setRequestOpen] = useState(false)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { Bell } from "lucide-react"
 
@@ -23,18 +23,25 @@ export function NudgeOverlay({
   self?: boolean
   onDismiss: () => void
 }) {
+  // The parent passes a fresh `onDismiss` on every render, and the classroom
+  // re-renders constantly. Keying the timer on it restarted the countdown each
+  // time, so the alert never went away on its own — the tutor's "Nudge sent"
+  // strip stayed on stage for the rest of the lesson.
+  const onDismissRef = useRef(onDismiss)
+  useEffect(() => { onDismissRef.current = onDismiss })
+
   useEffect(() => {
-    const t = setTimeout(onDismiss, self ? SELF_DISMISS_MS : AUTO_DISMISS_MS)
+    const t = setTimeout(() => onDismissRef.current(), self ? SELF_DISMISS_MS : AUTO_DISMISS_MS)
     return () => clearTimeout(t)
-  }, [onDismiss, self])
+  }, [self])
 
   // Escape dismisses early, same as clicking the card.
   useEffect(() => {
     if (self) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismissRef.current() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onDismiss, self])
+  }, [self])
 
   // Haptic burst for phones and tablets. No-op on desktop. Longer and harder
   // than a notification buzz — this is the one cue a Deaf student feels rather
