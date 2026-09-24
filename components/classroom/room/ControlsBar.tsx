@@ -2,12 +2,12 @@
 
 import { useLocalParticipant, useTrackToggle } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import {
   Mic, MicOff, Camera, CameraOff, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles, Upload,
-  Circle, Pause, UserPlus, HandMetal, Captions, CaptionsOff, Keyboard,
+  Circle, Pause, UserPlus, HandMetal, Captions, CaptionsOff, Keyboard, Maximize2, Minimize2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
@@ -370,6 +370,8 @@ export function ControlsBar({
         </button>
       )}
 
+      <RoomFullscreenButton />
+
       {/* Student self-refresh: reload this tab only, then auto-rejoin. Chat history
           and current slides are restored after reconnect. */}
       {!isTutor && (
@@ -720,6 +722,58 @@ function MediaToggle({
     >
       {enabled ? onIcon : offIcon}
       <span className={CORE_LABEL}>{enabled ? onLabel : offLabel}</span>
+    </button>
+  )
+}
+
+/**
+ * The whole classroom, fullscreen.
+ *
+ * On a small laptop the browser's tabs, bookmarks bar and the OS taskbar take a
+ * fifth of the height before the class gets any, and in gallery view every row
+ * of faces pays for it. The per-video fullscreen on the stage doesn't help
+ * there — it shows one person. This takes the page itself fullscreen, so the
+ * gallery, chat and these controls all stay and simply get the whole screen.
+ *
+ * The document element rather than the classroom shell, so dialogs, toasts and
+ * popovers portalled to <body> still show. Hidden where the browser has no
+ * Fullscreen API (iPhone Safari), where it could only ever fail.
+ */
+function subscribeFullscreen(listener: () => void) {
+  document.addEventListener("fullscreenchange", listener)
+  return () => document.removeEventListener("fullscreenchange", listener)
+}
+
+function RoomFullscreenButton() {
+  const supported = useSyncExternalStore(subscribeFullscreen, () => !!document.fullscreenEnabled, () => false)
+  const active = useSyncExternalStore(
+    subscribeFullscreen,
+    () => document.fullscreenElement === document.documentElement,
+    () => false,
+  )
+
+  if (!supported) return null
+
+  const toggle = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    else document.documentElement.requestFullscreen().catch(() => {})
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      className={cn(
+        "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap",
+        active
+          ? "bg-primary/20 text-primary hover:bg-primary/30"
+          : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300",
+      )}
+      title={active ? "Exit full screen (Esc)" : "Full screen — use the whole screen for the class"}
+      aria-label={active ? "Exit full screen" : "Full screen"}
+      aria-pressed={active}
+    >
+      {active ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+      <span className={CORE_LABEL}>{active ? "Exit full screen" : "Full screen"}</span>
     </button>
   )
 }

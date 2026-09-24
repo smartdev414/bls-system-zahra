@@ -312,26 +312,49 @@ class SpeakerAudioCapture {
 }
 
 /**
+ * An STT session is held only while this long has passed without speech. Long
+ * enough to cover a pause for thought mid-answer, short enough that a student
+ * who spoke once doesn't hold a slot for the rest of the lesson.
+ */
+const STT_IDLE_CLOSE_MS = 20_000
+
+/**
+ * After a session dies on its own (provider error, concurrency limit), wait
+ * this long before trying another. Otherwise a speaker over the plan's limit
+ * reconnects on every word.
+ */
+const STT_REOPEN_BACKOFF_MS = 5_000
+
+/**
  * One STT + transcription publisher per remote speaker.
  * Avoids multiple voice.AgentSession instances on the same room (they conflict on
  * lk.agent.session byte-stream registration in @livekit/agents 1.4.x).
+ *
+ * The STT session is opened on demand — when the gate hears speech — and closed
+ * after a stretch of quiet. Opening one per participant at join time held a
+ * provider session for every student with their mic off, and the plan's
+ * concurrency limit was used up by the first few people to arrive: everyone
+ * after them got no captions at all, for the whole lesson. Sessions now track
+ * who is actually talking, which in a signing classroom is a handful at most.
  */
 class SpeakerTranscriber {
   private closed = false
   private readonly audioCapture: SpeakerAudioCapture
   private readonly captions: CaptionPublisher
-  private readonly speechStream: stt.SpeechStream
+  private speechStream: stt.SpeechStream | null = null
   /** Per-speaker, because each microphone sits in a different room. */
   private readonly gate = new NoiseGate()
-  private readonly tasks: Promise<void>[] = []
+  private readonly tasks = new Set<Promise<void>>()
+  private idleTimer: ReturnType<typeof setTimeout> | null = null
+  /** Earliest time a new session may be opened after one failed. */
+  private reopenAfter = 0
 
   constructor(
     private readonly room: Room,
-    participant: RemoteParticipant,
+    private readonly participant: RemoteParticipant,
   ) {
     this.captions = new CaptionPublisher(this.room, participant.identity)
 
-    this.speechStream = makeStt().stream()
     this.audioCapture = new SpeakerAudioCapture(
       this.room,
       participant.identity,
@@ -339,16 +362,54 @@ class SpeakerTranscriber {
         if (this.closed) return
         // Only what the gate judges to be speech reaches the recogniser; the
         // rest arrives as silence, which keeps endpointing on schedule.
-        for (const gated of this.gate.push(frame)) this.speechStream.pushFrame(gated)
+        const gated = this.gate.push(frame)
+        if (this.gate.isOpen) {
+          this.ensureStream()
+          this.armIdleClose()
+        }
+        const stream = this.speechStream
+        if (!stream) return
+        for (const f of gated) stream.pushFrame(f)
       },
       (trackSid) => this.captions.setTrackSid(trackSid),
     )
-    this.tasks.push(this.consumeTranscripts(participant.identity))
   }
 
-  private async consumeTranscripts(identity: string) {
+  private ensureStream() {
+    if (this.speechStream || this.closed) return
+    if (Date.now() < this.reopenAfter) return
+    console.info("[classroom-transcriber] STT open", { identity: this.participant.identity })
+    const stream = makeStt().stream()
+    this.speechStream = stream
+    const task = this.consumeTranscripts(stream)
+    this.tasks.add(task)
+    void task.finally(() => this.tasks.delete(task))
+  }
+
+  private armIdleClose() {
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null
+      this.releaseStream()
+    }, STT_IDLE_CLOSE_MS)
+  }
+
+  /**
+   * Hand the session back. `endInput` rather than `close`, so the recogniser
+   * finalises what it has — the consume loop ends on its own once it does.
+   */
+  private releaseStream() {
+    const stream = this.speechStream
+    if (!stream) return
+    this.speechStream = null
+    console.info("[classroom-transcriber] STT idle close", { identity: this.participant.identity })
+    try { stream.endInput() } catch { /* already gone */ }
+  }
+
+  private async consumeTranscripts(stream: stt.SpeechStream) {
+    const identity = this.participant.identity
     try {
-      for await (const event of this.speechStream) {
+      for await (const event of stream) {
         if (this.closed) break
 
         if (
@@ -398,25 +459,48 @@ class SpeakerTranscriber {
           err,
         })
       }
+    } finally {
+      // Still the current session means nobody asked it to end: the provider
+      // dropped it or refused it (e.g. over the plan's concurrent STT limit).
+      // Clear it so the next speech opens a fresh one instead of pushing audio
+      // into a dead stream forever.
+      if (this.speechStream === stream) {
+        this.speechStream = null
+        this.reopenAfter = Date.now() + STT_REOPEN_BACKOFF_MS
+        if (!this.closed) {
+          console.warn("[classroom-transcriber] STT session ended unexpectedly — will reopen on next speech", {
+            identity,
+          })
+        }
+      }
+      try { stream.close() } catch { /* ignore */ }
+      // Whatever interim was on screen will get no final from this session.
+      await this.captions.endSegment(false)
     }
   }
 
   async close() {
     await this.audioCapture.close()
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.idleTimer = null
     // Let the tail of the last sentence out of the lookahead buffer before the
     // stream is closed, or the final few words never reach the recogniser.
+    const stream = this.speechStream
     try {
-      for (const gated of this.gate.flush()) this.speechStream.pushFrame(gated)
+      if (stream) for (const gated of this.gate.flush()) stream.pushFrame(gated)
     } catch { /* stream already gone */ }
     this.closed = true
     this.captions.close()
-    try {
-      this.speechStream.endInput()
-      this.speechStream.close()
-    } catch {
-      /* ignore */
+    this.speechStream = null
+    if (stream) {
+      try {
+        stream.endInput()
+        stream.close()
+      } catch {
+        /* ignore */
+      }
     }
-    await Promise.allSettled(this.tasks)
+    await Promise.allSettled([...this.tasks])
   }
 }
 

@@ -3435,7 +3435,9 @@ export function ClassroomRoom({
       // reported. The controls bar reopens either overlay in one click.
       setBreakoutMonitorOpen(false)
       setBreakoutsPanelOpen(false)
-      setChatOpen(true)
+      // Below `md` the chat is a full-screen overlay, and opening it here hid
+      // the very room the teacher had just walked into.
+      if (window.matchMedia("(min-width: 768px)").matches) setChatOpen(true)
       setParticipantsOpen(true)
       const g = breakoutStateRef.current.groups.find((x) => x.id === groupId)
       if (g) toast.info(`You joined ${g.name}`, { description: "Students in this group hear your mic now." })
@@ -3719,15 +3721,34 @@ export function ClassroomRoom({
     return audible
   }, [breakoutsActive, isTutor, visitingGroupId, breakoutGroups, ownBreakoutGroup, tutorIdentity, tutorPresentForMe, liveIdentitiesFor, localParticipant.identity])
 
+  // The group the tutor is sitting in right now, if any.
+  const tutorVisitingGroup = useMemo(
+    () => (isTutor && breakoutsActive && visitingGroupId
+      ? breakoutGroups.find((g) => g.id === visitingGroupId) ?? null
+      : null),
+    [isTutor, breakoutsActive, visitingGroupId, breakoutGroups],
+  )
+
   const visibleIdentities = useMemo<Set<string> | null>(() => {
     if (!breakoutsActive) return null
-    if (isTutor) return null   // tutors see everyone in the participants strip
+    if (isTutor) {
+      // Monitoring from the main room: the whole class, so every group can be
+      // read at a glance.
+      if (!tutorVisitingGroup) return null
+      // Inside a group: the people in that group, the same room the tutor now
+      // hears. Showing the whole class here squeezed the visited group into a
+      // handful of unreadable thumbnails among everyone else — the tutor was
+      // "in the room" and couldn't see who with.
+      const visible = new Set(liveIdentitiesFor(tutorVisitingGroup.memberIds))
+      tutorIdentities.forEach((id) => visible.add(id))
+      return visible
+    }
     const visible = new Set<string>()
     if (ownBreakoutGroup) liveIdentitiesFor(ownBreakoutGroup.memberIds).forEach((id) => visible.add(id))
     // Same rule as audio: the tutor appears only once they join this group.
     if (tutorIdentity && tutorPresentForMe) visible.add(tutorIdentity)
     return visible
-  }, [breakoutsActive, isTutor, ownBreakoutGroup, tutorIdentity, tutorPresentForMe, liveIdentitiesFor])
+  }, [breakoutsActive, isTutor, tutorVisitingGroup, tutorIdentities, ownBreakoutGroup, tutorIdentity, tutorPresentForMe, liveIdentitiesFor])
 
   // A pin or a pop-out survives the move into breakouts, so a student who had
   // the tutor pinned (or was pinned onto them by a spotlight) would keep the
@@ -3774,12 +3795,20 @@ export function ClassroomRoom({
     return breakoutStartedAt + breakoutDurationMin * 60_000
   }, [breakoutsActive, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt])
 
-  // During breakouts, students see a group-mate (or visiting tutor) on the main stage.
-  const studentBreakoutMainId = useMemo(() => {
+  // During breakouts, students see a group-mate (or visiting tutor) on the main
+  // stage, and a tutor visiting a group sees one of its members — paired with
+  // their own camera, so it is the same picture the group has of them.
+  const breakoutStageId = useMemo(() => {
+    if (tutorVisitingGroup) {
+      return liveIdentitiesFor(tutorVisitingGroup.memberIds)
+        .find((id) => id !== localParticipant.identity && !tutorIdentities.has(id)) ?? null
+    }
     if (isTutor || !breakoutsActive || !ownBreakoutGroup) return null
     if (visitingGroupId === ownBreakoutGroup.id && tutorIdentity) return tutorIdentity
     return liveIdentitiesFor(ownBreakoutGroup.memberIds).find((id) => id !== localParticipant.identity) ?? null
   }, [
+    tutorVisitingGroup,
+    tutorIdentities,
     isTutor,
     breakoutsActive,
     ownBreakoutGroup,
@@ -3899,9 +3928,9 @@ export function ClassroomRoom({
   // once a student is selected to sign, the tutor *and* that student. During
   // breakouts a student sees their own group here instead — the lesson material
   // stays on screen and they practise it with each other, which is the whole
-  // point of sending them into a group. `studentBreakoutMainId` already resolves
+  // point of sending them into a group. `breakoutStageId` already resolves
   // to the visiting tutor when the tutor has joined that group.
-  const splitStageId = pinnedId ?? studentBreakoutMainId
+  const splitStageId = pinnedId ?? breakoutStageId
   const splitCameraPanel = pairWithTutor(splitStageId) ? (
     <StagePair
       containerRef={videoContainerRef}
@@ -4472,7 +4501,7 @@ export function ClassroomRoom({
             <div className="flex-1 flex flex-col overflow-hidden relative">
               <div className="flex-1 overflow-hidden">
                 {(() => {
-                  const mainStageId = pinnedId ?? studentBreakoutMainId
+                  const mainStageId = pinnedId ?? breakoutStageId
                   // A student selected to sign shares the stage with the teacher
                   // rather than replacing them, so the class watches both halves
                   // of the exchange. See `pairWithTutor`.
@@ -4578,7 +4607,7 @@ export function ClassroomRoom({
               onTileSizeChange={handleTileSizeChange}
               orientation="bottom"
               classOrder={classOrder}
-              onReorderClass={isTutor ? handleReorderClass : undefined}
+              onReorderClass={isTutor && !tutorVisitingGroup ? handleReorderClass : undefined}
             />
             {galleryView && <CaptionsOverlay speakers={captionSpeakers} />}
           </div>
