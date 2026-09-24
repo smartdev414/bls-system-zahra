@@ -28,7 +28,7 @@
  * bigger faces the rest of the time.
  */
 
-import { useEffect, useState, type RefObject } from "react"
+import { useEffect, useState } from "react"
 
 /** Cameras publish 16:9, and a tile that matches means no letterboxing. */
 export const TILE_ASPECT = 16 / 9
@@ -111,12 +111,18 @@ export function tileRadius(tileWidth: number): number {
  * without a synchronous setState in the effect body. Until then the size is
  * zero, which `packGrid` reports as an empty pack — the caller's cue to render
  * nothing rather than one frame of a wrongly-shaped grid.
+ *
+ * Returns a callback ref rather than reading a ref object. The element can be
+ * unmounted and a new one mounted in its place — collapsing the class panel and
+ * opening it again does exactly that — and an effect keyed on a ref object
+ * never re-runs for the new node, so the observer stayed on the detached one,
+ * the size stuck at zero and the class came back as an empty box.
  */
-export function useElementSize(ref: RefObject<HTMLElement | null>) {
+export function useElementSize<T extends HTMLElement = HTMLDivElement>() {
+  const [el, setEl] = useState<T | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
-    const el = ref.current
     if (!el) return
     const observer = new ResizeObserver(() => {
       const { width, height } = el.getBoundingClientRect()
@@ -130,7 +136,7 @@ export function useElementSize(ref: RefObject<HTMLElement | null>) {
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [ref])
+  }, [el])
 
-  return size
+  return [setEl, size] as const
 }

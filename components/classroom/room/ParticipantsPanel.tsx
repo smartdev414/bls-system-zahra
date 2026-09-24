@@ -125,8 +125,7 @@ export function ParticipantsPanel({
   // The box the tiles are packed into. Measured rather than assumed: the same
   // panel is a tall column beside the stage on a laptop and a wide band beneath
   // it on a phone, and the grid shape follows from which one it got.
-  const gridBoxRef = useRef<HTMLDivElement>(null)
-  const gridBox = useElementSize(gridBoxRef)
+  const [gridBoxRef, gridBox] = useElementSize<HTMLDivElement>()
 
   // Drag state is local — it is the gesture in progress, not the result. The
   // result (`classOrder`) belongs to the room and arrives as a prop.

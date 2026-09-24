@@ -87,6 +87,7 @@ const supportDropdownNav: NavItem[] = [
 const tutorNav: NavItem[] = [
   { label: "Dashboard", href: "/tutor", icon: LayoutDashboard },
   { label: "My Courses", href: "/tutor/courses", icon: BookOpen },
+  { label: "Library", href: "/tutor/library", icon: FolderOpen },
   { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
   { label: "Students", href: "/tutor/students", icon: Users },
   { label: "Reviews", href: "/tutor/reviews", icon: Star },

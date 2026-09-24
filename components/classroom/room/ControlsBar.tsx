@@ -7,11 +7,12 @@ import {
   Mic, MicOff, Camera, CameraOff, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles, Upload,
-  Circle, Pause, UserPlus, HandMetal,
+  Circle, Pause, UserPlus, HandMetal, Captions, CaptionsOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
 import { writeDevicePreference } from "@/components/classroom/devicePreference"
+import { setCaptionsEnabled, useCaptionsEnabled } from "@/components/classroom/captionsPreference"
 
 // The bar is one row that scrolls sideways once it runs out of room, with Leave
 // pinned to the right. With every button fully labelled a tutor needed ~2300px:
@@ -136,6 +137,7 @@ export function ControlsBar({
 }) {
   const { localParticipant } = useLocalParticipant()
   const micEnabled = !!localParticipant.isMicrophoneEnabled
+  const captionsEnabled = useCaptionsEnabled()
 
   // "Ask to speak" gave no sign it had worked, so students pressed it again and
   // the tutor got a toast for every press. Hold it in an "Asked" state instead.
@@ -221,6 +223,23 @@ export function ControlsBar({
       >
         <Sparkles className="size-3.5" />
         <span className={CORE_LABEL}>{blurEnabled ? "Blur on" : "Blur"}</span>
+      </button>
+
+      {/* Live captions — each viewer's own choice; hides them only here. */}
+      <button
+        onClick={() => setCaptionsEnabled(!captionsEnabled)}
+        className={cn(
+          "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+          captionsEnabled
+            ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+        )}
+        title={captionsEnabled ? "Hide live captions (only on your screen)" : "Show live captions"}
+        aria-label={captionsEnabled ? "Turn captions off" : "Turn captions on"}
+        aria-pressed={captionsEnabled}
+      >
+        {captionsEnabled ? <Captions className="size-3.5" /> : <CaptionsOff className="size-3.5" />}
+        <span className={CORE_LABEL}>{captionsEnabled ? "Captions" : "Captions off"}</span>
       </button>
 
       <MediaToggle

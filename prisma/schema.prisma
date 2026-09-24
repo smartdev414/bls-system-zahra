@@ -167,6 +167,7 @@ model User {
   certReviews          CertStepSubmission[]    @relation("CertReviewer")
   passwordResetTokens  PasswordResetToken[]
   liveSessionChatMessages LiveSessionChatMessage[] @relation("LiveSessionChatMessages")
+  libraryFiles         LibraryFile[]           @relation("TutorLibraryFiles")
 }
 
 model PasswordResetToken {
@@ -628,6 +629,29 @@ model ApiLog {
   @@index([userId])
   @@index([createdAt])
   @@index([method, statusCode])
+}
+
+// A tutor's own resource library: files uploaded once, ahead of time, and then
+// picked into lessons and live sessions instead of being uploaded again each
+// time. Picking copies the file reference into LessonAsset / LiveSessionResource,
+// so removing a file from the library never breaks a lesson already using it.
+model LibraryFile {
+  id                   String    @id @default(cuid())
+  tutorId              String
+  title                String
+  fileUrl              String
+  fileName             String
+  fileSize             Int?
+  mimeType             String?
+  assetType            AssetType
+  presentationUrl      String?   // pre-converted PDF (PowerPoint uploads only)
+  presentationMimeType String?
+  createdAt            DateTime  @default(now())
+
+  tutor User @relation("TutorLibraryFiles", fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@unique([tutorId, fileUrl])
+  @@index([tutorId, createdAt])
 }
 
 model LiveSessionResource {

@@ -4,7 +4,7 @@ import { useRef, useState } from "react"
 import { Upload, X, Loader2, CheckCircle2, FileText, Video, Image, Music } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { isPowerPointMime, uploadPowerPointFile } from "@/lib/upload-powerpoint"
+import { uploadFile } from "@/lib/upload-file"
 
 export type UploadedFile = {
   fileUrl: string
@@ -49,57 +49,7 @@ export function FileUpload({ accept, label = "Upload file", onUploaded, onRemove
     setUploading(true)
 
     try {
-      if (isPowerPointMime(file.type)) {
-        const result = await uploadPowerPointFile(file)
-        onUploaded({
-          fileUrl: result.fileUrl,
-          fileName: result.fileName,
-          fileSize: result.fileSize,
-          mimeType: result.mimeType,
-          assetType: result.assetType,
-          presentationUrl: result.presentationUrl,
-          presentationMimeType: result.presentationMimeType,
-        })
-        return
-      }
-
-      let fileUrl: string
-      let assetType: string
-
-      if (file.type.startsWith("image/")) {
-        // Images go through the server for WebP conversion
-        const form = new FormData()
-        form.append("file", file)
-        const res = await fetch("/api/upload/image", { method: "POST", body: form })
-        if (!res.ok) {
-          const err = await res.json() as { message?: string }
-          throw new Error(err.message ?? "Image upload failed")
-        }
-        const json = await res.json() as { fileUrl: string; assetType: string }
-        fileUrl = json.fileUrl
-        assetType = json.assetType
-      } else {
-        // Non-image files use the presigned S3 URL path
-        const presignRes = await fetch("/api/upload/presign", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fileName: file.name, contentType: file.type, fileSize: file.size }),
-        })
-        if (!presignRes.ok) {
-          const err = await presignRes.json() as { message?: string }
-          throw new Error(err.message ?? "Could not get upload URL")
-        }
-        const { presignedUrl, fileUrl: url, assetType: at } = await presignRes.json() as {
-          presignedUrl: string; fileUrl: string; assetType: string
-        }
-        const uploadRes = await fetch(presignedUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file })
-        if (!uploadRes.ok) throw new Error("Upload to S3 failed")
-        fileUrl = url
-        assetType = at
-      }
-
-      const finalMime = file.type.startsWith("image/") ? "image/webp" : file.type
-      onUploaded({ fileUrl, fileName: file.name, fileSize: file.size, mimeType: finalMime, assetType })
+      onUploaded(await uploadFile(file))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed")
     } finally {

@@ -8,7 +8,7 @@ import {
   CalendarDays, List, Download, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
   Globe, Lock, X, Pencil, Play, Copy,
-  Paperclip, FileText, Trash2, Repeat,
+  Paperclip, FileText, Trash2, Repeat, FolderOpen,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
@@ -29,6 +29,7 @@ import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
 import { TutorPickerModal } from "@/components/classroom/TutorPickerModal"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
+import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { Pagination } from "@/components/ui/pagination"
 import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
@@ -245,6 +246,7 @@ function ScheduleSessionDialog({
   // Resources state
   const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([])
   const [savedResources, setSavedResources] = useState<SessionResource[]>([])
+  const [libraryOpen, setLibraryOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -722,10 +724,32 @@ function ScheduleSessionDialog({
           {scope.canManageResources && <>
           <Separator />
           <div className="flex flex-col gap-2">
-            <Label className="flex items-center gap-1.5">
-              <Paperclip className="size-3.5" /> Resource Files
-              <span className="text-muted-foreground font-normal text-xs">(for presenting in class — students cannot download)</span>
-            </Label>
+            <div className="flex items-start justify-between gap-2">
+              <Label className="flex items-center gap-1.5 flex-wrap">
+                <Paperclip className="size-3.5" /> Resource Files
+                <span className="text-muted-foreground font-normal text-xs">(for presenting in class — students cannot download)</span>
+              </Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5 shrink-0"
+                onClick={() => setLibraryOpen(true)}
+              >
+                <FolderOpen className="size-3" />
+                Choose from library
+              </Button>
+            </div>
+            <LibraryPicker
+              open={libraryOpen}
+              onOpenChange={setLibraryOpen}
+              allowedTypes={["VIDEO", "PDF", "IMAGE", "DOCUMENT", "AUDIO"]}
+              attachedUrls={[
+                ...savedResources.map((r) => r.fileUrl),
+                ...pendingFiles.map((f) => f.fileUrl),
+              ]}
+              onPick={(picked) => setPendingFiles((prev) => [...prev, ...picked])}
+            />
 
             {/* Saved resources (edit mode) */}
             {savedResources.map((r) => (

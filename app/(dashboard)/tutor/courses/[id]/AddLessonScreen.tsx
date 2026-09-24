@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Save, Upload, Camera } from "lucide-react"
+import { Save, Upload, Camera, FolderOpen, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,8 +13,16 @@ import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
+import { LibraryPicker, itemIcon, formatBytes } from "@/components/library/LibraryPicker"
+import type { LibraryAssetType } from "@/lib/library"
 
 type LessonType = "VIDEO" | "TEXT" | "QUIZ"
+
+/** What each lesson type can hold — matches the upload box's `accept`. */
+export const LESSON_FILE_TYPES: Record<"VIDEO" | "TEXT", readonly LibraryAssetType[]> = {
+  VIDEO: ["VIDEO"],
+  TEXT: ["PDF", "DOCUMENT", "IMAGE", "AUDIO"],
+}
 
 type Props = {
   courseId: string
@@ -29,6 +37,9 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
   const [desc, setDesc] = useState("")
   const [isFree, setIsFree] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
+  // Files picked from the resource library, added alongside any fresh upload.
+  const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
   const [questions, setQuestions] = useState<QuestionDraft[]>([])
   const [loading, setLoading] = useState(false)
@@ -58,16 +69,22 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
 
     try {
       // 1. Create the lesson
-      const assets = uploadedFile
-        ? [{
-            type: uploadedFile.assetType,
-            title,
-            fileUrl: uploadedFile.fileUrl,
-            fileName: uploadedFile.fileName,
-            fileSize: uploadedFile.fileSize,
-            mimeType: uploadedFile.mimeType,
-          }]
-        : []
+      // A file picked for a quiz, or for the other lesson type before switching,
+      // is not something this lesson can show.
+      const allowed: readonly string[] = type === "QUIZ" ? [] : LESSON_FILE_TYPES[type]
+      const files = [
+        ...(uploadedFile ? [uploadedFile] : []),
+        ...libraryFiles,
+      ].filter((f) => allowed.includes(f.assetType))
+      const assets = files.map((f) => ({
+        type: f.assetType,
+        // The main upload keeps the lesson title, as before; picked files keep their own name.
+        title: f === uploadedFile ? title : f.fileName,
+        fileUrl: f.fileUrl,
+        fileName: f.fileName,
+        fileSize: f.fileSize || undefined,
+        mimeType: f.mimeType || undefined,
+      }))
 
       const res = await fetch(`/api/tutor/courses/${courseId}/lessons`, {
         method: "POST",
@@ -186,8 +203,19 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">File</p>
+              <div className="flex gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <FolderOpen className="size-3" />
+                  Choose from library
+                </Button>
               {type === "VIDEO" && !uploadedFile && (
-                <div className="flex gap-1.5">
+                <>
                   <Button
                     type="button"
                     size="sm"
@@ -208,9 +236,51 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
                     <Camera className="size-3" />
                     Record
                   </Button>
-                </div>
+                </>
               )}
+              </div>
             </div>
+
+            {/* Picked from the library */}
+            {libraryFiles
+              .filter((f) => LESSON_FILE_TYPES[type].includes(f.assetType as LibraryAssetType))
+              .map((f) => {
+                const Icon = itemIcon(f.assetType)
+                return (
+                  <div key={f.fileUrl} className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3 overflow-hidden">
+                    <div className="rounded-lg bg-primary/10 p-2 shrink-0">
+                      <Icon className="size-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" title={f.fileName}>{f.fileName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[formatBytes(f.fileSize), "From library"].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-7 shrink-0"
+                      onClick={() => setLibraryFiles((prev) => prev.filter((x) => x.fileUrl !== f.fileUrl))}
+                      aria-label={`Remove ${f.fileName}`}
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </div>
+                )
+              })}
+
+            <LibraryPicker
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              allowedTypes={LESSON_FILE_TYPES[type]}
+              attachedUrls={[
+                ...(uploadedFile ? [uploadedFile.fileUrl] : []),
+                ...libraryFiles.map((f) => f.fileUrl),
+              ]}
+              onPick={(picked) => setLibraryFiles((prev) => [...prev, ...picked])}
+            />
             {type === "VIDEO" && videoMode === "record" ? (
               <CameraRecorder
                 uploaded={uploadedFile}

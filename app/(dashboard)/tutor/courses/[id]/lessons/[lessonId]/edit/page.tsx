@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
-  ChevronLeft, Save, Loader2, Plus, Trash2,
+  ChevronLeft, Save, Loader2, Plus, Trash2, FolderOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,8 @@ import { Separator } from "@/components/ui/separator"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
+import { LibraryPicker } from "@/components/library/LibraryPicker"
+import { LESSON_FILE_TYPES } from "../../../AddLessonScreen"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,6 +76,9 @@ export default function EditLessonPage({
   const [isFree, setIsFree] = useState(false)
   const [assets, setAssets] = useState<Asset[]>([])
   const [newFile, setNewFile] = useState<UploadedFile | null>(null)
+  // Files picked from the resource library, attached on save like a new upload.
+  const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [questions, setQuestions] = useState<QuestionDraft[]>([])
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -145,20 +150,21 @@ export default function EditLessonPage({
         throw new Error(d.message ?? "Could not save lesson")
       }
 
-      // 2. If a new file was uploaded, add it as an asset
-      if (newFile) {
-        await fetch(`/api/tutor/lessons/${lessonId}/assets`, {
+      // 2. Add a newly uploaded file and any picked from the library as assets
+      for (const file of [...(newFile ? [newFile] : []), ...libraryFiles]) {
+        const r = await fetch(`/api/tutor/lessons/${lessonId}/assets`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type: newFile.assetType,
-            title: newFile.fileName,
-            fileUrl: newFile.fileUrl,
-            fileName: newFile.fileName,
-            fileSize: newFile.fileSize,
-            mimeType: newFile.mimeType,
+            type: file.assetType,
+            title: file.fileName,
+            fileUrl: file.fileUrl,
+            fileName: file.fileName,
+            fileSize: file.fileSize || undefined,
+            mimeType: file.mimeType || undefined,
           }),
         })
+        if (!r.ok) throw new Error(`Could not attach ${file.fileName}`)
       }
 
       router.push(`/tutor/courses/${courseId}`)
@@ -259,7 +265,19 @@ export default function EditLessonPage({
         <>
           <Separator />
           <div className="flex flex-col gap-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Files</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Files</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => setPickerOpen(true)}
+              >
+                <FolderOpen className="size-3" />
+                Choose from library
+              </Button>
+            </div>
 
             {/* Existing assets */}
             {assets.map((asset) => (
@@ -293,6 +311,37 @@ export default function EditLessonPage({
                 onUploaded={setNewFile}
               />
             )}
+
+            {/* Picked from the library, waiting for Save */}
+            {libraryFiles.map((f) => (
+              <div key={f.fileUrl} className="flex items-center gap-3 rounded-xl border bg-emerald-50 border-emerald-200 p-3 overflow-hidden">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{f.fileName}</p>
+                  <p className="text-xs text-emerald-600">From library · Ready to save</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  onClick={() => setLibraryFiles((prev) => prev.filter((x) => x.fileUrl !== f.fileUrl))}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+
+            <LibraryPicker
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              allowedTypes={LESSON_FILE_TYPES[lesson.type]}
+              attachedUrls={[
+                ...assets.map((a) => a.fileUrl),
+                ...(newFile ? [newFile.fileUrl] : []),
+                ...libraryFiles.map((f) => f.fileUrl),
+              ]}
+              onPick={(picked) => setLibraryFiles((prev) => [...prev, ...picked])}
+            />
 
             {newFile && (
               <div className="flex items-center gap-3 rounded-xl border bg-emerald-50 border-emerald-200 p-3 overflow-hidden">

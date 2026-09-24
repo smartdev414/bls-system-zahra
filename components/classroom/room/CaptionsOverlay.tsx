@@ -31,6 +31,7 @@ import { useRoomContext } from "@livekit/components-react"
 import { RoomEvent, type Participant, type TranscriptionSegment } from "livekit-client"
 import { ChevronDown, ChevronUp, Rows3 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useCaptionsEnabled } from "@/components/classroom/captionsPreference"
 
 type CaptionLine = {
   id: string
@@ -123,6 +124,7 @@ export function CaptionsOverlay() {
   const lineCount = useSyncExternalStore(subscribeLineChoice, readLineChoice, readServerLineChoice)
   const [expanded, setExpanded] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const captionsEnabled = useCaptionsEnabled()
   // Whether speech has stopped for long enough to get out of the way. Held as
   // state, and only ever written from a timer or an arriving caption, so
   // rendering stays a pure function of state rather than of the clock.
@@ -249,6 +251,10 @@ export function CaptionsOverlay() {
 
   // Collapsing returns to the live end of the transcript.
   useEffect(() => { if (!expanded) stickRef.current = true }, [expanded])
+
+  // Turned off by this viewer. Captions keep being collected underneath, so
+  // switching them back on shows the conversation so far rather than a blank.
+  if (!captionsEnabled) return null
 
   if (ordered.length === 0) return null
 
