@@ -37,3 +37,18 @@ export function assetTypeFromMime(mimeType: string | null | undefined): LibraryA
   if (m === "text/vtt") return "SUBTITLE"
   return "DOCUMENT"
 }
+
+/** Longest caption a tutor can type or prepare — about two lines on screen. */
+export const TYPED_CAPTION_MAX = 300
+
+/** Prepared captions kept per tutor. */
+export const PREPARED_CAPTION_LIMIT = 50
+
+/** Prepared captions are edited as text, one per line. */
+export function parsePreparedCaptions(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim().slice(0, TYPED_CAPTION_MAX))
+    .filter(Boolean)
+    .slice(0, PREPARED_CAPTION_LIMIT)
+}

@@ -27,11 +27,16 @@
 import {
   useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect, useSyncExternalStore,
 } from "react"
-import { useRoomContext } from "@livekit/components-react"
+import { useDataChannel, useLocalParticipant, useRoomContext } from "@livekit/components-react"
 import { RoomEvent, type Participant, type TranscriptionSegment } from "livekit-client"
-import { ChevronDown, ChevronUp, Rows3 } from "lucide-react"
+import { ChevronDown, ChevronUp, Rows3, Keyboard } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useCaptionsEnabled } from "@/components/classroom/captionsPreference"
+import {
+  setCaptionComposerOpen, useCaptionComposerOpen, useCaptionsEnabled,
+} from "@/components/classroom/captionsPreference"
+import { TYPED_CAPTION_TOPIC, enc, dec } from "./constants"
+import { CaptionComposer } from "./CaptionComposer"
+import { TYPED_CAPTION_MAX } from "@/lib/library"
 
 type CaptionLine = {
   id: string
@@ -43,7 +48,12 @@ type CaptionLine = {
   /** First time this line was seen. Fixes its place in the transcript. */
   createdAt: number
   updatedAt: number
+  /** Typed by a tutor rather than transcribed from speech. */
+  typed?: boolean
 }
+
+/** What a tutor's typed caption carries over the data channel. */
+type TypedCaptionMessage = { id: string; text: string }
 
 /** Line counts offered to the reader. */
 const LINE_CHOICES = [2, 4, 8] as const
@@ -118,13 +128,21 @@ function subscribeLineChoice(listener: () => void): () => void {
   return () => { choiceListeners.delete(listener) }
 }
 
-export function CaptionsOverlay() {
+export function CaptionsOverlay({
+  speakers = null,
+}: {
+  /** Whose speech to show, by identity; null shows everyone. Typed captions from tutors always show. */
+  speakers?: ReadonlySet<string> | null
+} = {}) {
   const room = useRoomContext()
   const [lines, setLines] = useState<CaptionLine[]>([])
   const lineCount = useSyncExternalStore(subscribeLineChoice, readLineChoice, readServerLineChoice)
   const [expanded, setExpanded] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const captionsEnabled = useCaptionsEnabled()
+  const composerOpen = useCaptionComposerOpen()
+  const { localParticipant } = useLocalParticipant()
+  const localIsTutor = speakerIsTutor(localParticipant)
   // Whether speech has stopped for long enough to get out of the way. Held as
   // state, and only ever written from a timer or an arriving caption, so
   // rendering stays a pure function of state rather than of the clock.
@@ -134,6 +152,49 @@ export function CaptionsOverlay() {
   const lastActivityRef = useRef(0)
 
   // ── Ingest ──────────────────────────────────────────────────────────────────
+
+  const upsertLine = useCallback((
+    lineId: string,
+    participant: Participant | null | undefined,
+    text: string,
+    final: boolean,
+    typed = false,
+  ) => {
+    const speakerId = participant?.identity ?? "unknown"
+    const speakerName = participant?.name ?? participant?.identity ?? "Unknown"
+    const isTutor = speakerIsTutor(participant)
+
+    const now = Date.now()
+    const wokeFromSilence = lastActivityRef.current > 0 && now - lastActivityRef.current > STALE_ON_WAKE_MS
+    lastActivityRef.current = now
+    setIdle(false)
+
+    setLines((prev) => {
+      // Coming back after a long silence: start a fresh transcript rather than
+      // resuming under lines nobody can still place in the conversation. The
+      // scrollback below keeps them if anyone wants them.
+      const base = wokeFromSilence
+        ? prev.filter((l) => now - l.updatedAt <= STALE_ON_WAKE_MS)
+        : prev
+
+      const idx = base.findIndex((l) => l.id === lineId)
+      if (idx >= 0) {
+        const next = [...base]
+        // createdAt is preserved on purpose: an utterance keeps the position it
+        // started in while its interim text is revised. Re-sorting on every
+        // update was what made two people talking swap places mid-sentence.
+        next[idx] = { ...next[idx], text, final, speakerName, updatedAt: now }
+        return next
+      }
+
+      const entry: CaptionLine = {
+        id: lineId, speakerId, speakerName, isTutor,
+        text, final, typed, createdAt: now, updatedAt: now,
+      }
+      const next = [...base, entry]
+      return next.length > HISTORY_LIMIT ? next.slice(-HISTORY_LIMIT) : next
+    })
+  }, [])
 
   const applySegment = useCallback((
     segment: TranscriptionSegment,
@@ -155,44 +216,12 @@ export function CaptionsOverlay() {
     }
 
     const speakerId = participant?.identity ?? "unknown"
-    const speakerName = participant?.name ?? participant?.identity ?? "Unknown"
-    const isTutor = speakerIsTutor(participant)
     const lineId = segmentToLine.current.get(segment.id) ?? `${speakerId}:${segment.id}`
     if (!segmentToLine.current.has(segment.id)) {
       segmentToLine.current.set(segment.id, lineId)
     }
-
-    const now = Date.now()
-    const wokeFromSilence = lastActivityRef.current > 0 && now - lastActivityRef.current > STALE_ON_WAKE_MS
-    lastActivityRef.current = now
-    setIdle(false)
-
-    setLines((prev) => {
-      // Coming back after a long silence: start a fresh transcript rather than
-      // resuming under lines nobody can still place in the conversation. The
-      // scrollback below keeps them if anyone wants them.
-      const base = wokeFromSilence
-        ? prev.filter((l) => now - l.updatedAt <= STALE_ON_WAKE_MS)
-        : prev
-
-      const idx = base.findIndex((l) => l.id === lineId)
-      if (idx >= 0) {
-        const next = [...base]
-        // createdAt is preserved on purpose: an utterance keeps the position it
-        // started in while its interim text is revised. Re-sorting on every
-        // update was what made two people talking swap places mid-sentence.
-        next[idx] = { ...next[idx], text, final: !!segment.final, speakerName, updatedAt: now }
-        return next
-      }
-
-      const entry: CaptionLine = {
-        id: lineId, speakerId, speakerName, isTutor,
-        text, final: !!segment.final, createdAt: now, updatedAt: now,
-      }
-      const next = [...base, entry]
-      return next.length > HISTORY_LIMIT ? next.slice(-HISTORY_LIMIT) : next
-    })
-  }, [])
+    upsertLine(lineId, participant, text, !!segment.final)
+  }, [upsertLine])
 
   useEffect(() => {
     const handler = (segments: TranscriptionSegment[], participant?: Participant) => {
@@ -208,6 +237,34 @@ export function CaptionsOverlay() {
     return () => { room.off(RoomEvent.TranscriptionReceived, handler) }
   }, [room, applySegment])
 
+  // ── Typed captions ──────────────────────────────────────────────────────────
+  // A tutor can type a caption (or send a prepared one) instead of speaking it.
+  // It joins the transcript as a finished line, attributed like speech. Only a
+  // tutor's are shown: the role comes from the server-issued token, so a student
+  // cannot put words at the bottom of everyone's screen.
+
+  const { send: sendTyped } = useDataChannel(TYPED_CAPTION_TOPIC, (msg) => {
+    if (!speakerIsTutor(msg.from)) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as Partial<TypedCaptionMessage>
+      const text = typeof data.text === "string" ? data.text.trim().slice(0, TYPED_CAPTION_MAX) : ""
+      if (!text || typeof data.id !== "string") return
+      upsertLine(`typed:${data.id}`, msg.from, text, true, true)
+    } catch { /* ignore malformed */ }
+  })
+
+  const sendTypedCaption = useCallback((text: string) => {
+    const message: TypedCaptionMessage = {
+      id: `${localParticipant.identity}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      text,
+    }
+    // The data channel does not echo to the sender, so show it here too.
+    upsertLine(`typed:${message.id}`, localParticipant, text, true, true)
+    // A dropped send is visible to the tutor only as silence, so use the
+    // reliable channel: a caption arriving late beats one never arriving.
+    void sendTyped(enc.encode(JSON.stringify(message)), { reliable: true })
+  }, [localParticipant, sendTyped, upsertLine])
+
   // Re-evaluate the idle timeout on a slow tick. Cheap, and it means the
   // overlay clears itself during a long stretch of signing with no speech.
   useEffect(() => {
@@ -220,8 +277,10 @@ export function CaptionsOverlay() {
   // ── What to show ────────────────────────────────────────────────────────────
 
   const ordered = useMemo(
-    () => lines.filter((l) => l.text.trim()).sort((a, b) => a.createdAt - b.createdAt),
-    [lines],
+    () => lines
+      .filter((l) => l.text.trim() && (!speakers || l.typed || speakers.has(l.speakerId)))
+      .sort((a, b) => a.createdAt - b.createdAt),
+    [lines, speakers],
   )
 
   const visible = useMemo(
@@ -252,153 +311,165 @@ export function CaptionsOverlay() {
   // Collapsing returns to the live end of the transcript.
   useEffect(() => { if (!expanded) stickRef.current = true }, [expanded])
 
+  const composer = localIsTutor && composerOpen
+    ? <CaptionComposer onSend={sendTypedCaption} onClose={() => setCaptionComposerOpen(false)} />
+    : null
+
   // Turned off by this viewer. Captions keep being collected underneath, so
   // switching them back on shows the conversation so far rather than a blank.
-  if (!captionsEnabled) return null
+  const body = !captionsEnabled || ordered.length === 0 ? null : renderTranscript()
 
-  if (ordered.length === 0) return null
-
-  // Silence, and nobody is reading back. Clear the tutor's hands — but leave one
-  // small handle, because a transcript you cannot reopen is not a transcript.
-  if (idle && !expanded) {
-    return (
-      <div className="absolute bottom-3 inset-x-0 flex justify-center pointer-events-none z-50">
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className={cn(
-            "pointer-events-auto flex items-center gap-1.5 rounded-full px-3 py-1",
-            "bg-black/45 hover:bg-black/75 backdrop-blur-sm border border-white/10",
-            "text-[11px] font-medium text-white/60 hover:text-white transition-colors",
-          )}
-          title="Read back what was said"
-        >
-          <ChevronUp className="size-3" />
-          Transcript
-        </button>
-      </div>
-    )
-  }
+  if (!body && !composer) return null
 
   return (
-    <div className="absolute bottom-3 inset-x-0 flex justify-center pointer-events-none z-50 px-3 sm:px-6">
-      <div
-        className={cn(
-          "group/captions relative bg-black/85 backdrop-blur-md rounded-2xl max-w-3xl w-full",
-          "shadow-lg border border-white/10",
-          // Only interactive when expanded. Collapsed, it must stay transparent
-          // to the mouse: it sits over the presentation, and the tutor's hand
-          // pointer is driven by pointer events on the slide underneath.
-          expanded && "pointer-events-auto",
-        )}
-      >
-        {/* ── Controls ── */}
-        <div
-          className={cn(
-            "pointer-events-auto absolute -top-3 right-2 flex items-center gap-1",
-            "opacity-0 focus-within:opacity-100 group-hover/captions:opacity-100 transition-opacity",
-            // Hover does not exist on a touch screen, and this is the control
-            // that makes the feature usable for the people who need it most.
-            "[@media(hover:none)]:opacity-100",
-            (settingsOpen || expanded) && "opacity-100",
-          )}
-        >
-          {settingsOpen && (
-            <div className="flex items-center gap-0.5 rounded-full bg-zinc-900 border border-white/15 px-1 py-0.5 shadow-lg">
-              {LINE_CHOICES.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => writeLineChoice(n)}
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors",
-                    lineCount === n ? "bg-white text-zinc-900" : "text-white/70 hover:text-white",
-                  )}
-                  aria-pressed={lineCount === n}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setSettingsOpen((v) => !v)}
-            className="rounded-full bg-zinc-900 border border-white/15 p-1.5 text-white/80 hover:text-white shadow-lg"
-            aria-label="Choose how many caption lines to show"
-            aria-expanded={settingsOpen}
-            title="How many lines to show"
-          >
-            <Rows3 className="size-3.5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="rounded-full bg-zinc-900 border border-white/15 p-1.5 text-white/80 hover:text-white shadow-lg"
-            aria-label={expanded ? "Collapse captions" : "Expand captions to read back the conversation"}
-            aria-expanded={expanded}
-            title={expanded ? "Collapse" : "Read back the conversation"}
-          >
-            {expanded ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
-          </button>
-        </div>
-
-        {/* ── Transcript ── */}
-        <div
-          ref={scrollRef}
-          onScroll={onScroll}
-          className={cn(
-            "px-4 py-3 flex flex-col gap-1.5",
-            expanded && "max-h-[38vh] overflow-y-auto overscroll-contain",
-          )}
-          // Additions are announced; the whole transcript is not re-read every
-          // time an interim segment is revised.
-          aria-live="polite"
-          aria-atomic="false"
-          aria-label="Live captions"
-        >
-          {visible.map((line, i) => {
-            // Attribute a run of consecutive lines once. Repeating the name on
-            // every sentence is what makes a transcript hard to read quickly.
-            const prev = i > 0 ? visible[i - 1] : null
-            const showSpeaker = !prev || prev.speakerId !== line.speakerId
-
-            return (
-              <p
-                key={line.id}
-                className={cn(
-                  "text-sm leading-snug text-white transition-opacity",
-                  !line.final && "opacity-80",
-                  // Older lines recede slightly so the eye lands on the newest
-                  // without the older ones becoming unreadable.
-                  !expanded && i < visible.length - 1 && "text-white/70",
-                )}
-              >
-                {showSpeaker && (
-                  <span
-                    className={cn(
-                      "font-semibold mr-1.5",
-                      line.isTutor ? "text-amber-300" : "text-sky-300",
-                    )}
-                  >
-                    {line.speakerName}
-                    {line.isTutor ? " (Tutor)" : ""}:
-                  </span>
-                )}
-                <span className={cn(!line.final && "italic")}>{line.text}</span>
-                {!line.final && (
-                  <span
-                    className="inline-block ml-1 size-1.5 rounded-full bg-emerald-400 animate-pulse align-middle"
-                    aria-hidden
-                  />
-                )}
-              </p>
-            )
-          })}
-        </div>
-      </div>
+    <div className="absolute bottom-3 inset-x-0 flex flex-col items-center gap-2 pointer-events-none z-50 px-3 sm:px-6">
+      {body}
+      {composer}
     </div>
   )
+
+  function renderTranscript() {
+    // Silence, and nobody is reading back. Clear the tutor's hands — but leave one
+    // small handle, because a transcript you cannot reopen is not a transcript.
+    if (idle && !expanded) {
+      return (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className={cn(
+              "pointer-events-auto flex items-center gap-1.5 rounded-full px-3 py-1",
+              "bg-black/45 hover:bg-black/75 backdrop-blur-sm border border-white/10",
+              "text-[11px] font-medium text-white/60 hover:text-white transition-colors",
+            )}
+            title="Read back what was said"
+          >
+            <ChevronUp className="size-3" />
+            Transcript
+          </button>
+      )
+    }
+
+    return (
+        <div
+          className={cn(
+            "group/captions relative bg-black/85 backdrop-blur-md rounded-2xl max-w-3xl w-full",
+            "shadow-lg border border-white/10",
+            // Only interactive when expanded. Collapsed, it must stay transparent
+            // to the mouse: it sits over the presentation, and the tutor's hand
+            // pointer is driven by pointer events on the slide underneath.
+            expanded && "pointer-events-auto",
+          )}
+        >
+          {/* ── Controls ── */}
+          <div
+            className={cn(
+              "pointer-events-auto absolute -top-3 right-2 flex items-center gap-1",
+              "opacity-0 focus-within:opacity-100 group-hover/captions:opacity-100 transition-opacity",
+              // Hover does not exist on a touch screen, and this is the control
+              // that makes the feature usable for the people who need it most.
+              "[@media(hover:none)]:opacity-100",
+              (settingsOpen || expanded) && "opacity-100",
+            )}
+          >
+            {settingsOpen && (
+              <div className="flex items-center gap-0.5 rounded-full bg-zinc-900 border border-white/15 px-1 py-0.5 shadow-lg">
+                {LINE_CHOICES.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => writeLineChoice(n)}
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors",
+                      lineCount === n ? "bg-white text-zinc-900" : "text-white/70 hover:text-white",
+                    )}
+                    aria-pressed={lineCount === n}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((v) => !v)}
+              className="rounded-full bg-zinc-900 border border-white/15 p-1.5 text-white/80 hover:text-white shadow-lg"
+              aria-label="Choose how many caption lines to show"
+              aria-expanded={settingsOpen}
+              title="How many lines to show"
+            >
+              <Rows3 className="size-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="rounded-full bg-zinc-900 border border-white/15 p-1.5 text-white/80 hover:text-white shadow-lg"
+              aria-label={expanded ? "Collapse captions" : "Expand captions to read back the conversation"}
+              aria-expanded={expanded}
+              title={expanded ? "Collapse" : "Read back the conversation"}
+            >
+              {expanded ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
+            </button>
+          </div>
+
+          {/* ── Transcript ── */}
+          <div
+            ref={scrollRef}
+            onScroll={onScroll}
+            className={cn(
+              "px-4 py-3 flex flex-col gap-1.5",
+              expanded && "max-h-[38vh] overflow-y-auto overscroll-contain",
+            )}
+            // Additions are announced; the whole transcript is not re-read every
+            // time an interim segment is revised.
+            aria-live="polite"
+            aria-atomic="false"
+            aria-label="Live captions"
+          >
+            {visible.map((line, i) => {
+              // Attribute a run of consecutive lines once. Repeating the name on
+              // every sentence is what makes a transcript hard to read quickly.
+              const prev = i > 0 ? visible[i - 1] : null
+              const showSpeaker = !prev || prev.speakerId !== line.speakerId
+
+              return (
+                <p
+                  key={line.id}
+                  className={cn(
+                    "text-sm leading-snug text-white transition-opacity",
+                    !line.final && "opacity-80",
+                    // Older lines recede slightly so the eye lands on the newest
+                    // without the older ones becoming unreadable.
+                    !expanded && i < visible.length - 1 && "text-white/70",
+                  )}
+                >
+                  {showSpeaker && (
+                    <span
+                      className={cn(
+                        "font-semibold mr-1.5",
+                        line.isTutor ? "text-amber-300" : "text-sky-300",
+                      )}
+                    >
+                      {line.speakerName}
+                      {line.isTutor ? " (Tutor)" : ""}:
+                    </span>
+                  )}
+                  <span className={cn(!line.final && "italic")}>{line.text}</span>
+                  {line.typed && (
+                    <Keyboard className="inline-block ml-1.5 size-3 text-white/40 align-baseline" aria-label="typed" />
+                  )}
+                  {!line.final && (
+                    <span
+                      className="inline-block ml-1 size-1.5 rounded-full bg-emerald-400 animate-pulse align-middle"
+                      aria-hidden
+                    />
+                  )}
+                </p>
+              )
+            })}
+          </div>
+        </div>
+    )
+  }
 }

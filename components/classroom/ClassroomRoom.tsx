@@ -278,6 +278,15 @@ export function ClassroomRoom({
   const [isFullscreen,     setIsFullscreen]     = useState(false)
   const [pinnedId,         setPinnedId]         = useState<string | null>(null)
   const [participantsOpen, setParticipantsOpen] = useState(true)
+  // Gallery view: the class takes the whole stage and nobody is shown big. A
+  // teacher asked for it — in spotlight they mostly watch their own camera
+  // filling the screen, when what they want is every student's face at once.
+  // Local to each viewer, and not remembered: the next lesson starts back in
+  // spotlight, where the signer is. The stage stays mounted underneath (just
+  // hidden), so a whiteboard or deck on it keeps running while it is away.
+  const [galleryView,      setGalleryView]      = useState(false)
+  // Gallery is the class panel, so it is open whatever the chevron last said.
+  const classPanelOpen = participantsOpen || galleryView
   const [chatOpen,         setChatOpen]         = useState(true)
   const [requestsOpen,     setRequestsOpen]     = useState(false)
   // Tutor-only: a dedicated queue of raised hands, separate from the chat
@@ -3536,6 +3545,15 @@ export function ClassroomRoom({
     }
   }, [breakoutsActive, participants, isTutor, visitingGroupId, breakoutGroups, ownBreakoutGroup, breakoutStartedAt, liveIdentitiesFor, localParticipant.identity])
 
+  // Captions follow the same boundary as chat and audio: during breakouts a
+  // student sees their own group's speech (and the teachers'), not every other
+  // pair's. Teachers see everyone, so they can tell who is talking instead of
+  // signing.
+  const captionSpeakers = useMemo<ReadonlySet<string> | null>(() => {
+    if (isTutor || !chatAudience) return null
+    return new Set([...chatAudience.identities, localParticipant.identity])
+  }, [isTutor, chatAudience, localParticipant.identity])
+
   useEffect(() => {
     chatAudienceRef.current = chatAudience
     // A student placed in a group they haven't been in before: remember it, and
@@ -3968,7 +3986,7 @@ export function ClassroomRoom({
           {/* The student's raise-hand button lives on their own tile in the
               class panel (top-right). It only comes back up here while that
               panel is hidden, so it is never out of reach. */}
-          {!isTutor && !participantsOpen && (
+          {!isTutor && !classPanelOpen && (
             <button
               type="button"
               onClick={handleToggleHand}
@@ -4139,7 +4157,11 @@ export function ClassroomRoom({
               the same shape as each other. See `useStageSplit`. */}
           <div
             ref={stageRowRef}
-            className={cn("flex flex-1 overflow-hidden min-h-0 min-w-0 relative", splitDirection)}
+            className={cn(
+              "flex flex-1 overflow-hidden min-h-0 min-w-0 relative",
+              splitDirection,
+              galleryView && "hidden",
+            )}
           >
 
           {whiteboardActive ? (
@@ -4393,7 +4415,7 @@ export function ClassroomRoom({
             </div>
           )}
 
-          <CaptionsOverlay />
+          {!galleryView && <CaptionsOverlay speakers={captionSpeakers} />}
           </div>
 
           {/* The class. A band beneath the stage.
@@ -4408,14 +4430,27 @@ export function ClassroomRoom({
               stopping. Only phones still start it collapsed, and only breakouts
               force it back open. */}
           <div
-            className="shrink-0 grow-0 bg-zinc-900 overflow-hidden border-zinc-800 border-t transition-[height] duration-200"
-            style={{ height: participantsOpen ? CLASS_BAND_PX[tileSize] : 36 }}
+            className={cn(
+              "bg-zinc-900 overflow-hidden border-zinc-800",
+              // In gallery the band is the stage: it takes all the height, and
+              // the captions come with it.
+              galleryView
+                ? "flex-1 min-h-0 relative"
+                : "shrink-0 grow-0 border-t transition-[height] duration-200",
+            )}
+            style={galleryView ? undefined : { height: participantsOpen ? CLASS_BAND_PX[tileSize] : 36 }}
           >
             <ParticipantsPanel
               pinnedId={pinnedId}
-              onPin={setPinnedId}
-              collapsed={!participantsOpen}
+              onPin={(identity) => {
+                setPinnedId(identity)
+                // Pinning puts someone on the stage, so show the stage.
+                if (identity) setGalleryView(false)
+              }}
+              collapsed={!classPanelOpen}
               onToggleCollapse={() => setParticipantsOpen((v) => !v)}
+              view={galleryView ? "gallery" : "spotlight"}
+              onToggleView={() => setGalleryView((v) => !v)}
               isLocalTutor={isTutor}
               spotlightedId={spotlightedId}
               onToggleSpotlight={handleToggleSpotlightFor}
@@ -4439,6 +4474,7 @@ export function ClassroomRoom({
               classOrder={classOrder}
               onReorderClass={isTutor ? handleReorderClass : undefined}
             />
+            {galleryView && <CaptionsOverlay speakers={captionSpeakers} />}
           </div>
           </div>
         </div>

@@ -168,6 +168,7 @@ model User {
   passwordResetTokens  PasswordResetToken[]
   liveSessionChatMessages LiveSessionChatMessage[] @relation("LiveSessionChatMessages")
   libraryFiles         LibraryFile[]           @relation("TutorLibraryFiles")
+  preparedCaptions     PreparedCaption[]       @relation("TutorPreparedCaptions")
 }
 
 model PasswordResetToken {
@@ -652,6 +653,20 @@ model LibraryFile {
 
   @@unique([tutorId, fileUrl])
   @@index([tutorId, createdAt])
+}
+
+// Captions a tutor writes ahead of time in their library and sends into the
+// live classroom with one click, instead of typing them mid-lesson.
+model PreparedCaption {
+  id        String   @id @default(cuid())
+  tutorId   String
+  text      String
+  order     Int
+  createdAt DateTime @default(now())
+
+  tutor User @relation("TutorPreparedCaptions", fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId, order])
 }
 
 model LiveSessionResource {

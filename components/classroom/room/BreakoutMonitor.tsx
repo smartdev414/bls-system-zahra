@@ -9,11 +9,36 @@ import {
   isTrackReference,
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { X, Eye, LogIn, LogOut, Focus, Minimize2, Mic, MicOff, Users2, Bell, TimerReset } from "lucide-react"
+import { X, Eye, LogIn, LogOut, Focus, Minimize2, Mic, MicOff, Users2, Bell, TimerReset, AudioLines } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { participantBaseId } from "@/lib/participant-identity"
 import type { BreakoutGroup } from "./types"
 import { BreakoutCountdown } from "./BreakoutCountdown"
+import { useSpeechBySpeaker, type SpokenLine } from "./useSpeechBySpeaker"
+
+/** A student counts as "talking" if they were captioned this recently. */
+const SPOKE_RECENTLY_MS = 15_000
+
+/**
+ * What a group has said aloud, newest last. Students are meant to sign, so any
+ * line here is worth the tutor's attention — which is why it is shown at all.
+ */
+function SpokenStrip({ lines }: { lines: SpokenLine[] }) {
+  if (lines.length === 0) return null
+  return (
+    <div className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-2.5 py-1.5 flex flex-col gap-0.5" aria-live="polite">
+      <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-300/90">
+        <AudioLines className="size-3" /> Heard in this group
+      </p>
+      {lines.map((l) => (
+        <p key={`${l.identity}:${l.id}`} className="text-xs leading-snug text-zinc-100">
+          <span className="font-semibold text-amber-200 mr-1">{l.name}:</span>
+          <span className={cn(!l.final && "italic opacity-80")}>{l.text}</span>
+        </p>
+      ))}
+    </div>
+  )
+}
 
 export function BreakoutMonitor({
   groups,
@@ -38,6 +63,7 @@ export function BreakoutMonitor({
   const micTracks    = useTracks([Track.Source.Microphone], { onlySubscribed: true })
 
   const [focusedIdentity, setFocusedIdentity] = useState<string | null>(null)
+  const { bySpeaker, now } = useSpeechBySpeaker()
 
   // Group membership is stored as stable user ids so it survives reconnects —
   // index live participants the same way to look them up.
@@ -78,7 +104,7 @@ export function BreakoutMonitor({
           </h2>
           {!focusedParticipant && (
             <span className="hidden md:inline text-[11px] text-zinc-500 ml-1">
-              · tiles are silent. Click a student to listen. Click &ldquo;Visit&rdquo; to speak to their group.
+              · tiles are silent — anything said aloud is captioned under the group. Click a student to listen. Click &ldquo;Visit&rdquo; to speak to their group.
             </span>
           )}
         </div>
@@ -118,7 +144,7 @@ export function BreakoutMonitor({
       {/* Body */}
       <div className="flex-1 overflow-auto p-4">
         {focusedParticipant ? (
-          <div className="h-full flex items-center justify-center">
+          <div className="h-full flex flex-col items-center justify-center">
             <div className="relative w-full max-w-5xl aspect-video bg-zinc-900 rounded-2xl overflow-hidden shadow-2xl border border-zinc-800">
               {focusedTrack ? (
                 <VideoTrack trackRef={focusedTrack} className="w-full h-full object-contain" />
@@ -145,6 +171,11 @@ export function BreakoutMonitor({
                 <AudioTrack trackRef={focusedMic} />
               )}
             </div>
+            {focusedIdentity && (bySpeaker.get(focusedIdentity)?.length ?? 0) > 0 && (
+              <div className="w-full max-w-5xl mt-3">
+                <SpokenStrip lines={bySpeaker.get(focusedIdentity) ?? []} />
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-5">
@@ -166,6 +197,11 @@ export function BreakoutMonitor({
                   }
                 })
                 .filter((m) => !!m.participant)
+              // Everything this group said aloud, in order — last few lines only.
+              const groupSpeech = members
+                .flatMap((m) => bySpeaker.get(m.identity) ?? [])
+                .sort((a, b) => a.at - b.at)
+                .slice(-4)
 
               return (
                 <section key={g.id} className="flex flex-col gap-2">
@@ -224,6 +260,8 @@ export function BreakoutMonitor({
                         const displayName = m.participant?.name ?? m.identity
                         const micOn = !!m.participant?.isMicrophoneEnabled
                         const camOn = !!m.trackRef
+                        const lastSpoke = bySpeaker.get(m.identity)?.at(-1)?.at ?? 0
+                        const talking = now - lastSpoke <= SPOKE_RECENTLY_MS
 
                         return (
                           <button
@@ -231,7 +269,8 @@ export function BreakoutMonitor({
                             onClick={() => setFocusedIdentity(m.identity)}
                             className={cn(
                               "relative rounded-lg overflow-hidden aspect-video bg-zinc-800 border border-zinc-700 hover:border-primary transition-colors group",
-                              isVisiting && "ring-1 ring-emerald-500/30"
+                              isVisiting && "ring-1 ring-emerald-500/30",
+                              talking && "border-amber-400 ring-2 ring-amber-400/50",
                             )}
                             title={`Focus on ${displayName}`}
                           >
@@ -257,6 +296,12 @@ export function BreakoutMonitor({
                               )}
                             </div>
 
+                            {talking && (
+                              <div className="absolute top-1 left-1 flex items-center gap-1 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-bold text-black">
+                                <AudioLines className="size-3" /> Talking
+                              </div>
+                            )}
+
                             <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded-md p-1">
                               <Focus className="size-3 text-white" />
                             </div>
@@ -265,6 +310,7 @@ export function BreakoutMonitor({
                       })}
                     </div>
                   )}
+                  <SpokenStrip lines={groupSpeech} />
                 </section>
               )
             })}

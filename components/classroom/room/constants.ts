@@ -19,6 +19,8 @@ export const ORDER_TOPIC     = "cls-order"
 // Live captions are server-side (Deepgram + LiveKit agent). This topic is kept for
 // backwards compatibility if client-side fallback is ever re-enabled.
 export const CAPTION_TOPIC   = "cls-captions"
+/** Captions a tutor types (or sends from a prepared list) instead of speaking. */
+export const TYPED_CAPTION_TOPIC = "cls-typed-caption"
 
 // ─── Hand pointer ─────────────────────────────────────────────────────────────
 // The tutor points at a slide and everyone sees a hand follow. Getting this to

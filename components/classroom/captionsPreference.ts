@@ -48,3 +48,24 @@ export function setCaptionsEnabled(enabled: boolean): void {
 export function useCaptionsEnabled(): boolean {
   return useSyncExternalStore(subscribe, read, readServer)
 }
+
+// ─── Typed-caption composer (tutors) ──────────────────────────────────────────
+// Whether the tutor has the "type a caption" box open. Opened from the controls
+// bar, rendered by the captions overlay. Not remembered: it is per lesson.
+
+let composerOpen = false
+const composerListeners = new Set<() => void>()
+
+function subscribeComposer(listener: () => void): () => void {
+  composerListeners.add(listener)
+  return () => { composerListeners.delete(listener) }
+}
+
+export function setCaptionComposerOpen(open: boolean): void {
+  composerOpen = open
+  for (const l of composerListeners) l()
+}
+
+export function useCaptionComposerOpen(): boolean {
+  return useSyncExternalStore(subscribeComposer, () => composerOpen, () => false)
+}

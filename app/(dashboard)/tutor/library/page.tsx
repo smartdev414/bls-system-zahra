@@ -9,15 +9,16 @@
  */
 
 import { useMemo, useRef, useState } from "react"
-import { Upload, Loader2, Trash2, Search, FolderOpen, CheckCircle2, AlertCircle } from "lucide-react"
+import { Upload, Loader2, Trash2, Search, FolderOpen, CheckCircle2, AlertCircle, Captions, Save } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 import { uploadFile } from "@/lib/upload-file"
 import { itemIcon, formatBytes } from "@/components/library/LibraryPicker"
-import type { LibraryItem } from "@/lib/library"
+import { parsePreparedCaptions, PREPARED_CAPTION_LIMIT, type LibraryItem } from "@/lib/library"
 
 const ACCEPT =
   "video/mp4,video/webm,video/quicktime,application/pdf,application/msword," +
@@ -26,6 +27,68 @@ const ACCEPT =
   ".ppt,.pptx,image/*,audio/mpeg,audio/wav"
 
 type UploadRow = { key: string; name: string; status: "uploading" | "done" | "error"; error?: string }
+
+/**
+ * Captions written before class and sent into the live classroom with one
+ * click from "Type caption" — so the tutor never stops signing to type them.
+ */
+function PreparedCaptionsCard() {
+  const [draft, setDraft] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const { data, loading } = useFetch<{ captions: string[] }>("/api/tutor/library/captions", {
+    errorMessage: "Could not load prepared captions",
+  })
+  const saved = (data?.captions ?? []).join("\n")
+  const value = draft ?? saved
+  const count = parsePreparedCaptions(value).length
+
+  async function save() {
+    setSaving(true)
+    try {
+      const res = await fetch("/api/tutor/library/captions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captions: parsePreparedCaptions(value) }),
+      })
+      if (!res.ok) throw new Error()
+      const body = await res.json() as { captions: string[] }
+      setDraft(body.captions.join("\n"))
+      toast.success("Prepared captions saved")
+    } catch {
+      toast.error("Could not save prepared captions")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border bg-card p-4 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            <Captions className="size-4 text-primary" /> Prepared captions
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            One per line. In class, open <span className="font-medium">Type caption</span> and click one to show it
+            at the bottom of everyone&apos;s screen.
+          </p>
+        </div>
+        <Button size="sm" onClick={save} disabled={saving || loading || draft === null || value === saved}>
+          {saving ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Save className="size-3.5 mr-1.5" />}
+          Save
+        </Button>
+      </div>
+      <Textarea
+        rows={6}
+        value={value}
+        onChange={(e) => setDraft(e.target.value)}
+        disabled={loading && !data}
+        placeholder={"Welcome to today's class\nPlease turn your cameras on\nPractise with your partner — signing only, no voices please\nWe'll take a 5 minute break"}
+      />
+      <p className="text-xs text-muted-foreground">{count} of {PREPARED_CAPTION_LIMIT}</p>
+    </section>
+  )
+}
 
 export default function TutorLibraryPage() {
   const { data, loading, refetch } = useFetch<{ items: LibraryItem[] }>("/api/tutor/library", {
@@ -209,6 +272,8 @@ export default function TutorLibraryPage() {
           </ul>
         )}
       </div>
+
+      <PreparedCaptionsCard />
 
       {/* Files */}
       <div className="relative">

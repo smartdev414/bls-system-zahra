@@ -7,12 +7,14 @@ import {
   Mic, MicOff, Camera, CameraOff, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles, Upload,
-  Circle, Pause, UserPlus, HandMetal, Captions, CaptionsOff,
+  Circle, Pause, UserPlus, HandMetal, Captions, CaptionsOff, Keyboard,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
 import { writeDevicePreference } from "@/components/classroom/devicePreference"
-import { setCaptionsEnabled, useCaptionsEnabled } from "@/components/classroom/captionsPreference"
+import {
+  setCaptionsEnabled, useCaptionsEnabled, setCaptionComposerOpen, useCaptionComposerOpen,
+} from "@/components/classroom/captionsPreference"
 
 // The bar is one row that scrolls sideways once it runs out of room, with Leave
 // pinned to the right. With every button fully labelled a tutor needed ~2300px:
@@ -138,6 +140,7 @@ export function ControlsBar({
   const { localParticipant } = useLocalParticipant()
   const micEnabled = !!localParticipant.isMicrophoneEnabled
   const captionsEnabled = useCaptionsEnabled()
+  const composerOpen = useCaptionComposerOpen()
 
   // "Ask to speak" gave no sign it had worked, so students pressed it again and
   // the tutor got a toast for every press. Hold it in an "Asked" state instead.
@@ -241,6 +244,25 @@ export function ControlsBar({
         {captionsEnabled ? <Captions className="size-3.5" /> : <CaptionsOff className="size-3.5" />}
         <span className={CORE_LABEL}>{captionsEnabled ? "Captions" : "Captions off"}</span>
       </button>
+
+      {/* Tutor-only: type a caption, or send a prepared one, instead of speaking. */}
+      {isTutor && (
+        <button
+          onClick={() => setCaptionComposerOpen(!composerOpen)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            composerOpen
+              ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+          )}
+          title="Type a caption, or send one you prepared, at the bottom of everyone's screen"
+          aria-label={composerOpen ? "Close caption typing" : "Type a caption"}
+          aria-pressed={composerOpen}
+        >
+          <Keyboard className="size-3.5" />
+          <span className={CORE_LABEL}>Type caption</span>
+        </button>
+      )}
 
       <MediaToggle
         source={Track.Source.ScreenShare}

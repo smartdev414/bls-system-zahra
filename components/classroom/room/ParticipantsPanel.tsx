@@ -13,7 +13,7 @@ import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
   Megaphone, UserMinus, GripVertical, Minus, Plus, Mic, MicOff, Monitor,
   Bell, MoreHorizontal,
-  HandMetal,
+  HandMetal, LayoutGrid, Presentation,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
@@ -58,6 +58,8 @@ export function ParticipantsPanel({
   classOrder,
   onReorderClass,
   onToggleOwnHand,
+  view = "spotlight",
+  onToggleView,
 }: {
   pinnedId: string | null
   onPin: (identity: string | null) => void
@@ -113,6 +115,14 @@ export function ParticipantsPanel({
    * on the video they are already watching, rather than up in the header.
    */
   onToggleOwnHand?: () => void
+  /**
+   * "gallery" means the parent has handed this panel the whole stage: nobody
+   * is shown big, and every tile grows to share the space. The collapse and
+   * resize controls go away there — there is nothing to collapse to and no
+   * band to resize — leaving the switch back to spotlight.
+   */
+  view?: "spotlight" | "gallery"
+  onToggleView?: () => void
 }) {
   const { localParticipant } = useLocalParticipant()
   const allParticipants      = useParticipants()
@@ -241,6 +251,9 @@ export function ParticipantsPanel({
   // real emoji, capped so it doesn't swallow a generous tile.
   const handBadgePx = Math.max(28, Math.min(52, Math.round(pack.tileWidth * 0.32)))
   const radius = tileRadius(pack.tileWidth)
+  // Name plates grow with the tile, so a gallery-sized face doesn't carry a
+  // 9px caption; a packed strip keeps the old small sizes.
+  const nameFontPx = dense ? 7 : Math.max(9, Math.min(14, Math.round(pack.tileWidth * 0.045)))
 
   function reorder(sourceId: string, targetId: string) {
     if (!onReorderClass || sourceId === targetId) return
@@ -296,24 +309,52 @@ export function ParticipantsPanel({
           belongs to the faces. The old chrome was a 144px column down the left,
           which cost a column of tiles for the life of every lesson. */}
       <div className="shrink-0 h-8 flex items-center gap-1.5 px-2 border-b border-zinc-800">
-        <button
-          onClick={onToggleCollapse}
-          className="flex items-center gap-1.5 min-w-0 flex-1 hover:text-white text-zinc-300 transition-colors text-left"
-          title="Hide the class"
-        >
-          <Users className="size-3.5 text-primary shrink-0" />
-          <span className="text-[11px] font-bold truncate">
-            Class · {allParticipants.length}
-          </span>
-          <ChevronDown
-            className={cn("size-3 text-zinc-500 shrink-0", orientation === "side" && "-rotate-90")}
-          />
-        </button>
+        {view === "gallery" ? (
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 text-zinc-300">
+            <Users className="size-3.5 text-primary shrink-0" />
+            <span className="text-[11px] font-bold truncate">
+              Gallery · {allParticipants.length}
+            </span>
+          </div>
+        ) : (
+          <button
+            onClick={onToggleCollapse}
+            className="flex items-center gap-1.5 min-w-0 flex-1 hover:text-white text-zinc-300 transition-colors text-left"
+            title="Hide the class"
+          >
+            <Users className="size-3.5 text-primary shrink-0" />
+            <span className="text-[11px] font-bold truncate">
+              Class · {allParticipants.length}
+            </span>
+            <ChevronDown
+              className={cn("size-3 text-zinc-500 shrink-0", orientation === "side" && "-rotate-90")}
+            />
+          </button>
+        )}
+
+        {onToggleView && (
+          <button
+            type="button"
+            onClick={onToggleView}
+            className="shrink-0 h-6 px-2 rounded-md flex items-center gap-1 text-[11px] font-semibold text-zinc-200 bg-zinc-800 hover:bg-zinc-700 transition-colors"
+            title={
+              view === "gallery"
+                ? "Spotlight view — put the stage back"
+                : "Gallery view — everyone the same size, nobody big on the stage"
+            }
+          >
+            {view === "gallery"
+              ? <Presentation className="size-3" />
+              : <LayoutGrid className="size-3" />}
+            {view === "gallery" ? "Spotlight" : "Gallery"}
+          </button>
+        )}
 
         {/* Sizes the panel itself, not the tiles — the tiles are sized by how
             many people are in the room and how much room the panel has. Giving
             the class more of the stage is the only lever that still makes
             sense once nothing is ever scrolled out of sight. */}
+        {view !== "gallery" && (
         <div className="flex items-center gap-1 shrink-0">
           <TileSizeButton
             label="Give the class less room"
@@ -334,6 +375,7 @@ export function ParticipantsPanel({
             icon={<Plus className="size-3" />}
           />
         </div>
+        )}
       </div>
 
       {/* The packing box. `overflow-hidden` rather than `auto` is the point of
@@ -488,7 +530,7 @@ export function ParticipantsPanel({
                   <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-1 pb-0.5 pointer-events-none">
                     <p
                       className="text-white truncate font-medium leading-tight"
-                      style={{ fontSize: dense ? 7 : 9 }}
+                      style={{ fontSize: nameFontPx }}
                     >
                       {handRaised && !isTutor && (
                         <span className="mr-0.5" aria-hidden>✋</span>
@@ -516,7 +558,7 @@ export function ParticipantsPanel({
                   </div>
                   <p
                     className="font-semibold text-white truncate max-w-full px-1 leading-tight"
-                    style={{ fontSize: dense ? 7 : 9 }}
+                    style={{ fontSize: nameFontPx }}
                   >
                     {handRaised && !isTutor && (
                       <span className="mr-0.5" aria-hidden>✋</span>
