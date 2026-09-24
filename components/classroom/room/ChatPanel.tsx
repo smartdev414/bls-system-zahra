@@ -243,7 +243,9 @@ function MessageBubble({
     return (
       <div className="flex flex-col items-center gap-0.5 my-1">
         <span className="text-2xl">{msg.text}</span>
-        <span className={cn("text-[10px]", t.timeText)}>{msg.from} · {time}</span>
+        <span className={cn("text-[10px]", t.timeText)}>
+          {msg.from}{showGroup && msg.groupName && ` · ${msg.groupName}`} · {time}
+        </span>
       </div>
     )
   }
