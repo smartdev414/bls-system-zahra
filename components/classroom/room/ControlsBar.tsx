@@ -642,17 +642,28 @@ function MediaToggle({
     source,
     captureOptions,
     publishOptions,
-    // Remembered so a reload ("Refresh all" included) rejoins the same way.
-    onChange: (on, userInitiated) => {
-      if (!userInitiated) return
-      if (source === Track.Source.Camera) writeDevicePreference("camera", on)
-      if (source === Track.Source.Microphone) writeDevicePreference("mic", on)
-    },
   })
+  // Remembered so a reload ("Refresh all" included) rejoins the same way.
+  // Written here, on the click, rather than from `onChange`: LiveKit only flags
+  // a change as user-initiated when it comes through its own button props, so
+  // calling `toggle()` directly never counted and the preference was never
+  // saved — a student who had their camera on came back from a reload with it
+  // off. Changes this person didn't make (leaving the room, a reconnect) still
+  // don't touch it.
+  const handleClick = async () => {
+    const next = !enabled
+    try {
+      await toggle()
+    } catch {
+      return
+    }
+    if (source === Track.Source.Camera) writeDevicePreference("camera", next)
+    if (source === Track.Source.Microphone) writeDevicePreference("mic", next)
+  }
   return (
     <button
       type="button"
-      onClick={() => void toggle()}
+      onClick={() => void handleClick()}
       disabled={pending}
       aria-pressed={enabled}
       aria-label={enabled ? onLabel : offLabel}

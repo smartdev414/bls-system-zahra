@@ -16,6 +16,7 @@ import { Track } from "livekit-client"
 import { Camera, Users2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { writeDevicePreference } from "@/components/classroom/devicePreference"
 
 export function BreakoutSelfStage({
   groupName,
@@ -37,6 +38,8 @@ export function BreakoutSelfStage({
     setBusy(true)
     try {
       await localParticipant.setCameraEnabled(true)
+      // So a reload or rejoin brings the camera back on, as the controls bar does.
+      writeDevicePreference("camera", true)
     } catch {
       /* Permission denied or no device — the controls bar reports it too. */
     } finally {

@@ -185,8 +185,13 @@ function Banner({
       // Below the 44px room header, not over it: at top-0 it covered Raise Hand
       // and the tutor's Requests / Raised Hands — on exactly the weak connection
       // where a student most needs to flag a problem.
+      //
+      // Click-through: it only has something to say, nothing to press, and it
+      // sits over the top of the stage — where "Close", "Back to tutor" and
+      // "Stop spotlight" live. On a weak link it could stay up for minutes and
+      // take those buttons away exactly when a tutor was trying to use them.
       className={[
-        "absolute inset-x-0 top-11 z-40 flex items-center justify-center gap-2",
+        "pointer-events-none absolute inset-x-0 top-11 z-40 flex items-center justify-center gap-2",
         "px-4 py-2 text-center text-xs sm:text-sm font-medium",
         tone === "warn" ? "bg-amber-500/95 text-amber-950" : "bg-red-600/95 text-white",
       ].join(" ")}
