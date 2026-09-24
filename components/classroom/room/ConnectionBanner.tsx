@@ -12,14 +12,15 @@
  * a spoken-language class they would hear the silence. In a BSL class the
  * frozen hand *is* the content, so the ambiguity is total.
  *
- * Two states are worth interrupting for:
+ * Only a lost connection is worth interrupting for:
  *
  *   - **Reconnecting.** Say so, count the seconds, and say plainly that
  *     reloading is the wrong move — a reload discards the chat, the raised
  *     hand and the breakout membership that the reconnect would have restored.
- *   - **Sustained poor quality.** The connection is up and losing packets. Here
- *     we do something rather than only saying something: cap what we publish so
- *     the student's own upstream stops fighting for room it hasn't got.
+ *
+ * Sustained poor quality gets no banner (it covered the stage for minutes at a
+ * time). We still act on it quietly: cap what we publish so the student's own
+ * upstream stops fighting for room it hasn't got.
  *
  * Nothing is shown for a momentary dip. Public Wi-Fi produces those constantly
  * and a banner that flickers is a banner people learn to ignore.
@@ -28,7 +29,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useConnectionState, useLocalParticipant } from "@livekit/components-react"
 import { ConnectionQuality, ConnectionState, ParticipantEvent, Track, VideoQuality } from "livekit-client"
-import { Loader2, SignalLow, WifiOff } from "lucide-react"
+import { Loader2, WifiOff } from "lucide-react"
 import { toast } from "sonner"
 
 /**
@@ -47,7 +48,8 @@ export function ConnectionBanner() {
     state === ConnectionState.Reconnecting || state === ConnectionState.SignalReconnecting
 
   // ── Sustained poor quality ──────────────────────────────────────────────────
-  const [struggling, setStruggling] = useState(false)
+  // Handled silently: no banner (it covered the stage and read as an error the
+  // student couldn't act on) — we just ease off our own upstream.
   // One downshift per visit. Stepping quality back up the moment the line looks
   // better is how you get a lesson that oscillates between soft and frozen; the
   // student can rejoin if they move somewhere better.
@@ -67,16 +69,12 @@ export function ConnectionBanner() {
       if (!bad) {
         poorSince = null
         clear()
-        setStruggling(false)
         return
       }
 
       if (poorSince !== null) return
       poorSince = Date.now()
-      timer = setTimeout(() => {
-        setStruggling(true)
-        downshift()
-      }, POOR_GRACE_MS)
+      timer = setTimeout(downshift, POOR_GRACE_MS)
     }
 
     /**
@@ -135,15 +133,6 @@ export function ConnectionBanner() {
     return (
       <Banner tone="bad" icon={<WifiOff className="size-4" />}>
         <strong>Disconnected.</strong> Trying to get you back into the class.
-      </Banner>
-    )
-  }
-
-  if (struggling) {
-    return (
-      <Banner tone="warn" icon={<SignalLow className="size-4" />}>
-        <strong>Weak connection.</strong>{" "}
-        Video may look soft or stutter. Moving closer to the router, or off a busy public Wi-Fi, helps most.
       </Banner>
     )
   }
