@@ -21,11 +21,12 @@ async function handlePOST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email },
-      select: { id: true, name: true, email: true, passwordHash: true },
+      select: { id: true, name: true, email: true },
     })
-    console.log('user ============>', user);
-    // Only issue a token for users with a password (skip OAuth-only accounts).
-    if (user && user.passwordHash) {
+
+    // OAuth-only accounts (no passwordHash) get a link too, so they can set a
+    // password and sign in with email as well as Google.
+    if (user) {
       // Invalidate any outstanding tokens so only the latest one works.
       await prisma.passwordResetToken.updateMany({
         where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
