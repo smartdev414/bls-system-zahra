@@ -1005,7 +1005,11 @@ export function ClassroomRoom({
           toast.info(`${data.name} raised their hand ✋`, {
             id: `hand-${data.identity}`,
             description: "They'll wait — bring them up when you're ready.",
-            duration: 8000,
+            // Stays until the tutor acts on it (Show / close) or the student
+            // lowers their hand. On a timer it vanished while the tutor was
+            // mid-sign, and a missed hand is a student left waiting.
+            duration: Infinity,
+            closeButton: true,
             action: { label: "Show", onClick: () => setPinnedId(data.identity) },
           })
         } else {
