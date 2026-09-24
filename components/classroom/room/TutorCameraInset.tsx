@@ -3,11 +3,11 @@
 // Shows just the tutor's camera feed during PPT split-screen mode so students
 // can read BSL signs alongside slides.
 
-import { useTracks, useLocalParticipant, VideoTrack } from "@livekit/components-react"
+import { useTracks, useLocalParticipant, useParticipants } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import { Camera, Users2 } from "lucide-react"
-import { localCameraClassName } from "@/components/classroom/localCameraView"
 import { BreakoutSelfStage } from "./BreakoutSelfStage"
+import { TutorFeed } from "./TutorVideoArea"
 
 // `hidden` is set for a student whose breakout group the tutor has not joined:
 // the tutor is elsewhere, so this slot shows where they are instead of a feed.
@@ -31,6 +31,8 @@ export function TutorCameraInset({
     tutorCams.find((t) => t.participant.identity === localParticipant.identity) ?? tutorCams[0]
   const name      = tutorCam?.participant.name ?? tutorCam?.participant.identity ?? "Tutor"
   const mirrorLocal = tutorCam?.participant.identity === localParticipant.identity
+  // "Camera off" was shown for a tutor who had left the room altogether.
+  const tutorPresent = useParticipants().some((p) => p.metadata === "tutor")
 
   if (hidden) {
     // In a breakout the slot belongs to the student's own group: show their own
@@ -56,18 +58,23 @@ export function TutorCameraInset({
           {/* Fit the whole frame (no crop) so the tutor's full head and signing
               hands stay visible regardless of panel width; self-view is mirrored.
               object-cover would crop the head off when this view is full-width. */}
-          <VideoTrack
+          <TutorFeed
             trackRef={tutorCam}
-            className={localCameraClassName(mirrorLocal, "w-full h-full object-contain")}
+            mirror={mirrorLocal}
+            isScreen={false}
+            isSelf={tutorCam.participant.identity === localParticipant.identity}
           />
-          <div className="absolute top-2 left-2 bg-amber-500/80 text-black text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
+          {/* Bottom-left: top-left sat under the room's logo watermark. */}
+          <div className="absolute bottom-2 left-2 bg-amber-500/80 text-black text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
             BSL · {name}
           </div>
         </>
       ) : (
         <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-600">
           <Camera className="size-8 opacity-20" />
-          <span className="text-xs opacity-50 text-center px-2">Tutor camera off</span>
+          <span className="text-xs opacity-70 text-center px-2">
+            {tutorPresent ? "Tutor camera off" : "Waiting for the tutor to join…"}
+          </span>
         </div>
       )}
     </div>

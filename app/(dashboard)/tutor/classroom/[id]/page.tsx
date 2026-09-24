@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog"
 import { useFetch, usePostCallback, usePatchCallback } from "@/hooks/use-fetch"
 import {
-  getNetworkSnapshot, probeNetworkNow, subscribeNetworkRecovery,
+  getNetworkSnapshot, isLinkFailure, probeNetworkNow, subscribeNetworkRecovery,
 } from "@/lib/network-health"
 import { cn } from "@/lib/utils"
 import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
@@ -277,10 +277,12 @@ function TutorEntryScreen({
               size="lg"
               className="w-full font-semibold gap-2"
             >
+              {/* A class that is already running is re-entered, not started —
+                  "Start Session" there read as if the lesson would begin again. */}
               {starting ? (
-                <><Loader2 className="size-4 animate-spin" /> Starting…</>
+                <><Loader2 className="size-4 animate-spin" /> {session.status === "LIVE" ? "Rejoining…" : "Starting…"}</>
               ) : (
-                <><Radio className="size-4" /> Start Session</>
+                <><Radio className="size-4" /> {session.status === "LIVE" ? "Rejoin Session" : "Start Session"}</>
               )}
             </Button>
             <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
@@ -351,7 +353,7 @@ export default function TutorClassroomPage({
   // Distinguishes "the tutor chose to go" from "the network took them".
   const leavingDeliberatelyRef = useRef(false)
 
-  const { data, loading: infoLoading, error: infoError } = useFetch<SessionInfo>(
+  const { data, loading: infoLoading, error: infoError, refetch: refetchInfo } = useFetch<SessionInfo>(
     `/api/sessions/${id}/info`,
     { errorMessage: false }
   )
@@ -442,6 +444,21 @@ export default function TutorClassroomPage({
     router.replace(`/tutor/sessions/${id}`)
   }
 
+  // The error screen below promises "we'll keep trying" for a link failure, so
+  // keep that promise: reload the session info as soon as the link is back.
+  // Without this one dropped request on page load stranded the tutor on it.
+  const infoLinkFailed = !!infoError?.kind && isLinkFailure(infoError.kind)
+  useEffect(() => {
+    if (!infoLinkFailed) return
+    const unsubscribe = subscribeNetworkRecovery(() => { void refetchInfo() })
+    // A one-off drop may already have been cleared by the health probe, in
+    // which case no recovery event is coming — just try again shortly.
+    const timer = getNetworkSnapshot().status === "online"
+      ? setTimeout(() => { void refetchInfo() }, 2_000)
+      : null
+    return () => { unsubscribe(); if (timer) clearTimeout(timer) }
+  }, [infoLinkFailed, refetchInfo])
+
   // Back into the room by ourselves once the link is provably back.
   useEffect(() => {
     if (!waitingForNetwork) return
@@ -529,6 +546,9 @@ export default function TutorClassroomPage({
           <h2 className="font-bold text-lg">Could not open classroom</h2>
           <p className="text-muted-foreground text-sm mt-1">{msg}</p>
         </div>
+        <Button onClick={() => { if (infoError) void refetchInfo(); else getToken({}) }}>
+          Try again
+        </Button>
       </div>
     )
   }

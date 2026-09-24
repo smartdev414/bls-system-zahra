@@ -508,7 +508,7 @@ function EntryScreen({
 
 // ─── After leaving / disconnect ───────────────────────────────────────────────
 
-function SessionEndedScreen() {
+function SessionEndedScreen({ endedByTutor = false }: { endedByTutor?: boolean }) {
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center gap-8 text-center">
       <div className="relative">
@@ -521,7 +521,9 @@ function SessionEndedScreen() {
       </div>
 
       <div className="max-w-xs">
-        <h2 className="text-2xl font-black">You left the session</h2>
+        <h2 className="text-2xl font-black">
+          {endedByTutor ? "This class has ended" : "You left the session"}
+        </h2>
         <p className="text-muted-foreground mt-2 text-sm">
           Thanks for joining! Keep practising your BSL skills.
         </p>
@@ -765,7 +767,7 @@ export default function ClassroomRoomPage({
     () => (tokenData ? readDevicePreference("camera", false) : false),
     [tokenData],
   )
-  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "lost" | "duplicate" | "blocked" | "removed">(null)
+  const [disconnectKind, setDisconnectKind] = useState<null | "left" | "ended" | "lost" | "duplicate" | "blocked" | "removed">(null)
   const leaveClickedRef = useRef(false)
 
   // How this device talks to the media servers. Read from storage on mount
@@ -910,6 +912,10 @@ export default function ClassroomRoomPage({
       // The tutor removed this student. "Connection lost" told them it was a
       // network blip and offered to reconnect them straight back in.
       if (reason === DisconnectReason.PARTICIPANT_REMOVED) return "removed"
+      // Finishing a session deletes the room. Every student used to be told
+      // "Connection lost — check your internet" and offered a reconnect into a
+      // class that no longer exists.
+      if (reason === DisconnectReason.ROOM_DELETED) return "ended"
       return "lost"
     })
   }
@@ -1029,6 +1035,7 @@ export default function ClassroomRoomPage({
   }, [waitingForNetwork])
 
   if (disconnectKind === "left") return <SessionEndedScreen />
+  if (disconnectKind === "ended") return <SessionEndedScreen endedByTutor />
   if (waitingForNetwork) return <WaitingForNetworkScreen onRetry={handleReconnect} />
   if (disconnectKind === "lost") return <ConnectionLostScreen onRetry={handleReconnect} />
   if (disconnectKind === "duplicate") return <ConnectionDuplicateScreen onReconnect={handleReconnect} />

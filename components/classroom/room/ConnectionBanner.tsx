@@ -182,8 +182,11 @@ function Banner({
     <div
       role="status"
       aria-live="polite"
+      // Below the 44px room header, not over it: at top-0 it covered Raise Hand
+      // and the tutor's Requests / Raised Hands — on exactly the weak connection
+      // where a student most needs to flag a problem.
       className={[
-        "absolute inset-x-0 top-0 z-40 flex items-center justify-center gap-2",
+        "absolute inset-x-0 top-11 z-40 flex items-center justify-center gap-2",
         "px-4 py-2 text-center text-xs sm:text-sm font-medium",
         tone === "warn" ? "bg-amber-500/95 text-amber-950" : "bg-red-600/95 text-white",
       ].join(" ")}

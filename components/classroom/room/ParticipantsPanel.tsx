@@ -12,7 +12,7 @@ import { Track } from "livekit-client"
 import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
   Megaphone, UserMinus, GripVertical, Minus, Plus, Mic, MicOff, Monitor,
-  Bell,
+  Bell, MoreHorizontal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
@@ -423,6 +423,34 @@ export function ParticipantsPanel({
                 })
               }}
             >
+              {/* The actions menu used to open only on right-click, which a
+                  tutor on an iPad or touch laptop cannot do — pin, spotlight,
+                  mute and remove were simply out of reach. Same menu, opened
+                  from a visible button. */}
+              {isLocalTutor && !isLocal && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setMenu({
+                      identity: p.identity,
+                      name: displayName,
+                      isTutor,
+                      isLocal,
+                      micEnabled: p.isMicrophoneEnabled,
+                      x: r.left,
+                      y: r.bottom,
+                    })
+                  }}
+                  className="absolute bottom-1 right-1 z-30 size-6 rounded-md bg-black/60 hover:bg-black/80 text-white flex items-center justify-center"
+                  title={`Actions for ${displayName}`}
+                  aria-label={`Actions for ${displayName}`}
+                  aria-haspopup="menu"
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </button>
+              )}
               {canDrag && !dense && (
                 // Top-left hint; tutor tile occupies this slot, but student
                 // tiles (the only draggable ones) don't, so there's no clash.

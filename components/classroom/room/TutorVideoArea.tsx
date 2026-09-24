@@ -80,7 +80,7 @@ export function TutorVideoArea({
 // A camera that is switched off stays published, just muted — rendered as-is it
 // is a black rectangle, which in a signed lesson reads as a frozen or broken
 // feed. Say what is actually happening instead.
-function TutorFeed({
+export function TutorFeed({
   trackRef,
   mirror,
   isScreen,

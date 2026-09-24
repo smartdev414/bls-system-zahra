@@ -1,5 +1,6 @@
 "use client"
 
+import { usePathname } from "next/navigation"
 import { useState, useRef } from "react"
 import {
   MessageSquarePlus, X, Bug, Lightbulb, Sparkles, HelpCircle,
@@ -310,6 +311,10 @@ function FeedbackModal({ onClose }: { onClose: () => void }) {
 
 export function FeedbackButton() {
   const [open, setOpen] = useState(false)
+  // On a phone the floating button sat on top of the classroom lobby's
+  // "Join Session" — the one thing the page is for. Keep it off those pages
+  // below `sm`; it is still there on every other page and on larger screens.
+  const inClassroom = /^\/(student|tutor)\/classroom\/[^/]+/.test(usePathname() ?? "")
 
   return (
     <>
@@ -318,7 +323,10 @@ export function FeedbackButton() {
         data-app-feedback
         onClick={() => setOpen(true)}
         title="Send feedback"
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-primary-foreground shadow-lg hover:bg-primary/90 transition-all hover:scale-105 active:scale-95 text-sm font-semibold"
+        className={cn(
+          inClassroom && "max-sm:hidden",
+          "fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-primary-foreground shadow-lg hover:bg-primary/90 transition-all hover:scale-105 active:scale-95 text-sm font-semibold",
+        )}
       >
         <MessageSquarePlus className="size-4" />
         <span className="hidden sm:inline">Feedback</span>
