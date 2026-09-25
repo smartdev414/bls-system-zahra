@@ -102,8 +102,8 @@ export default function InvitePage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <main className="flex-1 flex flex-col items-center justify-center gap-6 px-4 py-12">
-        <LogoFull width={200} />
+      <main className="flex-1 flex flex-col items-center justify-center gap-5 px-4 py-12">
+        <LogoFull />
 
 
         {loading && (

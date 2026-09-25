@@ -60,8 +60,8 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <main className="flex-1 flex flex-col items-center justify-center gap-6 px-4 pb-16">
-        <LogoFull width={200} />
+      <main className="flex-1 flex flex-col items-center justify-center gap-5 px-4 pb-16">
+        <LogoFull />
 
         <Card className="w-full max-w-100 shadow-lg">
           <CardHeader className="text-center pb-2">

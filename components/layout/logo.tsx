@@ -7,9 +7,11 @@ import { cn } from "@/lib/utils"
 //                  small sizes (header, watermark) where the tagline would be
 //                  illegible. Works on light and dark backgrounds.
 //   tms-logo.png — full lockup incl. "WIDEN YOUR OPPORTUNITIES" (635x455).
-//                  Black tagline on transparent, so always sits on white.
+//                  Black tagline on transparent; tms-logo-dark.png is the same
+//                  with a white tagline for dark mode.
 export const LOGO_MARK_SRC = "/brand/tms-mark.png"
 export const LOGO_FULL_SRC = "/brand/tms-logo.png"
+export const LOGO_FULL_DARK_SRC = "/brand/tms-logo-dark.png"
 export const LOGO_BRAND = "Teach Me Sign"
 
 const MARK_W = 401
@@ -37,23 +39,21 @@ export function Logo({ className }: { className?: string }) {
   )
 }
 
-// Full lockup with tagline — for roomy spots like the auth pages. Rendered on
-// a white tile so the black tagline stays readable in dark mode.
-export function LogoFull({ className, width = 220 }: { className?: string; width?: number }) {
+// Full lockup with tagline — for roomy spots like the auth pages. Sits directly
+// on the page background; dark mode swaps to a copy with a white tagline.
+export function LogoFull({ className, width = 170 }: { className?: string; width?: number }) {
+  const img = {
+    alt: `${LOGO_BRAND} — Widen your opportunities`,
+    width: FULL_W,
+    height: FULL_H,
+    sizes: `${width}px`,
+    style: { width, height: "auto" },
+    priority: true,
+  }
   return (
-    <Link
-      href="/"
-      className={cn("inline-block rounded-xl bg-white p-3 ring-1 ring-foreground/10 shadow-sm", className)}
-    >
-      <Image
-        src={LOGO_FULL_SRC}
-        alt={`${LOGO_BRAND} — Widen your opportunities`}
-        width={FULL_W}
-        height={FULL_H}
-        sizes={`${width}px`}
-        style={{ width, height: "auto" }}
-        priority
-      />
+    <Link href="/" className={cn("inline-block shrink-0", className)}>
+      <Image src={LOGO_FULL_SRC} className="dark:hidden" {...img} />
+      <Image src={LOGO_FULL_DARK_SRC} className="hidden dark:block" {...img} />
     </Link>
   )
 }

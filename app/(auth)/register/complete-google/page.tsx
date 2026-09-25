@@ -42,8 +42,8 @@ function CompleteGoogleForm() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <main className="flex-1 flex flex-col items-center justify-center gap-6 px-4 pb-12">
-        <LogoFull width={200} />
+      <main className="flex-1 flex flex-col items-center justify-center gap-5 px-4 pb-12">
+        <LogoFull />
 
         <Card className="w-full max-w-110 shadow-lg">
           <CardHeader className="text-center pb-2">
