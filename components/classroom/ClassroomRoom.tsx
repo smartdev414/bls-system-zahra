@@ -4001,7 +4001,7 @@ export function ClassroomRoom({
 
       {/* Brand watermark — visible to all participants. Top-left so it doesn't
           collide with the controls bar at the bottom. */}
-      <LogoWatermark className="top-3 left-3" size={44} />
+      <LogoWatermark className="top-3 left-3" size={52} />
 
       {/* ── Attention nudge overlay (everyone, triggered by tutor) ── */}
       {activeNudge && (

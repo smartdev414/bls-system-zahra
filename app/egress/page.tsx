@@ -128,7 +128,7 @@ export default function EgressTemplatePage() {
 
         {/* Brand watermark — embedded in the recorded MP4. Sits above the
             video grid but is non-interactive. */}
-        <LogoWatermark className="top-4 left-4" size={56} />
+        <LogoWatermark className="top-4 left-4" size={72} />
 
         {/* Pipe audio so the recording has sound. */}
         <RoomAudioRenderer />

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { LogoFull } from "@/components/layout/logo"
 import { Footer } from "@/components/layout/footer"
 import { usePostCallback } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
@@ -41,7 +42,9 @@ function CompleteGoogleForm() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <main className="flex-1 flex items-center justify-center px-4 pb-12">
+      <main className="flex-1 flex flex-col items-center justify-center gap-6 px-4 pb-12">
+        <LogoFull width={200} />
+
         <Card className="w-full max-w-110 shadow-lg">
           <CardHeader className="text-center pb-2">
             <CardTitle className="text-2xl">One Last Step</CardTitle>
