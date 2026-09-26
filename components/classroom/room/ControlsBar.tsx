@@ -7,7 +7,7 @@ import {
   Mic, MicOff, Camera, CameraOff, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles, Upload,
-  Circle, Pause, UserPlus, HandMetal, Captions, CaptionsOff, Keyboard, Maximize2, Minimize2,
+  Circle, Pause, UserPlus, Hand, Captions, CaptionsOff, Keyboard, Maximize2, Minimize2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
@@ -187,7 +187,7 @@ export function ControlsBar({
               title={askedToSpeak ? "Your tutor has been asked — waiting for them" : "Ask your tutor to turn your microphone on"}
               aria-label={askedToSpeak ? "Asked to speak" : "Ask to speak"}
             >
-              <HandMetal className="size-3.5" />
+              <Hand className="size-3.5" />
               <span className={CORE_LABEL}>{askedToSpeak ? "Asked" : "Ask to speak"}</span>
             </button>
           )}

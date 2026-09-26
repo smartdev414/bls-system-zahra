@@ -612,6 +612,18 @@ export function ChatPanel({
             </div>
           )}
         </div>
+
+        {/* Clicking the header also collapses the chat, but nobody finds that;
+            a plain close button hands the width back to the class gallery. */}
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          className={cn("shrink-0 mr-2 flex items-center justify-center size-8 rounded-lg transition-colors", t.hover, t.headerSub)}
+          title="Hide chat — make the cameras bigger"
+          aria-label="Hide chat"
+        >
+          <X className="size-4" />
+        </button>
       </div>
 
       {raisedHands.length > 0 && (

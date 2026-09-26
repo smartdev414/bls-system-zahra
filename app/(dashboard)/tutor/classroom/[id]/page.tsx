@@ -154,7 +154,7 @@ function TutorEntryScreen({
   starting: boolean
 }) {
   const [videoEnabled, setVideoEnabled] = useState(true)
-  const [audioEnabled, setAudioEnabled] = useState(true)
+  const [audioEnabled, setAudioEnabled] = useState(false)
   // The room reads these when it connects — see devicePreference.
   useEffect(() => { writeDevicePreference("camera", videoEnabled) }, [videoEnabled])
   useEffect(() => { writeDevicePreference("mic", audioEnabled) }, [audioEnabled])
@@ -329,7 +329,7 @@ export default function TutorClassroomPage({
   const joinDevices = useMemo(
     () => ({
       video: tokenData ? readDevicePreference("camera", true) : true,
-      audio: tokenData ? readDevicePreference("mic", true) : true,
+      audio: tokenData ? readDevicePreference("mic", false) : false,
     }),
     [tokenData],
   )

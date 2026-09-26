@@ -15,7 +15,7 @@ import { ConnectionState, RoomEvent, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
 import {
   Radio, Users, Users2, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
-  MessageSquare, X, HandMetal, Mic, Check, PencilLine, Maximize2,
+  MessageSquare, X, Hand, Mic, Check, PencilLine, Maximize2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
@@ -296,6 +296,17 @@ export function ClassroomRoom({
   // Gallery is the class panel, so it is open whatever the chevron last said.
   const classPanelOpen = participantsOpen || galleryView
   const [chatOpen,         setChatOpen]         = useState(true)
+  // While the chat is hidden, new messages are counted on the floating chat
+  // button and announced with a pop-up that opens the chat when tapped.
+  const [chatUnread,       setChatUnread]       = useState(0)
+  const chatOpenRef = useRef(chatOpen)
+  useEffect(() => {
+    chatOpenRef.current = chatOpen
+    if (chatOpen) {
+      setChatUnread(0)
+      toast.dismiss("chat-new")
+    }
+  }, [chatOpen])
   const [requestsOpen,     setRequestsOpen]     = useState(false)
   // Tutor-only: a dedicated queue of raised hands, separate from the chat
   // panel's inline strip — the strip scrolls out of view once messages pile
@@ -911,6 +922,20 @@ export function ClassroomRoom({
       })
       setChatFlash(true)
       setTimeout(() => setChatFlash(false), 800)
+      if (!chatOpenRef.current && data.type !== "system") {
+        setChatUnread((n) => n + 1)
+        const preview =
+          data.type === "reaction" ? `reacted ${data.text}`
+            : data.text || (data.attachment ? "sent a file" : "")
+        // One pop-up at a time: a newer message replaces the last one.
+        toast(data.from, {
+          id: "chat-new",
+          description: preview.length > 90 ? `${preview.slice(0, 90)}…` : preview,
+          icon: <MessageSquare className="size-4 text-primary" />,
+          duration: 6000,
+          action: { label: "Open chat", onClick: () => setChatOpen(true) },
+        })
+      }
     } catch { /* ignore malformed */ }
   })
 
@@ -4137,7 +4162,7 @@ export function ClassroomRoom({
               title={handRaised ? "Lower your hand" : "Raise your hand — your tutor will be notified"}
               aria-label={handRaised ? "Lower hand" : "Raise hand"}
             >
-              <HandMetal className="size-3.5 shrink-0" />
+              <Hand className="size-3.5 shrink-0" />
               <span className="hidden sm:inline">{handRaised ? "Lower Hand" : "Raise Hand"}</span>
             </button>
           )}
@@ -4153,7 +4178,7 @@ export function ClassroomRoom({
                 )}
                 aria-label="Raised hands"
               >
-                <HandMetal className="size-3" />
+                <Hand className="size-3" />
                 <span className="hidden sm:inline">Raised Hands</span>
                 {raisedHands.length > 0 && (
                   <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[10px] font-bold text-zinc-950 flex items-center justify-center">
@@ -4622,10 +4647,11 @@ export function ClassroomRoom({
         <div className={cn(
           "flex flex-col overflow-hidden bg-zinc-900 transition-all duration-200 border-zinc-800 min-w-0",
           "md:relative md:h-full md:shrink-0 md:border-l md:flex",
-          chatOpen ? "md:w-72" : "md:w-10",
+          // Closed, the column goes entirely so the gallery gets its width;
+          // the floating button below brings it back.
           chatOpen
-            ? "max-md:absolute max-md:inset-0 max-md:z-30 max-md:w-full max-md:shadow-2xl"
-            : "max-md:hidden",
+            ? "md:w-72 max-md:absolute max-md:inset-0 max-md:z-30 max-md:w-full max-md:shadow-2xl"
+            : "hidden md:hidden",
         )}>
           <ChatPanel
             messages={messages}
@@ -4648,19 +4674,25 @@ export function ClassroomRoom({
           />
         </div>
 
-        {/* Mobile-only floating chat toggle — visible when chat is closed. */}
+        {/* Floating chat toggle — visible when chat is closed. */}
         {!chatOpen && (
           <button
             onClick={() => setChatOpen(true)}
             className={cn(
-              "md:hidden absolute bottom-3 right-3 z-40 size-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center active:scale-95 transition-transform",
+              "absolute bottom-3 right-3 z-40 size-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center active:scale-95 transition-transform",
               // Ring it while breakouts run so it reads as "your group chat is here".
               breakoutsActive && "ring-2 ring-white/70",
               chatFlash && "animate-pulse"
             )}
-            aria-label="Open chat"
+            title="Open chat"
+            aria-label={chatUnread > 0 ? `Open chat, ${chatUnread} new` : "Open chat"}
           >
             <MessageSquare className="size-5" />
+            {chatUnread > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-[11px] font-bold text-white ring-2 ring-zinc-950 flex items-center justify-center">
+                {chatUnread > 99 ? "99+" : chatUnread}
+              </span>
+            )}
           </button>
         )}
       </div>

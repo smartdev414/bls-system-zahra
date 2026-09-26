@@ -13,7 +13,7 @@ import {
   Users, Maximize2, ChevronDown, PictureInPicture2, Pin, PinOff,
   Megaphone, UserMinus, GripVertical, Minus, Plus, Mic, MicOff, Monitor,
   Bell, MoreHorizontal,
-  HandMetal, LayoutGrid, Presentation,
+  Hand, LayoutGrid, Presentation,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
@@ -675,7 +675,7 @@ export function ParticipantsPanel({
                   {handRaised ? (
                     <span className="leading-none" style={{ fontSize: Math.max(16, Math.round(handBadgePx * 0.72)) }} aria-hidden>✋</span>
                   ) : (
-                    <HandMetal style={{ width: handBadgePx * 0.5, height: handBadgePx * 0.5 }} aria-hidden />
+                    <Hand style={{ width: handBadgePx * 0.5, height: handBadgePx * 0.5 }} aria-hidden />
                   )}
                 </button>
               )}
