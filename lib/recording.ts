@@ -1,7 +1,8 @@
-import { EgressClient } from "livekit-server-sdk"
+import { EgressClient, EncodedFileOutput, S3Upload } from "livekit-server-sdk"
 import { EgressStatus } from "@livekit/protocol"
 import prisma from "@/lib/prisma"
 import { listObjectKeys, objectExists } from "@/lib/s3"
+import { egressTemplateUrl } from "@/lib/publicUrl"
 
 /** How long the UI shows "Recording processing…" after a session ends. */
 export const RECORDING_PROCESSING_MS = 10 * 60 * 1000
@@ -28,6 +29,50 @@ export async function discoverMp4Keys(sessionId: string): Promise<string[]> {
   return keys
     .filter((k) => k.endsWith(".mp4"))
     .sort((a, b) => segmentNumber(a, sessionId) - segmentNumber(b, sessionId))
+}
+
+/**
+ * Start recording the room into the session's next MP4 segment. Segments share
+ * the prefix `recordings/{sessionId}`: the first is `{id}.mp4`, later ones
+ * `{id}-2.mp4`, `{id}-3.mp4`, … so playback can chain them in order.
+ */
+export async function startRecordingSegment(
+  sessionId: string,
+  roomName: string,
+): Promise<{ egressId: string; filepath: string; segment: number }> {
+  const existing = await discoverMp4Keys(sessionId)
+  const last = existing.length ? segmentNumber(existing[existing.length - 1], sessionId) : 0
+  const segment = Number.isFinite(last) ? last + 1 : existing.length + 1
+  const filepath = segment === 1
+    ? `recordings/${sessionId}.mp4`
+    : `recordings/${sessionId}-${segment}.mp4`
+
+  const s3Upload = new S3Upload({
+    accessKey: process.env.AWS_ACCESS_KEY_ID!,
+    secret: process.env.AWS_SECRET_ACCESS_KEY!,
+    bucket: process.env.AWS_S3_BUCKET!,
+    region: process.env.AWS_REGION ?? "eu-west-2",
+  })
+  const fileOutput = new EncodedFileOutput({
+    filepath,
+    output: { case: "s3", value: s3Upload },
+  })
+
+  // `customBaseUrl` points LiveKit's headless-Chrome egress worker at our
+  // /egress template page, which composites the video grid + Deaf Signs
+  // logo watermark before capture. See app/egress/page.tsx.
+  const info = await egressClient().startRoomCompositeEgress(
+    roomName,
+    { file: fileOutput },
+    { customBaseUrl: egressTemplateUrl() },
+  )
+
+  await prisma.liveSession.update({
+    where: { id: sessionId },
+    data: { egressId: info.egressId, recordingKey: filepath },
+  })
+
+  return { egressId: info.egressId, filepath, segment }
 }
 
 const TERMINAL_EGRESS = new Set([
@@ -80,21 +125,13 @@ export async function reconcileSessionRecording(
   })
   if (!session) return { ready: false, keys: [] }
 
-  const processingTimedOut = session.endedAt
+  const processingTimedOut = !!session.endedAt
     && Date.now() - session.endedAt.getTime() > RECORDING_PROCESSING_MS
 
-  if (processingTimedOut && !session.recordingUrl) {
-    if (session.egressId) {
-      await prisma.liveSession.update({
-        where: { id: sessionId },
-        data: { egressId: null },
-      })
-    }
-    return { ready: false, keys: [], timedOut: true }
-  }
-
   const egressId = opts?.egressId ?? session.egressId
-  if (egressId && opts?.pollEgress !== false) {
+  // Past the processing window there is nothing left to wait for — skip the
+  // LiveKit poll and just look at what reached S3.
+  if (egressId && opts?.pollEgress !== false && !processingTimedOut) {
     try {
       const listed = await egressClient().listEgress({ egressId })
       const info = listed[0]
@@ -109,14 +146,16 @@ export async function reconcileSessionRecording(
         || info.status === EgressStatus.EGRESS_ABORTED
         || info.status === EgressStatus.EGRESS_LIMIT_REACHED
       ) {
+        // LIMIT_REACHED still uploads what was recorded, and a failed egress
+        // can leave a partial file — fall through to the S3 check either way.
         console.error(
-          "[recording] egress terminal failure:",
+          "[recording] egress ended abnormally:",
           sessionId,
           info.error || info.details || info.status,
         )
         await prisma.liveSession.update({
           where: { id: sessionId },
-          data: { egressId: null, recordingUrl: null },
+          data: { egressId: null },
         })
       } else if (TERMINAL_EGRESS.has(info.status)) {
         await prisma.liveSession.update({
@@ -145,24 +184,34 @@ export async function reconcileSessionRecording(
 
   if (existing.length > 0) {
     const primary = existing[0]
-    if (session.recordingUrl !== primary || session.egressId) {
+    // Only drop the egress pointer we were reconciling — a late event for an
+    // earlier segment must not orphan the segment that is recording now.
+    const clearEgress = !!session.egressId && session.egressId === egressId
+    if (session.recordingUrl !== primary || clearEgress) {
       await prisma.liveSession.update({
         where: { id: sessionId },
-        data: { recordingUrl: primary, egressId: null },
+        data: { recordingUrl: primary, ...(clearEgress && { egressId: null }) },
       })
     }
     return { ready: true, keys: existing }
   }
 
-  if (session.recordingUrl) {
+  if (session.recordingUrl || (processingTimedOut && session.egressId)) {
     await prisma.liveSession.update({
       where: { id: sessionId },
-      data: { recordingUrl: null },
+      data: { recordingUrl: null, egressId: null },
     })
   }
 
-  return { ready: false, keys: [] }
+  return { ready: false, keys: [], timedOut: processingTimedOut || undefined }
 }
+
+/**
+ * How far back list endpoints look for recordings that reached S3 but were
+ * never linked (missed webhook, slow upload). Older unlinked sessions are
+ * left alone so a list load doesn't keep probing S3 for ones that truly failed.
+ */
+const UNLINKED_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000
 
 /** Reconcile any sessions that may still be finalising a recording. */
 export async function reconcilePendingRecordings(
@@ -177,7 +226,11 @@ export async function reconcilePendingRecordings(
 ): Promise<void> {
   const pending = sessions.filter((s) =>
     isRecordingLikelyProcessing(s)
-    || (s.status === "COMPLETED" && !s.recordingUrl && !!s.egressId),
+    || (s.status === "COMPLETED" && !s.recordingUrl && !!s.egressId)
+    || (
+      s.status === "COMPLETED" && !s.recordingUrl && !!s.recordingKey
+      && !!s.endedAt && Date.now() - s.endedAt.getTime() < UNLINKED_LOOKBACK_MS
+    ),
   )
   if (pending.length === 0) return
   await Promise.all(

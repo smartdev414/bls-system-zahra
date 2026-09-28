@@ -1,17 +1,8 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { EgressClient, EncodedFileOutput, S3Upload } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
-import { egressTemplateUrl } from "@/lib/publicUrl"
-
-function egressClient() {
-  return new EgressClient(
-    process.env.LIVEKIT_WS_URL!.replace(/^wss?/, "https"),
-    process.env.LIVEKIT_API_KEY!,
-    process.env.LIVEKIT_API_SECRET!,
-  )
-}
+import { startRecordingSegment } from "@/lib/recording"
 
 async function handlePOST(
   _req: Request,
@@ -38,34 +29,8 @@ async function handlePOST(
 
     console.log("[egress] starting egress for room:", liveSession.roomName, "session:", id)
 
-    const s3Upload = new S3Upload({
-      accessKey: process.env.AWS_ACCESS_KEY_ID!,
-      secret: process.env.AWS_SECRET_ACCESS_KEY!,
-      bucket: process.env.AWS_S3_BUCKET!,
-      region: process.env.AWS_REGION ?? "eu-west-2",
-    })
-    const fileOutput = new EncodedFileOutput({
-      filepath: `recordings/${id}.mp4`,
-      output: { case: "s3", value: s3Upload },
-    })
-
-    // `customBaseUrl` points LiveKit's headless-Chrome egress worker at our
-    // /egress template page, which composites the video grid + Deaf Signs
-    // logo watermark before capture. See app/egress/page.tsx.
-    const info = await egressClient().startRoomCompositeEgress(
-      liveSession.roomName,
-      { file: fileOutput },
-      { customBaseUrl: egressTemplateUrl() },
-    )
-    console.log("[egress] started successfully, egressId:", info.egressId)
-
-    await prisma.liveSession.update({
-      where: { id },
-      data: {
-        egressId: info.egressId,
-        recordingKey: `recordings/${id}.mp4`,
-      },
-    })
+    const info = await startRecordingSegment(id, liveSession.roomName)
+    console.log("[egress] started successfully, egressId:", info.egressId, "file:", info.filepath)
 
     return NextResponse.json({ egressId: info.egressId })
   } catch (err) {

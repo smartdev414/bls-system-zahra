@@ -3,7 +3,7 @@ import { WebhookReceiver } from "livekit-server-sdk"
 import { EgressStatus } from "@livekit/protocol"
 import prisma from "@/lib/prisma"
 import { withAudit } from "@/lib/audit"
-import { reconcileSessionRecording } from "@/lib/recording"
+import { reconcileSessionRecording, startRecordingSegment } from "@/lib/recording"
 import { notifySessionStatusChange } from "@/lib/live-session-status"
 
 const receiver = new WebhookReceiver(
@@ -70,24 +70,36 @@ async function handlePOST(req: NextRequest) {
 
       if (!liveSession) return NextResponse.json({ ok: true })
 
-      if (
-        status === EgressStatus.EGRESS_FAILED
-        || status === EgressStatus.EGRESS_ABORTED
-        || status === EgressStatus.EGRESS_LIMIT_REACHED
-      ) {
+      // Was this the recording currently running for a class that is still on?
+      // (A tutor pause clears egressId first, so it never matches here.)
+      const wasCurrentWhileLive =
+        liveSession.egressId === egressId && liveSession.status === "LIVE"
+
+      if (status !== EgressStatus.EGRESS_COMPLETE) {
         console.error(
-          "[webhook/livekit] egress failed for session:",
+          "[webhook/livekit] egress ended abnormally for session:",
           liveSession.id,
           "egressId:",
           egressId,
+          "status:",
+          status,
           event.egressInfo?.error,
         )
-        await prisma.liveSession.update({
-          where: { id: liveSession.id },
-          data: { egressId: null, recordingUrl: null },
-        })
-      } else if (status === EgressStatus.EGRESS_COMPLETE) {
-        await reconcileSessionRecording(liveSession.id, { egressId })
+      }
+
+      // Every terminal status can leave a file behind — LIMIT_REACHED always
+      // uploads what was recorded — so link whatever reached S3.
+      await reconcileSessionRecording(liveSession.id, { egressId, pollEgress: false })
+
+      // LiveKit Cloud caps how long one egress may run. Hitting the cap mid-class
+      // would silently stop the recording, so carry on in a new segment.
+      if (status === EgressStatus.EGRESS_LIMIT_REACHED && wasCurrentWhileLive) {
+        try {
+          const next = await startRecordingSegment(liveSession.id, liveSession.roomName)
+          console.info("[webhook/livekit] egress limit reached; continued in", next.filepath)
+        } catch (err) {
+          console.error("[webhook/livekit] could not continue recording after limit", err)
+        }
       }
     }
 
