@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import prisma from "@/lib/prisma"
@@ -35,7 +36,9 @@ async function handlePOST(
 
     const pdfBuffer = await finishPptxToPdfJob(jobId)
 
-    const pdfKey = `slides/${id}/presentation.pdf`
+    // A fresh key per upload, so a second deck in the same session never
+    // reuses the first one's URL and can't be served from a stale cache.
+    const pdfKey = `slides/${id}/${randomUUID()}/presentation.pdf`
     await uploadObject(pdfKey, pdfBuffer, "application/pdf")
 
     const pdfFileName = sourceFileName.replace(/\.pptx?$/i, "") + ".pdf"

@@ -72,6 +72,17 @@ async function handlePOST(
       }))
     const isTutor = isOwnerTutor || isCoTutor
 
+    // Only the owning tutor can open the room. LiveKit creates a room on first
+    // join, so handing anyone else a token while the session is still SCHEDULED
+    // put the class "live" — room up, transcriber dispatched, attendance
+    // stamped — before the tutor had pressed Start.
+    if (liveSession.status === "SCHEDULED" && !isOwnerTutor) {
+      return NextResponse.json(
+        { message: "The tutor hasn't started this session yet." },
+        { status: 409 }
+      )
+    }
+
     // Use a UNIQUE identity per connection (`<userId>__<random>`) rather than the
     // bare user id. LiveKit Cloud revokes an *identity* — not just a single token —
     // when its session ends abnormally (a refresh kills the socket) or when

@@ -444,6 +444,10 @@ function EntryScreen({
                   <Send className="size-4" /> Send Request
                 </Button>
               )
+            ) : session.status === "SCHEDULED" ? (
+              <Button size="lg" disabled variant="outline" className="w-full font-semibold gap-2">
+                <Loader2 className="size-4 animate-spin" /> Waiting for tutor to start
+              </Button>
             ) : (
               <Button
                 onClick={() => getToken({})}
@@ -807,11 +811,14 @@ export default function ClassroomRoomPage({
   // lobby kept saying "Request Pending" until they thought to reload. Re-check
   // while it is pending so "Join Session" appears by itself.
   const requestPending = !tokenData && data?.session?.joinRequest?.status === "PENDING"
+  // Likewise the tutor pressing Start: the lobby holds "Waiting for tutor"
+  // until the session flips LIVE, then offers "Join Session" by itself.
+  const awaitingStart = !tokenData && data?.session?.status === "SCHEDULED"
   useEffect(() => {
-    if (!requestPending) return
+    if (!requestPending && !awaitingStart) return
     const t = setInterval(() => { void refetchInfo() }, 5_000)
     return () => clearInterval(t)
-  }, [requestPending, refetchInfo])
+  }, [requestPending, awaitingStart, refetchInfo])
 
   // Parallel token fetch used only for auto-rejoin. EntryScreen still runs its
   // own getToken for the manual path; the two never fire together because
