@@ -8,6 +8,7 @@ import {
   Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles, Upload,
   Circle, Pause, UserPlus, Hand, Captions, CaptionsOff, Keyboard, Maximize2, Minimize2,
+  PictureInPicture2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
@@ -84,6 +85,10 @@ export function ControlsBar({
   screenSharing,
   screenPrivate,
   onToggleScreenPrivacy,
+  // Always-on-top window of the class (tutor only, Chrome / Edge)
+  studentsPipSupported = false,
+  studentsPipOpen = false,
+  onToggleStudentsPip,
   // Background blur (everyone — applies to the local camera track)
   blurEnabled,
   blurBusy,
@@ -130,6 +135,9 @@ export function ControlsBar({
   screenSharing: boolean
   screenPrivate: boolean
   onToggleScreenPrivacy: () => void
+  studentsPipSupported?: boolean
+  studentsPipOpen?: boolean
+  onToggleStudentsPip?: () => void
   blurEnabled: boolean
   blurBusy: boolean
   onToggleBlur: () => void
@@ -305,6 +313,32 @@ export function ControlsBar({
         >
           {screenPrivate ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
           <span className={CORE_LABEL}>{screenPrivate ? "Private" : "Visible"}</span>
+        </button>
+      )}
+
+      {/* Pop the class out into an always-on-top window, so a teacher sharing
+          another tab can still see their students. Stands out while sharing,
+          which is when it's needed. */}
+      {isTutor && studentsPipSupported && onToggleStudentsPip && (
+        <button
+          onClick={onToggleStudentsPip}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            studentsPipOpen
+              ? "bg-zinc-700 text-zinc-200 border-zinc-500"
+              : screenSharing
+                ? "bg-primary text-white border-transparent hover:bg-primary/90"
+                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
+          )}
+          title={
+            studentsPipOpen
+              ? "Close the floating students window"
+              : "Keep your students on top of every tab and app while you share your screen"
+          }
+          aria-pressed={studentsPipOpen}
+        >
+          <PictureInPicture2 className="size-3.5" />
+          <span className={CORE_LABEL}>{studentsPipOpen ? "Close students" : "Pop out students"}</span>
         </button>
       )}
 

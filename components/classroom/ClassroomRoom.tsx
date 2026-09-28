@@ -52,6 +52,7 @@ import { ParticipantsPanel }    from "./room/ParticipantsPanel"
 import { PinnedVideoArea }      from "./room/PinnedVideoArea"
 import { StagePair }            from "./room/StagePair"
 import { FloatingVideoWindow }  from "./room/FloatingVideoWindow"
+import { useStudentsPip, StudentsPipPortal } from "./room/StudentsPip"
 import { ChatPanel }            from "./room/ChatPanel"
 import { SlideUploadPanel }     from "./room/SlideUploadPanel"
 import { SlideTray }            from "./room/SlideTray"
@@ -345,6 +346,8 @@ export function ClassroomRoom({
   // draggable, resizable window so they can keep an eye on that student
   // regardless of who's pinned in the main view.
   const [poppedOutIds, setPoppedOutIds] = useState<string[]>([])
+  // Always-on-top window of the class, for a teacher sharing another tab.
+  const studentsPip = useStudentsPip()
 
   // ── Remove-participant confirmation (tutor only) ───────────────────────────
   const [pendingRemoval, setPendingRemoval] = useState<{ identity: string; name: string } | null>(null)
@@ -4332,6 +4335,30 @@ export function ClassroomRoom({
             {studentCount} student{studentCount !== 1 ? "s" : ""}
           </span>
           <span className="text-xs text-zinc-500 hidden sm:block">{localName}</span>
+          {/* Chat toggle — only while chat is closed. Up here rather than
+              floating over the stage's bottom corner, where it was easy to miss
+              and sat on the tiles and captions. */}
+          {!chatOpen && (
+            <button
+              onClick={() => setChatOpen(true)}
+              className={cn(
+                "relative flex items-center gap-1.5 px-2.5 sm:px-3 h-8 rounded-xl bg-primary text-white text-xs font-medium shadow-lg active:scale-95 transition-transform shrink-0",
+                // Ring it while breakouts run so it reads as "your group chat is here".
+                breakoutsActive && "ring-2 ring-white/70",
+                chatFlash && "animate-pulse"
+              )}
+              title="Open chat"
+              aria-label={chatUnread > 0 ? `Open chat, ${chatUnread} new` : "Open chat"}
+            >
+              <MessageSquare className="size-3.5" />
+              <span className="hidden sm:inline">Chat</span>
+              {chatUnread > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-[11px] font-bold text-white ring-2 ring-zinc-900 flex items-center justify-center">
+                  {chatUnread > 99 ? "99+" : chatUnread}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </header>
 
@@ -4773,27 +4800,6 @@ export function ClassroomRoom({
           />
         </div>
 
-        {/* Floating chat toggle — visible when chat is closed. */}
-        {!chatOpen && (
-          <button
-            onClick={() => setChatOpen(true)}
-            className={cn(
-              "absolute bottom-3 right-3 z-40 size-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center active:scale-95 transition-transform",
-              // Ring it while breakouts run so it reads as "your group chat is here".
-              breakoutsActive && "ring-2 ring-white/70",
-              chatFlash && "animate-pulse"
-            )}
-            title="Open chat"
-            aria-label={chatUnread > 0 ? `Open chat, ${chatUnread} new` : "Open chat"}
-          >
-            <MessageSquare className="size-5" />
-            {chatUnread > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-[11px] font-bold text-white ring-2 ring-zinc-950 flex items-center justify-center">
-                {chatUnread > 99 ? "99+" : chatUnread}
-              </span>
-            )}
-          </button>
-        )}
       </div>
 
       {/* ── Floating, draggable, resizable video pop-outs ── */}
@@ -4808,6 +4814,15 @@ export function ClassroomRoom({
           onLowerHand={isTutor ? handleLowerHand : undefined}
         />
       ))}
+
+      {isTutor && studentsPip.pipWindow && (
+        <StudentsPipPortal
+          pipWindow={studentsPip.pipWindow}
+          localIdentity={localParticipant.identity}
+          raisedHandIds={raisedHandIds}
+          onLowerHand={handleLowerHand}
+        />
+      )}
 
       {/* ── Refresh-everyone confirmation (tutor only, shadcn Dialog) ── */}
       <Dialog open={refreshConfirmOpen} onOpenChange={setRefreshConfirmOpen}>
@@ -4918,6 +4933,9 @@ export function ClassroomRoom({
           screenSharing={screenSharing}
           screenPrivate={screenPrivate}
           onToggleScreenPrivacy={handleToggleScreenPrivacy}
+          studentsPipSupported={studentsPip.supported}
+          studentsPipOpen={!!studentsPip.pipWindow}
+          onToggleStudentsPip={studentsPip.toggle}
           blurEnabled={blurEnabled}
           blurBusy={blurBusy}
           onToggleBlur={handleToggleBlur}

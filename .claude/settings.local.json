@@ -65,7 +65,9 @@
       "Read(//opt/tae/**)",
       "Bash(lk project *)",
       "Bash(timeout 590 npm run transcriber:deploy)",
-      "Bash(timeout 20 lk agent status --config agents/classroom-transcriber/livekit.toml)"
+      "Bash(timeout 20 lk agent status --config agents/classroom-transcriber/livekit.toml)",
+      "Bash(awk 'NR>=4300 && NR<=4745 && /^      <div|^        <div|^      {\\\\/\\\\*|^        {\\\\/\\\\*/ {print NR\": \"$0}' components/classroom/ClassroomRoom.tsx)",
+      "Bash(timeout 20 lk room list)"
     ]
   }
 }

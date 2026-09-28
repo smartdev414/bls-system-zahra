@@ -338,6 +338,20 @@ const STT_REOPEN_BACKOFF_MS = 5_000
 const STT_FINALIZE_GRACE_MS = 3_000
 
 /**
+ * Close a stream and its gateway socket. `stream.close()` alone does not do it
+ * once `endInput` has been called: in @livekit/agents 1.4.7 the send loop sets
+ * the connection's `closing` flag before `session.finalize`, and the cleanup
+ * that would close the socket returns early when that flag is set. The socket
+ * then outlives the stream and keeps a concurrency slot until the server's
+ * inactivity timeout. `activeWs` is the SDK's handle on the live socket.
+ */
+function closeStream(stream: stt.SpeechStream) {
+  const ws = (stream as unknown as { activeWs?: { close(): void } }).activeWs
+  try { stream.close() } catch { /* already gone */ }
+  try { ws?.close() } catch { /* already gone */ }
+}
+
+/**
  * One STT + transcription publisher per remote speaker.
  * Avoids multiple voice.AgentSession instances on the same room (they conflict on
  * lk.agent.session byte-stream registration in @livekit/agents 1.4.x).
@@ -417,9 +431,7 @@ class SpeakerTranscriber {
     this.speechStream = null
     console.info("[classroom-transcriber] STT idle close", { identity: this.participant.identity })
     try { stream.endInput() } catch { /* already gone */ }
-    setTimeout(() => {
-      try { stream.close() } catch { /* already gone */ }
-    }, STT_FINALIZE_GRACE_MS)
+    setTimeout(() => closeStream(stream), STT_FINALIZE_GRACE_MS)
   }
 
   private async consumeTranscripts(stream: stt.SpeechStream) {
@@ -489,7 +501,7 @@ class SpeakerTranscriber {
           })
         }
       }
-      try { stream.close() } catch { /* ignore */ }
+      closeStream(stream)
       // Whatever interim was on screen will get no final from this session.
       await this.captions.endSegment(false)
     }
@@ -511,7 +523,7 @@ class SpeakerTranscriber {
     if (stream) {
       try {
         stream.endInput()
-        stream.close()
+        closeStream(stream)
       } catch {
         /* ignore */
       }
