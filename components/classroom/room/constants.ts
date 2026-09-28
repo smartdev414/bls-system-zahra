@@ -1,3 +1,5 @@
+import { VideoPreset } from "livekit-client"
+
 // ─── Data channel topics ──────────────────────────────────────────────────────
 
 export const CHAT_TOPIC      = "cls-chat"
@@ -91,8 +93,9 @@ export const CHAT_HISTORY_LIMIT = 300
 //   • capture up to 1440p, so a Retina / QHD screen isn't downscaled on capture
 //   • `contentHint: "text"` tells the encoder to hold detail and sacrifice
 //     framerate — exactly the right trade for slides and documents
-//   • a single high-bitrate layer (no simulcast) with maintain-resolution
-//     degradation, so a busy network drops frames rather than sharpness
+//   • a high-bitrate full layer with maintain-resolution degradation, so a
+//     busy network drops frames rather than sharpness (plus a small fallback
+//     layer for viewers on slow lines — see SCREEN_SHARE_PUBLISH)
 //
 // Safari 17 has a bug where specifying *any* resolution yields a low-resolution
 // capture, so we leave the constraint off there and take its native default.
@@ -111,9 +114,25 @@ export const SCREEN_SHARE_CAPTURE = {
   ...(IS_SAFARI ? {} : { resolution: { width: 2560, height: 1440, frameRate: 15 } }),
 }
 
+// A single layer left a student on a slow line nothing to fall back to: the SFU
+// can only forward the one 6 Mbps stream, so their share stalled and fell
+// seconds behind the teacher's signing. A second, small layer gives the SFU a
+// fallback it switches to per viewer, only when that viewer's downlink can't
+// carry the full stream. Everyone else still receives the full layer, which is
+// exactly the encoding above, unchanged.
+//
+// The fallback is deliberately small. Adaptive stream also picks layers by the
+// size of the box the share is drawn in (and the zoom is a CSS transform, so it
+// doesn't count), choosing the smallest layer that covers it. A 720p fallback
+// would be handed to a good connection whose share sits in a 900px half-stage
+// panel, softening text they read fine today. At 640×360 any real panel is
+// bigger, so only congestion ever selects it.
+const SCREEN_SHARE_FALLBACK_LAYER = new VideoPreset(640, 360, 300_000, 5)
+
 export const SCREEN_SHARE_PUBLISH = {
   screenShareEncoding: { maxBitrate: 6_000_000, maxFramerate: 15, priority: "high" as const },
-  simulcast: false,
+  simulcast: true,
+  screenShareSimulcastLayers: [SCREEN_SHARE_FALLBACK_LAYER],
   degradationPreference: "maintain-resolution" as const,
 }
 

@@ -63,7 +63,9 @@
       "Bash(timeout 25 lk agent logs --config agents/classroom-transcriber/livekit.toml)",
       "Bash(timeout 30 lk agent list)",
       "Read(//opt/tae/**)",
-      "Bash(lk project *)"
+      "Bash(lk project *)",
+      "Bash(timeout 590 npm run transcriber:deploy)",
+      "Bash(timeout 20 lk agent status --config agents/classroom-transcriber/livekit.toml)"
     ]
   }
 }
