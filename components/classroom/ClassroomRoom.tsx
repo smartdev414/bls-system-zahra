@@ -623,11 +623,6 @@ export function ClassroomRoom({
   useEffect(() => {
     if (!whiteboardActive) setWhiteboardMinimized(false)
   }, [whiteboardActive])
-  const tutorIdentityRef = useRef<string | null>(null)
-  useEffect(() => {
-    tutorIdentityRef.current =
-      participants.find((p) => p.metadata === "tutor")?.identity ?? null
-  }, [participants])
   // Ref mirrors for the sync_response handler so it always sees latest values.
   const whiteboardStateRef = useRef({ active: false, studentWrite: false })
   useEffect(() => {
@@ -1582,13 +1577,20 @@ export function ClassroomRoom({
   const { send: sendWhiteboard } = useDataChannel(WHITEBOARD_TOPIC, (msg) => {
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as WhiteboardAction
-      const senderId = msg.from?.identity
-      const tutorId = tutorIdentityRef.current
-
-      const isFromTutor = !!(tutorId && senderId === tutorId)
+      // Trust the sender's token metadata, not a single remembered identity:
+      // with a co-tutor in the room the "first tutor" lookup could pick the
+      // wrong one, and control messages were previously accepted from anyone.
+      const isFromTutor = msg.from?.metadata === "tutor"
       const studentWriteAllowed = () => whiteboardStateRef.current.studentWrite
 
-      const allowStudentMutation = () => studentWriteAllowed() || isFromTutor
+      // Lifecycle + permission changes only ever come from a tutor.
+      if (
+        !isFromTutor &&
+        (data.action === "start" ||
+          data.action === "stop" ||
+          data.action === "student_write" ||
+          data.action === "sync_response")
+      ) return
 
       if (data.action === "start") {
         setWhiteboardActive(true)
@@ -1609,7 +1611,7 @@ export function ClassroomRoom({
       // Incremental tldraw store diff. Apply if it's allowed for the sender;
       // buffer until the board's store bridge has registered.
       if (data.action === "doc") {
-        if (!allowStudentMutation() && !isFromTutor) return
+        if (!isFromTutor && !studentWriteAllowed()) return
         if (wbApiRef.current) wbApiRef.current.applyChanges(data.changes)
         else wbPendingRef.current.changes.push(data.changes)
         return
@@ -3347,6 +3349,16 @@ export function ClassroomRoom({
       },
     ])
   }, [isTutor, whiteboardActive, whiteboardStudentWrite, safeSendWhiteboard])
+
+  // Re-assert the write permission whenever the tutor is (re)connected. A
+  // "take back control" sent mid-reconnect is silently dropped by
+  // safeSendWhiteboard, which left students able to draw while the tutor's
+  // button read "Let them write".
+  useEffect(() => {
+    if (!isTutor || !whiteboardActive) return
+    if (connectionState !== ConnectionState.Connected) return
+    safeSendWhiteboard({ action: "student_write", enabled: whiteboardStudentWrite })
+  }, [isTutor, whiteboardActive, whiteboardStudentWrite, connectionState, safeSendWhiteboard])
 
   // Broadcast a local tldraw store diff to everyone (called by TldrawBoard).
   const handleWhiteboardSend = useCallback((action: WhiteboardAction) => {
