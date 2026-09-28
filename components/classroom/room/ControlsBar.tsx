@@ -11,7 +11,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
-import { writeDevicePreference } from "@/components/classroom/devicePreference"
+import { toast } from "sonner"
+import { writeDevicePreference, mediaFailureMessage } from "@/components/classroom/devicePreference"
 import {
   setCaptionsEnabled, useCaptionsEnabled, setCaptionComposerOpen, useCaptionComposerOpen,
 } from "@/components/classroom/captionsPreference"
@@ -697,7 +698,11 @@ function MediaToggle({
     const next = !enabled
     try {
       await toggle()
-    } catch {
+    } catch (err) {
+      // Turning on is the only direction that can fail for a reason the person
+      // can fix (blocked permission, webcam held by another app).
+      if (next && source === Track.Source.Camera) toast.error(mediaFailureMessage(err, "camera"))
+      if (next && source === Track.Source.Microphone) toast.error(mediaFailureMessage(err, "mic"))
       return
     }
     if (source === Track.Source.Camera) writeDevicePreference("camera", next)

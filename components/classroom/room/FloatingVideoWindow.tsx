@@ -10,7 +10,7 @@ import {
 import { Track } from "livekit-client"
 import { X, Move, Camera } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { localCameraClassName, isLiveVideo } from "@/components/classroom/localCameraView"
 import { RaisedHandBadge } from "./RaisedHandBadge"
 
 /**
@@ -68,7 +68,7 @@ export function FloatingVideoWindow({
     (t) => t.participant.identity === identity && isTrackReference(t),
   )
   const camRef      = camTracks.find(
-    (t) => t.participant.identity === identity && isTrackReference(t),
+    (t) => t.participant.identity === identity && isLiveVideo(t),
   )
   const trackRef    = screenRef ?? camRef
   const displayName = participant?.name ?? identity

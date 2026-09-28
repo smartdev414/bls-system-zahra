@@ -59,7 +59,8 @@
       "Bash(grep -nA6 \"registerBeforeCreateHandler<T\" node_modules/@tldraw/store/dist-cjs/index.d.ts)",
       "Bash(grep -nA3 \"type StoreBeforeCreateHandler\" node_modules/@tldraw/store/dist-cjs/index.d.ts)",
       "Bash(grep -nB2 -A14 \"interface CreatePresenceStateDerivationOpts\" node_modules/@tldraw/tlschema/dist-cjs/index.d.ts)",
-      "Bash(grep -nA20 \"interface TLInstancePresence\" node_modules/@tldraw/tlschema/dist-cjs/index.d.ts)"
+      "Bash(grep -nA20 \"interface TLInstancePresence\" node_modules/@tldraw/tlschema/dist-cjs/index.d.ts)",
+      "Bash(timeout 25 lk agent logs --config agents/classroom-transcriber/livekit.toml)"
     ]
   }
 }

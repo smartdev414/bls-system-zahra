@@ -11,7 +11,7 @@ import {
   ArrowLeft, Megaphone, Info, Maximize2, Minimize2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { localCameraClassName, isLiveVideo } from "@/components/classroom/localCameraView"
 import { RaisedHandBadge } from "./RaisedHandBadge"
 
 export function PinnedVideoArea({
@@ -75,7 +75,7 @@ export function PinnedVideoArea({
 
   const participant = allParticipants.find((p) => p.identity === identity)
   const camRef      = camTracks.find(
-    (t) => t.participant.identity === identity && isTrackReference(t)
+    (t) => t.participant.identity === identity && isLiveVideo(t)
   )
   const screenRef   = screenTracks.find(
     (t) => t.participant.identity === identity && isTrackReference(t)

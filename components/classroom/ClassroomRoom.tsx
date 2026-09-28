@@ -13,6 +13,7 @@ import {
 } from "@livekit/components-react"
 import { ConnectionState, RoomEvent, Track } from "livekit-client"
 import { cn } from "@/lib/utils"
+import { isLiveVideo } from "@/components/classroom/localCameraView"
 import {
   Radio, Users, Users2, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
   MessageSquare, X, Hand, Mic, Check, PencilLine, Maximize2,
@@ -244,7 +245,7 @@ export function ClassroomRoom({
     (t) => t.participant.identity === localParticipant.identity,
   )
   const localCameraRef = allCameraTracks.find(
-    (t) => t.participant.identity === localParticipant.identity,
+    (t) => t.participant.identity === localParticipant.identity && isLiveVideo(t),
   ) ?? null
 
   const localName = localParticipant.name ?? localParticipant.identity

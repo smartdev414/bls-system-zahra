@@ -11,11 +11,11 @@
 // wherever they are in the room.
 
 import { useState } from "react"
-import { useLocalParticipant, useTracks, VideoTrack, isTrackReference } from "@livekit/components-react"
+import { useLocalParticipant, useTracks, VideoTrack } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import { Camera, Users2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { localCameraClassName, isLiveVideo } from "@/components/classroom/localCameraView"
 import { writeDevicePreference } from "@/components/classroom/devicePreference"
 
 export function BreakoutSelfStage({
@@ -31,7 +31,7 @@ export function BreakoutSelfStage({
   const [busy, setBusy] = useState(false)
 
   const ownCam = camTracks.find(
-    (t) => t.participant.identity === localParticipant.identity && isTrackReference(t),
+    (t) => t.participant.identity === localParticipant.identity && isLiveVideo(t),
   )
 
   const enableCamera = async () => {

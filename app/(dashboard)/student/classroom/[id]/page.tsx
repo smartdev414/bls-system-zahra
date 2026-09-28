@@ -21,7 +21,7 @@ import "@livekit/components-styles"
 import { toast } from "sonner"
 import { ClassroomRoom } from "@/components/classroom/ClassroomRoom"
 import { BLUR_PREF_KEY } from "@/components/classroom/blurPreference"
-import { readDevicePreference, writeDevicePreference } from "@/components/classroom/devicePreference"
+import { readDevicePreference, writeDevicePreference, mediaFailureMessage } from "@/components/classroom/devicePreference"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
 import {
   connectOptionsFor, escalateNetworkMode, readNetworkMode, roomOptionsFor, writeNetworkMode,
@@ -1097,6 +1097,11 @@ export default function ClassroomRoomPage({
       connectOptions={connectOptionsFor(netMode)}
       onConnected={handleLiveKitConnected}
       onError={handleLiveKitError}
+      // A camera or mic that fails to start on join used to leave a black
+      // self-view and nothing else. Say why, so it can be fixed in the room.
+      onMediaDeviceFailure={(failure, kind) =>
+        toast.error(mediaFailureMessage(failure, kind === "audioinput" ? "mic" : "camera"))
+      }
       onDisconnected={handleLiveKitDisconnected}
     >
       <ClassroomRoom

@@ -16,7 +16,7 @@ import {
   Hand, LayoutGrid, Presentation,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { localCameraClassName, isLiveVideo } from "@/components/classroom/localCameraView"
 import {
   packGrid, useElementSize, tileRadius, DENSE_TILE_WIDTH,
 } from "./participantGrid"
@@ -174,7 +174,7 @@ export function ParticipantsPanel({
             (t) => t.participant.identity === p.identity && isTrackReference(t),
           )
           const camRef = camTracks.find(
-            (t) => t.participant.identity === p.identity && isTrackReference(t),
+            (t) => t.participant.identity === p.identity && isLiveVideo(t),
           )
           // Every tile prefers the camera, for everyone looking at it. The
           // preference used to depend on who was looking — your own tile showed
