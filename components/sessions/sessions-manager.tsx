@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   Video, CalendarPlus, Clock, Users, Users2,
   Loader2, Radio, CheckCircle2, XCircle,
-  CalendarDays, List, Download, MonitorPlay,
+  CalendarDays, List, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
   Globe, Lock, X, Pencil, Play, Copy,
   Paperclip, FileText, Trash2, Repeat, FolderOpen,
@@ -47,7 +47,7 @@ const S3_UPLOAD_GRACE_MS = 3 * 60 * 1000
  * through context keeps the (deeply nested) card components prop-free.
  */
 export type SessionsScope = {
-  /** Enter the room, start/end it, and play or download its recording. */
+  /** Enter the room, start/end it, and watch its recording (view-only). */
   canTeach: boolean
   /** Attach and remove teaching-material files used in the classroom. */
   canManageResources: boolean
@@ -1037,36 +1037,6 @@ function SessionCard({
                   ? <Loader2 className="size-3 animate-spin" />
                   : <Play className="size-3" />}
                 Watch
-              </Button>
-              <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5"
-                disabled={recordingLoading}
-                onClick={async () => {
-                  setRecordingLoading(true)
-                  try {
-                    const res  = await fetch(`/api/sessions/${session.id}/recording`)
-                    const data = await res.json() as { url?: string; segments?: string[]; message?: string }
-                    if (!res.ok) {
-                      toast.error(data.message ?? "Recording is not available yet")
-                      return
-                    }
-                    const segs = data.segments ?? (data.url ? [data.url] : [])
-                    // Multi-segment downloads: trigger one anchor per part so
-                    // the user gets each piece. Cross-origin downloads from a
-                    // signed S3 URL ignore the `download` attribute (it's only
-                    // honoured same-origin), but the browser still saves them.
-                    segs.forEach((url, i) => {
-                      const a = document.createElement("a")
-                      a.href = url
-                      a.download = segs.length > 1
-                        ? `${session.title} - Part ${i + 1}.mp4`
-                        : `${session.title}.mp4`
-                      a.target = "_blank"
-                      a.rel = "noopener"
-                      a.click()
-                    })
-                  } finally { setRecordingLoading(false) }
-                }}>
-                <Download className="size-3" /> Download
               </Button>
             </>
           )}

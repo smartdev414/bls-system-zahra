@@ -202,6 +202,20 @@ export function ownerScope(
   return isStaff(session.role) ? {} : { [field]: session.sub }
 }
 
+/**
+ * Course `where` fragment for lesson content (sections, lessons, quizzes).
+ * Tutors edit only their own courses; admins can build any course. Support
+ * staff are kept out of teaching material, so they get no bypass here.
+ *
+ *   prisma.course.findFirst({ where: { id, ...courseContentScope(session) } })
+ *   prisma.lesson.findFirst({ where: { id, section: { course: courseContentScope(session) } } })
+ */
+export function courseContentScope(
+  session: { role: string; sub: string },
+): Record<string, string> {
+  return session.role === "ADMIN" ? {} : { tutorId: session.sub }
+}
+
 /** Human-readable role name for badges and dropdowns. */
 export function roleLabel(role: string): string {
   if (role === "SUPPORT") return "Support Team"

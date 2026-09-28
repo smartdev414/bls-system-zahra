@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { courseContentScope } from "@/lib/permissions"
 
 async function handlePOST(
   req: NextRequest,
@@ -16,7 +17,7 @@ async function handlePOST(
     }
 
     const { id: courseId } = await params
-    const course = await prisma.course.findFirst({ where: { id: courseId, tutorId: session.sub } })
+    const course = await prisma.course.findFirst({ where: { id: courseId, ...courseContentScope(session) } })
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
     const body = await req.json() as {

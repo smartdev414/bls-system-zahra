@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { courseContentScope } from "@/lib/permissions"
 
 async function handlePATCH(
   req: NextRequest,
@@ -19,14 +20,10 @@ async function handlePATCH(
     if (!title?.trim()) return NextResponse.json({ message: "Title is required" }, { status: 400 })
 
     const section = await prisma.section.findFirst({
-      where: { id: sectionId, courseId },
-      include: { course: { select: { tutorId: true } } },
+      where: { id: sectionId, courseId, course: courseContentScope(session) },
     })
 
     if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })
-    if (section.course.tutorId !== session.sub) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
-    }
 
     const updated = await prisma.section.update({
       where: { id: sectionId },
@@ -54,14 +51,10 @@ async function handleDELETE(
     const { id: courseId, sectionId } = await params
 
     const section = await prisma.section.findFirst({
-      where: { id: sectionId, courseId },
-      include: { course: { select: { tutorId: true } } },
+      where: { id: sectionId, courseId, course: courseContentScope(session) },
     })
 
     if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })
-    if (section.course.tutorId !== session.sub) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
-    }
 
     await prisma.section.delete({ where: { id: sectionId } })
     return NextResponse.json({ ok: true })

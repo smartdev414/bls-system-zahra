@@ -151,6 +151,9 @@ export function VideoPlayer({
         // Tutor gets full controls (scrubbing seeks broadcasts). Students are
         // read-only; playsInline keeps mobile Safari from going full-screen.
         controls={isTutor}
+        controlsList="nodownload noremoteplayback"
+        disablePictureInPicture
+        onContextMenu={(e) => e.preventDefault()}
         playsInline
         preload="auto"
         className="max-w-full max-h-full"

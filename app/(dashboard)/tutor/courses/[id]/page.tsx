@@ -23,6 +23,7 @@ import { Separator } from "@/components/ui/separator"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { useFetch, usePostCallback, usePutCallback, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { FileUpload } from "@/components/ui/file-upload"
+import { useCoursesBase } from "@/hooks/use-courses-base"
 import { Textarea } from "@/components/ui/textarea"
 import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
 
@@ -159,6 +160,7 @@ function ThumbnailEditor({
 export default function CourseEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const coursesBase = useCoursesBase()
   const { data, loading, refetch } = useFetch<CourseData>(`/api/tutor/courses/${id}`, {
     errorMessage: "Could not load course",
   })
@@ -219,15 +221,15 @@ const { execute: updateCourseStatus, loading: updating } = usePutCallback<
   const isPublished = course.status === "PUBLISHED"
 
   function openLessonDialog(sectionId: string) {
-    router.push(`/tutor/courses/${id}/lessons/new?sectionId=${sectionId}`)
+    router.push(`${coursesBase}/${id}/lessons/new?sectionId=${sectionId}`)
   }
 
 return (
     <div className="flex flex-col gap-6 max-w-4xl">
       {/* Back */}
       <Button asChild variant="ghost" size="sm" className="self-start -ml-2">
-        <Link href="/tutor/courses">
-          <ChevronLeft className="size-4 mr-1" /> My Courses
+        <Link href={coursesBase}>
+          <ChevronLeft className="size-4 mr-1" /> {coursesBase === "/admin/courses" ? "All Courses" : "My Courses"}
         </Link>
       </Button>
 
@@ -573,6 +575,7 @@ function SectionBlock({
 
 function LessonRow({ lesson, courseId, onMutated }: { lesson: LessonItem; courseId: string; onMutated: () => void }) {
   const Icon = typeIcon[lesson.type]
+  const coursesBase = useCoursesBase()
 
   const { execute: deleteLesson, loading: deleting } = useDeleteCallback(
     `/api/tutor/lessons/${lesson.id}`,
@@ -598,7 +601,7 @@ function LessonRow({ lesson, courseId, onMutated }: { lesson: LessonItem; course
       </div>
       <div className="flex gap-1.5 shrink-0">
         <Button asChild variant="ghost" size="icon" className="size-7">
-          <Link href={`/tutor/courses/${courseId}/lessons/${lesson.id}/edit`}>
+          <Link href={`${coursesBase}/${courseId}/lessons/${lesson.id}/edit`}>
             <Edit3 className="size-3.5" />
           </Link>
         </Button>

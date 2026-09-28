@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import {
   Send, Hand, MessageSquare, ChevronDown, X,
   Paperclip, Loader2, Image as ImageIcon, Video, FileText, Trash2, Download,
-  Palette, Check, Sun, Moon, Contrast,
+  Palette, Check, Sun, Moon, Contrast, Upload,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -348,6 +348,10 @@ export function ChatPanel({
   // Default to dark to match the classroom chrome; restore saved choice on mount.
   const [theme, setTheme] = useState<ChatThemeName>("dark")
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
+  // Files dragged over the panel. dragenter/dragleave fire for every child the
+  // pointer crosses, so count them instead of trusting a single boolean.
+  const [dragActive, setDragActive] = useState(false)
+  const dragDepthRef = useRef(0)
   const listRef      = useRef<HTMLDivElement>(null)
   const inputRef     = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -514,6 +518,44 @@ export function ChatPanel({
 
   const cancelUpload = () => uploadAbortRef.current?.abort()
 
+  const isFileDrag = (e: React.DragEvent) => e.dataTransfer.types.includes("Files")
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return
+    e.preventDefault()
+    dragDepthRef.current += 1
+    setDragActive(true)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return
+    // Without preventDefault the browser refuses the drop (and opens the file).
+    e.preventDefault()
+    e.dataTransfer.dropEffect = uploading ? "none" : "copy"
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setDragActive(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return
+    e.preventDefault()
+    dragDepthRef.current = 0
+    setDragActive(false)
+    if (uploading) {
+      toast.error("Wait for the current upload to finish first.")
+      return
+    }
+    const { files } = e.dataTransfer
+    // One attachment per message, same as the paperclip.
+    if (files.length > 1) toast.info(`Only one file per message — attaching "${files[0].name}".`)
+    void handleFileSelect(files)
+    inputRef.current?.focus()
+  }
+
   const handleSend = () => {
     const text = input.trim()
     if (!text && !pendingAttachment) return
@@ -555,11 +597,28 @@ export function ChatPanel({
   return (
     <div
       className={cn(
-        "flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300",
+        "relative flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300",
         t.panel,
         flash && "shadow-[inset_1px_0_0_hsl(var(--primary)/0.6)]"
       )}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
+      {dragActive && (
+        <div className="pointer-events-none absolute inset-2 z-40 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-primary/15 backdrop-blur-sm text-center">
+          <Upload className="size-8 text-primary" />
+          <p className={cn("text-sm font-semibold", t.headerText)}>
+            {uploading ? "Upload in progress…" : "Drop to attach"}
+          </p>
+          {!uploading && (
+            <p className={cn("text-[11px] max-w-52", t.headerSub)}>
+              {audienceLabel ? `Shared with ${audienceLabel} when you send` : "Everyone can open or download it once you send"}
+            </p>
+          )}
+        </div>
+      )}
       <div className={cn("shrink-0 flex items-center border-b", t.border, t.panel)}>
         <button
           onClick={onToggleCollapse}
@@ -675,7 +734,7 @@ export function ChatPanel({
               Chat is how everyone communicates here. Say hello! 👋
             </p>
             <p className="text-[11px] text-center opacity-50 max-w-52">
-              Use the paperclip to share a file — everyone can open or download it.
+              Use the paperclip or drag a file here to share it — everyone can open or download it.
             </p>
           </div>
         ) : (

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { courseContentScope } from "@/lib/permissions"
 
-async function verifyOwnership(lessonId: string, tutorId: string) {
+async function verifyOwnership(lessonId: string, session: { role: string; sub: string }) {
   return prisma.lesson.findFirst({
-    where: { id: lessonId, section: { course: { tutorId } } },
+    where: { id: lessonId, section: { course: courseContentScope(session) } },
   })
 }
 
@@ -22,7 +23,7 @@ async function handleGET(
     }
 
     const { id } = await params
-    const lesson = await verifyOwnership(id, session.sub)
+    const lesson = await verifyOwnership(id, session)
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const questions = await prisma.quizQuestion.findMany({
@@ -51,7 +52,7 @@ async function handlePOST(
     }
 
     const { id } = await params
-    const lesson = await verifyOwnership(id, session.sub)
+    const lesson = await verifyOwnership(id, session)
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const body = await req.json() as {

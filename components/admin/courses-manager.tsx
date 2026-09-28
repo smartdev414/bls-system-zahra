@@ -1,9 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   BookOpen, Search, Loader2, Globe, Lock, Archive,
-  Star, Users, Filter, Plus,
+  Star, Users, Filter, Plus, Pencil,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -49,7 +51,15 @@ const statusConfig = {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export function CoursesManager({ canCreate = true }: { canCreate?: boolean } = {}) {
+/**
+ * `builderBase` — where the course builder lives for this portal. Set for
+ * admins (who can edit lesson content); left out for support staff, who only
+ * set courses up and publish them.
+ */
+export function CoursesManager({
+  canCreate = true,
+  builderBase,
+}: { canCreate?: boolean; builderBase?: string } = {}) {
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [page, setPage] = useState(1)
@@ -81,7 +91,7 @@ export function CoursesManager({ canCreate = true }: { canCreate?: boolean } = {
             {loading ? "\u00A0" : `${data?.total ?? 0} course${data?.total !== 1 ? "s" : ""} on the platform`}
           </p>
         </div>
-        {canCreate && <NewCourseDialog onCreated={refetch} />}
+        {canCreate && <NewCourseDialog onCreated={refetch} builderBase={builderBase} />}
       </div>
 
       {/* Filters */}
@@ -116,7 +126,7 @@ export function CoursesManager({ canCreate = true }: { canCreate?: boolean } = {
       ) : data?.courses.length ? (
         <div className="flex flex-col gap-3">
           {data.courses.map((course) => (
-            <CourseRow key={course.id} course={course} onMutated={refetch} />
+            <CourseRow key={course.id} course={course} onMutated={refetch} builderBase={builderBase} />
           ))}
         </div>
       ) : (
@@ -137,7 +147,7 @@ export function CoursesManager({ canCreate = true }: { canCreate?: boolean } = {
 
 // ─── Course row ───────────────────────────────────────────────────────────────
 
-function CourseRow({ course, onMutated }: { course: CourseItem; onMutated: () => void }) {
+function CourseRow({ course, onMutated, builderBase }: { course: CourseItem; onMutated: () => void; builderBase?: string }) {
   const cfg = statusConfig[course.status]
   const StatusIcon = cfg.icon
 
@@ -190,6 +200,13 @@ function CourseRow({ course, onMutated }: { course: CourseItem; onMutated: () =>
           </div>
 
           <div className="flex gap-2 shrink-0">
+            {builderBase && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`${builderBase}/${course.id}`}>
+                  <Pencil className="size-3.5 mr-1.5" /> Manage
+                </Link>
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -224,11 +241,13 @@ type TutorOption = { id: string; name: string; email: string }
 type CategoryOption = { id: string; name: string }
 
 /**
- * Creates the course shell — title, level, category and the tutor who runs it.
- * Sections, lessons and materials stay with that tutor; staff only set the
- * course up so students can be enrolled onto it.
+ * Creates the course shell — title, level, category and, optionally, the tutor
+ * who runs it (without one, the course belongs to whoever created it).
+ * With a `builderBase` (admins) it then opens the builder so sections and
+ * lessons can be added straight away; otherwise the tutor adds them.
  */
-function NewCourseDialog({ onCreated }: { onCreated: () => void }) {
+function NewCourseDialog({ onCreated, builderBase }: { onCreated: () => void; builderBase?: string }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -252,7 +271,6 @@ function NewCourseDialog({ onCreated }: { onCreated: () => void }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!tutorId) { setError("Choose the tutor who will run this course"); return }
     setSubmitting(true)
     setError(null)
     try {
@@ -262,15 +280,17 @@ function NewCourseDialog({ onCreated }: { onCreated: () => void }) {
         body: JSON.stringify({
           title, description, level,
           categoryId: categoryId || undefined,
-          tutorId,
+          tutorId: tutorId || undefined,
         }),
       })
       if (!res.ok) {
         throw new Error((await res.json() as { message?: string }).message ?? "Could not create course")
       }
+      const { course } = await res.json() as { course: { id: string } }
       setOpen(false)
       reset()
-      onCreated()
+      if (builderBase) router.push(`${builderBase}/${course.id}`)
+      else onCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create course")
     } finally {
@@ -289,7 +309,9 @@ function NewCourseDialog({ onCreated }: { onCreated: () => void }) {
         <DialogHeader>
           <DialogTitle>New course</DialogTitle>
           <DialogDescription>
-            Sets up the course so students can be enrolled. The tutor adds the lessons.
+            {builderBase
+              ? "Sets up the course, then opens the builder so you can add sections and lessons."
+              : "Sets up the course so students can be enrolled. The tutor adds the lessons."}
           </DialogDescription>
         </DialogHeader>
 
@@ -340,15 +362,14 @@ function NewCourseDialog({ onCreated }: { onCreated: () => void }) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="c-tutor">Tutor running the course</Label>
+            <Label htmlFor="c-tutor">Tutor running the course (optional)</Label>
             <select
               id="c-tutor"
               value={tutorId}
-              required
               onChange={(e) => setTutorId(e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="">Select a tutor…</option>
+              <option value="">No tutor yet</option>
               {(tutorData?.tutors ?? []).map((t) => (
                 <option key={t.id} value={t.id}>{t.name} — {t.email}</option>
               ))}

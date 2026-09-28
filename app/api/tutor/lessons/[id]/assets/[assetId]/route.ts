@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { courseContentScope } from "@/lib/permissions"
 
 async function handleDELETE(
   _req: Request,
@@ -18,7 +19,7 @@ async function handleDELETE(
 
     // Verify ownership via lesson → section → course
     const asset = await prisma.lessonAsset.findFirst({
-      where: { id: assetId, lessonId: id, lesson: { section: { course: { tutorId: session.sub } } } },
+      where: { id: assetId, lessonId: id, lesson: { section: { course: courseContentScope(session) } } },
     })
     if (!asset) return NextResponse.json({ message: "Asset not found" }, { status: 404 })
 

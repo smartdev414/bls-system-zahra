@@ -17,6 +17,7 @@ import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
+import { useCoursesBase } from "@/hooks/use-courses-base"
 import { LESSON_FILE_TYPES } from "../../../AddLessonScreen"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -64,6 +65,7 @@ export default function EditLessonPage({
 }) {
   const { id: courseId, lessonId } = use(params)
   const router = useRouter()
+  const coursesBase = useCoursesBase()
 
   const [lesson, setLesson] = useState<LessonFull | null>(null)
   const [loading, setLoading] = useState(true)
@@ -167,7 +169,7 @@ export default function EditLessonPage({
         if (!r.ok) throw new Error(`Could not attach ${file.fileName}`)
       }
 
-      router.push(`/tutor/courses/${courseId}`)
+      router.push(`${coursesBase}/${courseId}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong")
     } finally {
@@ -198,7 +200,7 @@ export default function EditLessonPage({
     <div className="flex flex-col gap-6 max-w-4xl">
       {/* Back */}
       <Button asChild variant="ghost" size="sm" className="self-start -ml-2">
-        <Link href={`/tutor/courses/${courseId}`}>
+        <Link href={`${coursesBase}/${courseId}`}>
           <ChevronLeft className="size-4 mr-1" /> Back to Course
         </Link>
       </Button>

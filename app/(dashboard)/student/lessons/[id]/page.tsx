@@ -283,6 +283,9 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 key={videoAsset.id}
                 src={videoAsset.fileUrl}
                 controls
+                controlsList="nodownload noremoteplayback"
+                disablePictureInPicture
+                onContextMenu={(e) => e.preventDefault()}
                 className="w-full h-full"
                 onTimeUpdate={handleTimeUpdate}
               />
@@ -297,6 +300,9 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                         src={asset.fileUrl}
                         controls
                         autoPlay
+                        controlsList="nodownload noremoteplayback"
+                        disablePictureInPicture
+                        onContextMenu={(e) => e.preventDefault()}
                         className="w-full aspect-video"
                         onTimeUpdate={handleTimeUpdate}
                       />

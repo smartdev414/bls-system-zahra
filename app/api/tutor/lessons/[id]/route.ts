@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { courseContentScope } from "@/lib/permissions"
 
-async function verifyLessonOwnership(lessonId: string, tutorId: string) {
+async function verifyLessonOwnership(lessonId: string, session: { role: string; sub: string }) {
   const lesson = await prisma.lesson.findFirst({
-    where: { id: lessonId, section: { course: { tutorId } } },
+    where: { id: lessonId, section: { course: courseContentScope(session) } },
     include: { section: { include: { course: { select: { tutorId: true, id: true } } } } },
   })
   return lesson
@@ -23,7 +24,7 @@ async function handleGET(
     }
 
     const { id } = await params
-    const lesson = await verifyLessonOwnership(id, session.sub)
+    const lesson = await verifyLessonOwnership(id, session)
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const full = await prisma.lesson.findUnique({
@@ -57,7 +58,7 @@ async function handlePUT(
     }
 
     const { id } = await params
-    const lesson = await verifyLessonOwnership(id, session.sub)
+    const lesson = await verifyLessonOwnership(id, session)
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const body = await req.json() as {
@@ -97,7 +98,7 @@ async function handleDELETE(
     }
 
     const { id } = await params
-    const lesson = await verifyLessonOwnership(id, session.sub)
+    const lesson = await verifyLessonOwnership(id, session)
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     await prisma.lesson.delete({ where: { id } })

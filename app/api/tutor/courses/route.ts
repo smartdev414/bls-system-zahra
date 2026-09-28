@@ -63,7 +63,7 @@ async function handlePOST(req: NextRequest) {
       level: import("@/app/generated/prisma/client").CourseLevel
       categoryId?: string
       thumbnailUrl?: string
-      /** Staff only — the tutor who will run the course. */
+      /** Staff only — the tutor who will run the course. Optional. */
       tutorId?: string
     }
 
@@ -73,12 +73,10 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "Title and description are required" }, { status: 400 })
     }
 
-    // Tutors own what they create; staff set a course up for a named tutor.
+    // Tutors own what they create. Staff may hand the course to a named tutor;
+    // without one it stays with the staff member who created it.
     let ownerId = session.sub
-    if (isStaff(session.role)) {
-      if (!body.tutorId) {
-        return NextResponse.json({ message: "Choose the tutor who will run this course" }, { status: 400 })
-      }
+    if (isStaff(session.role) && body.tutorId) {
       const tutor = await prisma.user.findFirst({
         where: { id: body.tutorId, role: "TUTOR" },
         select: { id: true },

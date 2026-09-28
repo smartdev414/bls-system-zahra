@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { courseContentScope } from "@/lib/permissions"
 
 async function handleGET(
   _req: Request,
@@ -18,7 +19,7 @@ async function handleGET(
     const { id } = await params
 
     const course = await prisma.course.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...courseContentScope(session) },
       include: {
         category: true,
         sections: {
@@ -65,7 +66,7 @@ async function handlePUT(
     }
 
     // Verify ownership
-    const existing = await prisma.course.findFirst({ where: { id, tutorId: session.sub } })
+    const existing = await prisma.course.findFirst({ where: { id, ...courseContentScope(session) } })
     if (!existing) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
     const course = await prisma.course.update({
@@ -115,7 +116,7 @@ async function handleDELETE(
     }
 
     const { id } = await params
-    const existing = await prisma.course.findFirst({ where: { id, tutorId: session.sub } })
+    const existing = await prisma.course.findFirst({ where: { id, ...courseContentScope(session) } })
     if (!existing) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
     await prisma.course.delete({ where: { id } })
