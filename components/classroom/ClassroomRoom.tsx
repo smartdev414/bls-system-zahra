@@ -103,6 +103,18 @@ function readStoredBreakoutGroupId(sessionId: string): string | null {
   }
 }
 
+// The tutor's breakout setup, remembered per session and per tab. See the
+// restore effect next to the breakout state.
+const breakoutStateStorageKey = (sessionId: string) => `classroom:breakouts:${sessionId}`
+type StoredBreakouts = {
+  active: boolean
+  groups: BreakoutGroup[]
+  visitingGroupId: string | null
+  startedAt: number | null
+  durationMin: number | null
+  closingAt: number | null
+}
+
 // What's on the shared screen, remembered per session and per tab. A class-wide
 // refresh reloads the tutor too, and the tutor is the only source of truth for
 // the presentation — without this, "refresh the classroom" wipes the slides for
@@ -678,6 +690,55 @@ export function ClassroomRoom({
       closingAt: breakoutClosingAt,
     }
   }, [breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt])
+
+  // ── Breakouts survive a tutor reload ───────────────────────────────────────
+  // The tutor is the only source of truth for breakouts. Without this a refresh
+  // comes back with no groups and no monitor, while the students are still
+  // sitting in their groups with nobody able to manage or end them.
+  const restoredBreakoutsRef = useRef(false)
+  const hadBreakoutsRef = useRef(false)
+  useEffect(() => {
+    if (!isTutor) return
+    try {
+      const raw = sessionStorage.getItem(breakoutStateStorageKey(sessionId))
+      if (!raw) return
+      const saved = JSON.parse(raw) as StoredBreakouts
+      if (!saved?.active || !Array.isArray(saved.groups)) return
+      setBreakoutsActive(true)
+      setBreakoutGroups(saved.groups)
+      setVisitingGroupId(saved.visitingGroupId ?? null)
+      setBreakoutStartedAt(saved.startedAt ?? null)
+      setBreakoutDurationMin(saved.durationMin ?? null)
+      setBreakoutClosingAt(saved.closingAt ?? null)
+      // Reopen the monitor unless the tutor was inside a group, where it was
+      // deliberately closed so they could see the room they'd walked into.
+      if (!saved.visitingGroupId) setBreakoutMonitorOpen(true)
+      restoredBreakoutsRef.current = true
+    } catch { /* corrupt or unavailable storage — come up with no breakouts */ }
+  }, [isTutor, sessionId])
+
+  useEffect(() => {
+    if (!isTutor) return
+    try {
+      if (breakoutsActive) {
+        hadBreakoutsRef.current = true
+        const record: StoredBreakouts = {
+          active: true,
+          groups: breakoutGroups,
+          visitingGroupId,
+          startedAt: breakoutStartedAt,
+          durationMin: breakoutDurationMin,
+          closingAt: breakoutClosingAt,
+        }
+        sessionStorage.setItem(breakoutStateStorageKey(sessionId), JSON.stringify(record))
+        return
+      }
+      // Same guard as the presentation: the first render after a reload is
+      // still empty and must not wipe the record being restored.
+      if (!hadBreakoutsRef.current) return
+      sessionStorage.removeItem(breakoutStateStorageKey(sessionId))
+    } catch { /* storage disabled — breakouts just won't survive a reload */ }
+  }, [isTutor, breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt, sessionId])
 
   // Students: keep the participant strip open during breakouts so group cameras
   // stay visible — and open the chat too. Chat is the main channel in a BSL
@@ -3411,6 +3472,29 @@ export function ClassroomRoom({
     }, 1200)
     return () => clearTimeout(timer)
   }, [isTutor, participants, safeSendBreakout])
+
+  // After a reload restored breakouts, re-announce them once the tutor is back
+  // on the data channel. Students kept their own copy through the reload, so
+  // this just makes sure it matches — including the case where the timer ran
+  // out while the tutor was away and the snapshot now says "not active".
+  useEffect(() => {
+    if (!isTutor || !restoredBreakoutsRef.current) return
+    if (connectionState !== ConnectionState.Connected) return
+    const timer = setTimeout(() => {
+      restoredBreakoutsRef.current = false
+      const snap = breakoutStateRef.current
+      safeSendBreakout({
+        action: "sync_response",
+        active: snap.active,
+        groups: snap.groups,
+        visitingGroupId: snap.visitingGroupId,
+        startedAt: snap.startedAt,
+        durationMin: snap.durationMin,
+        closingAt: snap.closingAt,
+      })
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [isTutor, connectionState, safeSendBreakout])
 
   // Push the deadline out without tearing the rooms down. Broadcasts the whole
   // recomputed timer rather than a delta, so a client that missed an earlier
