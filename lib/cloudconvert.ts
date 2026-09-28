@@ -8,18 +8,44 @@
 
 import { Readable } from "node:stream"
 import CloudConvert from "cloudconvert"
+import type { Job } from "cloudconvert/built/lib/JobsResource"
 
 const CC_API_KEY = process.env.CLOUDCONVERT_API_KEY ?? ""
+
+// Second CloudConvert account, used when the primary one can't start a job
+// (typically out of conversion credits). Optional.
+const CC_FALLBACK_API_KEY = process.env.CLOUDCONVERT_API_KEY2 ?? ""
+
+// Jobs have to be waited on with the account that created them, so jobs from
+// the fallback account carry this prefix through the browser round trip.
+const FALLBACK_JOB_PREFIX = "fb:"
 
 function inputFormatForFileName(fileName: string): "ppt" | "pptx" {
   return /\.ppt$/i.test(fileName) && !/\.pptx$/i.test(fileName) ? "ppt" : "pptx"
 }
 
-function getClient(): CloudConvert {
-  if (!CC_API_KEY) {
-    throw new Error("CLOUDCONVERT_API_KEY is not configured")
+function getClient(fallback = false): CloudConvert {
+  const key = fallback ? CC_FALLBACK_API_KEY : CC_API_KEY
+  if (!key) {
+    throw new Error(`${fallback ? "CLOUDCONVERT_API_KEY2" : "CLOUDCONVERT_API_KEY"} is not configured`)
   }
-  return new CloudConvert(CC_API_KEY)
+  return new CloudConvert(key)
+}
+
+/** Create a job on the primary account, falling back to the second one if that fails. */
+async function createJob(sourceFileName: string): Promise<{ job: Job; fallback: boolean }> {
+  const tasks = pptxJobTasks(sourceFileName)
+  try {
+    return { job: await getClient().jobs.create({ tasks }), fallback: false }
+  } catch (err) {
+    if (!CC_FALLBACK_API_KEY) throw err
+    console.warn("[cloudconvert] primary account failed to create job; using fallback", err)
+    return { job: await getClient(true).jobs.create({ tasks }), fallback: true }
+  }
+}
+
+function toJobId(job: Job, fallback: boolean): string {
+  return fallback ? `${FALLBACK_JOB_PREFIX}${job.id}` : job.id
 }
 
 function pptxJobTasks(sourceFileName: string) {
@@ -45,8 +71,7 @@ export async function createPptxToPdfUpload(sourceFileName: string): Promise<{
   uploadUrl: string
   uploadParameters: Record<string, string>
 }> {
-  const cloudConvert = getClient()
-  const job = await cloudConvert.jobs.create({ tasks: pptxJobTasks(sourceFileName) })
+  const { job, fallback } = await createJob(sourceFileName)
 
   const uploadTask = job.tasks?.find((t) => t.name === "import-pptx")
   const form = uploadTask?.result?.form
@@ -55,7 +80,7 @@ export async function createPptxToPdfUpload(sourceFileName: string): Promise<{
   }
 
   return {
-    jobId: job.id,
+    jobId: toJobId(job, fallback),
     uploadUrl: form.url,
     uploadParameters: form.parameters as Record<string, string>,
   }
@@ -63,8 +88,9 @@ export async function createPptxToPdfUpload(sourceFileName: string): Promise<{
 
 /** Wait for a job started via createPptxToPdfUpload and return the PDF bytes. */
 export async function finishPptxToPdfJob(jobId: string): Promise<Buffer> {
-  const cloudConvert = getClient()
-  const job = await cloudConvert.jobs.wait(jobId)
+  const fallback = jobId.startsWith(FALLBACK_JOB_PREFIX)
+  const cloudConvert = getClient(fallback)
+  const job = await cloudConvert.jobs.wait(fallback ? jobId.slice(FALLBACK_JOB_PREFIX.length) : jobId)
 
   if (job.status !== "finished") {
     const failed = job.tasks?.find((t) => t.status === "error")
@@ -90,8 +116,8 @@ export async function convertPptxToPdf(
   sourceBuffer: Buffer,
   sourceFileName: string,
 ): Promise<Buffer> {
-  const cloudConvert = getClient()
-  const job = await cloudConvert.jobs.create({ tasks: pptxJobTasks(sourceFileName) })
+  const { job, fallback } = await createJob(sourceFileName)
+  const cloudConvert = getClient(fallback)
 
   const uploadTask = job.tasks?.find((t) => t.name === "import-pptx")
   if (!uploadTask) {
@@ -105,5 +131,5 @@ export async function convertPptxToPdf(
     sourceBuffer.byteLength,
   )
 
-  return finishPptxToPdfJob(job.id)
+  return finishPptxToPdfJob(toJobId(job, fallback))
 }
