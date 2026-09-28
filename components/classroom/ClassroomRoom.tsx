@@ -799,11 +799,24 @@ export function ClassroomRoom({
   // complaint it had (#19: a single row with horizontal scroll past ~10
   // students) is still fixed: the band packs every tile into a grid via
   // `packGrid` instead of a scrolling row, so nothing is ever off screen. The
-  // +/- control on the panel sets the band's height; `CLASS_BAND_PX` below.
+  // +/- control on the panel sets the band's height; `CLASS_BAND_HEIGHT` below.
 
   // Stacked beneath the stage, the +/- control sets a height. Taller than the
   // old strip at every step: two rows of faces is the point.
-  const CLASS_BAND_PX: Record<TileSize, number> = { sm: 104, md: 148, lg: 200, xl: 264 }
+  //
+  // Each step is a share of the screen with a pixel floor, not a fixed height.
+  // Fixed heights topped out at 264px, which on a big monitor with sixteen
+  // students still left thumbnail faces — tutors pressed "+" to the end and
+  // asked for bigger. The top steps hand the class most of the screen; the
+  // stage keeps the rest.
+  const CLASS_BAND_HEIGHT: Record<TileSize, string> = {
+    sm:  "104px",
+    md:  "max(148px, 18vh)",
+    lg:  "max(200px, 28vh)",
+    xl:  "max(264px, 38vh)",
+    "2xl": "max(320px, 50vh)",
+    "3xl": "max(380px, 62vh)",
+  }
 
   // How the stage is divided while a screen is being shared.
   //
@@ -873,12 +886,15 @@ export function ClassroomRoom({
   // Drives the height of the bottom participants strip and, transitively, the
   // size of each tile (they keep an aspect-square). Each user gets their own
   // preference — students can make their classmates' tiles bigger too.
-  type TileSize = "sm" | "md" | "lg" | "xl"
+  type TileSize = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl"
   const [tileSize, setTileSize] = useState<TileSize>("md")
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem("classroom:tileSize") as TileSize | null
-      if (stored === "sm" || stored === "md" || stored === "lg" || stored === "xl") {
+      if (
+        stored === "sm" || stored === "md" || stored === "lg" || stored === "xl" ||
+        stored === "2xl" || stored === "3xl"
+      ) {
         setTileSize(stored)
       }
     } catch { /* ignore — private mode or quota */ }
@@ -4745,7 +4761,7 @@ export function ClassroomRoom({
                 ? "flex-1 min-h-0 relative"
                 : "shrink-0 grow-0 border-t transition-[height] duration-200",
             )}
-            style={galleryView ? undefined : { height: participantsOpen ? CLASS_BAND_PX[tileSize] : 36 }}
+            style={galleryView ? undefined : { height: participantsOpen ? CLASS_BAND_HEIGHT[tileSize] : 36 }}
           >
             <ParticipantsPanel
               pinnedId={pinnedId}

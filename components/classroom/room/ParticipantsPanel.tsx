@@ -32,8 +32,8 @@ type MenuState = {
   y: number
 }
 
-type TileSize = "sm" | "md" | "lg" | "xl"
-const TILE_SIZE_ORDER: TileSize[] = ["sm", "md", "lg", "xl"]
+type TileSize = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl"
+const TILE_SIZE_ORDER: TileSize[] = ["sm", "md", "lg", "xl", "2xl", "3xl"]
 
 export function ParticipantsPanel({
   pinnedId,
