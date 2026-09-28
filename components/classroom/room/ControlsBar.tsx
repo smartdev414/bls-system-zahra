@@ -8,9 +8,13 @@ import {
   Presentation, ChevronLeft, ChevronRight,
   X, Pointer, RefreshCw, Film, PencilLine, Users2, Eye, EyeOff, Bell, Sparkles, Upload,
   Circle, Pause, UserPlus, Hand, Captions, CaptionsOff, Keyboard, Maximize2, Minimize2,
-  PictureInPicture2,
+  PictureInPicture2, MoreHorizontal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
 import { toast } from "sonner"
 import { writeDevicePreference, mediaFailureMessage } from "@/components/classroom/devicePreference"
@@ -23,9 +27,16 @@ import {
 // on a 1440px laptop Whiteboard, Breakouts, Present, Pointer and End Slides were
 // all off-screen, and on a phone a student could not reach Camera at all.
 // Core controls keep their words from `sm` up; the tutor's tools go icon-only
-// below 2xl and rely on their tooltip / aria-label.
+// below xl and rely on their tooltip / aria-label.
+//
+// Even icon-only, twenty-odd buttons in a row was too much to scan mid-lesson.
+// The tutor's bar now holds only what gets pressed while teaching — media,
+// presenting, whiteboard, breakouts, nudge, recording — and everything used once
+// a lesson or less (blur, captions, bulk mics, invite, refresh, full screen)
+// sits behind "More". A hidden control comes back inline while it is in use
+// (typing a caption, popping out students while sharing) so it can be undone.
 const CORE_LABEL = "hidden sm:inline"
-const TOOL_LABEL = "hidden 2xl:inline"
+const TOOL_LABEL = "hidden xl:inline"
 
 export function ControlsBar({
   isTutor,
@@ -216,6 +227,7 @@ export function ControlsBar({
       {/* Background blur — toggles a server-side blur processor on the local
           camera track so other participants see the blurred background too.
           First click lazy-loads the MediaPipe processor (~1-2 MB). */}
+      {!isTutor && (
       <button
         onClick={onToggleBlur}
         disabled={blurBusy}
@@ -236,8 +248,10 @@ export function ControlsBar({
         <Sparkles className="size-3.5" />
         <span className={CORE_LABEL}>{blurEnabled ? "Blur on" : "Blur"}</span>
       </button>
+      )}
 
       {/* Live captions — each viewer's own choice; hides them only here. */}
+      {!isTutor && (
       <button
         onClick={() => setCaptionsEnabled(!captionsEnabled)}
         className={cn(
@@ -253,9 +267,11 @@ export function ControlsBar({
         {captionsEnabled ? <Captions className="size-3.5" /> : <CaptionsOff className="size-3.5" />}
         <span className={CORE_LABEL}>{captionsEnabled ? "Captions" : "Captions off"}</span>
       </button>
+      )}
 
-      {/* Tutor-only: type a caption, or send a prepared one, instead of speaking. */}
-      {isTutor && (
+      {/* Tutor-only: type a caption, or send a prepared one, instead of speaking.
+          Opened from "More"; shown here while open so it can be closed. */}
+      {isTutor && composerOpen && (
         <button
           onClick={() => setCaptionComposerOpen(!composerOpen)}
           className={cn(
@@ -319,7 +335,7 @@ export function ControlsBar({
       {/* Pop the class out into an always-on-top window, so a teacher sharing
           another tab can still see their students. Stands out while sharing,
           which is when it's needed. */}
-      {isTutor && studentsPipSupported && onToggleStudentsPip && (
+      {isTutor && studentsPipSupported && onToggleStudentsPip && (screenSharing || studentsPipOpen) && (
         <button
           onClick={onToggleStudentsPip}
           className={cn(
@@ -342,70 +358,7 @@ export function ControlsBar({
         </button>
       )}
 
-      {/* Tutor-only: bulk mic controls for students. */}
-      {isTutor && (
-        <>
-          <button
-            onClick={onMuteAll}
-            disabled={studentCount === 0}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-rose-900/40 hover:text-rose-300 text-zinc-300 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:text-zinc-300"
-            title={
-              studentCount === 0
-                ? "No students in the room yet"
-                : "Turn off every student's microphone."
-            }
-            aria-label="Mute all students"
-          >
-            <MicOff className="size-3.5" />
-            <span className={TOOL_LABEL}>Mute all</span>
-          </button>
-          <button
-            onClick={onUnmuteAll}
-            disabled={studentCount === 0}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:text-zinc-300"
-            title={
-              studentCount === 0
-                ? "No students in the room yet"
-                : "Turn on every student's microphone."
-            }
-            aria-label="Unmute all students"
-          >
-            <Mic className="size-3.5" />
-            <span className={TOOL_LABEL}>Unmute all</span>
-          </button>
-        </>
-      )}
-
-      {/* Tutor-only: invite another teacher to co-teach this session. They get a
-          notification (and email if configured) with a link that opens the
-          classroom with full tutor controls — works mid-session. */}
-      {isTutor && canInviteCoTutor && (
-        <button
-          onClick={onInviteCoTutor}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"
-          title="Invite another teacher to co-teach this session"
-          aria-label="Invite a second teacher"
-        >
-          <UserPlus className="size-3.5" />
-          <span className={TOOL_LABEL}>Invite teacher</span>
-        </button>
-      )}
-
-      {/* Tutor-only recovery: refresh every client (including the tutor) — useful
-          when the room freezes and data/video has stopped flowing. */}
-      {isTutor && (
-        <button
-          onClick={onRefreshAll}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-900/40 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
-          title="Reload the classroom for every student and yourself. Use if the session freezes."
-          aria-label="Refresh the classroom for everyone"
-        >
-          <RefreshCw className="size-3.5" />
-          <span className={TOOL_LABEL}>Refresh all</span>
-        </button>
-      )}
-
-      <RoomFullscreenButton />
+      {!isTutor && <RoomFullscreenButton />}
 
       {/* Student self-refresh: reload this tab only, then auto-rejoin. Chat history
           and current slides are restored after reconnect. */}
@@ -421,134 +374,7 @@ export function ControlsBar({
         </button>
       )}
 
-      {/* Tutor-only: start, pause, or resume server-side recording. Each pause/resume
-          cycle produces a separate MP4 segment in S3, so breaks and private
-          chats don't end up in the saved recording. */}
-      {isTutor && (
-        <button
-          onClick={onToggleRecording}
-          disabled={recordingBusy}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            !recordingStarted
-              ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
-              : recordingPaused
-                ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
-                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
-            recordingBusy && "opacity-60 cursor-wait",
-          )}
-          title={
-            !recordingStarted
-              ? "Start recording this session"
-              : recordingPaused
-                ? "Resume recording — starts a new segment"
-                : "Pause recording — the next break won't be saved"
-          }
-          aria-label={!recordingStarted ? "Start recording" : recordingPaused ? "Resume recording" : "Pause recording"}
-        >
-          {!recordingStarted ? (
-            <>
-              <Circle className="size-3.5 fill-current" />
-              <span className={TOOL_LABEL}>Start Rec</span>
-            </>
-          ) : recordingPaused ? (
-            <>
-              <Circle className="size-3.5 fill-current" />
-              <span className={TOOL_LABEL}>Resume Rec</span>
-            </>
-          ) : (
-            <>
-              <Pause className="size-3.5" />
-              <span className={TOOL_LABEL}>Pause Rec</span>
-            </>
-          )}
-        </button>
-      )}
-
-      {/* Tutor-only: ping screens with a visual flash. BSL classrooms can't
-          rely on sound, so the flash is the attention cue. With nobody pinned
-          this is the whole class; with a student pinned it targets only them.
-          Per-group nudges live in the breakout monitor, and any student can
-          still be nudged from their tile's right-click menu. */}
-      {isTutor && (
-        <button
-          onClick={onNudgeClass}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
-          title={
-            nudgeTargetName
-              ? `Flash a short visual attention alert on ${nudgeTargetName}'s screen only`
-              : "Flash a short visual attention alert on every student's screen"
-          }
-          aria-label={nudgeTargetName ? `Nudge ${nudgeTargetName}` : "Nudge the whole class"}
-        >
-          <Bell className="size-3.5" />
-          <span className={TOOL_LABEL}>{nudgeTargetName ? "Nudge student" : "Nudge class"}</span>
-        </button>
-      )}
-
-      {/* Tutor-only: open/close the shared whiteboard. Only the tutor draws by
-          default; use "Let them write" on the board to hand control to students.
-          Disabled while slides/video are live — one shared surface at a time. */}
-      {isTutor && (
-        <button
-          onClick={onToggleWhiteboard}
-          disabled={pptActive && !whiteboardActive}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            whiteboardActive
-              ? "bg-amber-500/25 text-amber-300 border-amber-500/50"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
-            pptActive && !whiteboardActive && "opacity-40 cursor-not-allowed"
-          )}
-          title={
-            pptActive && !whiteboardActive
-              ? "Stop presenting before opening the whiteboard"
-              : whiteboardActive
-                ? "Close the whiteboard for everyone"
-                : "Open a shared whiteboard — tutor draws; students view until you let them write"
-          }
-          aria-label={whiteboardActive ? "Close the whiteboard" : "Whiteboard"}
-        >
-          <PencilLine className="size-3.5" />
-          <span className={TOOL_LABEL}>{whiteboardActive ? "Close Board" : "Whiteboard"}</span>
-        </button>
-      )}
-
-      {/* Breakouts — tutor opens/edits group assignments. Once live, a second
-          button reveals the monitor grid so the tutor can observe every
-          student's signing across all groups at once. */}
-      {isTutor && (
-        <button
-          onClick={onOpenBreakoutsPanel}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            breakoutsActive
-              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
-          )}
-          title={
-            breakoutsActive
-              ? "Edit, visit, or end the active breakouts"
-              : "Split students into small groups for pair or group work"
-          }
-          aria-label={breakoutsActive ? "Breakouts live" : "Breakouts"}
-        >
-          <Users2 className="size-3.5" />
-          <span className={TOOL_LABEL}>{breakoutsActive ? "Breakouts live" : "Breakouts"}</span>
-        </button>
-      )}
-
-      {isTutor && breakoutsActive && (
-        <button
-          onClick={onOpenBreakoutMonitor}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 transition-colors whitespace-nowrap"
-          title="Open the monitor grid — watch every student's signing across all groups"
-          aria-label="Breakout monitor"
-        >
-          <Eye className="size-3.5" />
-          <span className={TOOL_LABEL}>Monitor</span>
-        </button>
-      )}
+      {isTutor && <Divider />}
 
       {/* ── Presentation controls (tutor only) ──
           With a deck prepared before the lesson the primary button starts it
@@ -676,6 +502,152 @@ export function ControlsBar({
         </>
       )}
 
+      {/* Tutor-only: open/close the shared whiteboard. Only the tutor draws by
+          default; use "Let them write" on the board to hand control to students.
+          Hidden while slides/video are live — one shared surface at a time. */}
+      {isTutor && (!pptActive || whiteboardActive) && (
+        <button
+          onClick={onToggleWhiteboard}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            whiteboardActive
+              ? "bg-amber-500/25 text-amber-300 border-amber-500/50"
+              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+          )}
+          title={
+            whiteboardActive
+              ? "Close the whiteboard for everyone"
+              : "Open a shared whiteboard — tutor draws; students view until you let them write"
+          }
+          aria-label={whiteboardActive ? "Close the whiteboard" : "Whiteboard"}
+        >
+          <PencilLine className="size-3.5" />
+          <span className={TOOL_LABEL}>{whiteboardActive ? "Close Board" : "Whiteboard"}</span>
+        </button>
+      )}
+
+      {/* Breakouts — tutor opens/edits group assignments. Once live, a second
+          button reveals the monitor grid so the tutor can observe every
+          student's signing across all groups at once. */}
+      {isTutor && (
+        <button
+          onClick={onOpenBreakoutsPanel}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            breakoutsActive
+              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
+          )}
+          title={
+            breakoutsActive
+              ? "Edit, visit, or end the active breakouts"
+              : "Split students into small groups for pair or group work"
+          }
+          aria-label={breakoutsActive ? "Breakouts live" : "Breakouts"}
+        >
+          <Users2 className="size-3.5" />
+          <span className={TOOL_LABEL}>{breakoutsActive ? "Breakouts live" : "Breakouts"}</span>
+        </button>
+      )}
+
+      {isTutor && breakoutsActive && (
+        <button
+          onClick={onOpenBreakoutMonitor}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 transition-colors whitespace-nowrap"
+          title="Open the monitor grid — watch every student's signing across all groups"
+          aria-label="Breakout monitor"
+        >
+          <Eye className="size-3.5" />
+          <span className={TOOL_LABEL}>Monitor</span>
+        </button>
+      )}
+
+      {/* Tutor-only: ping screens with a visual flash. BSL classrooms can't
+          rely on sound, so the flash is the attention cue. With nobody pinned
+          this is the whole class; with a student pinned it targets only them.
+          Per-group nudges live in the breakout monitor, and any student can
+          still be nudged from their tile's right-click menu. */}
+      {isTutor && (
+        <button
+          onClick={onNudgeClass}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
+          title={
+            nudgeTargetName
+              ? `Flash a short visual attention alert on ${nudgeTargetName}'s screen only`
+              : "Flash a short visual attention alert on every student's screen"
+          }
+          aria-label={nudgeTargetName ? `Nudge ${nudgeTargetName}` : "Nudge the whole class"}
+        >
+          <Bell className="size-3.5" />
+          <span className={TOOL_LABEL}>{nudgeTargetName ? "Nudge student" : "Nudge class"}</span>
+        </button>
+      )}
+
+      {/* Tutor-only: start, pause, or resume server-side recording. Each pause/resume
+          cycle produces a separate MP4 segment in S3, so breaks and private
+          chats don't end up in the saved recording. */}
+      {isTutor && (
+        <button
+          onClick={onToggleRecording}
+          disabled={recordingBusy}
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            !recordingStarted
+              ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
+              : recordingPaused
+                ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
+                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
+            recordingBusy && "opacity-60 cursor-wait",
+          )}
+          title={
+            !recordingStarted
+              ? "Start recording this session"
+              : recordingPaused
+                ? "Resume recording — starts a new segment"
+                : "Pause recording — the next break won't be saved"
+          }
+          aria-label={!recordingStarted ? "Start recording" : recordingPaused ? "Resume recording" : "Pause recording"}
+        >
+          {!recordingStarted ? (
+            <>
+              <Circle className="size-3.5 fill-current" />
+              <span className={TOOL_LABEL}>Start Rec</span>
+            </>
+          ) : recordingPaused ? (
+            <>
+              <Circle className="size-3.5 fill-current" />
+              <span className={TOOL_LABEL}>Resume Rec</span>
+            </>
+          ) : (
+            <>
+              <Pause className="size-3.5" />
+              <span className={TOOL_LABEL}>Pause Rec</span>
+            </>
+          )}
+        </button>
+      )}
+
+      {isTutor && (
+        <TutorMoreMenu
+          studentCount={studentCount}
+          onMuteAll={onMuteAll}
+          onUnmuteAll={onUnmuteAll}
+          canInviteCoTutor={canInviteCoTutor}
+          onInviteCoTutor={onInviteCoTutor}
+          onRefreshAll={onRefreshAll}
+          blurEnabled={blurEnabled}
+          blurBusy={blurBusy}
+          onToggleBlur={onToggleBlur}
+          captionsEnabled={captionsEnabled}
+          composerOpen={composerOpen}
+          studentsPip={
+            studentsPipSupported && onToggleStudentsPip && !screenSharing && !studentsPipOpen
+              ? onToggleStudentsPip
+              : null
+          }
+        />
+      )}
+
       <button
         onClick={onLeave}
         aria-label="Leave the class"
@@ -783,20 +755,24 @@ function subscribeFullscreen(listener: () => void) {
   return () => document.removeEventListener("fullscreenchange", listener)
 }
 
-function RoomFullscreenButton() {
+function useRoomFullscreen() {
   const supported = useSyncExternalStore(subscribeFullscreen, () => !!document.fullscreenEnabled, () => false)
   const active = useSyncExternalStore(
     subscribeFullscreen,
     () => document.fullscreenElement === document.documentElement,
     () => false,
   )
-
-  if (!supported) return null
-
   const toggle = () => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
     else document.documentElement.requestFullscreen().catch(() => {})
   }
+  return { supported, active, toggle }
+}
+
+function RoomFullscreenButton() {
+  const { supported, active, toggle } = useRoomFullscreen()
+
+  if (!supported) return null
 
   return (
     <button
@@ -814,5 +790,115 @@ function RoomFullscreenButton() {
       {active ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
       <span className={CORE_LABEL}>{active ? "Exit full screen" : "Full screen"}</span>
     </button>
+  )
+}
+
+function Divider() {
+  return <div aria-hidden className="h-6 w-px bg-zinc-800 shrink-0" />
+}
+
+const MENU_ITEM = "gap-2 px-2 py-1.5 text-xs text-zinc-200 focus:bg-zinc-800 focus:text-zinc-100 [&_svg]:text-zinc-400"
+
+// The tutor's occasional controls, grouped by who they act on. Refresh sits
+// last and apart because it reloads every student's tab.
+function TutorMoreMenu({
+  studentCount,
+  onMuteAll,
+  onUnmuteAll,
+  canInviteCoTutor,
+  onInviteCoTutor,
+  onRefreshAll,
+  blurEnabled,
+  blurBusy,
+  onToggleBlur,
+  captionsEnabled,
+  composerOpen,
+  studentsPip,
+}: {
+  studentCount: number
+  onMuteAll: () => void
+  onUnmuteAll: () => void
+  canInviteCoTutor: boolean
+  onInviteCoTutor: () => void
+  onRefreshAll: () => void
+  blurEnabled: boolean
+  blurBusy: boolean
+  onToggleBlur: () => void
+  captionsEnabled: boolean
+  composerOpen: boolean
+  // Set only when the pop-out isn't already shown inline on the bar.
+  studentsPip: (() => void) | null
+}) {
+  const fullscreen = useRoomFullscreen()
+  const noStudents = studentCount === 0
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap shrink-0 data-[state=open]:bg-zinc-700"
+          title="More controls — mics, captions, blur, invite, refresh, full screen"
+          aria-label="More controls"
+        >
+          <MoreHorizontal className="size-3.5" />
+          <span className={CORE_LABEL}>More</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="top"
+        align="end"
+        sideOffset={8}
+        className="w-60 bg-zinc-900 text-zinc-200 ring-zinc-700/70"
+      >
+        <DropdownMenuLabel className="px-2 text-[10px] uppercase tracking-wider text-zinc-500">
+          Students
+        </DropdownMenuLabel>
+        <DropdownMenuItem className={MENU_ITEM} disabled={noStudents} onSelect={onMuteAll}>
+          <MicOff className="size-3.5" /> Mute all students
+        </DropdownMenuItem>
+        <DropdownMenuItem className={MENU_ITEM} disabled={noStudents} onSelect={onUnmuteAll}>
+          <Mic className="size-3.5" /> Unmute all students
+        </DropdownMenuItem>
+        {studentsPip && (
+          <DropdownMenuItem className={MENU_ITEM} onSelect={studentsPip}>
+            <PictureInPicture2 className="size-3.5" /> Pop out students
+          </DropdownMenuItem>
+        )}
+        {canInviteCoTutor && (
+          <DropdownMenuItem className={MENU_ITEM} onSelect={onInviteCoTutor}>
+            <UserPlus className="size-3.5" /> Invite a co-teacher
+          </DropdownMenuItem>
+        )}
+
+        <DropdownMenuSeparator className="bg-zinc-800" />
+        <DropdownMenuLabel className="px-2 text-[10px] uppercase tracking-wider text-zinc-500">
+          You
+        </DropdownMenuLabel>
+        <DropdownMenuItem className={MENU_ITEM} disabled={blurBusy} onSelect={onToggleBlur}>
+          <Sparkles className="size-3.5" /> {blurEnabled ? "Turn background blur off" : "Blur background"}
+        </DropdownMenuItem>
+        <DropdownMenuItem className={MENU_ITEM} onSelect={() => setCaptionsEnabled(!captionsEnabled)}>
+          {captionsEnabled ? <CaptionsOff className="size-3.5" /> : <Captions className="size-3.5" />}
+          {captionsEnabled ? "Hide live captions" : "Show live captions"}
+        </DropdownMenuItem>
+        <DropdownMenuItem className={MENU_ITEM} onSelect={() => setCaptionComposerOpen(!composerOpen)}>
+          <Keyboard className="size-3.5" /> {composerOpen ? "Close caption typing" : "Type a caption"}
+        </DropdownMenuItem>
+        {fullscreen.supported && (
+          <DropdownMenuItem className={MENU_ITEM} onSelect={fullscreen.toggle}>
+            {fullscreen.active ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            {fullscreen.active ? "Exit full screen" : "Full screen"}
+          </DropdownMenuItem>
+        )}
+
+        <DropdownMenuSeparator className="bg-zinc-800" />
+        <DropdownMenuItem
+          className={cn(MENU_ITEM, "text-amber-300 focus:text-amber-200 [&_svg]:text-amber-400")}
+          onSelect={onRefreshAll}
+        >
+          <RefreshCw className="size-3.5" /> Refresh classroom for everyone
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
