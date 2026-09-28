@@ -2702,10 +2702,24 @@ export function ClassroomRoom({
     if (!isTutor || recordingReminderShown.current) return
     if (connectionState !== ConnectionState.Connected) return
     recordingReminderShown.current = true
+    // A reload mid-breakout (or mid-recording) isn't "entering" the class —
+    // the reminder is noise there, and it lands on top of the breakout
+    // monitor's controls.
+    if (recordingActive || breakoutsActive) return
     toast.info("Click Start Rec in the controls bar when you're ready to record this session.", {
+      id: "recording-reminder",
       duration: 12_000,
+      // Sonner pauses the timer while hovered, so without a close button a
+      // toast sitting over other controls could never be got rid of.
+      closeButton: true,
     })
-  }, [isTutor, connectionState])
+  }, [isTutor, connectionState, recordingActive, breakoutsActive])
+
+  // Drop the reminder once it no longer applies — the room's recording flag
+  // can arrive just after connect, and breakouts put the monitor under it.
+  useEffect(() => {
+    if (recordingActive || breakoutsActive) toast.dismiss("recording-reminder")
+  }, [recordingActive, breakoutsActive])
 
   // Tutor starts, pauses, or resumes recording. Each pause/resume creates a
   // separate MP4 segment in S3.
