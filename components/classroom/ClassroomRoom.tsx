@@ -1617,11 +1617,17 @@ export function ClassroomRoom({
         return
       }
 
-      // Live cursor from a peer. Cursors are view-only, so they're applied
-      // regardless of write permission. Dropped (not buffered) if the board
-      // isn't mounted yet — presence is ephemeral and the next frame is ~60ms out.
+      // Live cursor from a peer. Cursors are applied regardless of write
+      // permission, but a view-only student's scribbles are stripped: tldraw
+      // keeps the laser tool usable in readonly mode, and its fading trail
+      // looked like students drawing over the tutor. Dropped (not buffered) if
+      // the board isn't mounted yet — presence is ephemeral and the next frame
+      // is ~60ms out.
       if (data.action === "presence") {
-        wbApiRef.current?.applyPresence(data.presence)
+        const presence = isFromTutor || studentWriteAllowed()
+          ? data.presence
+          : { ...data.presence, scribbles: [], brush: null }
+        wbApiRef.current?.applyPresence(presence)
         return
       }
 
