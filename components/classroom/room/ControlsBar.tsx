@@ -2,7 +2,10 @@
 
 import { useLocalParticipant, useTrackToggle } from "@livekit/components-react"
 import { Track } from "livekit-client"
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
+import {
+  Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
+  type ComponentProps, type ReactNode,
+} from "react"
 import {
   Mic, MicOff, Camera, CameraOff, Monitor, PhoneOff,
   Presentation, ChevronLeft, ChevronRight,
@@ -12,8 +15,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
 import { toast } from "sonner"
@@ -22,21 +24,18 @@ import {
   setCaptionsEnabled, useCaptionsEnabled, setCaptionComposerOpen, useCaptionComposerOpen,
 } from "@/components/classroom/captionsPreference"
 
-// The bar is one row that scrolls sideways once it runs out of room, with Leave
-// pinned to the right. With every button fully labelled a tutor needed ~2300px:
-// on a 1440px laptop Whiteboard, Breakouts, Present, Pointer and End Slides were
-// all off-screen, and on a phone a student could not reach Camera at all.
-// Core controls keep their words from `sm` up; the tutor's tools go icon-only
-// below xl and rely on their tooltip / aria-label.
-//
-// Even icon-only, twenty-odd buttons in a row was too much to scan mid-lesson.
-// The tutor's bar now holds only what gets pressed while teaching — media,
-// presenting, whiteboard, breakouts, nudge, recording — and everything used once
-// a lesson or less (blur, captions, bulk mics, invite, refresh, full screen)
-// sits behind "More". A hidden control comes back inline while it is in use
-// (typing a caption, popping out students while sharing) so it can be undone.
+// The bar is one row. A student's few controls scroll sideways if they run out
+// of room, with Leave pinned to the right. The tutor has twenty-odd controls:
+// scrolling hid Whiteboard, Breakouts and Present off-screen on a laptop, and
+// a fixed short list behind "More" hid tools a wide screen had room for. So
+// the tutor's bar fills the line with as many tools as fit, in priority order,
+// and only the ones that don't fit go in a "…" menu (see OverflowTools).
+// Labels hide below `sm` and rely on the tooltip / aria-label.
 const CORE_LABEL = "hidden sm:inline"
-const TOOL_LABEL = "hidden xl:inline"
+
+const BTN = "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border"
+const IDLE = "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
+const ON_SKY = "bg-sky-500/20 text-sky-300 border-sky-500/40"
 
 export function ControlsBar({
   isTutor,
@@ -171,156 +170,500 @@ export function ControlsBar({
     return () => clearTimeout(t)
   }, [askedToSpeak])
 
-  return (
-    <div className="flex items-center gap-2 w-full min-w-0 overflow-x-auto overflow-y-hidden">
-      {isTutor ? (
-        <MediaToggle
-          source={Track.Source.Microphone}
-          onIcon={<Mic className="size-3.5" />}
-          offIcon={<MicOff className="size-3.5" />}
-          onLabel="Mic"
-          offLabel="Mic off"
-          onTitle="Turn your microphone off"
-          offTitle="Turn your microphone on"
-        />
-      ) : (
-        <div className="flex items-center gap-2">
-          <div
-            className={cn(
-              "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium border whitespace-nowrap cursor-not-allowed",
-              micEnabled
-                ? "bg-emerald-900/30 text-emerald-300 border-emerald-700/40"
-                : "bg-zinc-800/80 text-zinc-500 border-zinc-700/60",
-            )}
-            title={micEnabled ? "Microphone is ON (controlled by tutor)" : "Microphone is OFF (controlled by tutor)"}
-            aria-label={micEnabled ? "Microphone on, controlled by your tutor" : "Microphone off, controlled by your tutor"}
-          >
-            {micEnabled ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
-            <span className={CORE_LABEL}>Mic {micEnabled ? "on" : "off"}</span>
-          </div>
-          {/* When muted, a student can ask the tutor to turn their mic on. */}
-          {!micEnabled && (
-            <button
-              onClick={() => { onRequestToSpeak(); setAskedToSpeak(true) }}
-              disabled={askedToSpeak}
-              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors whitespace-nowrap disabled:bg-sky-900/60 disabled:text-sky-200 disabled:cursor-default"
-              title={askedToSpeak ? "Your tutor has been asked — waiting for them" : "Ask your tutor to turn your microphone on"}
-              aria-label={askedToSpeak ? "Asked to speak" : "Ask to speak"}
-            >
-              <Hand className="size-3.5" />
-              <span className={CORE_LABEL}>{askedToSpeak ? "Asked" : "Ask to speak"}</span>
-            </button>
+  const fullscreen = useRoomFullscreen()
+
+  const blurButton = (
+    <button
+      onClick={onToggleBlur}
+      disabled={blurBusy}
+      className={cn(BTN, blurEnabled ? ON_SKY : IDLE, blurBusy && "opacity-60 cursor-wait")}
+      title={
+        blurEnabled
+          ? "Turn background blur off"
+          : "Blur your background — students and tutor see the blurred feed"
+      }
+      aria-label={blurEnabled ? "Turn background blur off" : "Blur background"}
+    >
+      <Sparkles className="size-3.5" />
+      <span className={CORE_LABEL}>{blurEnabled ? "Blur on" : "Blur"}</span>
+    </button>
+  )
+
+  // Live captions — each viewer's own choice; hides them only here.
+  const captionsButton = (
+    <button
+      onClick={() => setCaptionsEnabled(!captionsEnabled)}
+      className={cn(BTN, captionsEnabled ? ON_SKY : IDLE)}
+      title={captionsEnabled ? "Hide live captions (only on your screen)" : "Show live captions"}
+      aria-label={captionsEnabled ? "Turn captions off" : "Turn captions on"}
+      aria-pressed={captionsEnabled}
+    >
+      {captionsEnabled ? <Captions className="size-3.5" /> : <CaptionsOff className="size-3.5" />}
+      <span className={CORE_LABEL}>{captionsEnabled ? "Captions" : "Captions off"}</span>
+    </button>
+  )
+
+  const screenToggle = (
+    <MediaToggle
+      source={Track.Source.ScreenShare}
+      // Capture and publish at text-readable quality — see the constants for
+      // why the defaults aren't good enough for slides and documents.
+      captureOptions={SCREEN_SHARE_CAPTURE}
+      publishOptions={SCREEN_SHARE_PUBLISH}
+      activeWhenOn
+      onIcon={<Monitor className="size-3.5" />}
+      offIcon={<Monitor className="size-3.5" />}
+      onLabel="Stop sharing"
+      offLabel="Screen"
+      onTitle="Stop sharing your screen"
+      offTitle={
+        isTutor
+          ? "Share your screen with the class"
+          : "Share your screen — your tutor can pin and show it to everyone"
+      }
+    />
+  )
+
+  const cameraToggle = (
+    <MediaToggle
+      source={Track.Source.Camera}
+      onIcon={<Camera className="size-3.5" />}
+      offIcon={<CameraOff className="size-3.5" />}
+      onLabel="Camera"
+      offLabel="Camera off"
+      onTitle="Turn your camera off"
+      offTitle={isTutor ? "Turn your camera on" : "Turn your camera on so your tutor can see you sign"}
+    />
+  )
+
+  const leaveButton = (
+    <button
+      onClick={onLeave}
+      aria-label="Leave the class"
+      className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors whitespace-nowrap ml-auto shrink-0"
+    >
+      <PhoneOff className="size-3.5" /> <span className={CORE_LABEL}>Leave</span>
+    </button>
+  )
+
+  if (!isTutor) {
+    return (
+      <div className="flex items-center gap-2 w-full min-w-0 overflow-x-auto overflow-y-hidden">
+        <div
+          className={cn(
+            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium border whitespace-nowrap cursor-not-allowed",
+            micEnabled
+              ? "bg-emerald-900/30 text-emerald-300 border-emerald-700/40"
+              : "bg-zinc-800/80 text-zinc-500 border-zinc-700/60",
           )}
+          title={micEnabled ? "Microphone is ON (controlled by tutor)" : "Microphone is OFF (controlled by tutor)"}
+          aria-label={micEnabled ? "Microphone on, controlled by your tutor" : "Microphone off, controlled by your tutor"}
+        >
+          {micEnabled ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
+          <span className={CORE_LABEL}>Mic {micEnabled ? "on" : "off"}</span>
         </div>
-      )}
+        {/* When muted, a student can ask the tutor to turn their mic on. */}
+        {!micEnabled && (
+          <button
+            onClick={() => { onRequestToSpeak(); setAskedToSpeak(true) }}
+            disabled={askedToSpeak}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors whitespace-nowrap disabled:bg-sky-900/60 disabled:text-sky-200 disabled:cursor-default"
+            title={askedToSpeak ? "Your tutor has been asked — waiting for them" : "Ask your tutor to turn your microphone on"}
+            aria-label={askedToSpeak ? "Asked to speak" : "Ask to speak"}
+          >
+            <Hand className="size-3.5" />
+            <span className={CORE_LABEL}>{askedToSpeak ? "Asked" : "Ask to speak"}</span>
+          </button>
+        )}
+        {cameraToggle}
+        {blurButton}
+        {captionsButton}
+        {screenToggle}
+        <RoomFullscreenButton />
+        {/* Reload this tab only, then auto-rejoin. Chat history and current
+            slides are restored after reconnect. */}
+        <button
+          onClick={onRefreshSelf}
+          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-900/40 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
+          title="Reload your classroom view. Chat history and the current slides will come back after you reconnect."
+          aria-label="Refresh your classroom"
+        >
+          <RefreshCw className="size-3.5" />
+          <span className={CORE_LABEL}>Refresh</span>
+        </button>
+        <div className="ml-auto sticky right-0 shrink-0 shadow-[-12px_0_12px_-8px_rgb(9_9_11)]">{leaveButton}</div>
+      </div>
+    )
+  }
 
-      <MediaToggle
-        source={Track.Source.Camera}
-        onIcon={<Camera className="size-3.5" />}
-        offIcon={<CameraOff className="size-3.5" />}
-        onLabel="Camera"
-        offLabel="Camera off"
-        onTitle="Turn your camera off"
-        offTitle={isTutor ? "Turn your camera on" : "Turn your camera on so your tutor can see you sign"}
-      />
+  // ── Tutor ──
+  // Media and the live presentation controls are always on the bar. Everything
+  // else is a "tool", in priority order: as many as fit the width stay inline
+  // and the rest collapse, from the end of the list, into the "…" menu.
+  const noStudents = studentCount === 0
+  const tools: Tool[] = []
 
-      {/* Background blur — toggles a server-side blur processor on the local
-          camera track so other participants see the blurred background too.
-          First click lazy-loads the MediaPipe processor (~1-2 MB). */}
-      {!isTutor && (
+  // With a deck prepared before the lesson the primary button starts it
+  // outright — the whole point of preparing is not to be uploading and picking
+  // slides while a class watches. The upload path stays one click away.
+  if (!pptActive && !whiteboardActive) {
+    tools.push(preparedKind ? {
+      key: "present",
+      inline: (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onPresentPrepared}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 transition-colors whitespace-nowrap"
+            title={
+              preparedName
+                ? `Present "${preparedName}" — prepared before the lesson`
+                : "Present your prepared file"
+            }
+          >
+            {preparedKind === "video"
+              ? <><Film className="size-3.5" /> Play video</>
+              : <><Presentation className="size-3.5" /> Present {preparedCount} slides</>}
+          </button>
+          <button
+            onClick={onShowUpload}
+            className="flex items-center justify-center size-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+            title="Present something else — upload a different file"
+            aria-label="Present a different file"
+          >
+            <Upload className="size-3.5" />
+          </button>
+        </div>
+      ),
+      menu: (
+        <>
+          <MenuTool
+            icon={preparedKind === "video" ? <Film /> : <Presentation />}
+            label={preparedKind === "video" ? "Play video" : `Present ${preparedCount} slides`}
+            onSelect={onPresentPrepared}
+          />
+          <MenuTool icon={<Upload />} label="Present a different file" onSelect={onShowUpload} />
+        </>
+      ),
+    } : {
+      key: "present",
+      inline: (
+        <button onClick={onShowUpload} className={cn(BTN, IDLE)} title="Upload and present slides or a video">
+          <Presentation className="size-3.5" /> Present
+        </button>
+      ),
+      menu: <MenuTool icon={<Presentation />} label="Present slides or video" onSelect={onShowUpload} />,
+    })
+  }
+
+  // Only the tutor draws by default; "Let them write" on the board hands
+  // control to students. Hidden while slides/video are live — one shared
+  // surface at a time.
+  if (!pptActive || whiteboardActive) {
+    tools.push({
+      key: "whiteboard",
+      inline: (
+        <button
+          onClick={onToggleWhiteboard}
+          className={cn(BTN, whiteboardActive ? "bg-amber-500/25 text-amber-300 border-amber-500/50" : IDLE)}
+          title={
+            whiteboardActive
+              ? "Close the whiteboard for everyone"
+              : "Open a shared whiteboard — tutor draws; students view until you let them write"
+          }
+          aria-label={whiteboardActive ? "Close the whiteboard" : "Whiteboard"}
+        >
+          <PencilLine className="size-3.5" />
+          <span className={CORE_LABEL}>{whiteboardActive ? "Close Board" : "Whiteboard"}</span>
+        </button>
+      ),
+      menu: (
+        <MenuTool
+          icon={<PencilLine />}
+          label={whiteboardActive ? "Close whiteboard" : "Whiteboard"}
+          active={whiteboardActive}
+          onSelect={onToggleWhiteboard}
+        />
+      ),
+    })
+  }
+
+  // Once live, a second tool opens the monitor grid so the tutor can watch
+  // every student's signing across all groups at once.
+  tools.push({
+    key: "breakouts",
+    inline: (
       <button
-        onClick={onToggleBlur}
-        disabled={blurBusy}
+        onClick={onOpenBreakoutsPanel}
+        className={cn(BTN, breakoutsActive ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : IDLE)}
+        title={
+          breakoutsActive
+            ? "Edit, visit, or end the active breakouts"
+            : "Split students into small groups for pair or group work"
+        }
+        aria-label={breakoutsActive ? "Breakouts live" : "Breakouts"}
+      >
+        <Users2 className="size-3.5" />
+        <span className={CORE_LABEL}>{breakoutsActive ? "Breakouts live" : "Breakouts"}</span>
+      </button>
+    ),
+    menu: (
+      <MenuTool
+        icon={<Users2 />}
+        label={breakoutsActive ? "Breakouts live" : "Breakouts"}
+        active={breakoutsActive}
+        onSelect={onOpenBreakoutsPanel}
+      />
+    ),
+  })
+  if (breakoutsActive) {
+    tools.push({
+      key: "monitor",
+      inline: (
+        <button
+          onClick={onOpenBreakoutMonitor}
+          className={cn(BTN, "bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 border-transparent")}
+          title="Open the monitor grid — watch every student's signing across all groups"
+          aria-label="Breakout monitor"
+        >
+          <Eye className="size-3.5" />
+          <span className={CORE_LABEL}>Monitor</span>
+        </button>
+      ),
+      menu: <MenuTool icon={<Eye />} label="Breakout monitor" onSelect={onOpenBreakoutMonitor} />,
+    })
+  }
+
+  // Each pause/resume cycle produces a separate MP4 segment in S3, so breaks
+  // and private chats don't end up in the saved recording.
+  const recLabel = !recordingStarted ? "Start Rec" : recordingPaused ? "Resume Rec" : "Pause Rec"
+  const recIcon = recordingStarted && !recordingPaused
+    ? <Pause className="size-3.5" />
+    : <Circle className="size-3.5 fill-current" />
+  tools.push({
+    key: "rec",
+    inline: (
+      <button
+        onClick={onToggleRecording}
+        disabled={recordingBusy}
         className={cn(
-          "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-          blurEnabled
-            ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
-            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
-          blurBusy && "opacity-60 cursor-wait",
+          BTN,
+          !recordingStarted || recordingPaused
+            ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
+            : IDLE,
+          recordingBusy && "opacity-60 cursor-wait",
         )}
         title={
-          blurEnabled
-            ? "Turn background blur off"
-            : "Blur your background — students and tutor see the blurred feed"
+          !recordingStarted
+            ? "Start recording this session"
+            : recordingPaused
+              ? "Resume recording — starts a new segment"
+              : "Pause recording — the next break won't be saved"
         }
-        aria-label={blurEnabled ? "Turn background blur off" : "Blur background"}
+        aria-label={!recordingStarted ? "Start recording" : recordingPaused ? "Resume recording" : "Pause recording"}
       >
-        <Sparkles className="size-3.5" />
-        <span className={CORE_LABEL}>{blurEnabled ? "Blur on" : "Blur"}</span>
+        {recIcon}
+        <span className={CORE_LABEL}>{recLabel}</span>
       </button>
-      )}
+    ),
+    menu: <MenuTool icon={recIcon} label={recLabel} disabled={recordingBusy} onSelect={onToggleRecording} />,
+  })
 
-      {/* Live captions — each viewer's own choice; hides them only here. */}
-      {!isTutor && (
+  // BSL classrooms can't rely on sound, so a visual flash is the attention cue.
+  // With nobody pinned this is the whole class; with a student pinned it
+  // targets only them. Per-group nudges live in the breakout monitor.
+  const nudgeLabel = nudgeTargetName ? "Nudge student" : "Nudge class"
+  tools.push({
+    key: "nudge",
+    inline: (
       <button
-        onClick={() => setCaptionsEnabled(!captionsEnabled)}
-        className={cn(
-          "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-          captionsEnabled
-            ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
-            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
-        )}
-        title={captionsEnabled ? "Hide live captions (only on your screen)" : "Show live captions"}
-        aria-label={captionsEnabled ? "Turn captions off" : "Turn captions on"}
-        aria-pressed={captionsEnabled}
-      >
-        {captionsEnabled ? <Captions className="size-3.5" /> : <CaptionsOff className="size-3.5" />}
-        <span className={CORE_LABEL}>{captionsEnabled ? "Captions" : "Captions off"}</span>
-      </button>
-      )}
-
-      {/* Tutor-only: type a caption, or send a prepared one, instead of speaking.
-          Opened from "More"; shown here while open so it can be closed. */}
-      {isTutor && composerOpen && (
-        <button
-          onClick={() => setCaptionComposerOpen(!composerOpen)}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            composerOpen
-              ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
-          )}
-          title="Type a caption, or send one you prepared, at the bottom of everyone's screen"
-          aria-label={composerOpen ? "Close caption typing" : "Type a caption"}
-          aria-pressed={composerOpen}
-        >
-          <Keyboard className="size-3.5" />
-          <span className={CORE_LABEL}>Type caption</span>
-        </button>
-      )}
-
-      <MediaToggle
-        source={Track.Source.ScreenShare}
-        // Capture and publish at text-readable quality — see the constants for
-        // why the defaults aren't good enough for slides and documents.
-        captureOptions={SCREEN_SHARE_CAPTURE}
-        publishOptions={SCREEN_SHARE_PUBLISH}
-        activeWhenOn
-        onIcon={<Monitor className="size-3.5" />}
-        offIcon={<Monitor className="size-3.5" />}
-        onLabel="Stop sharing"
-        offLabel="Screen"
-        onTitle="Stop sharing your screen"
-        offTitle={
-          isTutor
-            ? "Share your screen with the class"
-            : "Share your screen — your tutor can pin and show it to everyone"
+        onClick={onNudgeClass}
+        className={cn(BTN, "bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-300 border-transparent")}
+        title={
+          nudgeTargetName
+            ? `Flash a short visual attention alert on ${nudgeTargetName}'s screen only`
+            : "Flash a short visual attention alert on every student's screen"
         }
-      />
+        aria-label={nudgeTargetName ? `Nudge ${nudgeTargetName}` : "Nudge the whole class"}
+      >
+        <Bell className="size-3.5" />
+        <span className={CORE_LABEL}>{nudgeLabel}</span>
+      </button>
+    ),
+    menu: <MenuTool icon={<Bell />} label={nudgeLabel} onSelect={onNudgeClass} />,
+  })
 
-      {/* Privacy toggle — only shown while the tutor is actively screen-sharing.
-          "Private" hides the feed from students (they see a placeholder) without
-          stopping the underlying track, so the tutor can switch without any
-          start/stop lag. */}
-      {isTutor && screenSharing && (
+  tools.push({
+    key: "mute-all",
+    inline: (
+      <button
+        onClick={onMuteAll}
+        disabled={noStudents}
+        className={cn(BTN, "bg-zinc-800 hover:bg-rose-900/40 hover:text-rose-300 text-zinc-300 border-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:text-zinc-300")}
+        title={noStudents ? "No students in the room yet" : "Turn off every student's microphone."}
+        aria-label="Mute all students"
+      >
+        <MicOff className="size-3.5" />
+        <span className={CORE_LABEL}>Mute all</span>
+      </button>
+    ),
+    menu: <MenuTool icon={<MicOff />} label="Mute all students" disabled={noStudents} onSelect={onMuteAll} />,
+  })
+  tools.push({
+    key: "unmute-all",
+    inline: (
+      <button
+        onClick={onUnmuteAll}
+        disabled={noStudents}
+        className={cn(BTN, "bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 border-transparent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:text-zinc-300")}
+        title={noStudents ? "No students in the room yet" : "Turn on every student's microphone."}
+        aria-label="Unmute all students"
+      >
+        <Mic className="size-3.5" />
+        <span className={CORE_LABEL}>Unmute all</span>
+      </button>
+    ),
+    menu: <MenuTool icon={<Mic />} label="Unmute all students" disabled={noStudents} onSelect={onUnmuteAll} />,
+  })
+
+  tools.push({
+    key: "captions",
+    inline: captionsButton,
+    menu: (
+      <MenuTool
+        icon={captionsEnabled ? <Captions /> : <CaptionsOff />}
+        label="Live captions"
+        active={captionsEnabled}
+        onSelect={() => setCaptionsEnabled(!captionsEnabled)}
+      />
+    ),
+  })
+
+  // Type a caption, or send a prepared one, instead of speaking.
+  tools.push({
+    key: "type-caption",
+    inline: (
+      <button
+        onClick={() => setCaptionComposerOpen(!composerOpen)}
+        className={cn(BTN, composerOpen ? ON_SKY : IDLE)}
+        title="Type a caption, or send one you prepared, at the bottom of everyone's screen"
+        aria-label={composerOpen ? "Close caption typing" : "Type a caption"}
+        aria-pressed={composerOpen}
+      >
+        <Keyboard className="size-3.5" />
+        <span className={CORE_LABEL}>Type caption</span>
+      </button>
+    ),
+    menu: (
+      <MenuTool
+        icon={<Keyboard />}
+        label="Type caption"
+        active={composerOpen}
+        onSelect={() => setCaptionComposerOpen(!composerOpen)}
+      />
+    ),
+  })
+
+  tools.push({
+    key: "blur",
+    inline: blurButton,
+    menu: (
+      <MenuTool icon={<Sparkles />} label="Blur background" active={blurEnabled} disabled={blurBusy} onSelect={onToggleBlur} />
+    ),
+  })
+
+  // Pop the class out into an always-on-top window, so a teacher sharing
+  // another tab can still see their students. While sharing it sits next to
+  // Screen instead, since that's when it's needed.
+  const pipInline = studentsPipSupported && onToggleStudentsPip && (screenSharing || studentsPipOpen)
+  if (studentsPipSupported && onToggleStudentsPip && !pipInline) {
+    tools.push({
+      key: "pip",
+      inline: (
+        <button
+          onClick={onToggleStudentsPip}
+          className={cn(BTN, IDLE)}
+          title="Keep your students on top of every tab and app while you share your screen"
+        >
+          <PictureInPicture2 className="size-3.5" />
+          <span className={CORE_LABEL}>Pop out students</span>
+        </button>
+      ),
+      menu: <MenuTool icon={<PictureInPicture2 />} label="Pop out students" onSelect={onToggleStudentsPip} />,
+    })
+  }
+
+  // Invite another teacher to co-teach. They get a notification (and email if
+  // configured) with a link that opens the classroom with full tutor controls.
+  if (canInviteCoTutor) {
+    tools.push({
+      key: "invite",
+      inline: (
+        <button
+          onClick={onInviteCoTutor}
+          className={cn(BTN, IDLE)}
+          title="Invite another teacher to co-teach this session"
+          aria-label="Invite a second teacher"
+        >
+          <UserPlus className="size-3.5" />
+          <span className={CORE_LABEL}>Invite teacher</span>
+        </button>
+      ),
+      menu: <MenuTool icon={<UserPlus />} label="Invite a co-teacher" onSelect={onInviteCoTutor} />,
+    })
+  }
+
+  if (fullscreen.supported) {
+    tools.push({
+      key: "fullscreen",
+      inline: <RoomFullscreenButton />,
+      menu: (
+        <MenuTool
+          icon={fullscreen.active ? <Minimize2 /> : <Maximize2 />}
+          label={fullscreen.active ? "Exit full screen" : "Full screen"}
+          onSelect={fullscreen.toggle}
+        />
+      ),
+    })
+  }
+
+  // Recovery when the room freezes: reloads every client, the tutor's too.
+  // Asks for confirmation first.
+  tools.push({
+    key: "refresh-all",
+    inline: (
+      <button
+        onClick={onRefreshAll}
+        className={cn(BTN, "bg-zinc-800 hover:bg-amber-900/40 hover:text-amber-300 text-zinc-300 border-transparent")}
+        title="Reload the classroom for every student and yourself. Use if the session freezes."
+        aria-label="Refresh the classroom for everyone"
+      >
+        <RefreshCw className="size-3.5" />
+        <span className={CORE_LABEL}>Refresh all</span>
+      </button>
+    ),
+    menu: <MenuTool icon={<RefreshCw />} label="Refresh all" tone="warn" onSelect={onRefreshAll} />,
+  })
+
+  return (
+    <div className="flex items-center gap-2 w-full min-w-0 overflow-hidden">
+      <MediaToggle
+        source={Track.Source.Microphone}
+        onIcon={<Mic className="size-3.5" />}
+        offIcon={<MicOff className="size-3.5" />}
+        onLabel="Mic"
+        offLabel="Mic off"
+        onTitle="Turn your microphone off"
+        offTitle="Turn your microphone on"
+      />
+      {cameraToggle}
+      {screenToggle}
+
+      {/* "Private" hides the shared screen from students (they see a
+          placeholder) without stopping the track, so there's no start/stop lag. */}
+      {screenSharing && (
         <button
           onClick={onToggleScreenPrivacy}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            screenPrivate
-              ? "bg-zinc-700 text-zinc-200 border-zinc-500"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
-          )}
+          className={cn(BTN, screenPrivate ? "bg-zinc-700 text-zinc-200 border-zinc-500" : IDLE)}
           title={
             screenPrivate
               ? "Screen is private — students see a placeholder. Click to make it visible."
@@ -332,19 +675,14 @@ export function ControlsBar({
         </button>
       )}
 
-      {/* Pop the class out into an always-on-top window, so a teacher sharing
-          another tab can still see their students. Stands out while sharing,
-          which is when it's needed. */}
-      {isTutor && studentsPipSupported && onToggleStudentsPip && (screenSharing || studentsPipOpen) && (
+      {pipInline && (
         <button
           onClick={onToggleStudentsPip}
           className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
+            BTN,
             studentsPipOpen
               ? "bg-zinc-700 text-zinc-200 border-zinc-500"
-              : screenSharing
-                ? "bg-primary text-white border-transparent hover:bg-primary/90"
-                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
+              : "bg-primary text-white border-transparent hover:bg-primary/90",
           )}
           title={
             studentsPipOpen
@@ -358,85 +696,26 @@ export function ControlsBar({
         </button>
       )}
 
-      {!isTutor && <RoomFullscreenButton />}
+      <Divider />
 
-      {/* Student self-refresh: reload this tab only, then auto-rejoin. Chat history
-          and current slides are restored after reconnect. */}
-      {!isTutor && (
-        <button
-          onClick={onRefreshSelf}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-900/40 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
-          title="Reload your classroom view. Chat history and the current slides will come back after you reconnect."
-          aria-label="Refresh your classroom"
-        >
-          <RefreshCw className="size-3.5" />
-          <span className={CORE_LABEL}>Refresh</span>
-        </button>
-      )}
-
-      {isTutor && <Divider />}
-
-      {/* ── Presentation controls (tutor only) ──
-          With a deck prepared before the lesson the primary button starts it
-          outright — the whole point of preparing is not to be uploading and
-          picking slides while a class watches. The upload path stays one click
-          away for a last-minute change. */}
-      {isTutor && !pptActive && !whiteboardActive && (
-        preparedKind ? (
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={onPresentPrepared}
-              className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 transition-colors whitespace-nowrap"
-              title={
-                preparedName
-                  ? `Present "${preparedName}" — prepared before the lesson`
-                  : "Present your prepared file"
-              }
-            >
-              {preparedKind === "video"
-                ? <><Film className="size-3.5" /> Play video</>
-                : <><Presentation className="size-3.5" /> Present {preparedCount} slides</>}
-            </button>
-            <button
-              onClick={onShowUpload}
-              className="flex items-center justify-center size-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors shrink-0"
-              title="Present something else — upload a different file"
-              aria-label="Present a different file"
-            >
-              <Upload className="size-3.5" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={onShowUpload}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap"
-            title="Upload and present slides or a video"
-          >
-            <Presentation className="size-3.5" /> Present
-          </button>
-        )
-      )}
-
-      {/* Slide-specific controls — only while presenting a deck. Video is driven
-          by the native <video> controls inside the player, so next/prev/counter
-          don't apply and we show a compact "Playing video" badge instead. */}
-      {isTutor && pptActive && presentKind === "slides" && (
+      {/* Slide controls — only while presenting a deck. Video is driven by the
+          player's own controls, so it gets a "Playing video" badge instead. */}
+      {pptActive && presentKind === "slides" && (
         <>
-          {/* Prev slide — moves back in the tutor's chosen subset */}
           <button
             onClick={onPptPrev}
             disabled={!hasPrevSlide}
-            className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center justify-center size-9 shrink-0 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Previous slide"
             aria-label="Previous slide"
           >
             <ChevronLeft className="size-4" />
           </button>
 
-          {/* Slide counter — shows position within the selected subset. Dashes
-              when the currently-shown slide has been excluded from the sequence. */}
+          {/* Position within the selected subset. Dashes when the current slide
+              has been excluded from the sequence. */}
           <span
-            className="text-xs text-zinc-400 bg-zinc-800 px-2.5 h-9 flex items-center rounded-xl whitespace-nowrap font-mono"
+            className="text-xs text-zinc-400 bg-zinc-800 px-2.5 h-9 flex items-center rounded-xl whitespace-nowrap font-mono shrink-0"
             title={
               presentationIdx < 0
                 ? "Current slide isn't in your selection — use the tray to include it, or press next/prev"
@@ -446,11 +725,10 @@ export function ControlsBar({
             {presentationIdx < 0 ? "—" : presentationIdx + 1} / {selectedCount}
           </span>
 
-          {/* Next slide */}
           <button
             onClick={onPptNext}
             disabled={!hasNextSlide}
-            className="flex items-center justify-center size-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center justify-center size-9 shrink-0 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Next slide"
             aria-label="Next slide"
           >
@@ -459,26 +737,23 @@ export function ControlsBar({
         </>
       )}
 
-      {isTutor && pptActive && presentKind === "video" && (
+      {pptActive && presentKind === "video" && (
         <span
-          className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2.5 h-9 rounded-xl whitespace-nowrap"
+          className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2.5 h-9 rounded-xl whitespace-nowrap shrink-0"
           title="Use the video's own play/seek controls — everything syncs to students automatically."
         >
           <Film className="size-3.5" />
-          Playing video
+          <span className={CORE_LABEL}>Playing video</span>
         </span>
       )}
 
-      {isTutor && pptActive && (
+      {pptActive && (
         <>
-          {/* Hand pointer toggle (works over slides or video) */}
           <button
             onClick={onTogglePointer}
             className={cn(
-              "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-              pointerMode
-                ? "bg-amber-500/25 text-amber-300 border-amber-500/50 animate-pulse"
-                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
+              BTN, "shrink-0",
+              pointerMode ? "bg-amber-500/25 text-amber-300 border-amber-500/50 animate-pulse" : IDLE,
             )}
             // The hand stays where it was put — it is a marker, not a cursor
             // mirror — so the label has to say that taking it down is a
@@ -488,173 +763,23 @@ export function ControlsBar({
               : "Point at the presentation — a hand follows your cursor and stays where you leave it"}
           >
             <Pointer className="size-3.5" />
-            {pointerMode ? "Pointing" : "Pointer"}
+            <span className={CORE_LABEL}>{pointerMode ? "Pointing" : "Pointer"}</span>
           </button>
 
-          {/* Stop presentation (slides or video) */}
           <button
             onClick={onPptStop}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-amber-900/40 hover:bg-amber-900/70 text-amber-400 border border-amber-700/40 transition-colors whitespace-nowrap"
+            className="flex items-center gap-1.5 px-3 h-9 shrink-0 rounded-xl text-xs font-medium bg-amber-900/40 hover:bg-amber-900/70 text-amber-400 border border-amber-700/40 transition-colors whitespace-nowrap"
             title={presentKind === "video" ? "Stop playing the video" : "Stop presenting slides"}
           >
-            <X className="size-3.5" /> {presentKind === "video" ? "End Video" : "End Slides"}
+            <X className="size-3.5" />
+            <span className={CORE_LABEL}>{presentKind === "video" ? "End Video" : "End Slides"}</span>
           </button>
         </>
       )}
 
-      {/* Tutor-only: open/close the shared whiteboard. Only the tutor draws by
-          default; use "Let them write" on the board to hand control to students.
-          Hidden while slides/video are live — one shared surface at a time. */}
-      {isTutor && (!pptActive || whiteboardActive) && (
-        <button
-          onClick={onToggleWhiteboard}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            whiteboardActive
-              ? "bg-amber-500/25 text-amber-300 border-amber-500/50"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
-          )}
-          title={
-            whiteboardActive
-              ? "Close the whiteboard for everyone"
-              : "Open a shared whiteboard — tutor draws; students view until you let them write"
-          }
-          aria-label={whiteboardActive ? "Close the whiteboard" : "Whiteboard"}
-        >
-          <PencilLine className="size-3.5" />
-          <span className={TOOL_LABEL}>{whiteboardActive ? "Close Board" : "Whiteboard"}</span>
-        </button>
-      )}
+      <OverflowTools tools={tools} />
 
-      {/* Breakouts — tutor opens/edits group assignments. Once live, a second
-          button reveals the monitor grid so the tutor can observe every
-          student's signing across all groups at once. */}
-      {isTutor && (
-        <button
-          onClick={onOpenBreakoutsPanel}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            breakoutsActive
-              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent"
-          )}
-          title={
-            breakoutsActive
-              ? "Edit, visit, or end the active breakouts"
-              : "Split students into small groups for pair or group work"
-          }
-          aria-label={breakoutsActive ? "Breakouts live" : "Breakouts"}
-        >
-          <Users2 className="size-3.5" />
-          <span className={TOOL_LABEL}>{breakoutsActive ? "Breakouts live" : "Breakouts"}</span>
-        </button>
-      )}
-
-      {isTutor && breakoutsActive && (
-        <button
-          onClick={onOpenBreakoutMonitor}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-emerald-900/40 hover:text-emerald-300 text-zinc-300 transition-colors whitespace-nowrap"
-          title="Open the monitor grid — watch every student's signing across all groups"
-          aria-label="Breakout monitor"
-        >
-          <Eye className="size-3.5" />
-          <span className={TOOL_LABEL}>Monitor</span>
-        </button>
-      )}
-
-      {/* Tutor-only: ping screens with a visual flash. BSL classrooms can't
-          rely on sound, so the flash is the attention cue. With nobody pinned
-          this is the whole class; with a student pinned it targets only them.
-          Per-group nudges live in the breakout monitor, and any student can
-          still be nudged from their tile's right-click menu. */}
-      {isTutor && (
-        <button
-          onClick={onNudgeClass}
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-300 transition-colors whitespace-nowrap"
-          title={
-            nudgeTargetName
-              ? `Flash a short visual attention alert on ${nudgeTargetName}'s screen only`
-              : "Flash a short visual attention alert on every student's screen"
-          }
-          aria-label={nudgeTargetName ? `Nudge ${nudgeTargetName}` : "Nudge the whole class"}
-        >
-          <Bell className="size-3.5" />
-          <span className={TOOL_LABEL}>{nudgeTargetName ? "Nudge student" : "Nudge class"}</span>
-        </button>
-      )}
-
-      {/* Tutor-only: start, pause, or resume server-side recording. Each pause/resume
-          cycle produces a separate MP4 segment in S3, so breaks and private
-          chats don't end up in the saved recording. */}
-      {isTutor && (
-        <button
-          onClick={onToggleRecording}
-          disabled={recordingBusy}
-          className={cn(
-            "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium transition-colors whitespace-nowrap border",
-            !recordingStarted
-              ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
-              : recordingPaused
-                ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-700/40"
-                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-transparent",
-            recordingBusy && "opacity-60 cursor-wait",
-          )}
-          title={
-            !recordingStarted
-              ? "Start recording this session"
-              : recordingPaused
-                ? "Resume recording — starts a new segment"
-                : "Pause recording — the next break won't be saved"
-          }
-          aria-label={!recordingStarted ? "Start recording" : recordingPaused ? "Resume recording" : "Pause recording"}
-        >
-          {!recordingStarted ? (
-            <>
-              <Circle className="size-3.5 fill-current" />
-              <span className={TOOL_LABEL}>Start Rec</span>
-            </>
-          ) : recordingPaused ? (
-            <>
-              <Circle className="size-3.5 fill-current" />
-              <span className={TOOL_LABEL}>Resume Rec</span>
-            </>
-          ) : (
-            <>
-              <Pause className="size-3.5" />
-              <span className={TOOL_LABEL}>Pause Rec</span>
-            </>
-          )}
-        </button>
-      )}
-
-      {isTutor && (
-        <TutorMoreMenu
-          studentCount={studentCount}
-          onMuteAll={onMuteAll}
-          onUnmuteAll={onUnmuteAll}
-          canInviteCoTutor={canInviteCoTutor}
-          onInviteCoTutor={onInviteCoTutor}
-          onRefreshAll={onRefreshAll}
-          blurEnabled={blurEnabled}
-          blurBusy={blurBusy}
-          onToggleBlur={onToggleBlur}
-          captionsEnabled={captionsEnabled}
-          composerOpen={composerOpen}
-          studentsPip={
-            studentsPipSupported && onToggleStudentsPip && !screenSharing && !studentsPipOpen
-              ? onToggleStudentsPip
-              : null
-          }
-        />
-      )}
-
-      <button
-        onClick={onLeave}
-        aria-label="Leave the class"
-        className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors whitespace-nowrap ml-auto sticky right-0 shrink-0 shadow-[-12px_0_12px_-8px_rgb(9_9_11)]"
-      >
-        <PhoneOff className="size-3.5" /> <span className={CORE_LABEL}>Leave</span>
-      </button>
+      {leaveButton}
     </div>
   )
 }
@@ -793,112 +918,135 @@ function RoomFullscreenButton() {
   )
 }
 
+
 function Divider() {
   return <div aria-hidden className="h-6 w-px bg-zinc-800 shrink-0" />
 }
 
-const MENU_ITEM = "gap-2 px-2 py-1.5 text-xs text-zinc-200 focus:bg-zinc-800 focus:text-zinc-100 [&_svg]:text-zinc-400"
+type Tool = {
+  key: string
+  // The button as it sits on the bar.
+  inline: ReactNode
+  // The same action as it reads in the "…" menu, once it no longer fits.
+  menu: ReactNode
+}
 
-// The tutor's occasional controls, grouped by who they act on. Refresh sits
-// last and apart because it reloads every student's tab.
-function TutorMoreMenu({
-  studentCount,
-  onMuteAll,
-  onUnmuteAll,
-  canInviteCoTutor,
-  onInviteCoTutor,
-  onRefreshAll,
-  blurEnabled,
-  blurBusy,
-  onToggleBlur,
-  captionsEnabled,
-  composerOpen,
-  studentsPip,
+const TOOL_GAP = 8 // gap-2
+
+function MenuTool({
+  icon,
+  label,
+  onSelect,
+  disabled,
+  active,
+  tone,
 }: {
-  studentCount: number
-  onMuteAll: () => void
-  onUnmuteAll: () => void
-  canInviteCoTutor: boolean
-  onInviteCoTutor: () => void
-  onRefreshAll: () => void
-  blurEnabled: boolean
-  blurBusy: boolean
-  onToggleBlur: () => void
-  captionsEnabled: boolean
-  composerOpen: boolean
-  // Set only when the pop-out isn't already shown inline on the bar.
-  studentsPip: (() => void) | null
+  icon: ReactNode
+  label: string
+  onSelect: () => void
+  disabled?: boolean
+  // On/off tools show a dot, so a state that was visible on the bar still is.
+  active?: boolean
+  tone?: "warn"
 }) {
-  const fullscreen = useRoomFullscreen()
-  const noStudents = studentCount === 0
+  return (
+    <DropdownMenuItem
+      disabled={disabled}
+      onSelect={onSelect}
+      className={cn(
+        "gap-2 px-2 py-1.5 text-xs text-zinc-200 focus:bg-zinc-800 focus:text-zinc-100 [&_svg]:size-3.5 [&_svg]:text-zinc-400",
+        tone === "warn" && "text-amber-300 focus:text-amber-200 [&_svg]:text-amber-400",
+      )}
+    >
+      {icon}
+      {label}
+      {active && <span aria-label="on" className="ml-auto size-1.5 rounded-full bg-sky-400" />}
+    </DropdownMenuItem>
+  )
+}
+
+/**
+ * The tutor's tools, as many as fit on one line; the rest go in a "…" menu.
+ *
+ * Widths come from an invisible copy of every tool (plus the "…" button), so
+ * the count is right whichever tools are showing at the moment and whatever
+ * their labels currently say ("Start Rec" vs "Pause Rec"). The region is
+ * flex-1, so its width is set by the bar and never by how many tools are in
+ * it — no feedback loop between measuring and hiding.
+ */
+function OverflowTools({ tools }: { tools: Tool[] }) {
+  const regionRef = useRef<HTMLDivElement>(null)
+  const measureRef = useRef<HTMLDivElement>(null)
+  const [fitCount, setFitCount] = useState(tools.length)
+
+  useLayoutEffect(() => {
+    const region = regionRef.current
+    const measure = measureRef.current
+    if (!region || !measure) return
+    const compute = () => {
+      const avail = region.clientWidth
+      const nodes = Array.from(measure.children) as HTMLElement[]
+      const moreWidth = nodes.pop()?.offsetWidth ?? 0
+      const widths = nodes.map((n) => n.offsetWidth)
+      const all = widths.reduce((sum, w, i) => sum + w + (i ? TOOL_GAP : 0), 0)
+      if (all <= avail) { setFitCount(widths.length); return }
+      let used = moreWidth
+      let n = 0
+      for (const w of widths) {
+        if (used + TOOL_GAP + w > avail) break
+        used += TOOL_GAP + w
+        n++
+      }
+      setFitCount(n)
+    }
+    compute()
+    const ro = new ResizeObserver(compute)
+    ro.observe(region)
+    ro.observe(measure)
+    return () => ro.disconnect()
+  }, [tools.length])
+
+  const shown = tools.slice(0, fitCount)
+  const overflow = tools.slice(fitCount)
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap shrink-0 data-[state=open]:bg-zinc-700"
-          title="More controls — mics, captions, blur, invite, refresh, full screen"
-          aria-label="More controls"
-        >
-          <MoreHorizontal className="size-3.5" />
-          <span className={CORE_LABEL}>More</span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        side="top"
-        align="end"
-        sideOffset={8}
-        className="w-60 bg-zinc-900 text-zinc-200 ring-zinc-700/70"
-      >
-        <DropdownMenuLabel className="px-2 text-[10px] uppercase tracking-wider text-zinc-500">
-          Students
-        </DropdownMenuLabel>
-        <DropdownMenuItem className={MENU_ITEM} disabled={noStudents} onSelect={onMuteAll}>
-          <MicOff className="size-3.5" /> Mute all students
-        </DropdownMenuItem>
-        <DropdownMenuItem className={MENU_ITEM} disabled={noStudents} onSelect={onUnmuteAll}>
-          <Mic className="size-3.5" /> Unmute all students
-        </DropdownMenuItem>
-        {studentsPip && (
-          <DropdownMenuItem className={MENU_ITEM} onSelect={studentsPip}>
-            <PictureInPicture2 className="size-3.5" /> Pop out students
-          </DropdownMenuItem>
-        )}
-        {canInviteCoTutor && (
-          <DropdownMenuItem className={MENU_ITEM} onSelect={onInviteCoTutor}>
-            <UserPlus className="size-3.5" /> Invite a co-teacher
-          </DropdownMenuItem>
-        )}
+    <div ref={regionRef} className="relative flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
+      <div ref={measureRef} aria-hidden inert className="absolute left-0 top-0 flex gap-2 w-max invisible pointer-events-none">
+        {tools.map((t) => <div key={t.key} className="flex shrink-0">{t.inline}</div>)}
+        <MoreButton />
+      </div>
 
-        <DropdownMenuSeparator className="bg-zinc-800" />
-        <DropdownMenuLabel className="px-2 text-[10px] uppercase tracking-wider text-zinc-500">
-          You
-        </DropdownMenuLabel>
-        <DropdownMenuItem className={MENU_ITEM} disabled={blurBusy} onSelect={onToggleBlur}>
-          <Sparkles className="size-3.5" /> {blurEnabled ? "Turn background blur off" : "Blur background"}
-        </DropdownMenuItem>
-        <DropdownMenuItem className={MENU_ITEM} onSelect={() => setCaptionsEnabled(!captionsEnabled)}>
-          {captionsEnabled ? <CaptionsOff className="size-3.5" /> : <Captions className="size-3.5" />}
-          {captionsEnabled ? "Hide live captions" : "Show live captions"}
-        </DropdownMenuItem>
-        <DropdownMenuItem className={MENU_ITEM} onSelect={() => setCaptionComposerOpen(!composerOpen)}>
-          <Keyboard className="size-3.5" /> {composerOpen ? "Close caption typing" : "Type a caption"}
-        </DropdownMenuItem>
-        {fullscreen.supported && (
-          <DropdownMenuItem className={MENU_ITEM} onSelect={fullscreen.toggle}>
-            {fullscreen.active ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-            {fullscreen.active ? "Exit full screen" : "Full screen"}
-          </DropdownMenuItem>
-        )}
+      {shown.map((t) => <div key={t.key} className="flex shrink-0">{t.inline}</div>)}
 
-        <DropdownMenuSeparator className="bg-zinc-800" />
-        <DropdownMenuItem
-          className={cn(MENU_ITEM, "text-amber-300 focus:text-amber-200 [&_svg]:text-amber-400")}
-          onSelect={onRefreshAll}
-        >
-          <RefreshCw className="size-3.5" /> Refresh classroom for everyone
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      {overflow.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <MoreButton />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="top"
+            align="end"
+            sideOffset={8}
+            className="w-56 bg-zinc-900 text-zinc-200 ring-zinc-700/70"
+          >
+            {overflow.map((t) => <Fragment key={t.key}>{t.menu}</Fragment>)}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  )
+}
+
+function MoreButton(props: ComponentProps<"button">) {
+  return (
+    <button
+      {...props}
+      className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors whitespace-nowrap shrink-0 data-[state=open]:bg-zinc-700"
+      title="More controls"
+      aria-label="More controls"
+    >
+      <MoreHorizontal className="size-3.5" />
+      <span className={CORE_LABEL}>More</span>
+    </button>
   )
 }
