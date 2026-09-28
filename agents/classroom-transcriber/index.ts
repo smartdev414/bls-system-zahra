@@ -326,6 +326,18 @@ const STT_IDLE_CLOSE_MS = 20_000
 const STT_REOPEN_BACKOFF_MS = 5_000
 
 /**
+ * After `endInput`, how long the recogniser gets to return the last words
+ * before the session is closed outright. `endInput` alone is not enough: the
+ * gateway never answers `session.finalize` with `session.closed`, so the
+ * socket stays open until the server's ~6 minute inactivity timeout (error
+ * 2007) — which the SDK treats as retryable and reconnects. Every idle close
+ * left a zombie connection holding a concurrency slot, the project filled up
+ * (HTTP 429 MaxConcurrentGatewaySTT, 20/20 in use) and every new speaker was
+ * refused.
+ */
+const STT_FINALIZE_GRACE_MS = 3_000
+
+/**
  * One STT + transcription publisher per remote speaker.
  * Avoids multiple voice.AgentSession instances on the same room (they conflict on
  * lk.agent.session byte-stream registration in @livekit/agents 1.4.x).
@@ -395,8 +407,9 @@ class SpeakerTranscriber {
   }
 
   /**
-   * Hand the session back. `endInput` rather than `close`, so the recogniser
-   * finalises what it has — the consume loop ends on its own once it does.
+   * Hand the session back. `endInput` first, so the recogniser finalises what
+   * it has, then `close` after a short grace so the connection is actually
+   * released (see STT_FINALIZE_GRACE_MS). Closing ends the consume loop.
    */
   private releaseStream() {
     const stream = this.speechStream
@@ -404,6 +417,9 @@ class SpeakerTranscriber {
     this.speechStream = null
     console.info("[classroom-transcriber] STT idle close", { identity: this.participant.identity })
     try { stream.endInput() } catch { /* already gone */ }
+    setTimeout(() => {
+      try { stream.close() } catch { /* already gone */ }
+    }, STT_FINALIZE_GRACE_MS)
   }
 
   private async consumeTranscripts(stream: stt.SpeechStream) {
