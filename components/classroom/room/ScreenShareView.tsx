@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SCREEN_ZOOM_MAX, SCREEN_ZOOM_MIN, SCREEN_ZOOM_STEP } from "./constants"
+import { OwnScreenShare } from "./OwnScreenShare"
 
 type Point = { x: number; y: number }
 
@@ -33,6 +34,26 @@ export function ScreenShareView({
 }: {
   trackRef: TrackReference
   /** True when the share has taken over the whole stage. */
+  wide: boolean
+  onToggleWide: () => void
+}) {
+  // The sharer never gets the zoom view of their own screen — see OwnScreenShare.
+  if (trackRef.participant.isLocal) {
+    return (
+      <div className="absolute inset-0">
+        <OwnScreenShare trackRef={trackRef} />
+      </div>
+    )
+  }
+  return <RemoteScreenShareView trackRef={trackRef} wide={wide} onToggleWide={onToggleWide} />
+}
+
+function RemoteScreenShareView({
+  trackRef,
+  wide,
+  onToggleWide,
+}: {
+  trackRef: TrackReference
   wide: boolean
   onToggleWide: () => void
 }) {

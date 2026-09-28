@@ -12,6 +12,7 @@ import { X, Move, Camera } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName, isLiveVideo } from "@/components/classroom/localCameraView"
 import { RaisedHandBadge } from "./RaisedHandBadge"
+import { OwnScreenShare } from "./OwnScreenShare"
 
 /**
  * The window is sized from its width alone so the picture inside it is always
@@ -169,7 +170,9 @@ export function FloatingVideoWindow({
       </div>
 
       <div className="flex-1 relative bg-zinc-900 min-h-0">
-        {trackRef ? (
+        {screenRef && identity === localIdentity ? (
+          <OwnScreenShare trackRef={screenRef} compact />
+        ) : trackRef ? (
           <VideoTrack
             trackRef={trackRef}
             className={localCameraClassName(

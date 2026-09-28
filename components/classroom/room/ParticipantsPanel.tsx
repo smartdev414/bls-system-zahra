@@ -185,7 +185,10 @@ export function ParticipantsPanel({
           // all of us; the share is already on the stage, and the "Screen" chip
           // below says who is driving it.
           const isLocal  = p.identity === localParticipant.identity
-          const trackRef = camRef ?? screenRef
+          // Never your own share, though: it would draw the page inside itself
+          // (see OwnScreenShare). With your camera off you get the avatar and
+          // the "Sharing" chip instead.
+          const trackRef = camRef ?? (isLocal ? undefined : screenRef)
           const camOn = !!trackRef
           return {
             p,

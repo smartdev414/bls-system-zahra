@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName, isLiveVideo } from "@/components/classroom/localCameraView"
+import { OwnScreenShare } from "./OwnScreenShare"
 import { RaisedHandBadge } from "./RaisedHandBadge"
 
 export function PinnedVideoArea({
@@ -92,7 +93,9 @@ export function PinnedVideoArea({
         handRaised && "ring-4 ring-inset ring-amber-400",
       )}
     >
-      {active ? (
+      {screenRef && identity === localIdentity ? (
+        <OwnScreenShare trackRef={screenRef} />
+      ) : active ? (
         <VideoTrack
           trackRef={active}
           className={localCameraClassName(

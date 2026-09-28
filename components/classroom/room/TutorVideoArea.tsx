@@ -5,6 +5,7 @@ import type { TrackReference } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import { Camera, CameraOff, Maximize2, Minimize2 } from "lucide-react"
 import { localCameraClassName } from "@/components/classroom/localCameraView"
+import { OwnScreenShare } from "./OwnScreenShare"
 
 export function TutorVideoArea({
   containerRef,
@@ -92,6 +93,7 @@ export function TutorFeed({
   isSelf: boolean
 }) {
   const muted = useIsMuted(trackRef)
+  if (isScreen && isSelf) return <OwnScreenShare trackRef={trackRef} />
   if (muted && !isScreen) {
     const name = trackRef.participant.name || "The tutor"
     return (
