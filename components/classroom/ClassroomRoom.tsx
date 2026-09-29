@@ -4423,7 +4423,7 @@ export function ClassroomRoom({
           <span className="text-xs font-bold text-white truncate">
             You&apos;re in {breakoutGroups.find((g) => g.id === visitingGroupId)?.name ?? "a group"}
           </span>
-          {breakoutEndsAt && <BreakoutCountdown endsAt={breakoutEndsAt} variant="compact" />}
+          {breakoutEndsAt && <BreakoutCountdown endsAt={breakoutEndsAt} />}
           <button
             onClick={() => handleVisitBreakout(null)}
             className="text-[11px] font-semibold text-emerald-200 hover:text-white bg-emerald-500/25 hover:bg-emerald-500/50 rounded-full px-2.5 py-0.5 transition-colors"
@@ -4432,6 +4432,21 @@ export function ClassroomRoom({
             Leave group
           </button>
         </div>
+      )}
+
+      {/* ── Teacher breakout timer (main room) ──
+          With the monitor closed and no group visited, this keeps the same
+          countdown the monitor shows in view. */}
+      {isTutor && breakoutsActive && !visitingGroupId && !breakoutMonitorOpen && breakoutEndsAt && (
+        <button
+          onClick={() => setBreakoutMonitorOpen(true)}
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 max-w-[90%] flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/80 hover:bg-black/90 border border-white/10 backdrop-blur-sm shadow-lg transition-colors"
+          title="Breakouts are live — open the monitor"
+        >
+          <Users2 className="size-4 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold text-white truncate">Breakouts live</span>
+          <BreakoutCountdown endsAt={breakoutEndsAt} />
+        </button>
       )}
 
       {/* ── Requests to speak (tutor only) ── */}

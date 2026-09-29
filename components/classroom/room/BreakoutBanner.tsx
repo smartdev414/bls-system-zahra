@@ -65,7 +65,7 @@ export function BreakoutBanner({
             Tutor is here
           </span>
         )}
-        {endsAt && <BreakoutCountdown endsAt={endsAt} variant={expanded ? "default" : "compact"} />}
+        {endsAt && <BreakoutCountdown endsAt={endsAt} />}
         {expanded && mateNames.length > 0 && (
           <span className="text-xs text-zinc-300 truncate max-w-[40ch]">
             · with {mateNames.slice(0, 4).join(", ")}
