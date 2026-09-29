@@ -48,7 +48,8 @@ if (typeof Promise.withResolvers !== "function") {
 
 async function main() {
   const pkgPath = require.resolve("pdfjs-dist/package.json")
-  const src = path.join(path.dirname(pkgPath), "build", WORKER_FILE)
+  // The legacy build, to match `lib/pdfjs.ts` — see the note there on why.
+  const src = path.join(path.dirname(pkgPath), "legacy", "build", WORKER_FILE)
   const dest = path.join(DEST_DIR, WORKER_FILE)
 
   const worker = await readFile(src, "utf8")

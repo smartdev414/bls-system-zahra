@@ -29,6 +29,15 @@
  * reachable — schools and colleges block those, and a blocked CDN took the
  * slides down exactly the same way.
  *
+ * ── The build ───────────────────────────────────────────────────────────────
+ * pdfjs-dist ships two builds. The default one targets only the newest browsers
+ * and calls `Uint8Array.prototype.toHex`, `Promise.try` and
+ * `Map.prototype.getOrInsertComputed` with no fallback — `toHex` on every file
+ * it opens. On anything older (an office PC on a pinned Chrome or Edge, Firefox
+ * ESR) the worker throws and the student gets "Could not load the presentation."
+ * while every other student sees the deck. The legacy build carries polyfills
+ * for all of that, so it is the one we load, here and in the worker copy.
+ *
  * The CDN stays as a fallback for the one case the local copy can be missing:
  * a build that skipped the copy step. Degraded, but better than a blank stage.
  */
@@ -44,7 +53,7 @@ export type PdfPage = any
 const LOCAL_WORKER_SRC = "/pdf/pdf.worker.min.mjs"
 
 const cdnWorkerSrc = (version: string) =>
-  `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`
+  `https://unpkg.com/pdfjs-dist@${version}/legacy/build/pdf.worker.min.mjs`
 
 /**
  * How long to wait for a PDF to open before calling it a failure.
@@ -112,7 +121,7 @@ export function getPdfjs(): Promise<PdfjsModule> {
   pdfjsPromise ??= (async () => {
     // Before the import, so nothing pdf.js runs on the way up can trip over it.
     installPromiseWithResolvers()
-    const pdfjsLib: PdfjsModule = await import("pdfjs-dist")
+    const pdfjsLib: PdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs")
     pdfjsLib.GlobalWorkerOptions.workerSrc = await resolveWorkerSrc(pdfjsLib.version)
     return pdfjsLib
   })()
