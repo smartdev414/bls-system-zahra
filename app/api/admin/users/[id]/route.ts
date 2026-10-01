@@ -90,7 +90,51 @@ async function handleDELETE(
     const user = await prisma.user.findUnique({ where: { id } })
     if (!user) return NextResponse.json({ message: "User not found" }, { status: 404 })
 
-    await prisma.user.delete({ where: { id } })
+    // Courses and hosted sessions carry other people's enrolments, attendance
+    // and recordings, so they are never removed as a side effect of deleting
+    // their tutor — the admin has to deal with them explicitly first.
+    const [courseCount, sessionCount] = await Promise.all([
+      prisma.course.count({ where: { tutorId: id } }),
+      prisma.liveSession.count({ where: { tutorId: id } }),
+    ])
+    if (courseCount > 0 || sessionCount > 0) {
+      const owned = [
+        courseCount > 0 && `${courseCount} course${courseCount === 1 ? "" : "s"}`,
+        sessionCount > 0 && `${sessionCount} live session${sessionCount === 1 ? "" : "s"}`,
+      ].filter(Boolean).join(" and ")
+      return NextResponse.json(
+        { message: `${user.name} still owns ${owned}. Delete or reassign them before deleting this account.` },
+        { status: 409 },
+      )
+    }
+
+    // Most relations to User have no ON DELETE rule in the database, so a bare
+    // user.delete fails on the first enrolment, message or review. Clear the
+    // user's own records first; everything else cascades or nulls itself.
+    await prisma.$transaction(async (tx) => {
+      // Co-tutor invites this user sent stay valid — hand them to the host.
+      const sentInvites = await tx.liveSessionCoTutor.findMany({
+        where: { invitedById: id },
+        select: { id: true, session: { select: { tutorId: true } } },
+      })
+      for (const invite of sentInvites) {
+        await tx.liveSessionCoTutor.update({
+          where: { id: invite.id },
+          data: { invitedById: invite.session.tutorId },
+        })
+      }
+
+      await tx.message.deleteMany({ where: { senderId: id } })
+      await tx.conversation.deleteMany({ where: { OR: [{ studentId: id }, { tutorId: id }] } })
+      await tx.ticketComment.deleteMany({ where: { authorId: id } })
+      await tx.review.deleteMany({ where: { studentId: id } })
+      await tx.tutorReview.deleteMany({ where: { OR: [{ studentId: id }, { tutorId: id }] } })
+      await tx.sessionJoinRequest.deleteMany({ where: { studentId: id } })
+      await tx.liveSessionAttendance.deleteMany({ where: { studentId: id } })
+      await tx.enrollment.deleteMany({ where: { studentId: id } })
+      await tx.certEnrollment.deleteMany({ where: { studentId: id } })
+      await tx.user.delete({ where: { id } })
+    })
     return NextResponse.json({ message: "User deleted" })
   } catch (err) {
     console.error("[DELETE /api/admin/users/[id]]", err)

@@ -185,7 +185,7 @@ function UserRow({
     `/api/admin/users/${user.id}`,
     {
       successMessage: "User deleted",
-      errorMessage: "Could not delete user",
+      // No errorMessage: the server explains why (e.g. the tutor still owns courses).
       onSuccess: () => onMutated(),
     }
   )
@@ -260,7 +260,15 @@ function UserRow({
                 size="icon"
                 className="size-8 text-destructive hover:text-destructive"
                 disabled={deleting}
-                onClick={() => deleteUser()}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Delete ${user.name} (${user.email})? Their enrolments, certificates, messages and reviews are removed too. This cannot be undone.`
+                    )
+                  ) {
+                    deleteUser()
+                  }
+                }}
               >
                 <Trash2 className="size-4" />
               </Button>
