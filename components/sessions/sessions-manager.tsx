@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { usePoll } from "@/hooks/use-poll"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -856,6 +857,70 @@ function ScheduleSessionDialog({
   )
 }
 
+type Attendee = {
+  studentId: string
+  studentName: string
+  studentEmail: string
+  joinedAt: string | null
+  leftAt: string | null
+}
+
+function AttendeesDialog({ session, onClose }: { session: SessionItem; onClose: () => void }) {
+  const { data, loading } = useFetch<{ session: { attendances: Attendee[] } }>(
+    `/api/tutor/sessions/${session.id}`,
+    { errorMessage: "Could not load attendees" },
+  )
+  const attendees = data?.session.attendances ?? []
+  const time = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Users className="size-4 text-primary" />
+            Attendees
+            {!loading && attendees.length > 0 && (
+              <Badge variant="secondary">{attendees.length}</Badge>
+            )}
+          </DialogTitle>
+          <DialogDescription>{session.title}</DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="size-5 animate-spin text-primary" />
+          </div>
+        ) : attendees.length > 0 ? (
+          <div className="divide-y max-h-[60vh] overflow-y-auto -mx-2">
+            {attendees.map((a) => (
+              <div key={a.studentId} className="flex items-center gap-3 px-2 py-2.5">
+                <Avatar className="size-8 shrink-0">
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                    {a.studentName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{a.studentName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{a.studentEmail}</p>
+                </div>
+                <div className="text-right text-xs text-muted-foreground shrink-0">
+                  {a.joinedAt && <p>Joined {time(a.joinedAt)}</p>}
+                  {a.leftAt && <p>Left {time(a.leftAt)}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            {session.status === "SCHEDULED" ? "No one has joined yet." : "No students attended this session."}
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function SessionCard({
   session,
   onMutated,
@@ -868,6 +933,7 @@ function SessionCard({
   const scheduled = new Date(session.scheduledAt)
   const [editOpen, setEditOpen] = useState(false)
   const [duplicateOpen, setDuplicateOpen] = useState(false)
+  const [attendeesOpen, setAttendeesOpen] = useState(false)
   const scope = useSessionsScope()
   const [recordingOpen, setRecordingOpen] = useState(false)
   const [recordingSegments, setRecordingSegments] = useState<string[]>([])
@@ -994,12 +1060,18 @@ function SessionCard({
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Duration</p>
             <p className="text-xs font-semibold">{session.durationMins} min</p>
           </div>
-          <div className="bg-muted/40 rounded-xl px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setAttendeesOpen(true)}
+            title="See who attended"
+            className="group/att bg-muted/40 hover:bg-muted rounded-xl px-3 py-2 text-left transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Students</p>
-            <p className="text-xs font-semibold">
+            <p className="text-xs font-semibold flex items-center gap-1">
               {session.attendeeCount}{session.maxStudents ? ` / ${session.maxStudents}` : " joined"}
+              <ChevronRight className="size-3 ml-auto text-muted-foreground group-hover/att:text-foreground transition-colors" />
             </p>
-          </div>
+          </button>
         </div>
 
         {/* Footer actions */}
@@ -1080,6 +1152,11 @@ function SessionCard({
         onCreated={() => { setDuplicateOpen(false); onMutated?.() }}
         showScheduleButton={false}
       />
+
+      {/* Attendees — mounted only while open so the list is fetched on demand. */}
+      {attendeesOpen && (
+        <AttendeesDialog session={session} onClose={() => setAttendeesOpen(false)} />
+      )}
 
       {/* Recording viewer — segmented playback so pause/resume gaps don't
           show up as awkward dead time. */}

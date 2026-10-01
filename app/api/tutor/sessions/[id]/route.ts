@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can, ownerScope } from "@/lib/permissions"
+import { can, isStaff, ownerScope } from "@/lib/permissions"
 import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
@@ -38,8 +38,12 @@ async function handleGET(
 
     const { id } = await params
 
+    // Read-only, so co-teachers may see it too (they get the session in their
+    // list and need the attendee register). Writes below stay owner-only.
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, ...ownerScope(session) },
+      where: isStaff(session.role)
+        ? { id }
+        : { id, OR: [{ tutorId: session.sub }, { coTutors: { some: { tutorId: session.sub } } }] },
       include: {
         course: { select: { id: true, title: true } },
         attendances: {
