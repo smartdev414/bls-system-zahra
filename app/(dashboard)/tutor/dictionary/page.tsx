@@ -21,6 +21,7 @@ import {
 import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
+import { ProtectedVideo } from "@/components/ui/protected-video"
 import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -248,14 +249,12 @@ export default function TutorDictionaryPage() {
               {/* Video or image */}
               <div className="rounded-xl overflow-hidden bg-primary/10">
                 {selectedSign.videoUrl ? (
-                  <video
+                  <ProtectedVideo
                     src={selectedSign.videoUrl}
                     controls
-                    controlsList="nodownload noremoteplayback"
-                    disablePictureInPicture
+                    allowDownload
                     className="w-full rounded-xl max-h-[45vh] object-contain bg-black"
                     poster={selectedSign.imageUrl ?? undefined}
-                    onContextMenu={(e) => e.preventDefault()}
                   />
                 ) : selectedSign.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element

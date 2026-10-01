@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 import { uploadFile } from "@/lib/upload-file"
+import { mediaSrc } from "@/lib/protected-media"
 import { itemIcon, formatBytes } from "@/components/library/LibraryPicker"
 import { parsePreparedCaptions, PREPARED_CAPTION_LIMIT, type LibraryItem } from "@/lib/library"
 
@@ -180,7 +181,7 @@ export default function TutorLibraryPage() {
         </div>
         <div className="flex-1 min-w-0">
           <a
-            href={item.fileUrl}
+            href={mediaSrc(item.fileUrl)}
             target="_blank"
             rel="noreferrer"
             className="text-sm font-semibold truncate block hover:underline"

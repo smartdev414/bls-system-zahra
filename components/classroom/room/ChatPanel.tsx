@@ -16,6 +16,8 @@ import {
   uploadFileInParts,
   isUploadAborted,
 } from "@/lib/multipart-upload"
+import { mediaDownloadHref, mediaSrc } from "@/lib/protected-media"
+import { ProtectedVideo } from "@/components/ui/protected-video"
 
 // ─── Per-user appearance ────────────────────────────────────────────────────
 // Chat readability is personal — colour-blind and low-vision students need to
@@ -179,9 +181,12 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
+function AttachmentPreview({ attachment, isTutor }: { attachment: ChatAttachment; isTutor: boolean }) {
   const isImage = attachment.mimeType.startsWith("image/")
   const isVideo = attachment.mimeType.startsWith("video/")
+  // Video is watch-only for students: they get the inline player and nothing
+  // that hands them the file. Other attachments stay open to everyone.
+  const canTakeFile = isTutor || !isVideo
 
   return (
     <div className="mt-1.5 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-white/10 bg-black/20">
@@ -194,9 +199,10 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
         />
       )}
       {isVideo && (
-        <video
+        <ProtectedVideo
           src={attachment.fileUrl}
           controls
+          allowDownload={isTutor}
           playsInline
           className="max-h-48 w-full max-w-full bg-zinc-950"
           preload="metadata"
@@ -207,33 +213,35 @@ function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) {
         <span className="truncate flex-1 min-w-0">{attachment.fileName}</span>
         <span className="text-[10px] opacity-60 shrink-0">{formatBytes(attachment.fileSize)}</span>
       </div>
-      <div className="flex border-t border-white/10 divide-x divide-white/10">
-        <a
-          href={attachment.fileUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium hover:bg-white/5 transition-colors"
-        >
-          Open
-        </a>
-        <a
-          href={attachment.fileUrl}
-          download={attachment.fileName}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium hover:bg-white/5 transition-colors"
-        >
-          <Download className="size-3" />
-          Download
-        </a>
-      </div>
+      {canTakeFile && (
+        <div className="flex border-t border-white/10 divide-x divide-white/10">
+          <a
+            href={mediaSrc(attachment.fileUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium hover:bg-white/5 transition-colors"
+          >
+            Open
+          </a>
+          <a
+            href={mediaDownloadHref(attachment.fileUrl)}
+            download={attachment.fileName}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium hover:bg-white/5 transition-colors"
+          >
+            <Download className="size-3" />
+            Download
+          </a>
+        </div>
+      )}
     </div>
   )
 }
 
 function MessageBubble({
-  msg, isOwn, t, showGroup,
-}: { msg: ChatMsg; isOwn: boolean; t: ChatThemeClasses; showGroup: boolean }) {
+  msg, isOwn, t, showGroup, isTutor,
+}: { msg: ChatMsg; isOwn: boolean; t: ChatThemeClasses; showGroup: boolean; isTutor: boolean }) {
   const time = new Date(msg.ts).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -289,7 +297,7 @@ function MessageBubble({
         )}
       >
         {msg.text && <p>{msg.text}</p>}
-        {msg.attachment && <AttachmentPreview attachment={msg.attachment} />}
+        {msg.attachment && <AttachmentPreview attachment={msg.attachment} isTutor={isTutor} />}
         {!msg.text && !msg.attachment && (
           <span className="opacity-60 italic">Empty message</span>
         )}
@@ -739,7 +747,7 @@ export function ChatPanel({
           </div>
         ) : (
           messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} isOwn={m.from === localName} t={t} showGroup={showGroupLabels} />
+            <MessageBubble key={m.id} msg={m} isOwn={m.from === localName} t={t} showGroup={showGroupLabels} isTutor={!!isTutor} />
           ))
         )}
       </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { getPresignedDownloadUrl } from "@/lib/s3"
+import { mediaGatewayPath } from "@/lib/protected-media"
 import { reconcileSessionRecording } from "@/lib/recording"
 import { withAudit } from "@/lib/audit"
 
@@ -40,7 +40,10 @@ async function handleGET(
       )
     }
 
-    const segments = await Promise.all(existingKeys.map((k) => getPresignedDownloadUrl(k)))
+    // Hand out gateway paths, not signed S3 URLs: each segment is then signed
+    // (and the viewer re-checked) at the moment it starts playing, and no
+    // long-lived download link ever sits in this response.
+    const segments = existingKeys.map(mediaGatewayPath)
 
     // `url` stays for backward compatibility with callers that only consume
     // a single source; `segments` is the canonical ordered list.

@@ -8,7 +8,7 @@ import {
   CalendarDays, List, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
   Globe, Lock, X, Pencil, Play, Copy,
-  Paperclip, FileText, Trash2, Repeat, FolderOpen,
+  Paperclip, FileText, Trash2, Repeat, FolderOpen, Download,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
@@ -34,6 +34,7 @@ import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { Pagination } from "@/components/ui/pagination"
 import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
+import { mediaDownloadHref } from "@/lib/protected-media"
 import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
 
 const RECORDING_PROCESSING_MS = 10 * 60 * 1000
@@ -48,7 +49,7 @@ const S3_UPLOAD_GRACE_MS = 3 * 60 * 1000
  * through context keeps the (deeply nested) card components prop-free.
  */
 export type SessionsScope = {
-  /** Enter the room, start/end it, and watch its recording (view-only). */
+  /** Enter the room, start/end it, and watch or download its recording. */
   canTeach: boolean
   /** Attach and remove teaching-material files used in the classroom. */
   canManageResources: boolean
@@ -1172,6 +1173,19 @@ function SessionCard({
               style={{ maxHeight: "60vh" }}
               autoPlay
             />
+          )}
+          {/* Only teaching staff reach this dialog; students get no download. */}
+          {scope.canTeach && recordingSegments.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {recordingSegments.map((segment, i) => (
+                <Button key={segment} asChild variant="outline" size="sm">
+                  <a href={mediaDownloadHref(segment)}>
+                    <Download className="size-4 mr-1.5" />
+                    {recordingSegments.length > 1 ? `Download part ${i + 1}` : "Download recording"}
+                  </a>
+                </Button>
+              ))}
+            </div>
           )}
         </DialogContent>
       </Dialog>

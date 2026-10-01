@@ -319,3 +319,45 @@ Verify quickly any time with `GET /api/health`.
 2. Work the matching section above.
 3. If unresolved, capture: what the user did, the time, any error on screen,
    and the `/api/health` output — then escalate to the developer on record.
+
+---
+
+## 8. Video protection
+
+Video (lesson and dictionary videos, class recordings, videos shared in a class
+or its chat) is never loaded from its S3 address. The browser asks
+`/api/media/<key>`, which checks the signed-in user and redirects to a signed S3
+URL that expires. Saving a copy (`?download=1`) is allowed for tutors and admins
+only. The rules for which keys count as video live in `lib/protected-media.ts`.
+
+This only holds if the bucket refuses anonymous reads for those keys. The bucket
+is shared with other products and was fully public, so the policy keeps
+everything else public and carves the video out:
+
+```
+# apply — only AFTER the release containing /api/media is live in production
+aws s3api put-bucket-policy --bucket theagencyengineer-adcreative-thumbnails \
+  --policy file://docs/s3-bucket-policy.video-private.json
+```
+
+Check straight after:
+
+- A recording's plain S3 URL returns **403** in a private window.
+- A student can still play a lesson video and a class recording, and a tutor can
+  download one. If playback breaks with 403s on the *signed* URL, the IAM user
+  behind `AWS_ACCESS_KEY_ID` lacks `s3:GetObject` on the bucket — grant it, or
+  roll back.
+
+Roll back (restores the old fully-public policy):
+
+```
+aws s3api put-bucket-policy --bucket theagencyengineer-adcreative-thumbnails \
+  --policy '{"Version":"2012-10-17","Statement":[{"Sid":"PublicReadGetObject","Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::theagencyengineer-adcreative-thumbnails/*"}]}'
+```
+
+If a new upload prefix ever holds video, add it to both
+`lib/protected-media.ts` and the policy file.
+
+What this does not do: a student who is allowed to watch a video can still
+capture it (screen recording, or pulling the stream out of the browser). Stopping
+that needs DRM from a video host; a per-viewer watermark makes leaks traceable.

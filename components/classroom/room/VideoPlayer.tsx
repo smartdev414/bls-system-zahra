@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, PlayCircle } from "lucide-react"
+import { ProtectedVideo } from "@/components/ui/protected-video"
 
 interface VideoPlayerProps {
   isTutor: boolean
@@ -144,16 +145,14 @@ export function VideoPlayer({
 
   return (
     <div className="w-full h-full flex items-center justify-center bg-black relative">
-      <video
+      <ProtectedVideo
         ref={videoRef}
         src={url}
         onError={handleMediaError}
         // Tutor gets full controls (scrubbing seeks broadcasts). Students are
         // read-only; playsInline keeps mobile Safari from going full-screen.
         controls={isTutor}
-        controlsList="nodownload noremoteplayback"
-        disablePictureInPicture
-        onContextMenu={(e) => e.preventDefault()}
+        allowDownload={isTutor}
         playsInline
         preload="auto"
         className="max-w-full max-h-full"

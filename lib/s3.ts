@@ -29,9 +29,19 @@ export function publicUrl(key: string): string {
   return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`
 }
 
-/** Returns a presigned GET URL valid for the given seconds (default 4 hours) */
-export async function getPresignedDownloadUrl(key: string, expiresIn = 14400): Promise<string> {
-  const command = new GetObjectCommand({ Bucket: BUCKET, Key: key })
+/**
+ * Returns a presigned GET URL valid for the given seconds (default 4 hours).
+ * Pass `downloadAs` to make the browser save the file under that name rather
+ * than play it inline.
+ */
+export async function getPresignedDownloadUrl(key: string, expiresIn = 14400, downloadAs?: string): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    ...(downloadAs && {
+      ResponseContentDisposition: `attachment; filename="${downloadAs.replace(/[^\w.\-()[\] ]/g, "_")}"`,
+    }),
+  })
   return getSignedUrl(s3, command, { expiresIn })
 }
 

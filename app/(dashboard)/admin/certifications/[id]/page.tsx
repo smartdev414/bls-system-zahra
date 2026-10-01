@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
+import { mediaSrc } from "@/lib/protected-media"
 import { toast } from "sonner"
 import { QuizBuilder, QuestionDraft } from "@/components/quiz/QuizBuilder"
 
@@ -187,7 +188,7 @@ export default function AdminCertDetailPage({ params }: { params: Promise<{ id: 
                         <Icon className="size-3" /> {sub.step?.title}
                       </p>
                       {subData.videoUrl && (
-                        <a href={subData.videoUrl as string} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline mt-1 block">
+                        <a href={mediaSrc(subData.videoUrl as string)} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline mt-1 block">
                           View video submission
                         </a>
                       )}

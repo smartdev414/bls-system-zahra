@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { QuizTaker } from "@/components/quiz/QuizTaker"
+import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -279,13 +280,10 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
           {/* Video player */}
           {lesson.type === "VIDEO" && videoAsset ? (
             <div className="bg-black aspect-video w-full">
-              <video
+              <ProtectedVideo
                 key={videoAsset.id}
                 src={videoAsset.fileUrl}
                 controls
-                controlsList="nodownload noremoteplayback"
-                disablePictureInPicture
-                onContextMenu={(e) => e.preventDefault()}
                 className="w-full h-full"
                 onTimeUpdate={handleTimeUpdate}
               />
@@ -296,13 +294,10 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 if (asset.type === "VIDEO") {
                   return (
                     <div key={asset.id} className="rounded-xl overflow-hidden border bg-black">
-                      <video
+                      <ProtectedVideo
                         src={asset.fileUrl}
                         controls
                         autoPlay
-                        controlsList="nodownload noremoteplayback"
-                        disablePictureInPicture
-                        onContextMenu={(e) => e.preventDefault()}
                         className="w-full aspect-video"
                         onTimeUpdate={handleTimeUpdate}
                       />

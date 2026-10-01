@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -180,7 +181,7 @@ export function QuizTaker({ lessonId, enrollmentId, questions, bestAttempt, onCo
                       {opt.imageUrl && (
                         <div className="relative w-full">
                           {isVideo
-                            ? <video src={opt.imageUrl} autoPlay muted loop playsInline controls className="w-full aspect-video object-cover" />
+                            ? <ProtectedVideo src={opt.imageUrl} autoPlay muted loop playsInline controls className="w-full aspect-video object-cover" />
                             : <img src={opt.imageUrl} alt={opt.text} className="w-full aspect-square object-cover" />}
                           {isCorrect && (
                             <span className="absolute top-1 right-1 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase">✓ Correct</span>
@@ -278,7 +279,7 @@ export function QuizTaker({ lessonId, enrollmentId, questions, bestAttempt, onCo
                     )}
                   >
                     <div className="relative">
-                      <video
+                      <ProtectedVideo
                         src={opt.imageUrl}
                         autoPlay
                         muted

@@ -15,6 +15,9 @@ export function sanitizeUploadFileName(fileName: string): string {
     .replace(/^\.+/, "")
     .slice(0, 180)
     .replace(/^_+|_+$/g, "")
+    // The bucket policy that keeps video private matches on the file suffix and
+    // is case-sensitive, so `.MOV` must be stored as `.mov`.
+    .replace(/\.[A-Za-z0-9]+$/, (ext) => ext.toLowerCase())
   return cleaned || "file"
 }
 

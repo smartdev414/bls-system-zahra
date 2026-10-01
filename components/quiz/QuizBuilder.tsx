@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ function MediaUploadButton({
         size === "question" ? "w-full max-w-xs aspect-video" : "size-16 shrink-0"
       )}>
         {(mediaType === "video" || /\.(mp4|webm|mov|ogg|m4v)(\?|$)/i.test(mediaUrl ?? ""))
-          ? <video src={mediaUrl} className="w-full h-full object-cover" muted />
+          ? <ProtectedVideo src={mediaUrl} className="w-full h-full object-cover" muted />
           : <img src={mediaUrl} alt="" className="w-full h-full object-cover" />}
         <button
           type="button"
