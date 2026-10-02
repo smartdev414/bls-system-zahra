@@ -19,6 +19,52 @@ export function isReleased(lesson: { releaseAt: Date | null }, now: Date = new D
   return !lesson.releaseAt || lesson.releaseAt <= now
 }
 
+// ─── Moving release dates (copying a course for another group) ───────────────
+
+/** The date and time a clock on the wall shows in `timeZone` at this instant. */
+function wallClock(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(date)
+  const get = (type: string) => Number(parts.find((p) => p.type === type)!.value)
+  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute"), second: get("second") }
+}
+
+/** How far `timeZone` is ahead of UTC at this instant, in milliseconds. */
+function zoneOffsetMs(date: Date, timeZone: string): number {
+  const w = wallClock(date, timeZone)
+  return Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second) - Math.floor(date.getTime() / 1000) * 1000
+}
+
+export function isValidTimeZone(timeZone: unknown): timeZone is string {
+  if (typeof timeZone !== "string" || !timeZone) return false
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The same time of day, `days` calendar days later (or earlier), as people in
+ * `timeZone` read the clock. Adding 24-hour blocks is not enough: a lesson that
+ * releases at 09:00 in September would land at 08:00 once the clocks go back,
+ * and a September course copied for a November group crosses exactly that.
+ */
+export function shiftReleaseAt(date: Date, days: number, timeZone: string): Date {
+  const w = wallClock(date, timeZone)
+  // The target wall-clock time, written as if it were UTC…
+  const wall = Date.UTC(w.year, w.month - 1, w.day + days, w.hour, w.minute, w.second)
+  // …then moved back by the zone's offset. Twice, so the offset used is the one
+  // in force at the result rather than at the first guess.
+  let utc = wall - zoneOffsetMs(new Date(wall), timeZone)
+  utc = wall - zoneOffsetMs(new Date(utc), timeZone)
+  return new Date(utc)
+}
+
 /**
  * Reads a `releaseAt` sent by the lesson forms: an ISO date-time, or null /
  * empty for "available straight away". Returns `undefined` when it is not a

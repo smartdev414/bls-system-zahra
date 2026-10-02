@@ -6,7 +6,10 @@
  * means and on which notifications count as reminders for a course.
  */
 
-/** A student with work outstanding and no activity for this long is "behind". */
+/**
+ * A student with work outstanding and no activity for this long is "behind" —
+ * counted from when they joined the course if they have not started yet.
+ */
 export const BEHIND_AFTER_DAYS = 7
 
 /** A student is not sent a second reminder for the same course within this window. */

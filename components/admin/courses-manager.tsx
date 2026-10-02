@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   BookOpen, Search, Loader2, Globe, Lock, Archive,
-  Star, Users, Filter, Plus, Pencil, GraduationCap,
+  Star, Users, Filter, Plus, Pencil, GraduationCap, Copy,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select"
 import { useFetch, usePatchCallback, usePutCallback } from "@/hooks/use-fetch"
 import { TutorPickerModal } from "@/components/classroom/TutorPickerModal"
+import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 import { COURSE_LEVELS, levelColorSolid, levelLabel, type CourseLevel } from "@/lib/levels"
@@ -67,6 +68,9 @@ export function CoursesManager({
   const [statusFilter, setStatusFilter] = useState("all")
   const [page, setPage] = useState(1)
   const [teachersFor, setTeachersFor] = useState<CourseItem | null>(null)
+  // Copying brings the lessons with it, so it is offered where the builder is (admins).
+  const [copyOf, setCopyOf] = useState<CourseItem | null>(null)
+  const router = useRouter()
 
   const debouncedQuery = useDebounce(query)
 
@@ -135,6 +139,7 @@ export function CoursesManager({
               course={course}
               onMutated={refetch}
               onEditTeachers={() => setTeachersFor(course)}
+              onCopy={builderBase ? () => setCopyOf(course) : undefined}
               builderBase={builderBase}
             />
           ))}
@@ -152,6 +157,15 @@ export function CoursesManager({
         <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} className="mt-2" />
       )}
 
+      {copyOf && builderBase && (
+        <CopyCourseDialog
+          key={copyOf.id}
+          course={copyOf}
+          onClose={() => setCopyOf(null)}
+          onCopied={(newId) => { setCopyOf(null); router.push(`${builderBase}/${newId}`) }}
+        />
+      )}
+
       {teachersFor && (
         <CourseTeachersModal
           key={teachersFor.id}
@@ -166,10 +180,12 @@ export function CoursesManager({
 
 // ─── Course row ───────────────────────────────────────────────────────────────
 
-function CourseRow({ course, onMutated, onEditTeachers, builderBase }: {
+function CourseRow({ course, onMutated, onEditTeachers, onCopy, builderBase }: {
   course: CourseItem
   onMutated: () => void
   onEditTeachers: () => void
+  /** Offered to admins only: makes the course again for another group. */
+  onCopy?: () => void
   builderBase?: string
 }) {
   const cfg = statusConfig[course.status]
@@ -238,6 +254,11 @@ function CourseRow({ course, onMutated, onEditTeachers, builderBase }: {
                 <Link href={`${builderBase}/${course.id}`}>
                   <Pencil className="size-3.5 mr-1.5" /> Manage
                 </Link>
+              </Button>
+            )}
+            {onCopy && (
+              <Button variant="outline" size="sm" onClick={onCopy} aria-label={`Copy ${course.title}`}>
+                <Copy className="size-3.5 mr-1.5" /> Copy
               </Button>
             )}
             <Button

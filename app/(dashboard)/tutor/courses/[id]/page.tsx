@@ -6,7 +6,7 @@ import Link from "next/link"
 import {
   ChevronLeft, Plus, Layers, FileText, PlayCircle,
   FlaskConical, Loader2, ChevronDown, ChevronUp,
-  Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap,
+  Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap, Copy,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,6 +27,7 @@ import { useCoursesBase } from "@/hooks/use-courses-base"
 import { Textarea } from "@/components/ui/textarea"
 import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
 import { CourseGroups } from "@/components/courses/CourseGroups"
+import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -182,6 +183,7 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
   const [editCourseOpen, setEditCourseOpen] = useState(false)
+  const [copyOpen, setCopyOpen] = useState(false)
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
   const [editLevel, setEditLevel] = useState<CourseLevel>("L1")
@@ -291,6 +293,9 @@ return (
           >
             <Pencil className="size-4 mr-1.5" /> Edit Info
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setCopyOpen(true)}>
+            <Copy className="size-4 mr-1.5" /> Copy Course
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -384,6 +389,14 @@ return (
           </div>
         )}
       </div>
+
+      {copyOpen && (
+        <CopyCourseDialog
+          course={{ id, title: course.title }}
+          onClose={() => setCopyOpen(false)}
+          onCopied={(newId) => { setCopyOpen(false); router.push(`${coursesBase}/${newId}`) }}
+        />
+      )}
 
       {/* Edit Course Info Dialog */}
       <Dialog open={editCourseOpen} onOpenChange={setEditCourseOpen}>

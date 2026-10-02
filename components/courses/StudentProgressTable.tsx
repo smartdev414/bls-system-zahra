@@ -16,7 +16,7 @@ export type CourseStudent = {
   completedLessons: number
   testsPassed: number
   lastActiveAt: string | null
-  /** Work outstanding and nothing done for a week (or ever). */
+  /** Work outstanding and nothing done for a week, or since joining a week or more ago. */
   behind: boolean
   lastRemindedAt: string | null
   reminderCount: number

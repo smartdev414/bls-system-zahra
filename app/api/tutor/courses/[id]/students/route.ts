@@ -103,8 +103,9 @@ async function handleGET(_req: NextRequest, { params }: RouteContext) {
           completedLessons,
           testsPassed,
           lastActiveAt: lastActive ? new Date(lastActive).toISOString() : null,
-          // Work still to do and nothing touched for a week — or ever.
-          behind: outstanding && lastActive < behindBefore,
+          // Work still to do and nothing touched for a week. Someone who only
+          // joined the course this week has not had the chance to fall behind.
+          behind: outstanding && Math.max(lastActive, e.enrolledAt.getTime()) < behindBefore,
           lastRemindedAt: reminder?.last?.toISOString() ?? null,
           reminderCount: reminder?.count ?? 0,
         }

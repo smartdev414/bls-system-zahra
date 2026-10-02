@@ -48,6 +48,8 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={value}
+          // Open on the month of the chosen date, not on today's.
+          defaultMonth={value}
           onSelect={(date) => { onChange(date); if (date) setOpen(false) }}
           disabled={disabled}
           initialFocus

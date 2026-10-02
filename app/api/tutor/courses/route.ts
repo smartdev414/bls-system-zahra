@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { uniqueCourseSlug } from "@/lib/course-slug"
 
 async function handleGET() {
   try {
@@ -86,17 +87,7 @@ async function handlePOST(req: NextRequest) {
       ownerId = tutor.id
     }
 
-    // Generate unique slug
-    const baseSlug = title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-    let slug = baseSlug
-    let attempt = 0
-    while (await prisma.course.findFirst({ where: { slug } })) {
-      attempt++
-      slug = `${baseSlug}-${attempt}`
-    }
+    const slug = await uniqueCourseSlug(title)
 
     const course = await prisma.course.create({
       data: {
