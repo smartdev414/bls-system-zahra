@@ -4,8 +4,8 @@ import { use, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
-  ChevronLeft, Plus, Layers, FileText, PlayCircle,
-  FlaskConical, Loader2, ChevronDown, ChevronUp,
+  ChevronLeft, Plus, Layers,
+  Loader2, ChevronDown, ChevronUp,
   Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap, Copy, CalendarClock,
   ArrowUp, ArrowDown,
 } from "lucide-react"
@@ -30,6 +30,7 @@ import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
 import { CourseGroups } from "@/components/courses/CourseGroups"
 import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
+import { lessonKind } from "@/lib/lesson-kind"
 import { ReleaseScheduleDialog } from "@/components/courses/ReleaseScheduleDialog"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -79,8 +80,6 @@ type CourseDetail = {
 
 // `canEdit` is false for teachers: they follow the course, admins build it.
 type CourseData = { course: CourseDetail; canEdit: boolean }
-
-const typeIcon = { VIDEO: PlayCircle, TEXT: FileText, QUIZ: FlaskConical }
 
 /** The one date every lesson in a section shares, when they all share one. */
 function sharedRelease(section: SectionItem): string | null {
@@ -750,7 +749,7 @@ function LessonRow({ lesson, courseId, canEdit, hideRelease, onMoveUp, onMoveDow
   moving: boolean
   onMutated: () => void
 }) {
-  const Icon = typeIcon[lesson.type]
+  const { label, Icon } = lessonKind(lesson.type, lesson.assets)
   const coursesBase = useCoursesBase()
 
   const { execute: deleteLesson, loading: deleting } = useDeleteCallback(
@@ -770,7 +769,7 @@ function LessonRow({ lesson, courseId, canEdit, hideRelease, onMoveUp, onMoveDow
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{lesson.order}. {lesson.title}</p>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-          <span>{lesson.type.charAt(0) + lesson.type.slice(1).toLowerCase()}</span>
+          <span>{label}</span>
           {lesson.isFree && <Badge variant="outline" className="text-[10px] h-4 px-1">Free</Badge>}
           {!hideRelease && <ReleaseBadge releaseAt={lesson.releaseAt} className="text-[10px] h-4 px-1" />}
           {lesson.assets.length > 0 && <span>· {lesson.assets.length} file{lesson.assets.length !== 1 ? "s" : ""}</span>}

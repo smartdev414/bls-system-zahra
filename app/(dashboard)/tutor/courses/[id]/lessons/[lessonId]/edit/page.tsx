@@ -18,6 +18,7 @@ import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { useCoursesBase } from "@/hooks/use-courses-base"
+import { lessonKind } from "@/lib/lesson-kind"
 import { LESSON_FILE_ACCEPT, LESSON_FILE_TYPES } from "../../../AddLessonScreen"
 import { ReleaseField, releaseFromIso, releaseToIso } from "@/components/courses/ReleaseField"
 
@@ -248,7 +249,7 @@ export default function EditLessonPage({
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label>Type</Label>
-          <Input value={lesson.type.charAt(0) + lesson.type.slice(1).toLowerCase()} disabled />
+          <Input value={lessonKind(lesson.type, [...assets, ...[...newFiles, ...libraryFiles].map((f) => ({ type: f.assetType }))]).label} disabled />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Visibility</Label>

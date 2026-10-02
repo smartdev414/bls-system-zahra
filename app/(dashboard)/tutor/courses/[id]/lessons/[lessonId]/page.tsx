@@ -3,8 +3,7 @@
 import { use } from "react"
 import Link from "next/link"
 import {
-  ChevronLeft, CheckCircle2, Circle, Download, Edit3, FileText,
-  FlaskConical, Loader2, PlayCircle,
+  ChevronLeft, CheckCircle2, Circle, Download, Edit3, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +12,7 @@ import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { mediaDownloadHref } from "@/lib/protected-media"
+import { lessonKind } from "@/lib/lesson-kind"
 import { cn } from "@/lib/utils"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 
@@ -53,8 +53,6 @@ type LessonFull = {
 
 type LessonData = { lesson: LessonFull; canEdit: boolean }
 
-const typeIcon = { VIDEO: PlayCircle, TEXT: FileText, QUIZ: FlaskConical }
-
 function isVideoUrl(url: string | null, mediaType: string | null) {
   if (mediaType === "video") return true
   return !!url && /\.(mp4|webm|mov|ogg|m4v)(\?|$)/i.test(url)
@@ -88,7 +86,7 @@ export default function ViewLessonPage({
   }
 
   const { lesson, canEdit } = data
-  const Icon = typeIcon[lesson.type]
+  const { label, Icon } = lessonKind(lesson.type, lesson.assets)
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl">
@@ -106,7 +104,7 @@ export default function ViewLessonPage({
           <h1 className="text-2xl font-black tracking-tight break-words mt-0.5">{lesson.title}</h1>
           <div className="flex items-center gap-2 mt-2">
             <Badge variant="outline" className="gap-1">
-              <Icon className="size-3" /> {lesson.type.charAt(0) + lesson.type.slice(1).toLowerCase()}
+              <Icon className="size-3" /> {label}
             </Badge>
             {lesson.isFree && <Badge variant="outline">Free preview</Badge>}
             <ReleaseBadge releaseAt={lesson.releaseAt} />
