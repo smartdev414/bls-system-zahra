@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { courseContentScope } from "@/lib/permissions"
+import { can, courseContentScope } from "@/lib/permissions"
 
 async function handlePATCH(
   req: NextRequest,
@@ -11,7 +11,7 @@ async function handlePATCH(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -44,7 +44,7 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

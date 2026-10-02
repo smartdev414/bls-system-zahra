@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can, isStaff, ownerScope } from "@/lib/permissions"
+import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET() {
@@ -13,7 +13,8 @@ async function handleGET() {
     }
 
     const courses = await prisma.course.findMany({
-      where: { ...ownerScope(session) },
+      // A tutor's courses are the ones they lead or have been put on as a teacher.
+      where: { ...courseTeachScope(session) },
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { id: true, name: true } },

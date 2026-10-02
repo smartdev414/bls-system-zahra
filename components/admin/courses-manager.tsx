@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   BookOpen, Search, Loader2, Globe, Lock, Archive,
-  Star, Users, Filter, Plus, Pencil,
+  Star, Users, Filter, Plus, Pencil, GraduationCap,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,8 @@ import { Input } from "@/components/ui/input"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
+import { useFetch, usePatchCallback, usePutCallback } from "@/hooks/use-fetch"
+import { TutorPickerModal } from "@/components/classroom/TutorPickerModal"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 import { COURSE_LEVELS, levelColorSolid, levelLabel, type CourseLevel } from "@/lib/levels"
@@ -33,6 +34,8 @@ type CourseItem = {
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
   level: CourseLevel
   tutor: { id: string; name: string }
+  // Teachers the school has put on the course, besides its lead.
+  teachers: Array<{ id: string; name: string }>
   category: { name: string } | null
   enrollmentCount: number
   sectionCount: number
@@ -63,6 +66,7 @@ export function CoursesManager({
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [page, setPage] = useState(1)
+  const [teachersFor, setTeachersFor] = useState<CourseItem | null>(null)
 
   const debouncedQuery = useDebounce(query)
 
@@ -126,7 +130,13 @@ export function CoursesManager({
       ) : data?.courses.length ? (
         <div className="flex flex-col gap-3">
           {data.courses.map((course) => (
-            <CourseRow key={course.id} course={course} onMutated={refetch} builderBase={builderBase} />
+            <CourseRow
+              key={course.id}
+              course={course}
+              onMutated={refetch}
+              onEditTeachers={() => setTeachersFor(course)}
+              builderBase={builderBase}
+            />
           ))}
         </div>
       ) : (
@@ -141,13 +151,27 @@ export function CoursesManager({
       {data && data.totalPages > 1 && (
         <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} className="mt-2" />
       )}
+
+      {teachersFor && (
+        <CourseTeachersModal
+          key={teachersFor.id}
+          course={teachersFor}
+          onClose={() => setTeachersFor(null)}
+          onSaved={refetch}
+        />
+      )}
     </div>
   )
 }
 
 // ─── Course row ───────────────────────────────────────────────────────────────
 
-function CourseRow({ course, onMutated, builderBase }: { course: CourseItem; onMutated: () => void; builderBase?: string }) {
+function CourseRow({ course, onMutated, onEditTeachers, builderBase }: {
+  course: CourseItem
+  onMutated: () => void
+  onEditTeachers: () => void
+  builderBase?: string
+}) {
   const cfg = statusConfig[course.status]
   const StatusIcon = cfg.icon
 
@@ -186,6 +210,12 @@ function CourseRow({ course, onMutated, builderBase }: { course: CourseItem; onM
               </div>
               <p className="font-semibold leading-snug">{course.title}</p>
               <p className="text-xs text-muted-foreground mt-0.5">by {course.tutor.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                <GraduationCap className="size-3 shrink-0" />
+                {course.teachers.length > 0
+                  ? <span className="truncate">Teachers: {course.teachers.map((t) => t.name).join(", ")}</span>
+                  : <span>No teachers added yet</span>}
+              </p>
               <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1"><Users className="size-3" /> {course.enrollmentCount} enrolled</span>
                 {course.avgRating && (
@@ -199,7 +229,10 @@ function CourseRow({ course, onMutated, builderBase }: { course: CourseItem; onM
             </div>
           </div>
 
-          <div className="flex gap-2 shrink-0">
+          <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+            <Button variant="outline" size="sm" onClick={onEditTeachers}>
+              <GraduationCap className="size-3.5 mr-1.5" /> Teachers
+            </Button>
             {builderBase && (
               <Button asChild variant="outline" size="sm">
                 <Link href={`${builderBase}/${course.id}`}>
@@ -232,6 +265,47 @@ function CourseRow({ course, onMutated, builderBase }: { course: CourseItem; onM
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+// ─── Teachers on a course ─────────────────────────────────────────────────────
+
+/**
+ * Puts teachers on a course. Rendered by the list rather than the row, so a
+ * list reload (search, filter, another save) cannot close it mid-selection.
+ */
+function CourseTeachersModal({
+  course,
+  onClose,
+  onSaved,
+}: {
+  course: CourseItem
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { execute: saveTeachers, loading: saving } = usePutCallback<
+    { teachers: Array<{ id: string; name: string }> },
+    { tutorIds: string[] }
+  >(`/api/admin/courses/${course.id}/tutors`, {
+    successMessage: (d) =>
+      d.teachers.length === 0
+        ? "No extra teachers on this course"
+        : `${d.teachers.length} teacher${d.teachers.length === 1 ? "" : "s"} on this course`,
+    errorMessage: "Could not update teachers",
+    onSuccess: () => { onClose(); onSaved() },
+  })
+
+  return (
+    <TutorPickerModal
+      selected={new Set(course.teachers.map((t) => t.id))}
+      excludeIds={new Set([course.tutor.id])}
+      title={`Teachers on “${course.title}”`}
+      description="Teachers can open this course, follow its lessons, see its students and schedule classes. They cannot change the lessons."
+      confirmLabel="Save Teachers"
+      confirming={saving}
+      onConfirm={(ids) => saveTeachers({ tutorIds: [...ids] })}
+      onClose={() => { if (!saving) onClose() }}
+    />
   )
 }
 
@@ -311,7 +385,7 @@ function NewCourseDialog({ onCreated, builderBase }: { onCreated: () => void; bu
           <DialogDescription>
             {builderBase
               ? "Sets up the course, then opens the builder so you can add sections and lessons."
-              : "Sets up the course so students can be enrolled. The tutor adds the lessons."}
+              : "Sets up the course so students can be enrolled. An admin adds the lessons."}
           </DialogDescription>
         </DialogHeader>
 
@@ -362,7 +436,7 @@ function NewCourseDialog({ onCreated, builderBase }: { onCreated: () => void; bu
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="c-tutor">Tutor running the course (optional)</Label>
+            <Label htmlFor="c-tutor">Lead teacher (optional)</Label>
             <select
               id="c-tutor"
               value={tutorId}

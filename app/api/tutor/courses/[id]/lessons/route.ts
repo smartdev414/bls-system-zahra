@@ -3,7 +3,8 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
-import { courseContentScope } from "@/lib/permissions"
+import { can, courseContentScope } from "@/lib/permissions"
+import { isReleased, parseReleaseAt } from "@/lib/lesson-release"
 
 async function handlePOST(
   req: NextRequest,
@@ -12,7 +13,7 @@ async function handlePOST(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -26,6 +27,8 @@ async function handlePOST(
       type: "VIDEO" | "TEXT" | "QUIZ"
       description?: string
       isFree?: boolean
+      /** ISO date-time students get the lesson; null or omitted = straight away. */
+      releaseAt?: string | null
       assets?: Array<{
         type: "VIDEO" | "PDF" | "IMAGE" | "DOCUMENT" | "AUDIO" | "SUBTITLE"
         title: string
@@ -44,6 +47,11 @@ async function handlePOST(
       return NextResponse.json({ message: "sectionId and title are required" }, { status: 400 })
     }
 
+    const releaseAt = parseReleaseAt(body.releaseAt ?? null)
+    if (releaseAt === undefined) {
+      return NextResponse.json({ message: "Release date is not a valid date" }, { status: 400 })
+    }
+
     const section = await prisma.section.findFirst({ where: { id: sectionId, courseId } })
     if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })
 
@@ -56,6 +64,7 @@ async function handlePOST(
         type,
         description: description?.trim() ?? null,
         isFree,
+        releaseAt,
         order: lessonCount + 1,
         assets: {
           create: assets.map((asset, i) => ({
@@ -75,7 +84,9 @@ async function handlePOST(
     })
 
     // Notify enrolled students when a new lesson is added to a published course
-    if (course.status === "PUBLISHED") {
+    // — unless it is being held back for a later release, when telling them now
+    // would point at a lesson they cannot open yet.
+    if (course.status === "PUBLISHED" && isReleased(lesson)) {
       const enrollments = await prisma.enrollment.findMany({
         where: { courseId },
         select: { studentId: true },

@@ -7,7 +7,7 @@ import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
   Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
-  CalendarDays, UserPlus, Headset,
+  CalendarDays, UserPlus, Headset, GraduationCap,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -53,18 +53,24 @@ const studentDropdownNav: NavItem[] = [
   { label: "Connection check", href: "/student/connection-check", icon: Wifi },
 ]
 
+// Admins run the school from this one login: the courses and the library they
+// build, the timetable, and the students — so those sit in the main bar and the
+// occasional admin screens move into the menu.
 const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-  { label: "Users", href: "/admin/users", icon: Users },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
-  { label: "Certifications", href: "/admin/certifications", icon: ShieldCheck },
-  { label: "Categories", href: "/admin/categories", icon: Tag },
-  { label: "API Logs", href: "/admin/audit-logs", icon: Activity },
+  { label: "Library", href: "/admin/library", icon: FolderOpen },
+  { label: "Live Sessions", href: "/admin/sessions", icon: Video },
+  { label: "Students", href: "/admin/students", icon: GraduationCap },
+  { label: "Users", href: "/admin/users", icon: Users },
 ]
 
 const adminDropdownNav: NavItem[] = [
   { label: "Dictionary", href: "/admin/signs", icon: Library },
+  { label: "Certifications", href: "/admin/certifications", icon: ShieldCheck },
+  { label: "Categories", href: "/admin/categories", icon: Tag },
   { label: "Tickets", href: "/admin/tickets", icon: Ticket },
+  { label: "API Logs", href: "/admin/audit-logs", icon: Activity },
   { label: "Support desk", href: "/support", icon: Headset },
 ]
 

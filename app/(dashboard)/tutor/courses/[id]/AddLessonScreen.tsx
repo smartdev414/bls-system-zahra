@@ -15,6 +15,7 @@ import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
 import { LibraryPicker, itemIcon, formatBytes } from "@/components/library/LibraryPicker"
 import type { LibraryAssetType } from "@/lib/library"
+import { ReleaseField, releaseToIso } from "@/components/courses/ReleaseField"
 
 type LessonType = "VIDEO" | "TEXT" | "QUIZ"
 
@@ -36,6 +37,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
   const [type, setType] = useState<LessonType>("VIDEO")
   const [desc, setDesc] = useState("")
   const [isFree, setIsFree] = useState(false)
+  const [releaseAt, setReleaseAt] = useState("")
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   // Files picked from the resource library, added alongside any fresh upload.
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
@@ -89,7 +91,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
       const res = await fetch(`/api/tutor/courses/${courseId}/lessons`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sectionId, title, type, description: desc, isFree, assets }),
+        body: JSON.stringify({ sectionId, title, type, description: desc, isFree, releaseAt: releaseToIso(releaseAt), assets }),
       })
       const data = await res.json() as { lesson?: { id: string }; message?: string }
       if (!res.ok) throw new Error(data.message ?? "Could not create lesson")
@@ -185,6 +187,8 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
           </Select>
         </div>
       </div>
+
+      <ReleaseField value={releaseAt} onChange={setReleaseAt} />
 
       {/* Description */}
       <div className="flex flex-col gap-1.5">

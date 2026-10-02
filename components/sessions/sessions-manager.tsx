@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, createContext, useContext } from "react"
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Video, CalendarPlus, Clock, Users, Users2,
   Loader2, Radio, CheckCircle2, XCircle,
@@ -213,6 +214,7 @@ function ScheduleSessionDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   showScheduleButton: showScheduleButton = true,
+  initialCourseId,
 }: {
   onCreated: () => void
   editSession?: SessionItem
@@ -220,6 +222,8 @@ function ScheduleSessionDialog({
   showScheduleButton?: boolean
   open?: boolean
   onOpenChange?: (v: boolean) => void
+  /** Pre-link a new session to this course (scheduling from the course page). */
+  initialCourseId?: string
 }) {
   const isEdit = !!editSession
   const isDuplicate = !!duplicateSession && !editSession
@@ -314,6 +318,11 @@ function ScheduleSessionDialog({
     }
   }, [open, editSession, duplicateSession])
 
+  // Scheduling from a course page: start with that course already linked
+  useEffect(() => {
+    if (open && !editSession && !duplicateSession && initialCourseId) setCourseId(initialCourseId)
+  }, [open, editSession, duplicateSession, initialCourseId])
+
   function resetForm() {
     setTitle(""); setDescription(""); setDate(undefined); setTime("")
     setDurationMins(60); setMaxStudents(""); setCourseId("")
@@ -363,7 +372,7 @@ function ScheduleSessionDialog({
             title, description, scheduledAt: scheduledAt.toISOString(),
             durationMins,
             maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
-            courseId: courseId || undefined,
+            courseId: courseId || null,
             visibility,
             invitedStudentIds: invitedStudents.map((s) => s.id),
             invitedTutorIds: invitedTutors.map((t) => t.id),
@@ -607,9 +616,11 @@ function ScheduleSessionDialog({
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              {visibility === "PUBLIC"
-                ? "Any enrolled student can join this session."
-                : "Only students you invite will see and join this session."}
+              {visibility === "INVITE_ONLY"
+                ? "Only the students you invite can join — pick a group to run this class for one group."
+                : courseId
+                ? "Everyone on the linked course can join. Students on other courses won't see it."
+                : "Any student can join this session."}
             </p>
           </div>
 
@@ -1606,6 +1617,20 @@ export function SessionsManager({
   subheading?: string
 }) {
   const [view, setView] = useState<"list" | "calendar">("list")
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // "Schedule Session" on a course page lands here with ?new=1&courseId=… —
+  // open the form straight away with that course linked, then tidy the URL so
+  // a refresh doesn't reopen it.
+  const startNew = searchParams.get("new") === "1"
+  const [scheduleOpen, setScheduleOpen] = useState(startNew)
+  const [presetCourseId, setPresetCourseId] = useState(
+    startNew ? searchParams.get("courseId") ?? "" : ""
+  )
+  useEffect(() => {
+    if (startNew) router.replace(pathname, { scroll: false })
+  }, [startNew, router, pathname])
 
   const { data, loading, refetch } = useFetch<SessionsData>("/api/tutor/sessions", {
     errorMessage: "Could not load sessions",
@@ -1664,7 +1689,12 @@ export function SessionsManager({
             </button>
           </div>
 
-          <ScheduleSessionDialog onCreated={refetch} />
+          <ScheduleSessionDialog
+            onCreated={refetch}
+            open={scheduleOpen}
+            onOpenChange={(v) => { setScheduleOpen(v); if (!v) setPresetCourseId("") }}
+            initialCourseId={presetCourseId}
+          />
         </div>
       </div>
 

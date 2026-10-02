@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth"
 import { AccessToken, TrackSource } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
 import { ensureClassroomTranscriber } from "@/lib/livekit"
+import { studentMayJoinSession } from "@/lib/session-access"
 
 async function handlePOST(
   _req: Request,
@@ -25,27 +26,17 @@ async function handlePOST(
       return NextResponse.json({ message: "Session is no longer active" }, { status: 410 })
     }
 
-    // Gate invite-only sessions: students must be invited or have an approved join request
-    if (
-      session.role === "STUDENT" &&
-      liveSession.visibility === "INVITE_ONLY"
-    ) {
-      const [invite, approvedRequest] = await Promise.all([
-        prisma.liveSessionInvite.findUnique({
-          where: { sessionId_studentId: { sessionId: id, studentId: session.sub } },
-          select: { id: true },
-        }),
-        prisma.sessionJoinRequest.findFirst({
-          where: { sessionId: id, studentId: session.sub, status: "APPROVED" },
-          select: { id: true },
-        }),
-      ])
-      if (!invite && !approvedRequest) {
-        return NextResponse.json(
-          { message: "This session is invite-only. Your request to join must be approved by the tutor first." },
-          { status: 403 }
-        )
-      }
+    // Students only get into the sessions meant for them: invited (or approved)
+    // for invite-only ones, on the course for a course's class.
+    if (session.role === "STUDENT" && !(await studentMayJoinSession(liveSession, session.sub))) {
+      return NextResponse.json(
+        {
+          message: liveSession.visibility === "INVITE_ONLY"
+            ? "This session is invite-only. Your request to join must be approved by the tutor first."
+            : "This class is for students on the course. Ask your tutor to add you to it.",
+        },
+        { status: 403 }
+      )
     }
 
     const apiKey = process.env.LIVEKIT_API_KEY

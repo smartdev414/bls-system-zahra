@@ -29,7 +29,8 @@ async function handleGET(
 
     // Published courses with stats
     const courses = await prisma.course.findMany({
-      where: { tutorId: id, status: "PUBLISHED" },
+      // The courses this tutor leads, and the ones the school has put them on.
+      where: { status: "PUBLISHED", OR: [{ tutorId: id }, { teachers: { some: { tutorId: id } } }] },
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { id: true, name: true } },

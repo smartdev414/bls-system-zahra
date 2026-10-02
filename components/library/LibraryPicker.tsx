@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Pick files from the tutor's resource library instead of uploading them again.
+ * Pick files from the resource library instead of uploading them again.
  *
  * Hands back the same `UploadedFile` shape a fresh upload produces, so every
  * screen that already accepts an upload accepts a picked file with no other
@@ -10,6 +10,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   Search, FileText, Video, Image as ImageIcon, Music, Check, Loader2, FolderOpen,
 } from "lucide-react"
@@ -22,6 +23,7 @@ import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 import type { UploadedFile } from "@/components/ui/file-upload"
 import type { LibraryAssetType, LibraryItem } from "@/lib/library"
+import { COURSE_LEVELS, levelLabel, type CourseLevel } from "@/lib/levels"
 
 type Props = {
   open: boolean
@@ -70,10 +72,13 @@ export function LibraryPicker({ open, onOpenChange, ...rest }: Props) {
 }
 
 function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: Omit<Props, "open">) {
-  const { data, loading } = useFetch<{ items: LibraryItem[] }>("/api/tutor/library", {
-    errorMessage: "Could not load your library",
+  const { data, loading } = useFetch<{ items: LibraryItem[]; canManage: boolean }>("/api/tutor/library", {
+    errorMessage: "Could not load the library",
   })
+  // The picker opens inside both portals; send "manage" to that portal's library.
+  const libraryHref = usePathname()?.startsWith("/admin") ? "/admin/library" : "/tutor/library"
   const [query, setQuery] = useState("")
+  const [level, setLevel] = useState<CourseLevel | "">("")
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const attached = useMemo(() => new Set(attachedUrls), [attachedUrls])
@@ -82,9 +87,11 @@ function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: O
     const q = query.trim().toLowerCase()
     return (data?.items ?? []).filter((item) =>
       (!allowedTypes || allowedTypes.includes(item.assetType)) &&
+      // "Used" files carry no level, so a level filter narrows to the library.
+      (!level || item.level === level) &&
       (!q || item.title.toLowerCase().includes(q) || item.fileName.toLowerCase().includes(q)),
     )
-  }, [data, query, allowedTypes])
+  }, [data, query, level, allowedTypes])
 
   const libraryItems = items.filter((i) => i.source === "library")
   const usedItems = items.filter((i) => i.source === "used")
@@ -132,6 +139,7 @@ function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: O
           <p className="text-sm font-semibold truncate" title={item.title}>{item.title}</p>
           <p className="text-xs text-muted-foreground truncate">
             {[
+              item.level,
               item.assetType.toLowerCase(),
               formatBytes(item.fileSize),
               item.usedIn,
@@ -157,18 +165,29 @@ function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: O
         <DialogHeader>
           <DialogTitle>Choose from library</DialogTitle>
           <DialogDescription>
-            Pick files you&apos;ve already uploaded. They&apos;re added without uploading again.
+Pick files from the school&apos;s library. They&apos;re added without uploading again.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search files"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Search files"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <select
+            value={level}
+            onChange={(e) => setLevel(e.target.value as CourseLevel | "")}
+            className="h-9 rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
+            aria-label="Filter by level"
+          >
+            <option value="">All levels</option>
+            {COURSE_LEVELS.map((l) => <option key={l} value={l}>{levelLabel[l]}</option>)}
+          </select>
         </div>
 
         <div className="flex flex-col gap-4 max-h-[50vh] overflow-y-auto -mx-1 px-1">
@@ -179,9 +198,9 @@ function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: O
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
               <FolderOpen className="size-8" />
-              {query ? "No files match your search." : "No files here yet."}
-              <Link href="/tutor/library" className="text-primary font-medium hover:underline">
-                Upload files to your library
+              {query || level ? "No files match your search." : "No files here yet."}
+              <Link href={libraryHref} className="text-primary font-medium hover:underline">
+                {data?.canManage ? "Upload files to the library" : "Open the library"}
               </Link>
             </div>
           ) : (
@@ -195,7 +214,7 @@ function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: O
               {usedItems.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Used in your lessons and sessions
+                    Used in lessons and sessions
                   </p>
                   {usedItems.map(renderItem)}
                 </div>
@@ -206,7 +225,7 @@ function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: O
 
         <DialogFooter className="sm:justify-between gap-2">
           <Button asChild variant="ghost" size="sm">
-            <Link href="/tutor/library">Manage library</Link>
+            <Link href={libraryHref}>{data?.canManage ? "Manage library" : "Open library"}</Link>
           </Button>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

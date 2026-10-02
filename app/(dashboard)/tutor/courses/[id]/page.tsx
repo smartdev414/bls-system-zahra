@@ -6,7 +6,7 @@ import Link from "next/link"
 import {
   ChevronLeft, Plus, Layers, FileText, PlayCircle,
   FlaskConical, Loader2, ChevronDown, ChevronUp,
-  Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera,
+  Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +26,9 @@ import { FileUpload } from "@/components/ui/file-upload"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { Textarea } from "@/components/ui/textarea"
 import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
+import { CourseStudents } from "@/components/courses/CourseStudents"
+import { CourseSessions } from "./CourseSessions"
+import { ReleaseBadge } from "@/components/courses/ReleaseField"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +49,8 @@ type LessonItem = {
   description: string | null
   order: number
   isFree: boolean
+  // Set while the lesson is being held back from students.
+  releaseAt: string | null
   assets: Asset[]
 }
 
@@ -64,10 +69,14 @@ type CourseDetail = {
   level: CourseLevel
   thumbnailUrl: string | null
   sections: SectionItem[]
+  // The lead, and the teachers the school has put on the course.
+  tutor: { id: string; name: string }
+  teachers: Array<{ id: string; name: string }>
   _count: { enrollments: number }
 }
 
-type CourseData = { course: CourseDetail }
+// `canEdit` is false for teachers: they follow the course, admins build it.
+type CourseData = { course: CourseDetail; canEdit: boolean }
 
 const typeIcon = { VIDEO: PlayCircle, TEXT: FileText, QUIZ: FlaskConical }
 
@@ -77,10 +86,12 @@ function ThumbnailEditor({
   courseId,
   thumbnailUrl,
   onSaved,
+  readOnly = false,
 }: {
   courseId: string
   thumbnailUrl: string | null
   onSaved: (url: string | null) => void
+  readOnly?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -124,7 +135,7 @@ function ThumbnailEditor({
       )}
 
       {/* Hover overlay */}
-      <button
+      {!readOnly && <button
         type="button"
         disabled={uploading}
         onClick={() => inputRef.current?.click()}
@@ -140,7 +151,7 @@ function ThumbnailEditor({
             </span>
           </>
         )}
-      </button>
+      </button>}
 
       <input
         ref={inputRef}
@@ -161,7 +172,7 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params)
   const router = useRouter()
   const coursesBase = useCoursesBase()
-  const { data, loading, refetch } = useFetch<CourseData>(`/api/tutor/courses/${id}`, {
+  const { data, loading, refetch, mutate } = useFetch<CourseData>(`/api/tutor/courses/${id}`, {
     errorMessage: "Could not load course",
   })
 
@@ -217,8 +228,11 @@ const { execute: updateCourseStatus, loading: updating } = usePutCallback<
 
   if (!data) return null
 
-  const { course } = data
+  const { course, canEdit } = data
   const isPublished = course.status === "PUBLISHED"
+  const teacherNames = [course.tutor, ...course.teachers]
+    .filter((t, i, all) => all.findIndex((x) => x.id === t.id) === i)
+    .map((t) => t.name)
 
   function openLessonDialog(sectionId: string) {
     router.push(`${coursesBase}/${id}/lessons/new?sectionId=${sectionId}`)
@@ -240,6 +254,7 @@ return (
         <ThumbnailEditor
           courseId={id}
           thumbnailUrl={course.thumbnailUrl}
+          readOnly={!canEdit}
           onSaved={(url) => {
             // Optimistically update local data — refetch handles the rest
             if (url) refetch()
@@ -263,7 +278,7 @@ return (
             <p className="text-sm text-muted-foreground mt-1 line-clamp-3 sm:line-clamp-2">{course.description}</p>
           </div>
 
-          <div className="flex flex-wrap gap-2 md:shrink-0">
+          {canEdit && <div className="flex flex-wrap gap-2 md:shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -291,7 +306,7 @@ return (
               <><Globe className="size-4 mr-1.5" /> Publish</>
             )}
           </Button>
-        </div>
+        </div>}
         </div>
       </div>
 
@@ -306,7 +321,31 @@ return (
             {course.sections.reduce((sum, s) => sum + s.lessons.length, 0)}
           </span> lessons
         </span>
+        <span aria-hidden>·</span>
+        <span className="inline-flex items-center gap-1">
+          <GraduationCap className="size-3.5" />
+          {teacherNames.join(", ")}
+        </span>
       </div>
+
+      {!canEdit && (
+        <p className="text-sm text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">
+          This course is set up by the school, so its lessons are view-only for you. You can still add students and schedule classes.
+        </p>
+      )}
+
+      <Separator />
+
+      <CourseStudents
+        courseId={id}
+        onTotalChange={(total) =>
+          mutate((prev) => prev && { ...prev, course: { ...prev.course, _count: { enrollments: total } } })
+        }
+      />
+
+      <Separator />
+
+      <CourseSessions courseId={id} />
 
       <Separator />
 
@@ -316,16 +355,20 @@ return (
           <h2 className="font-bold flex items-center gap-2">
             <Layers className="size-4 text-primary" /> Course Content
           </h2>
-          <Button size="sm" variant="outline" onClick={() => setSectionDialogOpen(true)}>
-            <Plus className="size-4 mr-1.5" /> Add Section
-          </Button>
+          {canEdit && (
+            <Button size="sm" variant="outline" onClick={() => setSectionDialogOpen(true)}>
+              <Plus className="size-4 mr-1.5" /> Add Section
+            </Button>
+          )}
         </div>
 
         {course.sections.length === 0 ? (
           <Card className="shadow-sm border-dashed">
             <CardContent className="py-10 text-center">
               <Layers className="size-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No sections yet. Add your first section above.</p>
+              <p className="text-sm text-muted-foreground">
+                {canEdit ? "No sections yet. Add your first section above." : "No lessons have been added to this course yet."}
+              </p>
             </CardContent>
           </Card>
         ) : (
@@ -335,6 +378,7 @@ return (
                 key={section.id}
                 courseId={id}
                 section={section}
+                canEdit={canEdit}
                 isCollapsed={!!collapsed[section.id]}
                 onToggle={() => setCollapsed((prev) => ({ ...prev, [section.id]: !prev[section.id] }))}
                 onAddLesson={() => openLessonDialog(section.id)}
@@ -455,6 +499,7 @@ return (
 function SectionBlock({
   courseId,
   section,
+  canEdit,
   isCollapsed,
   onToggle,
   onAddLesson,
@@ -462,6 +507,7 @@ function SectionBlock({
 }: {
   courseId: string
   section: SectionItem
+  canEdit: boolean
   isCollapsed: boolean
   onToggle: () => void
   onAddLesson: () => void
@@ -530,7 +576,7 @@ function SectionBlock({
               <Badge variant="outline" className="text-[10px] shrink-0 sm:hidden">{section.lessons.length}</Badge>
               {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground shrink-0 ml-auto" /> : <ChevronUp className="size-4 text-muted-foreground shrink-0 ml-auto" />}
             </button>
-            <div className="flex items-center gap-0.5 pr-1 sm:pr-2 shrink-0">
+            {canEdit && <div className="flex items-center gap-0.5 pr-1 sm:pr-2 shrink-0">
               <Button
                 variant="ghost" size="icon" className="size-7"
                 onClick={() => { setRenameValue(section.title); setRenaming(true) }}
@@ -547,7 +593,7 @@ function SectionBlock({
               >
                 {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3" />}
               </Button>
-            </div>
+            </div>}
           </>
         )}
       </div>
@@ -555,25 +601,29 @@ function SectionBlock({
       {!isCollapsed && !renaming && (
         <>
           {section.lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} courseId={courseId} onMutated={onMutated} />
+            <LessonRow key={lesson.id} lesson={lesson} courseId={courseId} canEdit={canEdit} onMutated={onMutated} />
           ))}
-          <div className="px-3 sm:px-5 py-3 border-t">
-            <Button
-              variant="ghost" size="sm" className="text-primary hover:text-primary"
-              onClick={onAddLesson}
-            >
-              <Plus className="size-4 mr-1.5" /> Add Lesson
-            </Button>
-          </div>
+          {canEdit ? (
+            <div className="px-3 sm:px-5 py-3 border-t">
+              <Button
+                variant="ghost" size="sm" className="text-primary hover:text-primary"
+                onClick={onAddLesson}
+              >
+                <Plus className="size-4 mr-1.5" /> Add Lesson
+              </Button>
+            </div>
+          ) : section.lessons.length === 0 ? (
+            <p className="px-3 sm:px-5 py-3 border-t text-xs text-muted-foreground">No lessons in this section yet.</p>
+          ) : null}
         </>
       )}
     </Card>
   )
 }
 
-// ─── Lesson row — edit navigates to dedicated page ────────────────────────────
+// ─── Lesson row — edit (admins) or view (teachers) on a dedicated page ────────
 
-function LessonRow({ lesson, courseId, onMutated }: { lesson: LessonItem; courseId: string; onMutated: () => void }) {
+function LessonRow({ lesson, courseId, canEdit, onMutated }: { lesson: LessonItem; courseId: string; canEdit: boolean; onMutated: () => void }) {
   const Icon = typeIcon[lesson.type]
   const coursesBase = useCoursesBase()
 
@@ -596,24 +646,34 @@ function LessonRow({ lesson, courseId, onMutated }: { lesson: LessonItem; course
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
           <span>{lesson.type.charAt(0) + lesson.type.slice(1).toLowerCase()}</span>
           {lesson.isFree && <Badge variant="outline" className="text-[10px] h-4 px-1">Free</Badge>}
+          <ReleaseBadge releaseAt={lesson.releaseAt} className="text-[10px] h-4 px-1" />
           {lesson.assets.length > 0 && <span>· {lesson.assets.length} file{lesson.assets.length !== 1 ? "s" : ""}</span>}
         </div>
       </div>
       <div className="flex gap-1.5 shrink-0">
-        <Button asChild variant="ghost" size="icon" className="size-7">
-          <Link href={`${coursesBase}/${courseId}/lessons/${lesson.id}/edit`}>
-            <Edit3 className="size-3.5" />
+        <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
+          <Link href={`${coursesBase}/${courseId}/lessons/${lesson.id}`}>
+            <Eye className="size-3.5" /> View
           </Link>
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-destructive hover:text-destructive"
-          disabled={deleting}
-          onClick={() => deleteLesson()}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+        {canEdit && (
+          <>
+            <Button asChild variant="ghost" size="icon" className="size-7">
+              <Link href={`${coursesBase}/${courseId}/lessons/${lesson.id}/edit`}>
+                <Edit3 className="size-3.5" />
+              </Link>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-destructive hover:text-destructive"
+              disabled={deleting}
+              onClick={() => deleteLesson()}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </>
+        )}
       </div>
     </div>
   )

@@ -13,6 +13,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { toast } from "sonner"
 import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
+import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
+import { CourseStudents } from "@/components/courses/CourseStudents"
 import { levelColorSolid, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,7 +62,7 @@ export default function SupportEnrolmentsPage() {
           <UserPlus className="size-6 text-primary" /> Enrolments
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Put students onto a course without waiting for them to sign up themselves.
+          Put students onto a course, see who has fallen behind, and remind them to catch up.
         </p>
       </div>
 
@@ -140,10 +142,13 @@ function CourseEnrolments({ course }: { course: CourseItem }) {
   const [studentQuery, setStudentQuery] = useState("")
   const [picked, setPicked] = useState<Student[]>([])
   const [saving, setSaving] = useState(false)
+  const [groupPickerOpen, setGroupPickerOpen] = useState(false)
+  // Bumped after adding students here, so the progress list below reloads.
+  const [listVersion, setListVersion] = useState(0)
 
   const debouncedStudentQuery = useDebounce(studentQuery)
 
-  const { data: enrolData, loading, refetch } = useFetch<{ enrolments: Enrolment[]; total: number }>(
+  const { data: enrolData, refetch } = useFetch<{ enrolments: Enrolment[]; total: number }>(
     `/api/admin/enrolments?courseId=${course.id}`,
     { errorMessage: "Could not load enrolments" },
   )
@@ -159,41 +164,34 @@ function CourseEnrolments({ course }: { course: CourseItem }) {
     (s) => !enrolledIds.has(s.id) && !pickedIds.has(s.id),
   )
 
-  async function addPicked() {
-    if (picked.length === 0) return
+  async function enrol(studentIds: string[]) {
+    if (studentIds.length === 0) return false
     setSaving(true)
     try {
       const res = await fetch("/api/admin/enrolments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseId: course.id, studentIds: picked.map((s) => s.id) }),
+        body: JSON.stringify({ courseId: course.id, studentIds }),
       })
       const body = await res.json() as { added?: number; message?: string }
       if (!res.ok) {
         toast.error(body.message ?? "Could not add students")
-        return
+        return false
       }
       toast.success(`${body.added ?? 0} student${body.added === 1 ? "" : "s"} added to "${course.title}"`)
-      setPicked([])
-      setStudentQuery("")
       void refetch()
+      setListVersion((v) => v + 1)
+      return true
     } finally {
       setSaving(false)
     }
   }
 
-  async function remove(studentId: string) {
-    const res = await fetch(
-      `/api/admin/enrolments?courseId=${course.id}&studentId=${studentId}`,
-      { method: "DELETE" },
-    )
-    if (!res.ok) {
-      const body = await res.json() as { message?: string }
-      toast.error(body.message ?? "Could not remove student")
-      return
+  async function addPicked() {
+    if (await enrol(picked.map((s) => s.id))) {
+      setPicked([])
+      setStudentQuery("")
     }
-    toast.success("Student removed from the course")
-    void refetch()
   }
 
   return (
@@ -240,7 +238,29 @@ function CourseEnrolments({ course }: { course: CourseItem }) {
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
             Add {picked.length > 0 ? picked.length : ""}
           </Button>
+          <Button variant="outline" onClick={() => setGroupPickerOpen(true)} disabled={saving} className="gap-1.5 shrink-0">
+            <Users className="size-3.5" /> Add a group
+          </Button>
         </div>
+
+        {groupPickerOpen && (
+          <StudentPickerModal
+            selected={new Set()}
+            excludeIds={enrolledIds}
+            title={`Add Students to “${course.title}”`}
+            description="Pick a whole group or individual students. Students already on the course are not shown."
+            confirmLabel="Add to Course"
+            confirming={saving}
+            onConfirm={async (ids) => {
+              if (ids.size === 0) {
+                toast.error("Select at least one student")
+                return
+              }
+              if (await enrol([...ids])) setGroupPickerOpen(false)
+            }}
+            onClose={() => { if (!saving) setGroupPickerOpen(false) }}
+          />
+        )}
 
         {studentQuery && candidates.length > 0 && (
           <div className="flex flex-col gap-1 rounded-xl border p-1 max-h-56 overflow-y-auto">
@@ -265,47 +285,16 @@ function CourseEnrolments({ course }: { course: CourseItem }) {
           </div>
         )}
 
-        {/* Already enrolled */}
-        <div className="border-t pt-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-            Enrolled ({enrolData?.total ?? 0})
-          </p>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="size-5 animate-spin text-primary" />
-            </div>
-          ) : enrolData?.enrolments.length ? (
-            <div className="flex flex-col divide-y max-h-72 overflow-y-auto">
-              {enrolData.enrolments.map((e) => (
-                <div key={e.id} className="flex items-center gap-2.5 py-2">
-                  <Avatar className="size-7 shrink-0">
-                    {e.student.avatarUrl && <AvatarImage src={e.student.avatarUrl} alt={e.student.name} />}
-                    <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
-                      {initialsOf(e.student.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{e.student.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{e.student.email}</p>
-                  </div>
-                  <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline">
-                    {new Date(e.enrolledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 shrink-0 text-destructive hover:text-destructive"
-                    onClick={() => remove(e.student.id)}
-                    aria-label={`Remove ${e.student.name}`}
-                  >
-                    <X className="size-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="py-6 text-center text-sm text-muted-foreground">No students on this course yet.</p>
-          )}
+        {/* On the course: progress, who is behind, reminders */}
+        <div className="border-t pt-4">
+          <CourseStudents
+            key={course.id}
+            courseId={course.id}
+            hideAdd
+            refreshKey={listVersion}
+            // Removing someone there frees them up in the search above.
+            onTotalChange={(total) => { if (total !== (enrolData?.total ?? total)) void refetch() }}
+          />
         </div>
       </CardContent>
     </Card>

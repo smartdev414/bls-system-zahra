@@ -3,16 +3,19 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { reconcilePendingRecordings } from "@/lib/recording"
+import { studentVisibleSessions } from "@/lib/session-access"
 
 async function handleGET() {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
 
-    // Show ALL sessions (public + invite-only) to students
+    // Students see public and invite-only sessions alike (they can ask to join
+    // the latter), but a course's classes only when they are on that course.
     const sessions = await prisma.liveSession.findMany({
       where: {
         status: { in: ["SCHEDULED", "LIVE", "COMPLETED"] },
+        ...(session.role === "STUDENT" ? studentVisibleSessions(session.sub) : {}),
       },
       orderBy: { scheduledAt: "desc" },
       include: {

@@ -25,6 +25,8 @@ type Student = {
 type Group = {
   id: string
   name: string
+  // Whose group it is — only sent to staff, who see every tutor's groups.
+  tutorName?: string
   members: Student[]
 }
 
@@ -37,16 +39,29 @@ function initials(name: string) {
 
 /**
  * A multi-select student picker modal that works without a session ID.
- * Used in the "new session" form to pre-select invitees before creation.
+ * Used in the "new session" form to pre-select invitees before creation, and on
+ * the course page to put students (or a whole group) onto a course.
  */
 export function StudentPickerModal({
   selected,
   onConfirm,
   onClose,
+  title = "Select Students to Invite",
+  description = "Choose individual students or pick a whole group.",
+  confirmLabel = "Confirm Selection",
+  excludeIds,
+  confirming = false,
 }: {
   selected: Set<string>
   onConfirm: (ids: Set<string>, students: Student[]) => void
   onClose: () => void
+  title?: string
+  description?: string
+  confirmLabel?: string
+  /** Students to leave out entirely — e.g. the ones already on the course. */
+  excludeIds?: Set<string>
+  /** The caller is saving the selection; hold the modal open and block a second submit. */
+  confirming?: boolean
 }) {
   const { data: studentsData } = useFetch<StudentsData>("/api/tutor/students")
   const { data: groupsData } = useFetch<GroupsData>("/api/tutor/groups")
@@ -55,8 +70,17 @@ export function StudentPickerModal({
   const [localSelected, setLocalSelected] = useState<Set<string>>(new Set(selected))
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const allStudents = studentsData?.students ?? []
-  const groups = groupsData?.groups ?? []
+  const allStudents = useMemo(
+    () => (studentsData?.students ?? []).filter((s) => !excludeIds?.has(s.id)),
+    [studentsData, excludeIds]
+  )
+  const groups = useMemo(
+    () => (groupsData?.groups ?? []).map((g) => ({
+      ...g,
+      members: g.members.filter((m) => !excludeIds?.has(m.id)),
+    })),
+    [groupsData, excludeIds]
+  )
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allStudents
@@ -128,10 +152,10 @@ export function StudentPickerModal({
       <DialogContent className="max-w-lg flex flex-col gap-0 p-0 h-[80vh]">
         <DialogHeader className="px-5 pt-5 pb-4 shrink-0">
           <DialogTitle className="flex items-center gap-2">
-            <Users className="size-4 text-primary" /> Select Students to Invite
+            <Users className="size-4 text-primary" /> {title}
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Choose individual students or pick a whole group.
+            {description}
           </p>
         </DialogHeader>
 
@@ -192,8 +216,11 @@ export function StudentPickerModal({
                         onClick={() => toggleGroupExpand(group.id)}
                       >
                         <span className="text-sm font-medium">{group.name}</span>
+                        {group.tutorName && (
+                          <span className="text-xs text-muted-foreground truncate">{group.tutorName}</span>
+                        )}
                         <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                          {group.members.length} students
+                          {group.members.length} student{group.members.length !== 1 ? "s" : ""}
                         </Badge>
                         {isExpanded
                           ? <ChevronDown className="size-3.5 text-muted-foreground ml-auto" />
@@ -288,9 +315,10 @@ export function StudentPickerModal({
             )}
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" onClick={handleConfirm}>
-              Confirm Selection
+            <Button variant="outline" size="sm" onClick={onClose} disabled={confirming}>Cancel</Button>
+            <Button size="sm" onClick={handleConfirm} disabled={confirming}>
+              {confirming && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+              {confirmLabel}
             </Button>
           </div>
         </div>

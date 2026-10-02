@@ -1,18 +1,77 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import type { Prisma } from "@/app/generated/prisma/client"
+
+/**
+ * Which students a live session is for.
+ *
+ *   INVITE_ONLY          — students holding an invite or an approved join request.
+ *   PUBLIC, on a course  — everyone enrolled on that course. A course is one
+ *                          level (Level 1, Level 2, …), so this is what keeps a
+ *                          Level 1 student out of the Level 2 class.
+ *   PUBLIC, no course    — any signed-in student (open taster sessions).
+ *
+ * Every student-facing gate (room token, chat, slides, recordings' chat files)
+ * goes through here so the rule cannot drift between them.
+ */
+export async function studentMayJoinSession(
+  liveSession: { id: string; visibility: string; courseId: string | null },
+  studentId: string,
+): Promise<boolean> {
+  if (liveSession.visibility !== "INVITE_ONLY" && !liveSession.courseId) return true
+
+  const [invite, approvedRequest, enrolment] = await Promise.all([
+    prisma.liveSessionInvite.findUnique({
+      where: { sessionId_studentId: { sessionId: liveSession.id, studentId } },
+      select: { id: true },
+    }),
+    prisma.sessionJoinRequest.findFirst({
+      where: { sessionId: liveSession.id, studentId, status: "APPROVED" },
+      select: { id: true },
+    }),
+    liveSession.visibility !== "INVITE_ONLY" && liveSession.courseId
+      ? prisma.enrollment.findUnique({
+          where: { studentId_courseId: { studentId, courseId: liveSession.courseId } },
+          select: { id: true },
+        })
+      : null,
+  ])
+
+  return !!(invite || approvedRequest || enrolment)
+}
+
+/**
+ * Prisma `where` fragment for the sessions a student is shown in their lists.
+ *
+ * Sessions with no course keep the open behaviour (invite-only ones are listed
+ * so a student can ask to join). A course's classes are stricter: the whole-
+ * course ones are listed for students on that course, and a class run for one
+ * group is listed only for the students invited to it — the other groups on
+ * the same course have their own day and time and never see it.
+ */
+export function studentVisibleSessions(studentId: string): Prisma.LiveSessionWhereInput {
+  return {
+    OR: [
+      { courseId: null },
+      { visibility: "PUBLIC", course: { enrollments: { some: { studentId } } } },
+      { invites: { some: { studentId } } },
+      { joinRequests: { some: { studentId } } },
+    ],
+  }
+}
 
 /**
  * Who is allowed to read/write the live-classroom side channels (chat history,
  * stage state) for a session.
  *
  * Read access mirrors "could this person be in the room": the owning tutor, any
- * co-tutor, an admin, and — for INVITE_ONLY sessions — only students who hold an
- * invite or an approved join request. PUBLIC sessions are readable by any signed
- * in student, matching the join flow.
+ * co-tutor, an admin, and the students the session is for — see
+ * `studentMayJoinSession`.
  */
 export type SessionAccess = {
   id: string
   tutorId: string
+  courseId: string | null
   status: string
   visibility: string
   coTutors: { tutorId: string }[]
@@ -31,6 +90,7 @@ export async function assertCanAccessSession(
     select: {
       id: true,
       tutorId: true,
+      courseId: true,
       status: true,
       visibility: true,
       coTutors: { select: { tutorId: true } },
@@ -54,20 +114,8 @@ export async function assertCanAccessSession(
     return { error: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
   }
 
-  if (liveSession.visibility === "INVITE_ONLY") {
-    const [invite, approvedRequest] = await Promise.all([
-      prisma.liveSessionInvite.findUnique({
-        where: { sessionId_studentId: { sessionId, studentId: auth.sub } },
-        select: { id: true },
-      }),
-      prisma.sessionJoinRequest.findFirst({
-        where: { sessionId, studentId: auth.sub, status: "APPROVED" },
-        select: { id: true },
-      }),
-    ])
-    if (!invite && !approvedRequest) {
-      return { error: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
-    }
+  if (!(await studentMayJoinSession(liveSession, auth.sub))) {
+    return { error: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
   }
 
   return { liveSession, isTutor: false }

@@ -97,6 +97,10 @@ enum NotificationType {
   CERT_SUBMISSION_RECEIVED
   // Tutor review
   NEW_TUTOR_REVIEW
+  // Staff / teacher nudging a student who is behind on lessons or tests
+  HOMEWORK_REMINDER
+  // A tutor was put on a course as one of its teachers
+  COURSE_TEACHER_ADDED
   // Ticket / feedback events
   TICKET_CREATED
   TICKET_UPDATED
@@ -139,6 +143,7 @@ model User {
 
   tutorProfile         TutorProfile?
   courses              Course[]                @relation("TutorCourses")
+  teachingCourses      CourseTutor[]           @relation("CourseTeaching")
   quizAttempts         QuizAttempt[]
   hostedSessions       LiveSession[]           @relation("TutorLiveSessions")
   coTutorSessions      LiveSessionCoTutor[]    @relation("CoTutorSessions")
@@ -252,6 +257,7 @@ model Course {
 
   tutor        User          @relation("TutorCourses", fields: [tutorId], references: [id])
   category     Category?     @relation(fields: [categoryId], references: [id])
+  teachers     CourseTutor[]
   sections     Section[]
   enrollments  Enrollment[]
   liveSessions LiveSession[]
@@ -259,6 +265,22 @@ model Course {
 
   @@index([tutorId])
   @@index([status])
+}
+
+// Teachers who take classes on a course without owning it. Admins build the
+// course (one per level) and put teachers on it: a teacher sees the course, its
+// lessons and its students, and schedules classes for it, but cannot change the
+// content. `Course.tutorId` stays the lead and has the same view on its own.
+model CourseTutor {
+  courseId   String
+  tutorId    String
+  assignedAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tutor  User   @relation("CourseTeaching", fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, tutorId])
+  @@index([tutorId])
 }
 
 model Section {
@@ -281,6 +303,10 @@ model Lesson {
   description String?
   order       Int
   isFree      Boolean    @default(false)
+  // When set, students do not see the lesson (or test) until this moment, so
+  // a whole term can be prepared in advance and released week by week. Null =
+  // available straight away. Staff and teachers always see it.
+  releaseAt   DateTime?
 
   section   Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   assets    LessonAsset[]
@@ -632,10 +658,14 @@ model ApiLog {
   @@index([method, statusCode])
 }
 
-// A tutor's own resource library: files uploaded once, ahead of time, and then
-// picked into lessons and live sessions instead of being uploaded again each
-// time. Picking copies the file reference into LessonAsset / LiveSessionResource,
-// so removing a file from the library never breaks a lesson already using it.
+// The resource library: files uploaded once, ahead of time, and then picked
+// into lessons and live sessions instead of being uploaded again each time.
+// Picking copies the file reference into LessonAsset / LiveSessionResource, so
+// removing a file from the library never breaks a lesson already using it.
+//
+// The school's library is the files owned by admins — every teacher can pick
+// from those. `tutorId` is simply who uploaded the file; files a tutor added
+// before the library was shared stay theirs alone.
 model LibraryFile {
   id                   String    @id @default(cuid())
   tutorId              String
@@ -647,6 +677,9 @@ model LibraryFile {
   assetType            AssetType
   presentationUrl      String?   // pre-converted PDF (PowerPoint uploads only)
   presentationMimeType String?
+  // Which level the file is for, so a term's material can be filed in advance
+  // and found by level. Null = not level-specific.
+  level                CourseLevel?
   createdAt            DateTime  @default(now())
 
   tutor User @relation("TutorLibraryFiles", fields: [tutorId], references: [id], onDelete: Cascade)

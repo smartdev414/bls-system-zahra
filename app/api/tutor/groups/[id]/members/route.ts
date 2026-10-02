@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can } from "@/lib/permissions"
+import { can, ownerScope } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 // Add members to group
@@ -22,7 +22,7 @@ async function handlePOST(
       return NextResponse.json({ message: "studentIds must be a non-empty array" }, { status: 400 })
     }
 
-    const group = await prisma.studentGroup.findFirst({ where: { id, tutorId: session.sub } })
+    const group = await prisma.studentGroup.findFirst({ where: { id, ...ownerScope(session) } })
     if (!group) return NextResponse.json({ message: "Group not found" }, { status: 404 })
 
     // Upsert all members (idempotent)
@@ -56,7 +56,7 @@ async function handleDELETE(
       return NextResponse.json({ message: "studentIds must be a non-empty array" }, { status: 400 })
     }
 
-    const group = await prisma.studentGroup.findFirst({ where: { id, tutorId: session.sub } })
+    const group = await prisma.studentGroup.findFirst({ where: { id, ...ownerScope(session) } })
     if (!group) return NextResponse.json({ message: "Group not found" }, { status: 404 })
 
     await prisma.studentGroupMember.deleteMany({

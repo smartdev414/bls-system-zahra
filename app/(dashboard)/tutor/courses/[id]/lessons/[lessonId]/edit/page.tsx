@@ -19,6 +19,7 @@ import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { LESSON_FILE_TYPES } from "../../../AddLessonScreen"
+import { ReleaseField, releaseFromIso, releaseToIso } from "@/components/courses/ReleaseField"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ type LessonFull = {
   type: "VIDEO" | "TEXT" | "QUIZ"
   description: string | null
   isFree: boolean
+  releaseAt: string | null
   assets: Asset[]
   questions: Array<{
     id: string
@@ -76,6 +78,7 @@ export default function EditLessonPage({
   const [title, setTitle] = useState("")
   const [desc, setDesc] = useState("")
   const [isFree, setIsFree] = useState(false)
+  const [releaseAt, setReleaseAt] = useState("")
   const [assets, setAssets] = useState<Asset[]>([])
   const [newFile, setNewFile] = useState<UploadedFile | null>(null)
   // Files picked from the resource library, attached on save like a new upload.
@@ -87,12 +90,18 @@ export default function EditLessonPage({
   useEffect(() => {
     fetch(`/api/tutor/lessons/${lessonId}`)
       .then((r) => r.json())
-      .then((d: { lesson: LessonFull }) => {
+      .then((d: { lesson: LessonFull; canEdit?: boolean }) => {
+        // Teachers follow lessons but don't change them — show the read-only page.
+        if (d.canEdit === false) {
+          router.replace(`${coursesBase}/${courseId}/lessons/${lessonId}`)
+          return
+        }
         const l = d.lesson
         setLesson(l)
         setTitle(l.title)
         setDesc(l.description ?? "")
         setIsFree(l.isFree)
+        setReleaseAt(releaseFromIso(l.releaseAt))
         setAssets(l.assets)
         setQuestions(
           l.questions.map((q) => ({
@@ -114,7 +123,7 @@ export default function EditLessonPage({
       })
       .catch(() => setError("Could not load lesson"))
       .finally(() => setLoading(false))
-  }, [lessonId])
+  }, [lessonId, courseId, coursesBase, router])
 
   // ── Save ──────────────────────────────────────────────────────────────────
   async function handleSave() {
@@ -145,7 +154,7 @@ export default function EditLessonPage({
       const res = await fetch(`/api/tutor/lessons/${lessonId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), description: desc, isFree }),
+        body: JSON.stringify({ title: title.trim(), description: desc, isFree, releaseAt: releaseToIso(releaseAt) }),
       })
       if (!res.ok) {
         const d = await res.json() as { message?: string }
@@ -251,6 +260,8 @@ export default function EditLessonPage({
           </Select>
         </div>
       </div>
+
+      <ReleaseField value={releaseAt} onChange={setReleaseAt} />
 
       {/* Description */}
       <div className="flex flex-col gap-1.5">

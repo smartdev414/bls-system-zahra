@@ -27,6 +27,8 @@ type Group = {
   id: string
   name: string
   createdAt: string
+  // False for a group the office set up, shown to a tutor to use but not change.
+  canEdit?: boolean
   members: StudentMember[]
 }
 
@@ -66,6 +68,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
   }, [groups, selectedGroup])
 
   const currentGroup = syncedGroup
+  const readOnly = currentGroup?.canEdit === false
 
   const nonMembers = useMemo(() => {
     if (!currentGroup) return []
@@ -228,7 +231,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                         >
                           <span className="flex-1 truncate">{group.name}</span>
                           <Badge variant="secondary" className="shrink-0 text-[10px] h-4 px-1">{group.members.length}</Badge>
-                          <span className="hidden group-hover/row:flex items-center gap-0.5 shrink-0">
+                          <span className={group.canEdit === false ? "hidden" : "hidden group-hover/row:flex items-center gap-0.5 shrink-0"}>
                             <span
                               role="button"
                               className="p-0.5 rounded hover:bg-muted cursor-pointer"
@@ -298,7 +301,10 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
               <>
                 <div className="px-4 py-3 border-b shrink-0">
                   <p className="font-semibold text-sm">{currentGroup.name}</p>
-                  <p className="text-xs text-muted-foreground">{currentGroup.members.length} member{currentGroup.members.length !== 1 ? "s" : ""}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {currentGroup.members.length} member{currentGroup.members.length !== 1 ? "s" : ""}
+                    {readOnly && " · Set up by the school — you can invite this group to a class, but not change it"}
+                  </p>
                 </div>
 
                 <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -317,22 +323,24 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                             <p className="text-xs font-medium truncate">{member.name}</p>
                             <p className="text-[10px] text-muted-foreground truncate">{member.email}</p>
                           </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-6 opacity-0 group-hover/member:opacity-100 text-destructive hover:text-destructive"
-                            disabled={busy}
-                            onClick={() => removeMember(member.id)}
-                          >
-                            <X className="size-3" />
-                          </Button>
+                          {!readOnly && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-6 opacity-0 group-hover/member:opacity-100 text-destructive hover:text-destructive"
+                              disabled={busy}
+                              onClick={() => removeMember(member.id)}
+                            >
+                              <X className="size-3" />
+                            </Button>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
 
                   {/* Add students */}
-                  <div className="flex flex-col flex-1 min-h-0">
+                  {!readOnly && <div className="flex flex-col flex-1 min-h-0">
                     <div className="px-4 py-2 border-b shrink-0">
                       <div className="relative">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground" />
@@ -372,7 +380,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                         ))
                       )}
                     </ScrollArea>
-                  </div>
+                  </div>}
                 </div>
               </>
             )}

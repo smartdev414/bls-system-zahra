@@ -74,14 +74,17 @@ const STUDENT_CAPABILITIES: Capability[] = [
   "connectivity.check",
 ]
 
+/**
+ * Tutors — the teachers who take the classes.
+ *
+ * The school builds its courses centrally so every teacher works from the same
+ * material: tutors see the courses they are put on (see `courseTeachScope`) and
+ * run classes for them, but creating a course or changing its lessons is for
+ * admins. They still look after their own students, groups and timetable.
+ */
 const TUTOR_CAPABILITIES: Capability[] = [
   "dashboard.view",
   "courses.view",
-  "courses.create",
-  "courses.edit",
-  "courses.delete",
-  "courses.publish",
-  "lessons.manage",
   "resources.view",
   "resources.download",
   "resources.upload",
@@ -133,6 +136,8 @@ const ADMIN_CAPABILITIES: Capability[] = [
   ...new Set<Capability>([
     ...TUTOR_CAPABILITIES,
     ...SUPPORT_CAPABILITIES,
+    "courses.delete",
+    "lessons.manage",
     "users.delete",
     "users.assignStaffRole",
     "dictionary.manage",
@@ -203,8 +208,9 @@ export function ownerScope(
 }
 
 /**
- * Course `where` fragment for lesson content (sections, lessons, quizzes).
- * Tutors edit only their own courses; admins can build any course. Support
+ * Course `where` fragment for *changing* lesson content (sections, lessons,
+ * quizzes). Only admins build courses — routes gate on `lessons.manage` first,
+ * and this keeps the query itself scoped as a second line of defence. Support
  * staff are kept out of teaching material, so they get no bypass here.
  *
  *   prisma.course.findFirst({ where: { id, ...courseContentScope(session) } })
@@ -214,6 +220,22 @@ export function courseContentScope(
   session: { role: string; sub: string },
 ): Record<string, string> {
   return session.role === "ADMIN" ? {} : { tutorId: session.sub }
+}
+
+/**
+ * Course `where` fragment for the courses a person works with: staff see every
+ * course; a tutor sees the ones they lead (`Course.tutorId`) or have been put on
+ * as a teacher (`CourseTutor`). Use it for reading a course, its students and
+ * its classes — never for editing content, which is `courseContentScope`.
+ *
+ *   prisma.course.findFirst({ where: { id, ...courseTeachScope(session) } })
+ *   prisma.enrollment.findMany({ where: { course: courseTeachScope(session) } })
+ */
+export function courseTeachScope(
+  session: { role: string; sub: string },
+): { OR?: Array<{ tutorId: string } | { teachers: { some: { tutorId: string } } }> } {
+  if (isStaff(session.role)) return {}
+  return { OR: [{ tutorId: session.sub }, { teachers: { some: { tutorId: session.sub } } }] }
 }
 
 /** Human-readable role name for badges and dropdowns. */

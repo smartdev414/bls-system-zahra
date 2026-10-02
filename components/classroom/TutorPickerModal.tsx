@@ -24,24 +24,39 @@ function initials(name: string) {
 }
 
 /**
- * Multi-select tutor picker for the "new session" form — pick co-teachers
- * before the session is created.
+ * Multi-select tutor picker. Used in the "new session" form to pick co-teachers
+ * before the session is created, and by staff to put teachers on a course.
  */
 export function TutorPickerModal({
   selected,
   onConfirm,
   onClose,
+  title = "Select Tutors to Invite",
+  description = "Choose colleagues to co-teach this session with you.",
+  confirmLabel = "Confirm Selection",
+  excludeIds,
+  confirming = false,
 }: {
   selected: Set<string>
   onConfirm: (ids: Set<string>, tutors: Tutor[]) => void
   onClose: () => void
+  title?: string
+  description?: string
+  confirmLabel?: string
+  /** Tutors to leave out — e.g. the course's lead, who is on it already. */
+  excludeIds?: Set<string>
+  /** The caller is saving the selection; block a second submit. */
+  confirming?: boolean
 }) {
   const { data: tutorsData } = useFetch<{ tutors: Tutor[] }>("/api/tutor/colleagues")
 
   const [search, setSearch] = useState("")
   const [localSelected, setLocalSelected] = useState<Set<string>>(new Set(selected))
 
-  const allTutors = tutorsData?.tutors ?? []
+  const allTutors = useMemo(
+    () => (tutorsData?.tutors ?? []).filter((t) => !excludeIds?.has(t.id)),
+    [tutorsData, excludeIds],
+  )
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allTutors
@@ -90,10 +105,10 @@ export function TutorPickerModal({
       <DialogContent className="max-w-lg flex flex-col gap-0 p-0 h-[80vh]">
         <DialogHeader className="px-5 pt-5 pb-4 shrink-0">
           <DialogTitle className="flex items-center gap-2">
-            <Users2 className="size-4 text-primary" /> Select Tutors to Invite
+            <Users2 className="size-4 text-primary" /> {title}
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Choose colleagues to co-teach this session with you.
+            {description}
           </p>
         </DialogHeader>
 
@@ -167,9 +182,9 @@ export function TutorPickerModal({
             )}
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" onClick={handleConfirm}>
-              Confirm Selection
+            <Button variant="outline" size="sm" onClick={onClose} disabled={confirming}>Cancel</Button>
+            <Button size="sm" onClick={handleConfirm} disabled={confirming}>
+              {confirmLabel}
             </Button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can } from "@/lib/permissions"
+import { can, ownerScope } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 
 async function handlePATCH(
@@ -19,7 +19,7 @@ async function handlePATCH(
     const { name } = await req.json() as { name: string }
     if (!name?.trim()) return NextResponse.json({ message: "Group name is required" }, { status: 400 })
 
-    const group = await prisma.studentGroup.findFirst({ where: { id, tutorId: session.sub } })
+    const group = await prisma.studentGroup.findFirst({ where: { id, ...ownerScope(session) } })
     if (!group) return NextResponse.json({ message: "Group not found" }, { status: 404 })
 
     const updated = await prisma.studentGroup.update({
@@ -46,7 +46,7 @@ async function handleDELETE(
     }
 
     const { id } = await params
-    const group = await prisma.studentGroup.findFirst({ where: { id, tutorId: session.sub } })
+    const group = await prisma.studentGroup.findFirst({ where: { id, ...ownerScope(session) } })
     if (!group) return NextResponse.json({ message: "Group not found" }, { status: 404 })
 
     await prisma.studentGroup.delete({ where: { id } })

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can, isStaff } from "@/lib/permissions"
+import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { randomBytes } from "crypto"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
@@ -34,13 +34,17 @@ async function resolveSessionOwner(
   return tutor.id
 }
 
-async function handleGET() {
+// GET /api/tutor/sessions[?courseId=…] — optionally just one course's classes
+async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (!can(session.role, "sessions.view")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
+
+    const courseId = req.nextUrl.searchParams.get("courseId")?.trim()
+    const courseFilter = courseId ? { courseId } : {}
 
     // Sessions this tutor owns, plus sessions they were invited to co-teach.
     // Staff (admin, support) build the whole timetable, so they see every one.
@@ -54,12 +58,12 @@ async function handleGET() {
 
     const [owned, coTutorLinks] = await Promise.all([
       prisma.liveSession.findMany({
-        where: staff ? {} : { tutorId: session.sub },
+        where: { ...(staff ? {} : { tutorId: session.sub }), ...courseFilter },
         orderBy: { scheduledAt: "desc" },
         include: sessionInclude,
       }),
       prisma.liveSessionCoTutor.findMany({
-        where: { tutorId: session.sub },
+        where: { tutorId: session.sub, session: courseFilter },
         include: { session: { include: sessionInclude } },
       }),
     ])
@@ -169,6 +173,16 @@ async function handlePOST(req: NextRequest) {
     // schedule on a tutor's behalf and must name them.
     const ownerId = await resolveSessionOwner(session, body.tutorId)
     if (typeof ownerId !== "string") return ownerId
+
+    // The course link decides which students see the class, so a tutor may only
+    // link the courses they teach.
+    if (courseId) {
+      const course = await prisma.course.findFirst({
+        where: { id: courseId, ...courseTeachScope(session) },
+        select: { id: true },
+      })
+      if (!course) return NextResponse.json({ message: "Course not found" }, { status: 400 })
+    }
 
     const occurrences = Math.min(Math.max(Math.floor(repeatWeeks) || 1, 1), 52)
     const baseDate = new Date(scheduledAt)

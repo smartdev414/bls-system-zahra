@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { isReleased } from "@/lib/lesson-release"
 
 // POST /api/student/lessons/[id]/quiz/attempt
 // body: { enrollmentId: string; answers: { questionId: string; optionId: string }[] }
@@ -25,7 +26,10 @@ async function handlePOST(
         },
       },
     })
-    if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    // A test that has not been released yet cannot be read or taken.
+    if (!lesson || !isReleased(lesson)) {
+      return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    }
 
     const enrollment = await prisma.enrollment.findFirst({
       where: { studentId: session.sub, courseId: lesson.section.courseId },
