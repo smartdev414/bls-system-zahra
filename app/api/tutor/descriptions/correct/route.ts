@@ -3,12 +3,14 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can } from "@/lib/permissions"
 import {
-  DESCRIPTION_GRAMMAR_MAX, correctDescription, descriptionGrammarConfigured,
+  DESCRIPTION_GRAMMAR_MAX, DESCRIPTION_MODES, correctDescription, descriptionGrammarConfigured,
+  type DescriptionMode,
 } from "@/lib/description-grammar"
 
 /**
- * English correction for a course or lesson description, asked for with the
- * "Fix English" button in the rich text editor.
+ * English correction for a course or lesson description, asked for from the
+ * "Improve English" menu in the rich text editor. `mode` is "fix" (spelling
+ * and grammar only, the default) or a tone to reword the description in.
  *
  * Answers with the corrected HTML, or `corrected: null` when there is nothing
  * to change. As with typed captions, a model that is down or not configured
@@ -45,7 +47,11 @@ async function handlePOST(req: NextRequest) {
     return NextResponse.json({ available: false, corrected: null })
   }
 
-  const body = await req.json().catch(() => null) as { html?: unknown } | null
+  const body = await req.json().catch(() => null) as { html?: unknown; mode?: unknown } | null
+  const mode = (body?.mode ?? "fix") as DescriptionMode
+  if (!DESCRIPTION_MODES.includes(mode)) {
+    return NextResponse.json({ message: "Unknown mode" }, { status: 400 })
+  }
   const html = typeof body?.html === "string" ? body.html.trim() : ""
   if (!html) return NextResponse.json({ message: "html is required" }, { status: 400 })
   if (html.length > DESCRIPTION_GRAMMAR_MAX) {
@@ -57,7 +63,7 @@ async function handlePOST(req: NextRequest) {
   }
 
   try {
-    const corrected = await correctDescription(html, req.signal)
+    const corrected = await correctDescription(html, mode, req.signal)
     return NextResponse.json({ available: true, corrected: corrected === html ? null : corrected })
   } catch (err) {
     // The tutor left the page and the browser dropped the request: not a failure.
