@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
 
 type Student = {
   id: string
@@ -51,6 +52,7 @@ export function StudentPickerModal({
   confirmLabel = "Confirm Selection",
   excludeIds,
   confirming = false,
+  hideGroups = false,
 }: {
   selected: Set<string>
   onConfirm: (ids: Set<string>, students: Student[]) => void
@@ -62,11 +64,22 @@ export function StudentPickerModal({
   excludeIds?: Set<string>
   /** The caller is saving the selection; hold the modal open and block a second submit. */
   confirming?: boolean
+  /** Individual students only — for when whole groups are added another way. */
+  hideGroups?: boolean
 }) {
   const { data: studentsData } = useFetch<StudentsData>("/api/tutor/students")
   const { data: groupsData } = useFetch<GroupsData>("/api/tutor/groups")
 
   const [search, setSearch] = useState("")
+  // The list above is the students this person already works with. Typing a
+  // name also looks through every student, so somebody new can be found.
+  const debouncedSearch = useDebounce(search.trim())
+  const { data: searchData } = useFetch<StudentsData>(
+    `/api/tutor/students/search?q=${encodeURIComponent(debouncedSearch)}`,
+    { immediate: debouncedSearch.length >= 2, errorMessage: false },
+  )
+  // Students ticked from a search, kept so they survive the search being cleared.
+  const [found, setFound] = useState<Map<string, Student>>(new Map())
   const [localSelected, setLocalSelected] = useState<Set<string>>(new Set(selected))
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
@@ -84,13 +97,19 @@ export function StudentPickerModal({
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allStudents
-    const q = search.toLowerCase()
-    return allStudents.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
+    const q = search.trim().toLowerCase()
+    const matches = (s: Student) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
+    const local = allStudents.filter(matches)
+    const seen = new Set(local.map((s) => s.id))
+    const extra = (debouncedSearch.length >= 2 ? searchData?.students ?? [] : []).filter(
+      (s) => !seen.has(s.id) && !excludeIds?.has(s.id) && matches(s),
     )
-  }, [allStudents, search])
+    return [...local, ...extra]
+  }, [allStudents, search, debouncedSearch, searchData, excludeIds])
 
   function toggleStudent(id: string) {
+    const student = filtered.find((s) => s.id === id)
+    if (student) setFound((prev) => new Map(prev).set(id, student))
     setLocalSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -125,6 +144,11 @@ export function StudentPickerModal({
   function selectAll() {
     const allIds = filtered.map((s) => s.id)
     const allAreSelected = allIds.every((id) => localSelected.has(id))
+    setFound((prev) => {
+      const next = new Map(prev)
+      filtered.forEach((s) => next.set(s.id, s))
+      return next
+    })
     if (allAreSelected) {
       setLocalSelected((prev) => {
         const next = new Set(prev)
@@ -141,7 +165,10 @@ export function StudentPickerModal({
   }
 
   function handleConfirm() {
-    const selectedStudents = allStudents.filter((s) => localSelected.has(s.id))
+    const known = new Map<string, Student>(found)
+    groups.forEach((g) => g.members.forEach((m) => known.set(m.id, m)))
+    allStudents.forEach((s) => known.set(s.id, s))
+    const selectedStudents = [...localSelected].flatMap((id) => (known.has(id) ? [known.get(id)!] : []))
     onConfirm(localSelected, selectedStudents)
   }
 
@@ -165,7 +192,7 @@ export function StudentPickerModal({
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search students..."
+              placeholder="Search all students by name or email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 text-sm"
@@ -185,7 +212,7 @@ export function StudentPickerModal({
 
         <ScrollArea className="flex-1 min-h-0">
           {/* Groups section */}
-          {groups.length > 0 && !search.trim() && (
+          {!hideGroups && groups.length > 0 && !search.trim() && (
             <div>
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
@@ -262,7 +289,7 @@ export function StudentPickerModal({
 
           {/* All students */}
           <div>
-            {(groups.length > 0 || !search.trim()) && (
+            {((!hideGroups && groups.length > 0) || !search.trim()) && (
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   {search.trim() ? "Search Results" : "All Students"}

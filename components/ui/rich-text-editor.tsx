@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { toast } from "sonner"
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
@@ -9,7 +11,7 @@ import Link from "@tiptap/extension-link"
 import {
   Bold, Italic, UnderlineIcon, Strikethrough,
   List, ListOrdered, AlignLeft, AlignCenter, AlignRight,
-  Heading2, Heading3, Link2, Minus,
+  Heading2, Heading3, Link2, Minus, Sparkles, Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -69,6 +71,51 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: Props
       onChange(html === "<p></p>" ? "" : html)
     },
   })
+
+  // "Fix English": the whole description goes to the grammar model and comes
+  // back with the same formatting and corrected words. It is asked for, never
+  // automatic, and the toast offers the way back.
+  const [fixing, setFixing] = useState(false)
+
+  async function fixEnglish() {
+    if (!editor || fixing || editor.isEmpty) return
+    const before = editor.getHTML()
+    setFixing(true)
+    // Anything typed while the model is reading would be overwritten by its answer.
+    editor.setEditable(false)
+    try {
+      const res = await fetch("/api/tutor/descriptions/correct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html: before }),
+      })
+      const body = await res.json().catch(() => null) as
+        { message?: string; available?: boolean; corrected?: string | null; failed?: boolean } | null
+      if (editor.isDestroyed) return
+      if (!res.ok) {
+        toast.error(body?.message ?? "Could not check the English")
+      } else if (body?.available === false) {
+        toast.error("English correction is not set up on this server")
+      } else if (body?.failed) {
+        toast.error("Could not check the English just now — please try again")
+      } else if (!body?.corrected) {
+        toast.success("The English looks good — nothing to correct")
+      } else {
+        editor.commands.setContent(body.corrected)
+        toast.success("English corrected", {
+          action: {
+            label: "Undo",
+            onClick: () => { if (!editor.isDestroyed) editor.commands.setContent(before) },
+          },
+        })
+      }
+    } catch {
+      toast.error("Could not check the English just now — please try again")
+    } finally {
+      if (!editor.isDestroyed) editor.setEditable(!disabled)
+      setFixing(false)
+    }
+  }
 
   if (!editor) return null
 
@@ -136,6 +183,21 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: Props
         >
           <Link2 className="size-3.5" />
         </ToolbarButton>
+
+        <button
+          type="button"
+          title="Correct the spelling and grammar with AI"
+          disabled={fixing}
+          onClick={fixEnglish}
+          className={cn(
+            "ml-auto flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium transition-colors",
+            "text-primary hover:bg-primary/10",
+            fixing && "opacity-60 cursor-wait"
+          )}
+        >
+          {fixing ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+          {fixing ? "Correcting…" : "Fix English"}
+        </button>
       </div>
 
       {/* Editor area */}

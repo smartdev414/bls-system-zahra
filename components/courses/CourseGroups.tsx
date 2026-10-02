@@ -1,0 +1,571 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import {
+  BellRing, CalendarClock, CalendarPlus, ChevronDown, ChevronRight, Loader2,
+  Plus, Radio, UserPlus, Users, X,
+} from "lucide-react"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
+import { useFetch } from "@/hooks/use-fetch"
+import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
+import { StudentProgressTable, type CourseStudent } from "@/components/courses/StudentProgressTable"
+import { useCourseRoster } from "@/components/courses/use-course-roster"
+import { ScheduleClassDialog, WHOLE_COURSE } from "@/components/courses/ScheduleClassDialog"
+import { AddGroupDialog } from "@/components/courses/AddGroupDialog"
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type ClassSession = {
+  id: string
+  title: string
+  scheduledAt: string
+  durationMins: number
+  status: "SCHEDULED" | "LIVE"
+  visibility: "PUBLIC" | "INVITE_ONLY"
+  tutorName: string
+  canManage: boolean
+}
+
+type CourseGroup = {
+  id: string
+  name: string
+  // False for a group the office set up, shown to a tutor to use but not change.
+  canEdit: boolean
+  studentIds: string[]
+  sessions: ClassSession[]
+}
+
+type GroupsData = {
+  groups: CourseGroup[]
+  // Classes that are not one of these groups': for everyone on the course, or
+  // invite-only ones left from a group since removed.
+  courseSessions: ClassSession[]
+  mustAssignTutor: boolean
+  tutorOptions: Array<{ id: string; name: string }>
+}
+
+/** Card id for the students who are on the course but in none of its groups. */
+const UNGROUPED = "ungrouped"
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function classDate(iso: string) {
+  const d = new Date(iso)
+  return (
+    d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) +
+    ", " +
+    d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+  )
+}
+
+/**
+ * One line that answers "when does this group meet?" — the weekly pattern when
+ * the classes share a day and time, otherwise just the next one.
+ */
+function classSummary(sessions: ClassSession[]): string | null {
+  if (sessions.length === 0) return null
+  const dates = sessions.map((s) => new Date(s.scheduledAt))
+  const sameSlot = dates.every(
+    (d) => d.getDay() === dates[0].getDay() && d.getHours() === dates[0].getHours() && d.getMinutes() === dates[0].getMinutes(),
+  )
+  if (sessions.length > 1 && sameSlot) {
+    const day = dates[0].toLocaleDateString("en-GB", { weekday: "long" })
+    const time = dates[0].toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    const next = dates[0].toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+    return `${day}s at ${time} · next ${next} · ${sessions.length} classes`
+  }
+  return `Next class ${classDate(sessions[0].scheduledAt)}` + (sessions.length > 1 ? ` · ${sessions.length - 1} more` : "")
+}
+
+// ─── Upcoming classes for one group ───────────────────────────────────────────
+
+const CLASSES_SHOWN = 3
+
+function ClassList({
+  sessions,
+  onChanged,
+  showInviteOnly = false,
+}: {
+  sessions: ClassSession[]
+  onChanged: () => void
+  /** Outside a group card, say which classes are not open to the whole course. */
+  showInviteOnly?: boolean
+}) {
+  const [showAll, setShowAll] = useState(false)
+  const [cancelling, setCancelling] = useState<string | null>(null)
+  const shown = showAll ? sessions : sessions.slice(0, CLASSES_SHOWN)
+
+  async function cancel(s: ClassSession) {
+    if (!window.confirm(`Cancel the class on ${classDate(s.scheduledAt)}? The students are told it is cancelled.`)) return
+    setCancelling(s.id)
+    try {
+      const res = await fetch(`/api/tutor/sessions/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CANCELLED" }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success("Class cancelled")
+      onChanged()
+    } catch {
+      toast.error("Could not cancel the class")
+    } finally {
+      setCancelling(null)
+    }
+  }
+
+  return (
+    <div className="divide-y">
+      {shown.map((s) => (
+        <div key={s.id} className="flex items-center gap-2.5 px-4 py-2 text-sm">
+          {s.status === "LIVE"
+            ? <Radio className="size-3.5 text-emerald-600 shrink-0" />
+            : <CalendarClock className="size-3.5 text-muted-foreground shrink-0" />}
+          <span className="font-medium">{classDate(s.scheduledAt)}</span>
+          <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">
+            {s.durationMins} min · {s.tutorName}
+            {showInviteOnly && s.visibility === "INVITE_ONLY" ? " · invited students only" : ""}
+          </span>
+          {s.status === "LIVE" ? (
+            <Badge variant="outline" className="text-[10px] shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200">Live now</Badge>
+          ) : s.canManage ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive shrink-0"
+              disabled={cancelling === s.id}
+              onClick={() => cancel(s)}
+              aria-label={`Cancel class on ${classDate(s.scheduledAt)}`}
+            >
+              {cancelling === s.id ? <Loader2 className="size-3 animate-spin" /> : "Cancel"}
+            </Button>
+          ) : null}
+        </div>
+      ))}
+      {sessions.length > CLASSES_SHOWN && (
+        <button
+          type="button"
+          className="w-full px-4 py-2 text-left text-xs text-primary hover:bg-muted/30"
+          onClick={() => setShowAll((v) => !v)}
+        >
+          {showAll ? "Show fewer" : `Show all ${sessions.length} classes`}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─── The section ──────────────────────────────────────────────────────────────
+
+/**
+ * A course's groups: each group is one class, shown as one card with the two
+ * things that define it — its students and when it meets. Adding a group,
+ * adding students to it and scheduling its class all happen here, so nobody has
+ * to work out which class in a separate list belongs to which students.
+ */
+export function CourseGroups({
+  courseId,
+  courseTitle,
+  onTotalChange,
+}: {
+  courseId: string
+  courseTitle: string
+  /** Keeps the page's "students enrolled" count in step. */
+  onTotalChange?: (total: number) => void
+}) {
+  const roster = useCourseRoster(courseId, onTotalChange)
+  const { data: groupData, loading: groupsLoading, refetch: refetchGroups } = useFetch<GroupsData>(
+    `/api/tutor/courses/${courseId}/groups`,
+    { errorMessage: "Could not load groups" },
+  )
+
+  // Cards the viewer has flipped from their default (open when there is only one).
+  const [toggled, setToggled] = useState<Set<string>>(new Set())
+  const [addGroupOpen, setAddGroupOpen] = useState(false)
+  // Group id (or WHOLE_COURSE) a class is being scheduled for.
+  const [scheduleFor, setScheduleFor] = useState<string | null>(null)
+  // Group id (or UNGROUPED) students are being added to.
+  const [addStudentsTo, setAddStudentsTo] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [removingGroup, setRemovingGroup] = useState<string | null>(null)
+
+  const students = useMemo(() => roster.data?.students ?? [], [roster.data])
+  const groups = useMemo(() => groupData?.groups ?? [], [groupData])
+  const courseSessions = groupData?.courseSessions ?? []
+  const totalLessons = roster.data?.totalLessons ?? 0
+  const totalTests = roster.data?.totalTests ?? 0
+
+  // A group's students are its members who are on the course.
+  const byId = useMemo(() => new Map(students.map((s) => [s.id, s])), [students])
+  const studentsOf = (group: CourseGroup) =>
+    group.studentIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
+  const grouped = useMemo(() => new Set(groups.flatMap((g) => g.studentIds)), [groups])
+  const ungrouped = students.filter((s) => !grouped.has(s.id))
+  const behindTotal = students.filter((s) => s.behind).length
+
+  const cardCount = groups.length + (ungrouped.length > 0 ? 1 : 0)
+  const isOpen = (id: string) => (cardCount === 1) !== toggled.has(id)
+  const toggle = (id: string) =>
+    setToggled((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  function refreshAll() {
+    void roster.refetch()
+    void refetchGroups()
+  }
+
+  async function addStudents(ids: Set<string>) {
+    if (ids.size === 0) {
+      toast.error("Select at least one student")
+      return
+    }
+    const target = addStudentsTo
+    if (!target) return
+    setSaving(true)
+    try {
+      // Into a group: they join the group, and with it the course and its classes.
+      const res = await fetch(
+        target === UNGROUPED ? roster.url : `/api/tutor/groups/${target}/members`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentIds: [...ids] }),
+        },
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { message?: string }
+        toast.error(body.message ?? "Could not add students")
+        return
+      }
+      const groupName = groups.find((g) => g.id === target)?.name
+      toast.success(`${ids.size} student${ids.size === 1 ? "" : "s"} added to ${groupName ?? "the course"}`)
+      setAddStudentsTo(null)
+      refreshAll()
+    } catch {
+      toast.error("Could not add students")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function removeGroup(group: CourseGroup) {
+    if (!window.confirm(
+      `Take ${group.name} off this course? Its students stay on the course and keep their progress; they move to "Not in a group". Classes already scheduled for the group stay in the timetable.`,
+    )) return
+    setRemovingGroup(group.id)
+    try {
+      const res = await fetch(`/api/tutor/courses/${courseId}/groups?groupId=${group.id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error()
+      toast.success(`${group.name} taken off the course`)
+      refreshAll()
+    } catch {
+      toast.error("Could not remove the group")
+    } finally {
+      setRemovingGroup(null)
+    }
+  }
+
+  const loading = (roster.loading && !roster.data) || (groupsLoading && !groupData)
+  const empty = !loading && groups.length === 0 && students.length === 0
+
+  const table = (list: CourseStudent[]) => (
+    <StudentProgressTable
+      students={list}
+      totalLessons={totalLessons}
+      totalTests={totalTests}
+      remindingIds={roster.remindingIds}
+      removingId={roster.removingId}
+      onRemind={(s) => roster.remind([s])}
+      onRemove={async (s) => { if (await roster.remove(s)) void refetchGroups() }}
+    />
+  )
+
+  return (
+    <div>
+      {/* Heading */}
+      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+        <div>
+          <h2 className="font-bold flex items-center gap-2">
+            <Users className="size-4 text-primary" /> Groups &amp; Classes
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {loading
+              ? " "
+              : empty
+              ? "Each group is one class, with its own students and its own day and time."
+              : `${groups.length} group${groups.length === 1 ? "" : "s"} · ${students.length} student${students.length === 1 ? "" : "s"}` +
+                (behindTotal > 0 ? ` · ${behindTotal} behind on homework` : "")}
+          </p>
+        </div>
+        {!empty && (
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
+              <UserPlus className="size-4 mr-1.5" /> Add Students
+            </Button>
+            <Button size="sm" onClick={() => setAddGroupOpen(true)}>
+              <Plus className="size-4 mr-1.5" /> Add Group
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <Loader2 className="size-6 animate-spin text-primary" />
+        </div>
+      ) : empty ? (
+        <Card className="shadow-sm border-dashed">
+          <CardContent className="py-10 flex flex-col items-center gap-5 text-center">
+            <ol className="flex flex-col sm:flex-row gap-4 sm:gap-8 text-left text-sm">
+              {[
+                ["Add a group", "Pick a group of students, or start a new one."],
+                ["Schedule its class", "Give the group its day and time. It can repeat every week."],
+                ["That's it", "The students see the lessons and their class."],
+              ].map(([title, text], i) => (
+                <li key={title} className="flex gap-3 max-w-52">
+                  <span className="size-6 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
+                    {i + 1}
+                  </span>
+                  <span>
+                    <span className="font-semibold block">{title}</span>
+                    <span className="text-muted-foreground">{text}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <div className="flex gap-2">
+              <Button onClick={() => setAddGroupOpen(true)}>
+                <Plus className="size-4 mr-1.5" /> Add Group
+              </Button>
+              <Button variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
+                <UserPlus className="size-4 mr-1.5" /> Add Students without a group
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {groups.map((group) => {
+            const list = studentsOf(group)
+            const behind = list.filter((s) => s.behind)
+            const summary = classSummary(group.sessions)
+            const open = isOpen(group.id)
+            return (
+              <Card key={group.id} className="shadow-sm overflow-hidden py-0 gap-0" data-group={group.name}>
+                <div className="flex items-center gap-2 pr-3 sm:pr-4">
+                  <button
+                    type="button"
+                    className="flex-1 min-w-0 flex items-start gap-3 px-4 py-3.5 text-left hover:bg-muted/30 transition-colors"
+                    onClick={() => toggle(group.id)}
+                    aria-expanded={open}
+                  >
+                    {open
+                      ? <ChevronDown className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+                      : <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-0.5" />}
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm truncate">{group.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {list.length} student{list.length === 1 ? "" : "s"}
+                        </span>
+                        {behind.length > 0 && (
+                          <Badge variant="outline" className="text-[10px] h-4 px-1 bg-amber-100 text-amber-700 border-amber-200">
+                            {behind.length} behind
+                          </Badge>
+                        )}
+                      </span>
+                      <span className={`flex items-center gap-1.5 text-xs mt-1 ${summary ? "text-muted-foreground" : "text-amber-700"}`}>
+                        <CalendarClock className="size-3.5 shrink-0" />
+                        <span className="truncate">{summary ?? "No class scheduled yet"}</span>
+                      </span>
+                    </span>
+                  </button>
+                  {/* Lead with the next thing this group needs. */}
+                  {list.length === 0 && group.canEdit ? (
+                    <Button size="sm" className="shrink-0" onClick={() => setAddStudentsTo(group.id)}>
+                      <UserPlus className="size-4 sm:mr-1.5" />
+                      <span className="hidden sm:inline">Add students</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant={summary ? "outline" : "default"}
+                      className="shrink-0"
+                      onClick={() => setScheduleFor(group.id)}
+                    >
+                      <CalendarPlus className="size-4 sm:mr-1.5" />
+                      <span className="hidden sm:inline">Schedule class</span>
+                    </Button>
+                  )}
+                </div>
+
+                {open && (
+                  <div className="border-t">
+                    {group.sessions.length > 0 && (
+                      <>
+                        <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Class times
+                        </p>
+                        <ClassList sessions={group.sessions} onChanged={() => void refetchGroups()} />
+                      </>
+                    )}
+
+                    <div className={group.sessions.length > 0 ? "border-t" : ""}>
+                      {list.length === 0 ? (
+                        <p className="px-4 py-6 text-sm text-muted-foreground text-center">
+                          No students in this group yet.
+                        </p>
+                      ) : table(list)}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap border-t bg-muted/20 px-4 py-2.5">
+                      {group.canEdit && (
+                        <Button size="sm" variant="outline" className="h-8" onClick={() => setAddStudentsTo(group.id)}>
+                          <UserPlus className="size-3.5 mr-1.5" /> Add students to group
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => setScheduleFor(group.id)}>
+                        <CalendarPlus className="size-3.5 mr-1.5" /> Schedule class
+                      </Button>
+                      {behind.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          disabled={roster.remindingIds.size > 0}
+                          onClick={() => roster.remind(behind)}
+                        >
+                          <BellRing className="size-3.5 mr-1.5" /> Remind {behind.length} behind
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 ml-auto text-muted-foreground hover:text-destructive"
+                        disabled={removingGroup === group.id}
+                        onClick={() => removeGroup(group)}
+                      >
+                        {removingGroup === group.id
+                          ? <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                          : <X className="size-3.5 mr-1.5" />}
+                        Remove group from course
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )
+          })}
+
+          {/* On the course, in no group */}
+          {ungrouped.length > 0 && (
+            <Card className="shadow-sm overflow-hidden py-0 gap-0" data-group="Not in a group">
+              <div className="flex items-center gap-2 pr-3 sm:pr-4">
+                <button
+                  type="button"
+                  className="flex-1 min-w-0 flex items-start gap-3 px-4 py-3.5 text-left hover:bg-muted/30 transition-colors"
+                  onClick={() => toggle(UNGROUPED)}
+                  aria-expanded={isOpen(UNGROUPED)}
+                >
+                  {isOpen(UNGROUPED)
+                    ? <ChevronDown className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+                    : <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-0.5" />}
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm">Not in a group</span>
+                      <span className="text-xs text-muted-foreground">
+                        {ungrouped.length} student{ungrouped.length === 1 ? "" : "s"}
+                      </span>
+                    </span>
+                    <span className="block text-xs text-muted-foreground mt-1">
+                      {groups.length > 0
+                        ? "On the course, but only invited to classes for the whole course. Add them to a group to give them its class times."
+                        : "Schedule a class for everyone, or put them in groups to give each its own day and time."}
+                    </span>
+                  </span>
+                </button>
+                {groups.length === 0 && (
+                  <Button size="sm" variant="outline" className="shrink-0" onClick={() => setScheduleFor(WHOLE_COURSE)}>
+                    <CalendarPlus className="size-4 sm:mr-1.5" />
+                    <span className="hidden sm:inline">Schedule class</span>
+                  </Button>
+                )}
+              </div>
+              {isOpen(UNGROUPED) && <div className="border-t">{table(ungrouped)}</div>}
+            </Card>
+          )}
+
+          {/* Classes for everyone on the course */}
+          {courseSessions.length > 0 && (
+            <Card className="shadow-sm overflow-hidden py-0 gap-0" data-group="Whole course">
+              <div className="px-4 pt-3.5 pb-2">
+                <p className="font-semibold text-sm">Classes for the whole course</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Everyone on the course can join these, whichever group they are in, unless marked otherwise.
+                </p>
+              </div>
+              <div className="border-t">
+                <ClassList sessions={courseSessions} onChanged={() => void refetchGroups()} showInviteOnly />
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {addGroupOpen && (
+        <AddGroupDialog
+          courseId={courseId}
+          attachedIds={new Set(groups.map((g) => g.id))}
+          onClose={() => setAddGroupOpen(false)}
+          onAdded={refreshAll}
+        />
+      )}
+
+      {scheduleFor && groupData && (
+        <ScheduleClassDialog
+          courseId={courseId}
+          courseTitle={courseTitle}
+          groups={groups}
+          initialTarget={scheduleFor}
+          mustAssignTutor={groupData.mustAssignTutor}
+          tutorOptions={groupData.tutorOptions}
+          onClose={() => setScheduleFor(null)}
+          onScheduled={() => void refetchGroups()}
+        />
+      )}
+
+      {addStudentsTo && (
+        <StudentPickerModal
+          selected={new Set()}
+          excludeIds={
+            addStudentsTo === UNGROUPED
+              ? new Set(students.map((s) => s.id))
+              : new Set(groups.find((g) => g.id === addStudentsTo)?.studentIds ?? [])
+          }
+          hideGroups
+          title={
+            addStudentsTo === UNGROUPED
+              ? "Add Students to Course"
+              : `Add Students to ${groups.find((g) => g.id === addStudentsTo)?.name ?? "group"}`
+          }
+          description={
+            addStudentsTo === UNGROUPED
+              ? "These students join the course without a group. Students already on the course are not shown."
+              : "They join this group, the course, and the group's upcoming classes."
+          }
+          confirmLabel={addStudentsTo === UNGROUPED ? "Add to Course" : "Add to Group"}
+          confirming={saving}
+          onConfirm={(ids) => void addStudents(ids)}
+          onClose={() => { if (!saving) setAddStudentsTo(null) }}
+        />
+      )}
+    </div>
+  )
+}

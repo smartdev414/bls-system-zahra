@@ -7,6 +7,7 @@ import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
 import { reconcilePendingRecordings } from "@/lib/recording"
+import { usableGroups } from "@/lib/course-groups"
 
 /**
  * Resolves the tutor a live session belongs to.
@@ -50,6 +51,7 @@ async function handleGET(req: NextRequest) {
     // Staff (admin, support) build the whole timetable, so they see every one.
     const sessionInclude = {
       course: { select: { id: true, title: true } },
+      group: { select: { id: true, name: true } },
       tutor: { select: { id: true, name: true } },
       _count: { select: { attendances: true, invites: true } },
     } as const
@@ -109,6 +111,8 @@ async function handleGET(req: NextRequest) {
       status: s.status,
       visibility: s.visibility,
       course: s.course,
+      // Set when the class is for one group on the course.
+      group: s.group,
       attendeeCount: s._count.attendances,
       inviteCount: s._count.invites,
       startedAt: s.startedAt?.toISOString() ?? null,
@@ -159,9 +163,11 @@ async function handlePOST(req: NextRequest) {
       repeatWeeks?: number
       /** Staff only — the tutor who will take the class. */
       tutorId?: string
+      /** The class is for this group: its members are invited, nobody else. */
+      groupId?: string
     }
 
-    const { title, description, scheduledAt, durationMins, maxStudents, courseId, visibility = "PUBLIC", invitedStudentIds = [], invitedTutorIds = [], repeatWeeks = 1 } = body
+    const { title, description, scheduledAt, durationMins, maxStudents, courseId, invitedTutorIds = [], repeatWeeks = 1 } = body
 
     if (!title?.trim()) return NextResponse.json({ message: "Title is required" }, { status: 400 })
     if (!scheduledAt) return NextResponse.json({ message: "scheduledAt is required" }, { status: 400 })
@@ -184,6 +190,22 @@ async function handlePOST(req: NextRequest) {
       if (!course) return NextResponse.json({ message: "Course not found" }, { status: 400 })
     }
 
+    // A class for one group is invite-only by definition, and its invitees are
+    // the group's members — taken from the group, not from what was sent.
+    let visibility = body.visibility ?? "PUBLIC"
+    let invitedStudentIds = body.invitedStudentIds ?? []
+    let groupId: string | null = null
+    if (body.groupId) {
+      const group = await prisma.studentGroup.findFirst({
+        where: { id: body.groupId, ...usableGroups(session) },
+        select: { id: true, members: { select: { studentId: true } } },
+      })
+      if (!group) return NextResponse.json({ message: "Group not found" }, { status: 400 })
+      groupId = group.id
+      visibility = "INVITE_ONLY"
+      invitedStudentIds = group.members.map((m) => m.studentId)
+    }
+
     const occurrences = Math.min(Math.max(Math.floor(repeatWeeks) || 1, 1), 52)
     const baseDate = new Date(scheduledAt)
 
@@ -201,6 +223,7 @@ async function handlePOST(req: NextRequest) {
             roomName: `bsl-${randomBytes(6).toString("hex")}`,
             maxStudents: maxStudents ?? null,
             courseId: courseId ?? null,
+            groupId,
             status: "SCHEDULED",
             visibility,
             ...(visibility === "INVITE_ONLY" && invitedStudentIds.length > 0 && {

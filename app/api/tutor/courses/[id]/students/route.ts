@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, courseTeachScope } from "@/lib/permissions"
-import { createNotification, createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
 import { BEHIND_AFTER_DAYS, reminderLink } from "@/lib/homework"
+import { enrolStudents, onStudentRemovedFromCourse } from "@/lib/course-groups"
 
 /**
  * The students on one course, managed from the course page itself.
@@ -135,46 +135,10 @@ async function handlePOST(req: NextRequest, { params }: RouteContext) {
     const course = await findManagedCourse(session, id)
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
-    // Only real students, and only ones not already on the course.
-    const students = await prisma.user.findMany({
-      where: { id: { in: [...new Set(studentIds)] }, role: "STUDENT" },
-      select: { id: true },
-    })
-    const alreadyOn = await prisma.enrollment.findMany({
-      where: { courseId: id, studentId: { in: students.map((s) => s.id) } },
-      select: { studentId: true },
-    })
-    const skip = new Set(alreadyOn.map((e) => e.studentId))
-    const toAdd = students.map((s) => s.id).filter((sid) => !skip.has(sid))
+    const { added, skipped } = await enrolStudents(course, studentIds, session)
+    if (added.length === 0) return NextResponse.json({ added: 0, skipped })
 
-    if (toAdd.length === 0) {
-      return NextResponse.json({ added: 0, skipped: skip.size })
-    }
-
-    await prisma.enrollment.createMany({
-      data: toAdd.map((studentId) => ({ studentId, courseId: id })),
-      skipDuplicates: true,
-    })
-
-    void createNotifications(
-      toAdd,
-      "NEW_ENROLLMENT",
-      "You've been added to a course",
-      `${session.name} enrolled you in "${course.title}"`,
-      `/student/lessons?courseId=${id}`,
-    )
-    // The tutor only needs telling when somebody else did it for them.
-    if (course.tutorId !== session.sub) {
-      void createNotification(
-        course.tutorId,
-        "NEW_ENROLLMENT",
-        "Students added to your course",
-        `${session.name} enrolled ${toAdd.length} student${toAdd.length === 1 ? "" : "s"} in "${course.title}"`,
-        `/tutor/courses/${id}`,
-      )
-    }
-
-    return NextResponse.json({ added: toAdd.length, skipped: skip.size }, { status: 201 })
+    return NextResponse.json({ added: added.length, skipped }, { status: 201 })
   } catch (err) {
     console.error("[POST /api/tutor/courses/[id]/students]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
@@ -200,6 +164,7 @@ async function handleDELETE(req: NextRequest, { params }: RouteContext) {
     // Removing the enrolment cascades to the student's lesson progress.
     const { count } = await prisma.enrollment.deleteMany({ where: { courseId: id, studentId } })
     if (count === 0) return NextResponse.json({ message: "Student is not on this course" }, { status: 404 })
+    await onStudentRemovedFromCourse(id, studentId)
 
     return NextResponse.json({ message: "Student removed from the course" })
   } catch (err) {

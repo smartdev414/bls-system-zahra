@@ -258,6 +258,7 @@ model Course {
   tutor        User          @relation("TutorCourses", fields: [tutorId], references: [id])
   category     Category?     @relation(fields: [categoryId], references: [id])
   teachers     CourseTutor[]
+  groups       CourseGroup[]
   sections     Section[]
   enrollments  Enrollment[]
   liveSessions LiveSession[]
@@ -281,6 +282,22 @@ model CourseTutor {
 
   @@id([courseId, tutorId])
   @@index([tutorId])
+}
+
+// The student groups taking a course. A course is one level; each group on it
+// is one class — its own students, its own day and time. Putting a group on a
+// course enrols its members, and from then on a student added to the group
+// joins the course and that group's upcoming classes with it.
+model CourseGroup {
+  courseId String
+  groupId  String
+  addedAt  DateTime @default(now())
+
+  course Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  group  StudentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, groupId])
+  @@index([groupId])
 }
 
 model Section {
@@ -371,6 +388,10 @@ model LiveSession {
   id           String                @id @default(cuid())
   tutorId      String
   courseId     String?
+  // The group this class is for, when it is one group's class rather than the
+  // whole course's. Its members are invited; this is what lets the course page
+  // show each group's timetable.
+  groupId      String?
   title        String
   description  String?
   scheduledAt  DateTime
@@ -388,6 +409,7 @@ model LiveSession {
 
   tutor        User                    @relation("TutorLiveSessions", fields: [tutorId], references: [id])
   course       Course?                 @relation(fields: [courseId], references: [id])
+  group        StudentGroup?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
   attendances  LiveSessionAttendance[]
   invites      LiveSessionInvite[]
   coTutors     LiveSessionCoTutor[]
@@ -401,6 +423,7 @@ model LiveSession {
   @@index([status])
   @@index([scheduledAt])
   @@index([visibility])
+  @@index([groupId])
 }
 
 // What is on the classroom stage right now, as last published by the tutor.
@@ -597,8 +620,10 @@ model StudentGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tutor   User                 @relation("TutorStudentGroups", fields: [tutorId], references: [id], onDelete: Cascade)
-  members StudentGroupMember[]
+  tutor    User                 @relation("TutorStudentGroups", fields: [tutorId], references: [id], onDelete: Cascade)
+  members  StudentGroupMember[]
+  courses  CourseGroup[]
+  sessions LiveSession[]
 
   @@index([tutorId])
 }

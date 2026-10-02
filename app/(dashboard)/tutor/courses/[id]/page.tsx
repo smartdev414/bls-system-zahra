@@ -26,8 +26,7 @@ import { FileUpload } from "@/components/ui/file-upload"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { Textarea } from "@/components/ui/textarea"
 import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
-import { CourseStudents } from "@/components/courses/CourseStudents"
-import { CourseSessions } from "./CourseSessions"
+import { CourseGroups } from "@/components/courses/CourseGroups"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -330,22 +329,19 @@ return (
 
       {!canEdit && (
         <p className="text-sm text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">
-          This course is set up by the school, so its lessons are view-only for you. You can still add students and schedule classes.
+          This course is set up by the school, so its lessons are view-only for you. You can still manage its groups, students and class times.
         </p>
       )}
 
       <Separator />
 
-      <CourseStudents
+      <CourseGroups
         courseId={id}
+        courseTitle={course.title}
         onTotalChange={(total) =>
           mutate((prev) => prev && { ...prev, course: { ...prev.course, _count: { enrollments: total } } })
         }
       />
-
-      <Separator />
-
-      <CourseSessions courseId={id} />
 
       <Separator />
 

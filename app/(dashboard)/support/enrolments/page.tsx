@@ -290,7 +290,6 @@ function CourseEnrolments({ course }: { course: CourseItem }) {
           <CourseStudents
             key={course.id}
             courseId={course.id}
-            hideAdd
             refreshKey={listVersion}
             // Removing someone there frees them up in the search above.
             onTotalChange={(total) => { if (total !== (enrolData?.total ?? total)) void refetch() }}

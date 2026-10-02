@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { can, courseTeachScope } from "@/lib/permissions"
 import { createNotification, createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { onStudentRemovedFromCourse } from "@/lib/course-groups"
 
 /**
  * Staff-side enrolment: putting students onto a course rather than waiting for
@@ -145,6 +146,7 @@ async function handleDELETE(req: NextRequest) {
     if (!enrolment) return NextResponse.json({ message: "Enrolment not found" }, { status: 404 })
 
     await prisma.enrollment.delete({ where: { id: enrolment.id } })
+    await onStudentRemovedFromCourse(courseId, studentId)
     return NextResponse.json({ message: "Student removed from the course" })
   } catch (err) {
     console.error("[DELETE /api/admin/enrolments]", err)
