@@ -198,7 +198,27 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
   const [newSectionTitle, setNewSectionTitle] = useState("")
 
 
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  // Which sections are closed. Remembered per course on this device, because
+  // adding a lesson leaves this page and a reload remounts it — either would
+  // otherwise reopen every section the teacher had closed.
+  const collapsedKey = `course:collapsedSections:${id}`
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {}
+    try {
+      const ids: unknown = JSON.parse(window.localStorage.getItem(collapsedKey) ?? "[]")
+      return Array.isArray(ids) ? Object.fromEntries(ids.map((sectionId) => [String(sectionId), true])) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  function toggleSection(sectionId: string) {
+    const next = { ...collapsed, [sectionId]: !collapsed[sectionId] }
+    setCollapsed(next)
+    try {
+      window.localStorage.setItem(collapsedKey, JSON.stringify(Object.keys(next).filter((k) => next[k])))
+    } catch { /* ignore */ }
+  }
 
   const [editCourseOpen, setEditCourseOpen] = useState(false)
   const [copyOpen, setCopyOpen] = useState(false)
@@ -412,7 +432,7 @@ return (
                 section={section}
                 canEdit={canEdit}
                 isCollapsed={!!collapsed[section.id]}
-                onToggle={() => setCollapsed((prev) => ({ ...prev, [section.id]: !prev[section.id] }))}
+                onToggle={() => toggleSection(section.id)}
                 onAddLesson={() => openLessonDialog(section.id)}
                 onMutated={refetch}
               />
