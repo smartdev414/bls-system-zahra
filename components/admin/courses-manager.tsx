@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   BookOpen, Search, Loader2, Globe, Lock, Archive,
-  Star, Users, Filter, Plus, Pencil, GraduationCap, Copy,
+  Star, Users, Filter, Plus, Pencil, GraduationCap, Copy, MoreHorizontal,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,9 @@ import {
 import { useFetch, usePatchCallback, usePutCallback } from "@/hooks/use-fetch"
 import { TutorPickerModal } from "@/components/classroom/TutorPickerModal"
 import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 import { COURSE_LEVELS, levelColorSolid, levelLabel, type CourseLevel } from "@/lib/levels"
@@ -127,7 +130,9 @@ export function CoursesManager({
         </Select>
       </div>
 
-      {loading ? (
+      {/* Only the first load shows a spinner: during a search or after a save the
+          rows stay put, so an open menu or dialog is not pulled away. */}
+      {loading && !data ? (
         <div className="flex items-center justify-center min-h-[300px]">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
@@ -245,20 +250,13 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, builderBase }: {
             </div>
           </div>
 
-          <div className="flex gap-2 shrink-0 flex-wrap justify-end">
-            <Button variant="outline" size="sm" onClick={onEditTeachers}>
-              <GraduationCap className="size-3.5 mr-1.5" /> Teachers
-            </Button>
+          {/* The everyday actions stay on the row; the occasional ones sit in the menu. */}
+          <div className="flex gap-2 shrink-0">
             {builderBase && (
               <Button asChild variant="outline" size="sm">
                 <Link href={`${builderBase}/${course.id}`}>
                   <Pencil className="size-3.5 mr-1.5" /> Manage
                 </Link>
-              </Button>
-            )}
-            {onCopy && (
-              <Button variant="outline" size="sm" onClick={onCopy} aria-label={`Copy ${course.title}`}>
-                <Copy className="size-3.5 mr-1.5" /> Copy
               </Button>
             )}
             <Button
@@ -271,17 +269,31 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, builderBase }: {
                 ? <><Globe className="size-3.5 mr-1.5" /> Publish</>
                 : <><Lock className="size-3.5 mr-1.5" /> Unpublish</>}
             </Button>
-            {course.status !== "ARCHIVED" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={updating}
-                onClick={() => updateStatus({ id: course.id, status: "ARCHIVED" })}
-                className="text-muted-foreground"
-              >
-                <Archive className="size-3.5 mr-1.5" /> Archive
-              </Button>
-            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8" aria-label={`More actions for ${course.title}`}>
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={onEditTeachers}>
+                  <GraduationCap className="size-3.5 mr-2" /> Teachers
+                </DropdownMenuItem>
+                {onCopy && (
+                  <DropdownMenuItem onSelect={onCopy}>
+                    <Copy className="size-3.5 mr-2" /> Copy course
+                  </DropdownMenuItem>
+                )}
+                {course.status !== "ARCHIVED" && (
+                  <DropdownMenuItem
+                    disabled={updating}
+                    onSelect={() => updateStatus({ id: course.id, status: "ARCHIVED" })}
+                  >
+                    <Archive className="size-3.5 mr-2" /> Archive
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </CardContent>

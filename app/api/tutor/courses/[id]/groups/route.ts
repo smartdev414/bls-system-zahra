@@ -84,6 +84,7 @@ async function handleGET(_req: NextRequest, { params }: RouteContext) {
       durationMins: s.durationMins,
       status: s.status,
       visibility: s.visibility,
+      tutorId: s.tutorId,
       tutorName: s.tutor.name,
       inviteCount: s._count.invites,
       // Staff run the whole timetable; a tutor changes only their own classes.

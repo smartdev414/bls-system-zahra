@@ -6,7 +6,7 @@ import Link from "next/link"
 import {
   ChevronLeft, Plus, Layers, FileText, PlayCircle,
   FlaskConical, Loader2, ChevronDown, ChevronUp,
-  Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap, Copy,
+  Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap, Copy, CalendarClock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,6 +29,7 @@ import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
 import { CourseGroups } from "@/components/courses/CourseGroups"
 import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
+import { ReleaseScheduleDialog } from "@/components/courses/ReleaseScheduleDialog"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,23 @@ type CourseDetail = {
 type CourseData = { course: CourseDetail; canEdit: boolean }
 
 const typeIcon = { VIDEO: PlayCircle, TEXT: FileText, QUIZ: FlaskConical }
+
+/** The one date every lesson in a section shares, when they all share one. */
+function sharedRelease(section: SectionItem): string | null {
+  const first = section.lessons[0]?.releaseAt ?? null
+  return first && section.lessons.every((l) => l.releaseAt === first) ? first : null
+}
+
+/** One line on how the course reaches students. */
+function releaseSummary(sections: SectionItem[]): string {
+  const upcoming = sections
+    .flatMap((s) => s.lessons.flatMap((l) => (l.releaseAt ? [{ title: s.title, at: new Date(l.releaseAt) }] : [])))
+    .filter((x) => x.at > new Date())
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
+  if (upcoming.length === 0) return "Everything is available to students now."
+  const next = upcoming[0]
+  return `Released in stages — next: ${next.title} on ${next.at.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}.`
+}
 
 // ─── Thumbnail editor ─────────────────────────────────────────────────────────
 
@@ -184,6 +202,7 @@ export default function CourseEditPage({ params }: { params: Promise<{ id: strin
 
   const [editCourseOpen, setEditCourseOpen] = useState(false)
   const [copyOpen, setCopyOpen] = useState(false)
+  const [releaseOpen, setReleaseOpen] = useState(false)
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
   const [editLevel, setEditLevel] = useState<CourseLevel>("L1")
@@ -316,9 +335,9 @@ return (
 
       {/* Stats — flex-wrap so the inline `·` separators wrap cleanly on phones. */}
       <div className="flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted-foreground">
-        <span><span className="font-medium text-foreground">{course._count.enrollments}</span> students enrolled</span>
+        <span><span className="font-medium text-foreground">{course._count.enrollments}</span> student{course._count.enrollments === 1 ? "" : "s"} enrolled</span>
         <span aria-hidden>·</span>
-        <span><span className="font-medium text-foreground">{course.sections.length}</span> sections</span>
+        <span><span className="font-medium text-foreground">{course.sections.length}</span> section{course.sections.length === 1 ? "" : "s"}</span>
         <span aria-hidden>·</span>
         <span>
           <span className="font-medium text-foreground">
@@ -352,14 +371,26 @@ return (
 
       {/* Sections & Lessons */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold flex items-center gap-2">
-            <Layers className="size-4 text-primary" /> Course Content
-          </h2>
+        <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+          <div>
+            <h2 className="font-bold flex items-center gap-2">
+              <Layers className="size-4 text-primary" /> Course Content
+            </h2>
+            {course.sections.length > 0 && (
+              <p className="text-sm text-muted-foreground mt-0.5">{releaseSummary(course.sections)}</p>
+            )}
+          </div>
           {canEdit && (
-            <Button size="sm" variant="outline" onClick={() => setSectionDialogOpen(true)}>
-              <Plus className="size-4 mr-1.5" /> Add Section
-            </Button>
+            <div className="flex gap-2">
+              {course.sections.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => setReleaseOpen(true)}>
+                  <CalendarClock className="size-4 mr-1.5" /> Release Schedule
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => setSectionDialogOpen(true)}>
+                <Plus className="size-4 mr-1.5" /> Add Section
+              </Button>
+            </div>
           )}
         </div>
 
@@ -389,6 +420,15 @@ return (
           </div>
         )}
       </div>
+
+      {releaseOpen && (
+        <ReleaseScheduleDialog
+          courseId={id}
+          sections={course.sections}
+          onClose={() => setReleaseOpen(false)}
+          onSaved={refetch}
+        />
+      )}
 
       {copyOpen && (
         <CopyCourseDialog
@@ -581,8 +621,10 @@ function SectionBlock({
             >
               <span className="text-xs font-bold text-muted-foreground shrink-0">Section {section.order}</span>
               <span className="font-semibold text-sm truncate">{section.title}</span>
-              <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">{section.lessons.length} lessons</Badge>
+              <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">{section.lessons.length} lesson{section.lessons.length === 1 ? "" : "s"}</Badge>
               <Badge variant="outline" className="text-[10px] shrink-0 sm:hidden">{section.lessons.length}</Badge>
+              {/* One date for the section, shown once rather than on every lesson. */}
+              <ReleaseBadge releaseAt={sharedRelease(section)} className="text-[10px] shrink-0 hidden sm:inline-flex" />
               {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground shrink-0 ml-auto" /> : <ChevronUp className="size-4 text-muted-foreground shrink-0 ml-auto" />}
             </button>
             {canEdit && <div className="flex items-center gap-0.5 pr-1 sm:pr-2 shrink-0">
@@ -610,7 +652,14 @@ function SectionBlock({
       {!isCollapsed && !renaming && (
         <>
           {section.lessons.map((lesson) => (
-            <LessonRow key={lesson.id} lesson={lesson} courseId={courseId} canEdit={canEdit} onMutated={onMutated} />
+            <LessonRow
+              key={lesson.id}
+              lesson={lesson}
+              courseId={courseId}
+              canEdit={canEdit}
+              hideRelease={sharedRelease(section) !== null}
+              onMutated={onMutated}
+            />
           ))}
           {canEdit ? (
             <div className="px-3 sm:px-5 py-3 border-t">
@@ -632,7 +681,14 @@ function SectionBlock({
 
 // ─── Lesson row — edit (admins) or view (teachers) on a dedicated page ────────
 
-function LessonRow({ lesson, courseId, canEdit, onMutated }: { lesson: LessonItem; courseId: string; canEdit: boolean; onMutated: () => void }) {
+function LessonRow({ lesson, courseId, canEdit, hideRelease, onMutated }: {
+  lesson: LessonItem
+  courseId: string
+  canEdit: boolean
+  /** The section header already shows the date this lesson shares with the rest. */
+  hideRelease: boolean
+  onMutated: () => void
+}) {
   const Icon = typeIcon[lesson.type]
   const coursesBase = useCoursesBase()
 
@@ -655,7 +711,7 @@ function LessonRow({ lesson, courseId, canEdit, onMutated }: { lesson: LessonIte
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
           <span>{lesson.type.charAt(0) + lesson.type.slice(1).toLowerCase()}</span>
           {lesson.isFree && <Badge variant="outline" className="text-[10px] h-4 px-1">Free</Badge>}
-          <ReleaseBadge releaseAt={lesson.releaseAt} className="text-[10px] h-4 px-1" />
+          {!hideRelease && <ReleaseBadge releaseAt={lesson.releaseAt} className="text-[10px] h-4 px-1" />}
           {lesson.assets.length > 0 && <span>· {lesson.assets.length} file{lesson.assets.length !== 1 ? "s" : ""}</span>}
         </div>
       </div>

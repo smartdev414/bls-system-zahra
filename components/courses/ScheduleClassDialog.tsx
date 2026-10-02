@@ -8,10 +8,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DatePicker } from "@/components/ui/date-picker"
-import { TimePicker } from "@/components/ui/time-picker"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
+import { TIME_OPTIONS } from "@/components/courses/time-options"
 
 /** "Everyone on the course" rather than one group. */
 export const WHOLE_COURSE = "all"
@@ -21,18 +21,34 @@ const selectClass =
 
 const DURATIONS = [30, 45, 60, 90, 120]
 
+function durationLabel(mins: number) {
+  if (mins < 60) return `${mins} minutes`
+  if (mins % 60 === 0) return mins === 60 ? "1 hour" : `${mins / 60} hours`
+  return `${Math.floor(mins / 60)} h ${mins % 60} min`
+}
+
+/** What the form starts with — taken from the classes already on the course. */
+export type ClassDefaults = {
+  date?: Date
+  time?: string
+  durationMins?: number
+  tutorId?: string
+}
+
 /**
  * Schedule a class for one group on a course (or for everyone on it).
  *
- * Deliberately short: who the class is for, when, how long, and whether it
- * repeats every week. Files, co-teachers and the rest stay on the Live
- * Sessions page for the few classes that need them.
+ * Kept to the one thing that has to be decided — when. Everything else starts
+ * filled in from the group's previous class (same time, same length, same
+ * teacher, a week later), and the class is named after the course and group.
+ * Files and co-teachers stay on the Live Sessions page for classes that need them.
  */
 export function ScheduleClassDialog({
   courseId,
   courseTitle,
   groups,
   initialTarget,
+  defaults = {},
   mustAssignTutor,
   tutorOptions,
   onClose,
@@ -43,6 +59,7 @@ export function ScheduleClassDialog({
   groups: Array<{ id: string; name: string }>
   /** A group id, or `WHOLE_COURSE`. */
   initialTarget: string
+  defaults?: ClassDefaults
   /** Staff do not teach, so they choose the tutor who takes the class. */
   mustAssignTutor: boolean
   tutorOptions: Array<{ id: string; name: string }>
@@ -50,29 +67,49 @@ export function ScheduleClassDialog({
   onScheduled: () => void
 }) {
   const [target, setTarget] = useState(initialTarget)
-  const [date, setDate] = useState<Date | undefined>(undefined)
-  const [time, setTime] = useState("")
-  const [durationMins, setDurationMins] = useState(60)
+  const [date, setDate] = useState<Date | undefined>(defaults.date)
+  const [time, setTime] = useState(defaults.time ?? "")
+  const [durationMins, setDurationMins] = useState(defaults.durationMins ?? 60)
   const [repeatWeekly, setRepeatWeekly] = useState(true)
   const [weeks, setWeeks] = useState(10)
-  const [tutorId, setTutorId] = useState(tutorOptions.length === 1 ? tutorOptions[0].id : "")
-  // Left empty, the class is named after the course and group.
-  const [title, setTitle] = useState("")
+  const [tutorId, setTutorId] = useState(
+    tutorOptions.some((t) => t.id === defaults.tutorId)
+      ? defaults.tutorId!
+      : tutorOptions.length === 1 ? tutorOptions[0].id : "",
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const group = groups.find((g) => g.id === target)
-  const defaultTitle = group ? `${courseTitle} — ${group.name}` : courseTitle
   const occurrences = repeatWeekly ? Math.min(Math.max(weeks || 2, 2), 52) : 1
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const ready = !!date && !!time && (!mustAssignTutor || !!tutorId)
+  const durations = DURATIONS.includes(durationMins) ? DURATIONS : [...DURATIONS, durationMins].sort((a, b) => a - b)
+
+  function startsAt(): Date | null {
+    if (!date || !time) return null
+    const [hours, minutes] = time.split(":").map(Number)
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours, minutes)
+  }
+
+  // "10 classes · Mondays 18:00–19:00 · 5 Oct to 7 Dec" — what pressing the button creates.
+  function summary(): string | null {
+    const start = startsAt()
+    if (!start) return null
+    const end = new Date(start.getTime() + durationMins * 60_000)
+    const clock = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+    if (occurrences === 1) {
+      return `1 class · ${start.toLocaleDateString("en-GB", { weekday: "long" })} ${day(start)}, ${clock(start)}–${clock(end)}`
+    }
+    const last = new Date(start.getFullYear(), start.getMonth(), start.getDate() + (occurrences - 1) * 7)
+    return `${occurrences} classes · ${start.toLocaleDateString("en-GB", { weekday: "long" })}s ${clock(start)}–${clock(end)} · ${day(start)} to ${day(last)}`
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!date || !time) return
-    const [hours, minutes] = time.split(":")
-    const scheduledAt = new Date(date)
-    scheduledAt.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+    const scheduledAt = startsAt()
+    if (!scheduledAt) return
 
     setSaving(true)
     setError(null)
@@ -81,7 +118,7 @@ export function ScheduleClassDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim() || defaultTitle,
+          title: group ? `${courseTitle} — ${group.name}` : courseTitle,
           scheduledAt: scheduledAt.toISOString(),
           durationMins,
           courseId,
@@ -120,48 +157,50 @@ export function ScheduleClassDialog({
         </DialogHeader>
 
         <form id="schedule-class-form" onSubmit={submit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sc-target">Class for</Label>
-            <select id="sc-target" value={target} onChange={(e) => setTarget(e.target.value)} className={selectClass}>
-              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-              <option value={WHOLE_COURSE}>Everyone on the course</option>
-            </select>
-          </div>
+          {/* Only a question when there is more than one answer. */}
+          {groups.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sc-target">Class for</Label>
+              <select id="sc-target" value={target} onChange={(e) => setTarget(e.target.value)} className={selectClass}>
+                {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                <option value={WHOLE_COURSE}>Everyone on the course</option>
+              </select>
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_8rem] gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>{repeatWeekly ? "First class" : "Date"}</Label>
               <DatePicker value={date} onChange={setDate} placeholder="Pick a date" disabled={(d) => d < today} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Start time</Label>
-              <TimePicker value={time} onChange={setTime} />
+              <Label htmlFor="sc-time">Starts</Label>
+              <select id="sc-time" value={time} onChange={(e) => setTime(e.target.value)} className={selectClass} required>
+                <option value="" disabled>Time</option>
+                {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sc-duration">Length</Label>
+              <select
+                id="sc-duration"
+                value={durationMins}
+                onChange={(e) => setDurationMins(parseInt(e.target.value))}
+                className={selectClass}
+              >
+                {durations.map((d) => <option key={d} value={d}>{durationLabel(d)}</option>)}
+              </select>
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sc-duration">Length</Label>
-            <select
-              id="sc-duration"
-              value={durationMins}
-              onChange={(e) => setDurationMins(parseInt(e.target.value))}
-              className={selectClass}
-            >
-              {DURATIONS.map((d) => (
-                <option key={d} value={d}>{d < 60 ? `${d} minutes` : d === 60 ? "1 hour" : `${d / 60} hours`}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-2 rounded-xl border bg-muted/20 px-3 py-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
             <label className="flex items-center gap-2 cursor-pointer">
               <Checkbox checked={repeatWeekly} onCheckedChange={(v) => setRepeatWeekly(v === true)} />
               <span className="text-sm font-medium">Repeat every week</span>
-              <span className="text-xs text-muted-foreground">same day and time</span>
             </label>
             {repeatWeekly && (
-              <div className="flex items-center gap-2 pl-6">
-                <Label htmlFor="sc-weeks" className="text-xs text-muted-foreground">for</Label>
+              <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                for
                 <Input
                   id="sc-weeks"
                   type="number"
@@ -169,10 +208,11 @@ export function ScheduleClassDialog({
                   max={52}
                   value={weeks}
                   onChange={(e) => setWeeks(parseInt(e.target.value) || 2)}
-                  className="h-8 w-20 text-sm"
+                  className="h-8 w-16 text-sm"
+                  aria-label="Number of weeks"
                 />
-                <span className="text-xs text-muted-foreground">weeks</span>
-              </div>
+                weeks
+              </span>
             )}
           </div>
 
@@ -186,10 +226,11 @@ export function ScheduleClassDialog({
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sc-title">Class name <span className="text-muted-foreground font-normal">(optional)</span></Label>
-            <Input id="sc-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={defaultTitle} />
-          </div>
+          {summary() && (
+            <p className="text-sm rounded-lg border bg-muted/30 px-3 py-2" aria-label="What will be scheduled">
+              {summary()}
+            </p>
+          )}
 
           {error && (
             <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">

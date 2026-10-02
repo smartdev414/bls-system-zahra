@@ -33,7 +33,8 @@ export function AddGroupDialog({
   /** Groups already on the course, left out of the list. */
   attachedIds: Set<string>
   onClose: () => void
-  onAdded: () => void
+  /** `isNew` is true for a group just created here, which has no students yet. */
+  onAdded: (group: { id: string; name: string }, isNew: boolean) => void
 }) {
   const { data, loading } = useFetch<{ groups: Group[] }>("/api/tutor/groups", {
     errorMessage: "Could not load groups",
@@ -52,18 +53,22 @@ export function AddGroupDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
-      const json = await res.json().catch(() => ({})) as { added?: number; message?: string }
-      if (!res.ok) {
+      const json = await res.json().catch(() => ({})) as {
+        group?: { id: string; name: string }
+        added?: number
+        message?: string
+      }
+      if (!res.ok || !json.group) {
         toast.error(json.message ?? "Could not add the group")
         return
       }
-      toast.success(
-        "name" in body
-          ? `${label} created — now add its students`
-          : `${label} added` + (json.added ? ` — ${json.added} student${json.added === 1 ? "" : "s"} enrolled` : ""),
-      )
-      onAdded()
+      // A new group has nobody in it, so the page goes straight on to choosing
+      // its students — no message needed in between.
+      if (!("name" in body)) {
+        toast.success(`${label} added` + (json.added ? ` — ${json.added} student${json.added === 1 ? "" : "s"} enrolled` : ""))
+      }
       onClose()
+      onAdded(json.group, "name" in body)
     } catch {
       toast.error("Could not add the group")
     } finally {

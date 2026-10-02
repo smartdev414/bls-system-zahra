@@ -13,7 +13,8 @@ import { useFetch } from "@/hooks/use-fetch"
 import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
 import { StudentProgressTable, type CourseStudent } from "@/components/courses/StudentProgressTable"
 import { useCourseRoster } from "@/components/courses/use-course-roster"
-import { ScheduleClassDialog, WHOLE_COURSE } from "@/components/courses/ScheduleClassDialog"
+import { ScheduleClassDialog, WHOLE_COURSE, type ClassDefaults } from "@/components/courses/ScheduleClassDialog"
+import { timeOf } from "@/components/courses/time-options"
 import { AddGroupDialog } from "@/components/courses/AddGroupDialog"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ type ClassSession = {
   durationMins: number
   status: "SCHEDULED" | "LIVE"
   visibility: "PUBLIC" | "INVITE_ONLY"
+  tutorId: string
   tutorName: string
   canManage: boolean
 }
@@ -191,6 +193,8 @@ export function CourseGroups({
   const [addStudentsTo, setAddStudentsTo] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [removingGroup, setRemovingGroup] = useState<string | null>(null)
+  // A group created a moment ago, named here until the list reloads with it.
+  const [newGroup, setNewGroup] = useState<{ id: string; name: string } | null>(null)
 
   const students = useMemo(() => roster.data?.students ?? [], [roster.data])
   const groups = useMemo(() => groupData?.groups ?? [], [groupData])
@@ -221,6 +225,30 @@ export function CourseGroups({
     void refetchGroups()
   }
 
+  const groupName = (id: string) =>
+    groups.find((g) => g.id === id)?.name ?? (newGroup?.id === id ? newGroup.name : "the group")
+
+  /**
+   * What the schedule form starts with: this group's last class a week on — or,
+   * for a group with no classes yet, the time, length and teacher the course's
+   * other classes use. The person then only has to confirm or change the date.
+   */
+  function classDefaults(target: string): ClassDefaults {
+    const own = groups.find((g) => g.id === target)?.sessions ?? (target === WHOLE_COURSE ? courseSessions : [])
+    const all = [...groups.flatMap((g) => g.sessions), ...courseSessions]
+      .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+    const lastOwn = own.length > 0 ? own[own.length - 1] : null
+    const ref = lastOwn ?? (all.length > 0 ? all[all.length - 1] : null)
+    if (!ref) return {}
+    const at = new Date(ref.scheduledAt)
+    return {
+      date: lastOwn ? new Date(at.getFullYear(), at.getMonth(), at.getDate() + 7) : undefined,
+      time: timeOf(at),
+      durationMins: ref.durationMins,
+      tutorId: ref.tutorId,
+    }
+  }
+
   async function addStudents(ids: Set<string>) {
     if (ids.size === 0) {
       toast.error("Select at least one student")
@@ -244,8 +272,7 @@ export function CourseGroups({
         toast.error(body.message ?? "Could not add students")
         return
       }
-      const groupName = groups.find((g) => g.id === target)?.name
-      toast.success(`${ids.size} student${ids.size === 1 ? "" : "s"} added to ${groupName ?? "the course"}`)
+      toast.success(`${ids.size} student${ids.size === 1 ? "" : "s"} added to ${target === UNGROUPED ? "the course" : groupName(target)}`)
       setAddStudentsTo(null)
       refreshAll()
     } catch {
@@ -300,7 +327,8 @@ export function CourseGroups({
               ? " "
               : empty
               ? "Each group is one class, with its own students and its own day and time."
-              : `${groups.length} group${groups.length === 1 ? "" : "s"} · ${students.length} student${students.length === 1 ? "" : "s"}` +
+              : (groups.length > 0 ? `${groups.length} group${groups.length === 1 ? "" : "s"} · ` : "") +
+                `${students.length} student${students.length === 1 ? "" : "s"}` +
                 (behindTotal > 0 ? ` · ${behindTotal} behind on homework` : "")}
           </p>
         </div>
@@ -524,7 +552,11 @@ export function CourseGroups({
           courseId={courseId}
           attachedIds={new Set(groups.map((g) => g.id))}
           onClose={() => setAddGroupOpen(false)}
-          onAdded={refreshAll}
+          onAdded={(group, isNew) => {
+            refreshAll()
+            // A brand-new group is empty: go straight on to choosing its students.
+            if (isNew) { setNewGroup(group); setAddStudentsTo(group.id) }
+          }}
         />
       )}
 
@@ -534,6 +566,7 @@ export function CourseGroups({
           courseTitle={courseTitle}
           groups={groups}
           initialTarget={scheduleFor}
+          defaults={classDefaults(scheduleFor)}
           mustAssignTutor={groupData.mustAssignTutor}
           tutorOptions={groupData.tutorOptions}
           onClose={() => setScheduleFor(null)}
@@ -553,7 +586,7 @@ export function CourseGroups({
           title={
             addStudentsTo === UNGROUPED
               ? "Add Students to Course"
-              : `Add Students to ${groups.find((g) => g.id === addStudentsTo)?.name ?? "group"}`
+              : `Add Students to ${groupName(addStudentsTo)}`
           }
           description={
             addStudentsTo === UNGROUPED
