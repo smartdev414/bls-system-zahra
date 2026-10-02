@@ -7,6 +7,7 @@ import {
   ChevronLeft, Plus, Layers, FileText, PlayCircle,
   FlaskConical, Loader2, ChevronDown, ChevronUp,
   Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap, Copy, CalendarClock,
+  ArrowUp, ArrowDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -434,6 +435,16 @@ return (
                 isCollapsed={!!collapsed[section.id]}
                 onToggle={() => toggleSection(section.id)}
                 onAddLesson={() => openLessonDialog(section.id)}
+                onReorder={(lessons) =>
+                  // Swapped in place: a refetch would blank the page for a moment.
+                  mutate((prev) => prev && {
+                    ...prev,
+                    course: {
+                      ...prev.course,
+                      sections: prev.course.sections.map((s) => (s.id === section.id ? { ...s, lessons } : s)),
+                    },
+                  })
+                }
                 onMutated={refetch}
               />
             ))}
@@ -572,6 +583,7 @@ function SectionBlock({
   isCollapsed,
   onToggle,
   onAddLesson,
+  onReorder,
   onMutated,
 }: {
   courseId: string
@@ -580,6 +592,8 @@ function SectionBlock({
   isCollapsed: boolean
   onToggle: () => void
   onAddLesson: () => void
+  /** The section's lessons in their new order, shown before the save lands. */
+  onReorder: (lessons: LessonItem[]) => void
   onMutated: () => void
 }) {
   const [renaming, setRenaming] = useState(false)
@@ -602,6 +616,25 @@ function SectionBlock({
       onSuccess: () => onMutated(),
     }
   )
+
+  const { execute: saveOrder, loading: reordering } = usePutCallback<{ ok: true }, { lessonIds: string[] }>(
+    `/api/tutor/courses/${courseId}/sections/${section.id}/reorder`,
+    {
+      successMessage: false,
+      errorMessage: "Could not move lesson",
+      // Put the list back the way the server has it.
+      onError: () => onMutated(),
+    }
+  )
+
+  function moveLesson(index: number, delta: -1 | 1) {
+    const target = index + delta
+    if (target < 0 || target >= section.lessons.length) return
+    const next = [...section.lessons]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    onReorder(next.map((l, i) => ({ ...l, order: i + 1 })))
+    saveOrder({ lessonIds: next.map((l) => l.id) })
+  }
 
   return (
     <Card className="shadow-sm overflow-hidden">
@@ -671,13 +704,16 @@ function SectionBlock({
 
       {!isCollapsed && !renaming && (
         <>
-          {section.lessons.map((lesson) => (
+          {section.lessons.map((lesson, index) => (
             <LessonRow
               key={lesson.id}
               lesson={lesson}
               courseId={courseId}
               canEdit={canEdit}
               hideRelease={sharedRelease(section) !== null}
+              onMoveUp={index > 0 ? () => moveLesson(index, -1) : undefined}
+              onMoveDown={index < section.lessons.length - 1 ? () => moveLesson(index, 1) : undefined}
+              moving={reordering}
               onMutated={onMutated}
             />
           ))}
@@ -701,12 +737,17 @@ function SectionBlock({
 
 // ─── Lesson row — edit (admins) or view (teachers) on a dedicated page ────────
 
-function LessonRow({ lesson, courseId, canEdit, hideRelease, onMutated }: {
+function LessonRow({ lesson, courseId, canEdit, hideRelease, onMoveUp, onMoveDown, moving, onMutated }: {
   lesson: LessonItem
   courseId: string
   canEdit: boolean
   /** The section header already shows the date this lesson shares with the rest. */
   hideRelease: boolean
+  /** Swap with the lesson above / below; undefined at the ends of the section. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+  /** A move is still saving, so another would race it. */
+  moving: boolean
   onMutated: () => void
 }) {
   const Icon = typeIcon[lesson.type]
@@ -743,6 +784,22 @@ function LessonRow({ lesson, courseId, canEdit, hideRelease, onMutated }: {
         </Button>
         {canEdit && (
           <>
+            <Button
+              variant="ghost" size="icon" className="size-7"
+              disabled={!onMoveUp || moving}
+              title="Move up"
+              onClick={onMoveUp}
+            >
+              <ArrowUp className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost" size="icon" className="size-7"
+              disabled={!onMoveDown || moving}
+              title="Move down"
+              onClick={onMoveDown}
+            >
+              <ArrowDown className="size-3.5" />
+            </Button>
             <Button asChild variant="ghost" size="icon" className="size-7">
               <Link href={`${coursesBase}/${courseId}/lessons/${lesson.id}/edit`}>
                 <Edit3 className="size-3.5" />

@@ -18,7 +18,7 @@ import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { useCoursesBase } from "@/hooks/use-courses-base"
-import { LESSON_FILE_TYPES } from "../../../AddLessonScreen"
+import { LESSON_FILE_ACCEPT, LESSON_FILE_TYPES } from "../../../AddLessonScreen"
 import { ReleaseField, releaseFromIso, releaseToIso } from "@/components/courses/ReleaseField"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -80,7 +80,8 @@ export default function EditLessonPage({
   const [isFree, setIsFree] = useState(false)
   const [releaseAt, setReleaseAt] = useState("")
   const [assets, setAssets] = useState<Asset[]>([])
-  const [newFile, setNewFile] = useState<UploadedFile | null>(null)
+  // Freshly uploaded files, attached on save.
+  const [newFiles, setNewFiles] = useState<UploadedFile[]>([])
   // Files picked from the resource library, attached on save like a new upload.
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -161,8 +162,8 @@ export default function EditLessonPage({
         throw new Error(d.message ?? "Could not save lesson")
       }
 
-      // 2. Add a newly uploaded file and any picked from the library as assets
-      for (const file of [...(newFile ? [newFile] : []), ...libraryFiles]) {
+      // 2. Add newly uploaded files and any picked from the library as assets
+      for (const file of [...newFiles, ...libraryFiles]) {
         const r = await fetch(`/api/tutor/lessons/${lessonId}/assets`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -311,19 +312,24 @@ export default function EditLessonPage({
               </div>
             ))}
 
-            {/* Upload new */}
-            {!newFile && (
-              <FileUpload
-                accept={
-                  lesson.type === "VIDEO"
-                    ? "video/mp4,video/webm,video/quicktime"
-                    : "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,audio/*"
-                }
-                label={assets.length > 0 ? "Add another file" : lesson.type === "VIDEO" ? "Upload video" : "Upload file"}
-                uploaded={null}
-                onUploaded={setNewFile}
-              />
-            )}
+            {/* Uploaded, waiting for Save */}
+            {newFiles.map((f) => (
+              <div key={f.fileUrl} className="flex items-center gap-3 rounded-xl border bg-emerald-50 border-emerald-200 p-3 overflow-hidden">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{f.fileName}</p>
+                  <p className="text-xs text-emerald-600">Ready to save</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  onClick={() => setNewFiles((prev) => prev.filter((x) => x.fileUrl !== f.fileUrl))}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            ))}
 
             {/* Picked from the library, waiting for Save */}
             {libraryFiles.map((f) => (
@@ -347,32 +353,26 @@ export default function EditLessonPage({
             <LibraryPicker
               open={pickerOpen}
               onOpenChange={setPickerOpen}
-              allowedTypes={LESSON_FILE_TYPES[lesson.type]}
+              allowedTypes={LESSON_FILE_TYPES}
               attachedUrls={[
                 ...assets.map((a) => a.fileUrl),
-                ...(newFile ? [newFile.fileUrl] : []),
+                ...newFiles.map((f) => f.fileUrl),
                 ...libraryFiles.map((f) => f.fileUrl),
               ]}
               onPick={(picked) => setLibraryFiles((prev) => [...prev, ...picked])}
             />
 
-            {newFile && (
-              <div className="flex items-center gap-3 rounded-xl border bg-emerald-50 border-emerald-200 p-3 overflow-hidden">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{newFile.fileName}</p>
-                  <p className="text-xs text-emerald-600">Ready to save</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 shrink-0"
-                  onClick={() => setNewFile(null)}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            )}
+            {/* Upload new — stays open so several files can be added before saving */}
+            <FileUpload
+              accept={LESSON_FILE_ACCEPT}
+              label={
+                assets.length + newFiles.length + libraryFiles.length > 0
+                  ? "Add another file"
+                  : lesson.type === "VIDEO" ? "Upload video or file" : "Upload file"
+              }
+              uploaded={null}
+              onUploaded={(f) => setNewFiles((prev) => [...prev, f])}
+            />
           </div>
         </>
       )}

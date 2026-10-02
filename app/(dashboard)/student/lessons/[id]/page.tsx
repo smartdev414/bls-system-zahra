@@ -288,7 +288,8 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 onTimeUpdate={handleTimeUpdate}
               />
             </div>
-          ) : lesson.type === "TEXT" ? (
+          ) : lesson.type === "TEXT" || (lesson.type === "VIDEO" && lesson.assets.length > 0) ? (
+            // Text lessons, and video lessons that hold files but no video, show the files inline.
             <div className="flex flex-col gap-6 px-6 py-6">
               {lesson.assets.map((asset) => {
                 if (asset.type === "VIDEO") {

@@ -19,11 +19,15 @@ import { ReleaseField, releaseToIso } from "@/components/courses/ReleaseField"
 
 type LessonType = "VIDEO" | "TEXT" | "QUIZ"
 
-/** What each lesson type can hold — matches the upload box's `accept`. */
-export const LESSON_FILE_TYPES: Record<"VIDEO" | "TEXT", readonly LibraryAssetType[]> = {
-  VIDEO: ["VIDEO"],
-  TEXT: ["PDF", "DOCUMENT", "IMAGE", "AUDIO"],
-}
+/** What a video or text lesson can hold — matches the upload box's `accept`. */
+export const LESSON_FILE_TYPES: readonly LibraryAssetType[] = ["VIDEO", "PDF", "DOCUMENT", "IMAGE", "AUDIO"]
+
+export const LESSON_FILE_ACCEPT =
+  "video/mp4,video/webm,video/quicktime,application/pdf,application/msword," +
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
+  "application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation," +
+  "application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
+  ".doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,audio/mpeg,audio/wav"
 
 type Props = {
   courseId: string
@@ -71,13 +75,11 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
 
     try {
       // 1. Create the lesson
-      // A file picked for a quiz, or for the other lesson type before switching,
-      // is not something this lesson can show.
-      const allowed: readonly string[] = type === "QUIZ" ? [] : LESSON_FILE_TYPES[type]
-      const files = [
+      // A file picked before switching to a quiz is not something a quiz can show.
+      const files = type === "QUIZ" ? [] : [
         ...(uploadedFile ? [uploadedFile] : []),
         ...libraryFiles,
-      ].filter((f) => allowed.includes(f.assetType))
+      ]
       const assets = files.map((f) => ({
         type: f.assetType,
         // The main upload keeps the lesson title, as before; picked files keep their own name.
@@ -246,9 +248,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
             </div>
 
             {/* Picked from the library */}
-            {libraryFiles
-              .filter((f) => LESSON_FILE_TYPES[type].includes(f.assetType as LibraryAssetType))
-              .map((f) => {
+            {libraryFiles.map((f) => {
                 const Icon = itemIcon(f.assetType)
                 return (
                   <div key={f.fileUrl} className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3 overflow-hidden">
@@ -278,7 +278,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
             <LibraryPicker
               open={pickerOpen}
               onOpenChange={setPickerOpen}
-              allowedTypes={LESSON_FILE_TYPES[type]}
+              allowedTypes={LESSON_FILE_TYPES}
               attachedUrls={[
                 ...(uploadedFile ? [uploadedFile.fileUrl] : []),
                 ...libraryFiles.map((f) => f.fileUrl),
@@ -293,12 +293,8 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
               />
             ) : (
               <FileUpload
-                accept={
-                  type === "VIDEO"
-                    ? "video/mp4,video/webm,video/quicktime"
-                    : "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,audio/*"
-                }
-                label={type === "VIDEO" ? "Upload video" : "Upload file"}
+                accept={LESSON_FILE_ACCEPT}
+                label={type === "VIDEO" ? "Upload video or file" : "Upload file"}
                 uploaded={uploadedFile}
                 onUploaded={setUploadedFile}
                 onRemove={() => setUploadedFile(null)}
