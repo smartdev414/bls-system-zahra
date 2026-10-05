@@ -18,8 +18,8 @@ didn't build it.
 | Live audio/video | LiveKit | `LIVEKIT_API_KEY/SECRET/WS_URL` |
 | In-room sync (slides, whiteboard, mute) | LiveKit **data channels** | (no extra config) |
 | Live captions | LiveKit agent + **Inference STT** | LiveKit creds; deploy agent on LiveKit Cloud |
-| Grammar suggestions on typed captions | OpenAI (`gpt-5-nano`) | `OPENAI_API_KEY` (optional: `CAPTION_GRAMMAR_MODEL`) |
-| "Improve English" (fix grammar, change tone) on course and lesson descriptions | OpenAI (`gpt-5-nano`) | `OPENAI_API_KEY` (optional: `DESCRIPTION_GRAMMAR_MODEL`) |
+| Grammar suggestions on typed captions | OpenAI (`gpt-5.6-luna`) | `OPENAI_API_KEY` (optional: `CAPTION_GRAMMAR_MODEL`) |
+| "Improve English" (fix grammar, change tone) on course and lesson descriptions | OpenAI (`gpt-5.6-luna`) | `OPENAI_API_KEY` (optional: `DESCRIPTION_GRAMMAR_MODEL`) |
 | Realtime across pages (messaging badge, **co-teacher pull-in**) | Pusher | `PUSHER_*`, `NEXT_PUBLIC_PUSHER_*` |
 | File uploads & recordings | AWS S3 | `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID/SECRET`, `AWS_REGION` |
 | Session recording | LiveKit Egress → S3 | LiveKit + S3 |
@@ -309,7 +309,7 @@ AWS_S3_BUCKET  AWS_ACCESS_KEY_ID  AWS_SECRET_ACCESS_KEY  AWS_REGION
 MAILGUN_API_KEY  MAILGUN_DOMAIN  (optional: MAILGUN_FROM, MAILGUN_API_BASE)
 NEXT_PUBLIC_APP_URL          # used in email links
 ALERT_WEBHOOK_URL            # optional: ops alerts
-OPENAI_API_KEY               # optional: grammar suggestions on typed captions and "Improve English" on descriptions (CAPTION_GRAMMAR_MODEL / DESCRIPTION_GRAMMAR_MODEL, default gpt-5-nano)
+OPENAI_API_KEY               # optional: grammar suggestions on typed captions and "Improve English" on descriptions (CAPTION_GRAMMAR_MODEL / DESCRIPTION_GRAMMAR_MODEL, default gpt-5.6-luna)
 ```
 
 Verify quickly any time with `GET /api/health`.

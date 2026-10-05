@@ -11,7 +11,7 @@
 // "fix" never does.
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ""
-const MODEL = process.env.DESCRIPTION_GRAMMAR_MODEL ?? process.env.CAPTION_GRAMMAR_MODEL ?? "gpt-5-nano"
+const MODEL = process.env.DESCRIPTION_GRAMMAR_MODEL ?? process.env.CAPTION_GRAMMAR_MODEL ?? "gpt-5.6-luna"
 
 /** Longest description (as HTML) that is sent to the model in one go. */
 export const DESCRIPTION_GRAMMAR_MAX = 20_000
@@ -87,7 +87,7 @@ export async function correctDescription(
         { role: "user", content: html },
       ],
       // Rewording takes a little thought; fixing a comma does not.
-      reasoning_effort: mode === "fix" ? "minimal" : "low",
+      reasoning_effort: mode === "fix" ? "none" : "low",
       // Room for the whole description to come back, markup included, plus
       // whatever the model spends thinking.
       max_completion_tokens: Math.ceil(html.length / 2) + (mode === "fix" ? 500 : 3000),
