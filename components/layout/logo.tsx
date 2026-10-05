@@ -14,8 +14,8 @@ export const LOGO_FULL_SRC = "/brand/tms-logo.png"
 export const LOGO_FULL_DARK_SRC = "/brand/tms-logo-dark.png"
 export const LOGO_BRAND = "Teach Me Sign"
 
-const MARK_W = 401
-const MARK_H = 387
+export const MARK_W = 401
+export const MARK_H = 387
 const FULL_W = 635
 const FULL_H = 455
 

@@ -5,9 +5,14 @@ import { Camera, Square, Circle, Loader2, CheckCircle2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { UploadedFile } from "@/components/ui/file-upload"
-import { createSolidBackground, supportsSolidBackground, type SolidBackground } from "@/lib/solid-background"
+import { LOGO_MARK_SRC, MARK_W, MARK_H } from "@/components/layout/logo"
+import {
+  createLessonVideoCanvas, supportsLessonVideoCanvas, watermarkTileAspect, type LessonVideoCanvas,
+  WATERMARK_HEIGHT, WATERMARK_MARGIN, WATERMARK_PADDING, WATERMARK_RADIUS,
+} from "@/lib/lesson-video-canvas"
 
 const BACKGROUND_PREF_KEY = "recorder:background"
+const WATERMARK_TILE_ASPECT = watermarkTileAspect(MARK_W / MARK_H)
 
 const BACKGROUND_PRESETS = [
   { label: "White", value: "#ffffff" },
@@ -65,7 +70,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const backgroundRef = useRef<SolidBackground | null>(null)
+  const rendererRef = useRef<LessonVideoCanvas | null>(null)
 
   const [ready, setReady] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -73,19 +78,20 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cameraError, setCameraError] = useState<string | null>(null)
-  // null = record the camera as-is. Otherwise the picture is redrawn on a
-  // canvas with everything behind the tutor replaced by this colour, and the
-  // canvas (not the raw camera) is what gets recorded.
+  // The camera is redrawn on a canvas, and the canvas — not the raw camera —
+  // is what gets recorded, so the logo (and the background colour, if one is
+  // chosen) end up in the video file itself. `rendererActive` is false on a
+  // browser that can't do this; the raw camera is recorded there instead.
+  const [rendererActive, setRendererActive] = useState(false)
+  // null = keep the camera's real background.
   const [background, setBackground] = useState<string | null>(() => readBackgroundPreference())
-  const [backgroundActive, setBackgroundActive] = useState(false)
+  // The segmentation model is fetched on the first colour; false until it's in.
+  const [backgroundReady, setBackgroundReady] = useState(false)
   const [backgroundError, setBackgroundError] = useState<string | null>(null)
   const backgroundOn = background !== null
-  // Latest colour for the setup effect, which must not restart on a colour change.
-  const backgroundColorRef = useRef(background)
-  useEffect(() => {
-    backgroundColorRef.current = background
-    if (background) backgroundRef.current?.setColor(background)
-  }, [background])
+  // Camera picture shape (width ÷ height), so the preview shows the whole
+  // frame that is being recorded rather than a cropped one.
+  const [videoAspect, setVideoAspect] = useState<number | null>(null)
 
   useEffect(() => {
     if (uploaded) return
@@ -115,26 +121,40 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     }
   }, [uploaded])
 
-  // Loads the segmentation model and starts the canvas render loop whenever a
-  // background colour is switched on; colour changes go through setColor above.
+  // Starts the canvas render loop once the camera is live.
   useEffect(() => {
-    if (!ready || !backgroundOn || uploaded) return
+    if (!ready || uploaded) return
     const video = videoRef.current
     const canvas = canvasRef.current
-    if (!video || !canvas) return
-    let cancelled = false
-    let instance: SolidBackground | null = null
+    if (!video || !canvas || !supportsLessonVideoCanvas()) return
 
-    createSolidBackground(video, canvas, backgroundColorRef.current ?? "#000000")
-      .then((created) => {
-        if (cancelled) {
-          created.destroy()
-          return
-        }
-        instance = created
-        if (backgroundColorRef.current) created.setColor(backgroundColorRef.current)
-        backgroundRef.current = created
-        setBackgroundActive(true)
+    let renderer: LessonVideoCanvas
+    try {
+      renderer = createLessonVideoCanvas(video, canvas, { watermarkSrc: LOGO_MARK_SRC })
+    } catch (err) {
+      console.error("[recorder] canvas renderer failed", err)
+      return
+    }
+    rendererRef.current = renderer
+    setRendererActive(true)
+
+    return () => {
+      renderer.destroy()
+      rendererRef.current = null
+      setRendererActive(false)
+      setBackgroundReady(false)
+    }
+  }, [ready, uploaded])
+
+  // Pushes the chosen colour to the renderer. The first colour downloads the
+  // segmentation model, so recording is held until that resolves.
+  useEffect(() => {
+    const renderer = rendererRef.current
+    if (!rendererActive || !renderer) return
+    let cancelled = false
+    renderer.setBackground(background)
+      .then(() => {
+        if (!cancelled && background) setBackgroundReady(true)
       })
       .catch((err) => {
         if (cancelled) return
@@ -142,17 +162,11 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         setBackgroundError("Couldn't load the background effect. Recording with your real background.")
         setBackground(null)
       })
-
-    return () => {
-      cancelled = true
-      instance?.destroy()
-      if (backgroundRef.current === instance) backgroundRef.current = null
-      setBackgroundActive(false)
-    }
-  }, [ready, backgroundOn, uploaded])
+    return () => { cancelled = true }
+  }, [rendererActive, background])
 
   function chooseBackground(color: string | null) {
-    if (color && !supportsSolidBackground()) {
+    if (color && !supportsLessonVideoCanvas()) {
       setBackgroundError("Background colours aren't supported on this browser.")
       return
     }
@@ -165,9 +179,10 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     if (!streamRef.current) return
     chunksRef.current = []
 
-    // With a background colour on, record the processed canvas picture
-    // alongside the microphone instead of the raw camera.
-    const processed = backgroundOn ? backgroundRef.current?.captureStream(30) : null
+    // Record the canvas picture (logo and background colour baked in)
+    // alongside the microphone. Falls back to the raw camera where the canvas
+    // renderer isn't available.
+    const processed = rendererRef.current?.captureStream(30)
     const recordStream = processed
       ? new MediaStream([...processed.getVideoTracks(), ...streamRef.current.getAudioTracks()])
       : streamRef.current
@@ -312,28 +327,52 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
   // A colour is chosen but the model is still loading — hold recording until
   // the processed picture is actually there.
-  const backgroundPending = ready && backgroundOn && !backgroundActive
+  const backgroundPending = ready && backgroundOn && rendererActive && !backgroundReady
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
+      <div
+        className="relative rounded-xl overflow-hidden bg-black"
+        style={{ aspectRatio: videoAspect ?? 16 / 9 }}
+      >
         <video
           ref={videoRef}
           muted
           playsInline
+          onLoadedMetadata={(e) => {
+            const { videoWidth, videoHeight } = e.currentTarget
+            if (videoWidth && videoHeight) setVideoAspect(videoWidth / videoHeight)
+          }}
           className="w-full h-full object-cover -scale-x-100"
         />
-        {/* Sits over the camera preview. The <video> stays mounted underneath
-            because the canvas is drawn from it. */}
-        {backgroundOn && (
-          <canvas
-            ref={canvasRef}
-            className={cn(
-              "absolute inset-0 w-full h-full object-cover -scale-x-100",
-              !backgroundActive && "opacity-0"
-            )}
-          />
+        {/* Sits over the camera preview and is what gets recorded. The <video>
+            stays mounted underneath because the canvas is drawn from it. */}
+        <canvas
+          ref={canvasRef}
+          className={cn(
+            "absolute inset-0 w-full h-full object-cover -scale-x-100",
+            !rendererActive && "opacity-0"
+          )}
+        />
+        {/* The preview is mirrored like a mirror, which would show the logo
+            baked into the canvas back to front. This readable copy sits exactly
+            over it — top-right here is top-left in the recorded video. */}
+        {rendererActive && videoAspect && (
+          <div
+            aria-hidden
+            className="absolute flex items-center justify-center bg-white pointer-events-none select-none"
+            style={{
+              top: `${WATERMARK_MARGIN * 100}%`,
+              right: `${(WATERMARK_MARGIN / videoAspect) * 100}%`,
+              height: `${WATERMARK_HEIGHT * 100}%`,
+              width: `${((WATERMARK_HEIGHT * WATERMARK_TILE_ASPECT) / videoAspect) * 100}%`,
+              borderRadius: `${(WATERMARK_RADIUS / WATERMARK_TILE_ASPECT) * 100}% / ${WATERMARK_RADIUS * 100}%`,
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={LOGO_MARK_SRC} alt="" style={{ height: `${(1 - 2 * WATERMARK_PADDING) * 100}%` }} />
+          </div>
         )}
         {(!ready || backgroundPending) && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -402,9 +441,9 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         </label>
       </div>
 
-      {backgroundOn && !backgroundError && (
+      {rendererActive && !backgroundError && (
         <p className="text-xs text-muted-foreground text-center">
-          Keep this tab open and visible while recording — the background effect pauses in a hidden tab.
+          Keep this tab open and visible while recording — the picture pauses in a hidden tab.
         </p>
       )}
       {backgroundError && <p className="text-xs text-destructive text-center">{backgroundError}</p>}
