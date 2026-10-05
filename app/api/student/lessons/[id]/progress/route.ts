@@ -30,9 +30,15 @@ async function handlePATCH(
     // Progress only counts for a lesson on that course which has been released.
     const lesson = await prisma.lesson.findFirst({
       where: { id: lessonId, section: { courseId: enrollment.courseId }, ...releasedLessons() },
-      select: { id: true },
+      select: { id: true, type: true },
     })
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+
+    // A test is completed by passing it (the attempt route records that), so it
+    // cannot be ticked off — or un-ticked — by hand.
+    if (lesson.type === "QUIZ" && typeof isCompleted === "boolean") {
+      return NextResponse.json({ message: "A test is completed by passing it" }, { status: 400 })
+    }
 
     const data: Record<string, unknown> = { updatedAt: new Date() }
     if (typeof watchedSecs === "number") data.watchedSecs = watchedSecs

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
 import { parseReleaseAt } from "@/lib/lesson-release"
+import { parseTestSettings } from "@/lib/quiz"
 
 async function verifyLessonOwnership(lessonId: string, session: { role: string; sub: string }) {
   const lesson = await prisma.lesson.findFirst({
@@ -73,11 +74,19 @@ async function handlePUT(
       isFree?: boolean
       /** ISO date-time students get the lesson; null = straight away. */
       releaseAt?: string | null
+      /** Tests only: score out of 100 needed to pass, and attempts allowed (null = unlimited). */
+      passMark?: number
+      maxAttempts?: number | null
     }
 
     const releaseAt = body.releaseAt === undefined ? undefined : parseReleaseAt(body.releaseAt)
     if (body.releaseAt !== undefined && releaseAt === undefined) {
       return NextResponse.json({ message: "Release date is not a valid date" }, { status: 400 })
+    }
+
+    const testSettings = parseTestSettings(body)
+    if (typeof testSettings === "string") {
+      return NextResponse.json({ message: testSettings }, { status: 400 })
     }
 
     const updated = await prisma.lesson.update({
@@ -88,6 +97,7 @@ async function handlePUT(
         ...(body.type && { type: body.type }),
         ...(typeof body.isFree === "boolean" && { isFree: body.isFree }),
         ...(releaseAt !== undefined && { releaseAt }),
+        ...testSettings,
       },
       include: { assets: { orderBy: { order: "asc" } } },
     })

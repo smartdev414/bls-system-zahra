@@ -3,10 +3,13 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope } from "@/lib/permissions"
+import { validateQuestion, type QuestionBody } from "../validate"
 
-async function verifyOwnership(lessonId: string, session: { role: string; sub: string }) {
-  return prisma.lesson.findFirst({
-    where: { id: lessonId, section: { course: courseContentScope(session) } },
+/** The question, if it belongs to this lesson and the caller may change it. */
+async function findQuestion(lessonId: string, qid: string, session: { role: string; sub: string }) {
+  return prisma.quizQuestion.findFirst({
+    where: { id: qid, lessonId, lesson: { section: { course: courseContentScope(session) } } },
+    include: { options: { select: { id: true } } },
   })
 }
 
@@ -23,47 +26,48 @@ async function handlePUT(
     }
 
     const { id, qid } = await params
-    const lesson = await verifyOwnership(id, session)
-    if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    const existing = await findQuestion(id, qid, session)
+    if (!existing) return NextResponse.json({ message: "Question not found" }, { status: 404 })
 
-    const body = await req.json() as {
-      question: string
-      imageUrl?: string
-      type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
-      options: Array<{ text: string; imageUrl?: string; mediaType?: string; isCorrect: boolean }>
-    }
+    const body = await req.json() as QuestionBody
+    const invalid = validateQuestion(body)
+    if (invalid) return NextResponse.json({ message: invalid }, { status: 400 })
 
-    if (!body.question?.trim()) {
-      return NextResponse.json({ message: "Question text is required" }, { status: 400 })
-    }
-    if (!body.options?.length || !body.options.some((o) => o.isCorrect)) {
-      return NextResponse.json({ message: "At least one correct option is required" }, { status: 400 })
-    }
-    if (body.options.some((o) => !o.text?.trim() && !o.imageUrl)) {
-      return NextResponse.json({ message: "Each option needs text or an image" }, { status: 400 })
-    }
-
-    // Replace options: delete all existing then re-create
-    await prisma.quizOption.deleteMany({ where: { questionId: qid } })
-
-    const updated = await prisma.quizQuestion.update({
-      where: { id: qid },
-      data: {
-        question: body.question.trim(),
-        imageUrl: body.imageUrl ?? null,
-        type: body.type,
-        options: {
-          create: body.options.map((opt, i) => ({
-            text: opt.text.trim(),
-            imageUrl: opt.imageUrl ?? null,
-            mediaType: opt.mediaType ?? null,
-            isCorrect: opt.isCorrect,
-            order: i,
-          })),
-        },
-      },
-      include: { options: { orderBy: { order: "asc" } } },
+    // Options are updated in place. Replacing them wholesale (as this used to)
+    // blanks the answer every student gave to this question, because their
+    // attempt points at the option they chose. Only an option that was actually
+    // removed is deleted.
+    const existingIds = new Set(existing.options.map((o) => o.id))
+    const kept = new Set(body.options.map((o) => o.id).filter((oid): oid is string => !!oid && existingIds.has(oid)))
+    const optionData = (opt: QuestionBody["options"][number], order: number) => ({
+      text: opt.text?.trim() ?? "",
+      imageUrl: opt.imageUrl ?? null,
+      mediaType: opt.imageUrl ? opt.mediaType ?? null : null,
+      isCorrect: opt.isCorrect,
+      order,
     })
+
+    const [, updated] = await prisma.$transaction([
+      prisma.quizOption.deleteMany({ where: { questionId: qid, id: { notIn: [...kept] } } }),
+      prisma.quizQuestion.update({
+        where: { id: qid },
+        data: {
+          question: body.question.trim(),
+          imageUrl: body.imageUrl ?? null,
+          mediaType: body.imageUrl ? body.mediaType ?? null : null,
+          type: body.type,
+          options: {
+            update: body.options.flatMap((opt, i) =>
+              opt.id && kept.has(opt.id) ? [{ where: { id: opt.id }, data: optionData(opt, i) }] : []
+            ),
+            create: body.options.flatMap((opt, i) =>
+              opt.id && kept.has(opt.id) ? [] : [optionData(opt, i)]
+            ),
+          },
+        },
+        include: { options: { orderBy: { order: "asc" } } },
+      }),
+    ])
 
     return NextResponse.json({ question: updated })
   } catch (err) {
@@ -85,8 +89,8 @@ async function handleDELETE(
     }
 
     const { id, qid } = await params
-    const lesson = await verifyOwnership(id, session)
-    if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    const existing = await findQuestion(id, qid, session)
+    if (!existing) return NextResponse.json({ message: "Question not found" }, { status: 404 })
 
     await prisma.quizQuestion.delete({ where: { id: qid } })
     return NextResponse.json({ message: "Question deleted" })

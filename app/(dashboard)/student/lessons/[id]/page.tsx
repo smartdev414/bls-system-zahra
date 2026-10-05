@@ -52,11 +52,6 @@ type SectionItem = {
   lessons: SectionLesson[]
 }
 
-type QuizOption = { id: string; text: string; imageUrl?: string | null; order: number }
-type QuizQuestion = { id: string; question: string; imageUrl?: string | null; type: string; options: QuizOption[] }
-type QuizAttemptAnswer = { questionId: string; optionId: string | null; isCorrect: boolean }
-type BestAttempt = { score: number; passed: boolean; answers: QuizAttemptAnswer[] } | null
-
 type LessonData = {
   lesson: {
     id: string
@@ -104,8 +99,6 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   const { id } = use(params)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isCompleted, setIsCompleted] = useState(false)
-  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
-  const [bestAttempt, setBestAttempt] = useState<BestAttempt>(null)
   const completedRef = useRef(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -114,16 +107,6 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
     onSuccess: (d) => {
       setIsCompleted(d.lesson.isCompleted)
       completedRef.current = d.lesson.isCompleted
-      // Fetch quiz data if this is a QUIZ lesson
-      if (d.lesson.type === "QUIZ") {
-        fetch(`/api/student/lessons/${id}/quiz`)
-          .then((r) => r.json())
-          .then((q: { questions: QuizQuestion[]; bestAttempt: BestAttempt }) => {
-            setQuizQuestions(q.questions ?? [])
-            setBestAttempt(q.bestAttempt ?? null)
-          })
-          .catch(() => {})
-      }
     },
   })
 
@@ -395,21 +378,13 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
             </div>
           ) : lesson.type === "QUIZ" ? (
             <div className="mx-6 mt-6 rounded-xl border bg-background p-6">
-              {quizQuestions.length === 0 ? (
-                <div className="text-center py-6">
-                  <FlaskConical className="size-10 text-primary mx-auto mb-2" />
-                  <p className="font-semibold">No questions yet</p>
-                  <p className="text-sm text-muted-foreground mt-1">The tutor hasn't added questions to this quiz yet.</p>
-                </div>
-              ) : (
-                <QuizTaker
-                  lessonId={id}
-                  enrollmentId={data.enrollmentId}
-                  questions={quizQuestions}
-                  bestAttempt={bestAttempt}
-                  onCompleted={() => { setIsCompleted(true); refetch() }}
-                />
-              )}
+              {/* Keyed by lesson so moving to the next test starts it afresh. */}
+              <QuizTaker
+                key={id}
+                lessonId={id}
+                enrollmentId={data.enrollmentId}
+                onCompleted={() => { setIsCompleted(true); completedRef.current = true }}
+              />
             </div>
           ) : (
             <div className="mx-6 mt-6 rounded-xl border bg-primary/5 p-6 text-center">
@@ -427,21 +402,30 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
               </div>
               <h1 className="text-xl font-black tracking-tight">{lesson.title}</h1>
             </div>
-            <Button
-              size="sm"
-              variant={isCompleted ? "outline" : "default"}
-              onClick={handleMarkComplete}
-              disabled={saving || !data.enrollmentId}
-              className="shrink-0"
-            >
-              {saving ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : isCompleted ? (
-                <><CheckCheck className="size-4 mr-1.5" /> Completed</>
-              ) : (
-                <><CheckCircle2 className="size-4 mr-1.5" /> Mark Complete</>
-              )}
-            </Button>
+            {lesson.type === "QUIZ" ? (
+              // A test is completed by passing it, not by ticking it off.
+              isCompleted && (
+                <Badge variant="outline" className="shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200">
+                  <CheckCheck className="size-3.5 mr-1" /> Passed
+                </Badge>
+              )
+            ) : (
+              <Button
+                size="sm"
+                variant={isCompleted ? "outline" : "default"}
+                onClick={handleMarkComplete}
+                disabled={saving || !data.enrollmentId}
+                className="shrink-0"
+              >
+                {saving ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : isCompleted ? (
+                  <><CheckCheck className="size-4 mr-1.5" /> Completed</>
+                ) : (
+                  <><CheckCircle2 className="size-4 mr-1.5" /> Mark Complete</>
+                )}
+              </Button>
+            )}
           </div>
 
           {/* Tabs */}

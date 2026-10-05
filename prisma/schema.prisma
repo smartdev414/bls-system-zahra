@@ -324,6 +324,10 @@ model Lesson {
   // a whole term can be prepared in advance and released week by week. Null =
   // available straight away. Staff and teachers always see it.
   releaseAt   DateTime?
+  // Tests only (type QUIZ): the score, out of 100, a student needs to pass, and
+  // how many times they may sit it. Null attempts = as often as they like.
+  passMark    Int        @default(70)
+  maxAttempts Int?
 
   section   Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   assets    LessonAsset[]
@@ -753,7 +757,8 @@ model QuizQuestion {
   id       String       @id @default(cuid())
   lessonId String
   question String
-  imageUrl String? // optional image shown with the question
+  imageUrl String? // optional image or video shown with the question
+  mediaType String? // "image" | "video"
   type     QuestionType @default(MULTIPLE_CHOICE)
   order    Int
 
@@ -803,7 +808,9 @@ model QuizAttemptAnswer {
   isCorrect  Boolean
 
   attempt  QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question QuizQuestion @relation(fields: [questionId], references: [id])
+  // Cascade, so a question (or the whole test) can be deleted once students
+  // have sat it. The attempt keeps the score it was given.
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
   option   QuizOption?  @relation(fields: [optionId], references: [id])
 
   @@index([attemptId])

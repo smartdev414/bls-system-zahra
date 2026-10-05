@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
 import { useCoursesBase } from "@/hooks/use-courses-base"
@@ -15,6 +15,8 @@ import { mediaDownloadHref } from "@/lib/protected-media"
 import { lessonKind } from "@/lib/lesson-kind"
 import { cn } from "@/lib/utils"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
+import { QuizResults } from "@/components/quiz/QuizResults"
+import { isVideoMedia } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,11 +43,14 @@ type LessonFull = {
   description: string | null
   isFree: boolean
   releaseAt: string | null
+  passMark: number
+  maxAttempts: number | null
   assets: Asset[]
   questions: Array<{
     id: string
     question: string
     imageUrl: string | null
+    mediaType: string | null
     options: Option[]
   }>
   section: { title: string; course: { title: string } }
@@ -53,15 +58,11 @@ type LessonFull = {
 
 type LessonData = { lesson: LessonFull; canEdit: boolean }
 
-function isVideoUrl(url: string | null, mediaType: string | null) {
-  if (mediaType === "video") return true
-  return !!url && /\.(mp4|webm|mov|ogg|m4v)(\?|$)/i.test(url)
-}
-
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-// A lesson as the teacher follows it: the material and, for a quiz, the answers.
-// Nothing here can be changed — admins edit lessons from the builder.
+// A lesson as the teacher follows it: the material and, for a test, how the
+// students did and the answers. The content cannot be changed here — admins
+// edit lessons from the builder.
 export default function ViewLessonPage({
   params,
 }: {
@@ -108,12 +109,22 @@ export default function ViewLessonPage({
             </Badge>
             {lesson.isFree && <Badge variant="outline">Free preview</Badge>}
             <ReleaseBadge releaseAt={lesson.releaseAt} />
+            {lesson.type === "QUIZ" && (
+              <>
+                <Badge variant="outline">Pass mark {lesson.passMark}%</Badge>
+                <Badge variant="outline">
+                  {lesson.maxAttempts === null
+                    ? "Unlimited attempts"
+                    : `${lesson.maxAttempts} attempt${lesson.maxAttempts !== 1 ? "s" : ""}`}
+                </Badge>
+              </>
+            )}
           </div>
         </div>
         {canEdit && (
           <Button asChild variant="outline" size="sm" className="shrink-0">
             <Link href={`${coursesBase}/${courseId}/lessons/${lessonId}/edit`}>
-              <Edit3 className="size-4 mr-1.5" /> Edit Lesson
+              <Edit3 className="size-4 mr-1.5" /> {lesson.type === "QUIZ" ? "Edit Test" : "Edit Lesson"}
             </Link>
           </Button>
         )}
@@ -141,10 +152,19 @@ export default function ViewLessonPage({
         )
       )}
 
-      {/* Quiz — questions with the correct answers marked */}
+      {/* Test — how the students did, and the questions with the correct answers marked */}
       {lesson.type === "QUIZ" && (
-        <>
-          <Separator />
+        <Tabs defaultValue="results">
+          <TabsList className="mb-4">
+            <TabsTrigger value="results">Results</TabsTrigger>
+            <TabsTrigger value="questions">Questions ({lesson.questions.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="results">
+            <QuizResults lessonId={lesson.id} questions={lesson.questions} />
+          </TabsContent>
+
+          <TabsContent value="questions">
           {lesson.questions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No questions have been added to this quiz yet.</p>
           ) : (
@@ -156,7 +176,9 @@ export default function ViewLessonPage({
                 <div key={q.id} className="flex flex-col gap-2">
                   <p className="text-sm font-medium">{i + 1}. {q.question}</p>
                   {q.imageUrl && (
-                    <img src={q.imageUrl} alt="question" className="rounded-lg max-h-48 object-contain border self-start" />
+                    isVideoMedia(q.imageUrl, q.mediaType)
+                      ? <ProtectedVideo src={q.imageUrl} muted loop playsInline controls className="rounded-lg max-h-48 border bg-black self-start" />
+                      : <img src={q.imageUrl} alt="question" className="rounded-lg max-h-48 object-contain border self-start" />
                   )}
                   <div className={cn(
                     "pl-6",
@@ -172,7 +194,7 @@ export default function ViewLessonPage({
                         )}
                       >
                         {opt.imageUrl && (
-                          isVideoUrl(opt.imageUrl, opt.mediaType)
+                          isVideoMedia(opt.imageUrl, opt.mediaType)
                             ? <ProtectedVideo src={opt.imageUrl} muted loop playsInline controls className="w-full aspect-video object-cover" />
                             : <img src={opt.imageUrl} alt={opt.text} className="w-full aspect-square object-cover" />
                         )}
@@ -192,7 +214,8 @@ export default function ViewLessonPage({
               ))}
             </div>
           )}
-        </>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   )

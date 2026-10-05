@@ -21,6 +21,7 @@ import { useCoursesBase } from "@/hooks/use-courses-base"
 import { lessonKind } from "@/lib/lesson-kind"
 import { LESSON_FILE_ACCEPT, LESSON_FILE_TYPES } from "../../../AddLessonScreen"
 import { ReleaseField, releaseFromIso, releaseToIso } from "@/components/courses/ReleaseField"
+import { DEFAULT_TEST_SETTINGS, TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,11 +42,14 @@ type LessonFull = {
   description: string | null
   isFree: boolean
   releaseAt: string | null
+  passMark: number
+  maxAttempts: number | null
   assets: Asset[]
   questions: Array<{
     id: string
     question: string
     imageUrl: string | null
+    mediaType: string | null
     type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
     options: Array<{
       id: string
@@ -87,6 +91,7 @@ export default function EditLessonPage({
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [questions, setQuestions] = useState<QuestionDraft[]>([])
+  const [testSettings, setTestSettings] = useState<TestSettingsDraft>(DEFAULT_TEST_SETTINGS)
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -105,16 +110,20 @@ export default function EditLessonPage({
         setIsFree(l.isFree)
         setReleaseAt(releaseFromIso(l.releaseAt))
         setAssets(l.assets)
+        setTestSettings({ passMark: String(l.passMark), maxAttempts: l.maxAttempts ? String(l.maxAttempts) : null })
         setQuestions(
           l.questions.map((q) => ({
+            uid: q.id,
             id: q.id,
             question: q.question,
             imageUrl: q.imageUrl ?? undefined,
+            mediaType: (q.mediaType ?? undefined) as "image" | "video" | undefined,
             type: q.type,
             options: q.options.map((o) => ({
+              id: o.id,
               text: o.text,
               imageUrl: o.imageUrl ?? undefined,
-              mediaType: o.mediaType as "image" | "video" | undefined,
+              mediaType: (o.mediaType ?? undefined) as "image" | "video" | undefined,
               isCorrect: o.isCorrect,
             })),
             isOpen: false,
@@ -156,7 +165,10 @@ export default function EditLessonPage({
       const res = await fetch(`/api/tutor/lessons/${lessonId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), description: desc, isFree, releaseAt: releaseToIso(releaseAt) }),
+        body: JSON.stringify({
+          title: title.trim(), description: desc, isFree, releaseAt: releaseToIso(releaseAt),
+          ...(lesson?.type === "QUIZ" && testSettingsBody(testSettings)),
+        }),
       })
       if (!res.ok) {
         const d = await res.json() as { message?: string }
@@ -219,8 +231,10 @@ export default function EditLessonPage({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">Edit Lesson</h1>
-          <p className="text-muted-foreground mt-1">Update the details for this lesson.</p>
+          <h1 className="text-2xl font-black tracking-tight">{lesson.type === "QUIZ" ? "Edit Test" : "Edit Lesson"}</h1>
+          <p className="text-muted-foreground mt-1">
+            {lesson.type === "QUIZ" ? "Update this test, its questions and how it is passed." : "Update the details for this lesson."}
+          </p>
         </div>
         <Button onClick={handleSave} disabled={!title.trim() || saving}>
           <Save className="size-4 mr-1.5" />
@@ -264,6 +278,8 @@ export default function EditLessonPage({
       </div>
 
       <ReleaseField value={releaseAt} onChange={setReleaseAt} />
+
+      {lesson.type === "QUIZ" && <TestSettingsFields value={testSettings} onChange={setTestSettings} />}
 
       {/* Description */}
       <div className="flex flex-col gap-1.5">

@@ -5,6 +5,7 @@ import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope } from "@/lib/permissions"
 import { isReleased, parseReleaseAt } from "@/lib/lesson-release"
+import { parseTestSettings } from "@/lib/quiz"
 
 async function handlePOST(
   req: NextRequest,
@@ -29,6 +30,9 @@ async function handlePOST(
       isFree?: boolean
       /** ISO date-time students get the lesson; null or omitted = straight away. */
       releaseAt?: string | null
+      /** Tests only: score out of 100 needed to pass, and attempts allowed (null = unlimited). */
+      passMark?: number
+      maxAttempts?: number | null
       assets?: Array<{
         type: "VIDEO" | "PDF" | "IMAGE" | "DOCUMENT" | "AUDIO" | "SUBTITLE"
         title: string
@@ -52,6 +56,11 @@ async function handlePOST(
       return NextResponse.json({ message: "Release date is not a valid date" }, { status: 400 })
     }
 
+    const testSettings = type === "QUIZ" ? parseTestSettings(body) : {}
+    if (typeof testSettings === "string") {
+      return NextResponse.json({ message: testSettings }, { status: 400 })
+    }
+
     const section = await prisma.section.findFirst({ where: { id: sectionId, courseId } })
     if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })
 
@@ -65,6 +74,7 @@ async function handlePOST(
         description: description?.trim() ?? null,
         isFree,
         releaseAt,
+        ...testSettings,
         order: lessonCount + 1,
         assets: {
           create: assets.map((asset, i) => ({

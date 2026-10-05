@@ -151,6 +151,8 @@ async function handlePOST(req: NextRequest, { params }: RouteContext) {
                 order: lesson.order,
                 isFree: lesson.isFree,
                 releaseAt: move(lesson.releaseAt),
+                passMark: lesson.passMark,
+                maxAttempts: lesson.maxAttempts,
                 assets: {
                   create: lesson.assets.map((a) => ({
                     type: a.type,
@@ -168,6 +170,7 @@ async function handlePOST(req: NextRequest, { params }: RouteContext) {
                   create: lesson.questions.map((q) => ({
                     question: q.question,
                     imageUrl: q.imageUrl,
+                    mediaType: q.mediaType,
                     type: q.type,
                     order: q.order,
                     options: {

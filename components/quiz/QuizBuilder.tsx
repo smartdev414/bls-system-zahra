@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import {
-  Plus, Trash2, CheckCircle2, Circle, GripVertical,
+  Plus, Trash2, CheckCircle2, Circle, ArrowUp, ArrowDown,
   ChevronDown, ChevronUp, Loader2, Save, FlaskConical,
   ImageIcon, X, VideoIcon,
 } from "lucide-react"
@@ -12,21 +12,30 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
+import { isVideoMedia } from "@/lib/quiz"
+import { uploadFile } from "@/lib/upload-file"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type QuizOptionDraft = {
+  /** Set once saved, so an edit updates the option students already answered. */
+  id?: string
   text: string
   imageUrl?: string   // image or video url
   mediaType?: "image" | "video"
   isCorrect: boolean
   uploading?: boolean
+  /** Marks which upload the option is waiting on. */
+  uploadId?: string
 }
 
 export type QuestionDraft = {
+  /** Identifies the draft in the list while it is edited; any unique string. */
+  uid: string
   id?: string
   question: string
-  imageUrl?: string
+  imageUrl?: string   // image or video url
+  mediaType?: "image" | "video"
   type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
   options: QuizOptionDraft[]
   isOpen: boolean
@@ -38,13 +47,20 @@ export type QuestionDraft = {
 type Props = {
   lessonId: string | null
   questions: QuestionDraft[]
-  onChange: (questions: QuestionDraft[]) => void
+  /**
+   * Takes the new list or, like a state setter, a function of the current one.
+   * Uploads and saves finish some time after they start, and must be applied to
+   * the list as it is then — not as it was when they began — or whatever the
+   * admin typed or added in the meantime is thrown away.
+   */
+  onChange: (next: QuestionDraft[] | ((current: QuestionDraft[]) => QuestionDraft[])) => void
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function blankMultiple(): QuestionDraft {
   return {
+    uid: crypto.randomUUID(),
     question: "",
     type: "MULTIPLE_CHOICE",
     options: [
@@ -61,6 +77,7 @@ function blankMultiple(): QuestionDraft {
 
 function blankTrueFalse(): QuestionDraft {
   return {
+    uid: crypto.randomUUID(),
     question: "",
     type: "TRUE_FALSE",
     options: [
@@ -73,13 +90,11 @@ function blankTrueFalse(): QuestionDraft {
   }
 }
 
-async function uploadImage(file: File): Promise<string> {
-  const form = new FormData()
-  form.append("file", file)
-  const res = await fetch("/api/upload/image", { method: "POST", body: form })
-  if (!res.ok) throw new Error("Could not upload image")
-  const { fileUrl } = await res.json() as { fileUrl: string }
-  return fileUrl
+// Images are converted to WebP by the server; a video goes straight to storage
+// like a lesson video does, so a signed clip can be the question or an answer.
+async function uploadMedia(file: File): Promise<{ url: string; mediaType: "image" | "video" }> {
+  const { fileUrl } = await uploadFile(file)
+  return { url: fileUrl, mediaType: file.type.startsWith("video/") ? "video" : "image" }
 }
 
 // ─── MediaUploadButton ────────────────────────────────────────────────────────
@@ -111,8 +126,8 @@ function MediaUploadButton({
         "relative rounded-lg overflow-hidden border bg-muted group",
         size === "question" ? "w-full max-w-xs aspect-video" : "size-16 shrink-0"
       )}>
-        {(mediaType === "video" || /\.(mp4|webm|mov|ogg|m4v)(\?|$)/i.test(mediaUrl ?? ""))
-          ? <ProtectedVideo src={mediaUrl} className="w-full h-full object-cover" muted />
+        {isVideoMedia(mediaUrl, mediaType)
+          ? <ProtectedVideo src={mediaUrl} className="w-full h-full object-cover" muted controls={size === "question"} />
           : <img src={mediaUrl} alt="" className="w-full h-full object-cover" />}
         <button
           type="button"
@@ -153,72 +168,87 @@ function QuestionCard({
   q,
   index,
   lessonId,
-  onUpdate,
+  onPatch,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: {
   q: QuestionDraft
   index: number
   lessonId: string | null
-  onUpdate: (q: QuestionDraft) => void
+  /** Change this question, starting from what it is at that moment. */
+  onPatch: (change: (current: QuestionDraft) => QuestionDraft) => void
   onDelete: () => void
+  /** Swap with the question above / below; undefined at the ends. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   function setField<K extends keyof QuestionDraft>(key: K, value: QuestionDraft[K]) {
-    onUpdate({ ...q, [key]: value })
+    onPatch((cur) => ({ ...cur, [key]: value }))
   }
 
   function setOption(i: number, patch: Partial<QuizOptionDraft>) {
-    const options = q.options.map((o, idx) => (idx === i ? { ...o, ...patch } : o))
-    onUpdate({ ...q, options })
+    onPatch((cur) => ({ ...cur, options: cur.options.map((o, idx) => (idx === i ? { ...o, ...patch } : o)) }))
   }
 
   function setCorrect(i: number) {
-    const options = q.options.map((o, idx) => ({ ...o, isCorrect: idx === i }))
-    onUpdate({ ...q, options })
+    onPatch((cur) => ({ ...cur, options: cur.options.map((o, idx) => ({ ...o, isCorrect: idx === i })) }))
   }
 
   function addOption() {
-    onUpdate({ ...q, options: [...q.options, { text: "", isCorrect: false }] })
+    onPatch((cur) => ({ ...cur, options: [...cur.options, { text: "", isCorrect: false }] }))
   }
 
   function removeOption(i: number) {
-    if (q.options.length <= 2) return
-    onUpdate({ ...q, options: q.options.filter((_, idx) => idx !== i) })
+    onPatch((cur) => (cur.options.length <= 2 ? cur : { ...cur, options: cur.options.filter((_, idx) => idx !== i) }))
   }
 
-  async function handleQuestionImage(file: File) {
-    onUpdate({ ...q, questionImageUploading: true })
+  async function handleQuestionMedia(file: File) {
+    onPatch((cur) => ({ ...cur, questionImageUploading: true, error: null }))
     try {
-      const url = await uploadImage(file)
-      onUpdate({ ...q, imageUrl: url, questionImageUploading: false })
-    } catch {
-      onUpdate({ ...q, questionImageUploading: false, error: "Image upload failed" })
+      const { url, mediaType } = await uploadMedia(file)
+      onPatch((cur) => ({ ...cur, imageUrl: url, mediaType, questionImageUploading: false }))
+    } catch (e) {
+      const error = e instanceof Error ? e.message : "Upload failed"
+      onPatch((cur) => ({ ...cur, questionImageUploading: false, error }))
     }
   }
 
   async function handleOptionMedia(i: number, file: File) {
-    const isVideo = file.type.startsWith("video/")
-    setOption(i, { uploading: true })
+    // The option is tagged so it can be found again when the upload ends, even
+    // if another option was removed while it ran.
+    const uploadId = crypto.randomUUID()
+    const finish = (patch: Partial<QuizOptionDraft>, error?: string) =>
+      onPatch((cur) => ({
+        ...cur,
+        options: cur.options.map((o) =>
+          o.uploadId === uploadId ? { ...o, ...patch, uploading: false, uploadId: undefined } : o
+        ),
+        ...(error && { error }),
+      }))
+
+    onPatch((cur) => ({
+      ...cur,
+      error: null,
+      options: cur.options.map((o, idx) => (idx === i ? { ...o, uploading: true, uploadId } : o)),
+    }))
     try {
-      const url = await uploadImage(file)
-      const options = q.options.map((o, idx) =>
-        idx === i ? { ...o, imageUrl: url, mediaType: isVideo ? "video" as const : "image" as const, uploading: false } : o
-      )
-      onUpdate({ ...q, options })
-    } catch {
-      setOption(i, { uploading: false })
-      onUpdate({ ...q, error: "Media upload failed" })
+      const { url, mediaType } = await uploadMedia(file)
+      finish({ imageUrl: url, mediaType })
+    } catch (e) {
+      finish({}, e instanceof Error ? e.message : "Upload failed")
     }
   }
 
   async function saveQuestion() {
     if (!lessonId) return
-    if (!q.question.trim()) { onUpdate({ ...q, error: "Question text is required" }); return }
-    if (!q.options.some((o) => o.isCorrect)) { onUpdate({ ...q, error: "Mark at least one correct answer" }); return }
-    if (q.options.some((o) => !o.text.trim() && !o.imageUrl)) {
-      onUpdate({ ...q, error: "Each option needs text or an image" }); return
-    }
+    const fail = (error: string) => onPatch((cur) => ({ ...cur, isSaving: false, error }))
+    if (!q.question.trim()) return fail("Question text is required")
+    if (!q.options.some((o) => o.isCorrect)) return fail("Mark the correct answer")
+    if (q.options.some((o) => !o.text.trim() && !o.imageUrl)) return fail("Each option needs text or an image")
+    if (q.questionImageUploading || q.options.some((o) => o.uploading)) return fail("Wait for the upload to finish")
 
-    onUpdate({ ...q, isSaving: true, error: null })
+    onPatch((cur) => ({ ...cur, isSaving: true, error: null }))
     try {
       const url = q.id
         ? `/api/tutor/lessons/${lessonId}/questions/${q.id}`
@@ -229,23 +259,42 @@ function QuestionCard({
         body: JSON.stringify({
           question: q.question,
           imageUrl: q.imageUrl ?? null,
+          mediaType: q.mediaType ?? null,
           type: q.type,
-          options: q.options.map((o) => ({ text: o.text, imageUrl: o.imageUrl ?? null, isCorrect: o.isCorrect })),
+          options: q.options.map((o) => ({
+            id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
+          })),
         }),
       })
-      const data = await res.json() as { question?: { id: string }; message?: string }
+      const data = await res.json() as {
+        question?: { id: string; options: Array<{ id: string }> }; message?: string
+      }
       if (!res.ok) throw new Error(data.message ?? "Failed to save")
-      onUpdate({ ...q, id: data.question!.id, isSaving: false, isOpen: false, error: null })
+      const saved = data.question!
+      // Options come back in the order they were sent — keep their ids for the next edit.
+      onPatch((cur) => ({
+        ...cur,
+        id: saved.id,
+        options: cur.options.map((o, i) => ({ ...o, id: saved.options[i]?.id ?? o.id })),
+        isSaving: false, isOpen: false, error: null,
+      }))
     } catch (e) {
-      onUpdate({ ...q, isSaving: false, error: e instanceof Error ? e.message : "Failed to save" })
+      fail(e instanceof Error ? e.message : "Failed to save")
     }
   }
 
   async function deleteQuestion() {
     if (!lessonId || !q.id) { onDelete(); return }
-    onUpdate({ ...q, isSaving: true })
-    try { await fetch(`/api/tutor/lessons/${lessonId}/questions/${q.id}`, { method: "DELETE" }) }
-    finally { onDelete() }
+    if (!window.confirm("Delete this question? Answers students have already given to it are removed too.")) return
+    onPatch((cur) => ({ ...cur, isSaving: true, error: null }))
+    try {
+      const res = await fetch(`/api/tutor/lessons/${lessonId}/questions/${q.id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error("Could not delete this question")
+      onDelete()
+    } catch (e) {
+      const error = e instanceof Error ? e.message : "Could not delete this question"
+      onPatch((cur) => ({ ...cur, isSaving: false, isOpen: true, error }))
+    }
   }
 
   const isSaved = !!q.id && !q.isOpen
@@ -257,7 +306,16 @@ function QuestionCard({
     )}>
       {/* Card header */}
       <div className="flex items-center gap-3 px-4 py-3">
-        <GripVertical className="size-4 text-muted-foreground shrink-0" />
+        <div className="flex flex-col shrink-0">
+          <button type="button" title="Move up" disabled={!onMoveUp} onClick={onMoveUp}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none">
+            <ArrowUp className="size-3.5" />
+          </button>
+          <button type="button" title="Move down" disabled={!onMoveDown} onClick={onMoveDown}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none">
+            <ArrowDown className="size-3.5" />
+          </button>
+        </div>
         <div className="flex-1 min-w-0">
           {isSaved
             ? <p className="text-sm font-medium truncate">{q.question}</p>
@@ -296,18 +354,19 @@ function QuestionCard({
             />
           </div>
 
-          {/* Optional question image */}
+          {/* Optional question image or video */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">
-              Question image <span className="font-normal">(optional — e.g. a BSL sign to identify)</span>
+              Question image or video <span className="font-normal">(optional — e.g. a BSL sign to identify)</span>
             </Label>
             <MediaUploadButton
               mediaUrl={q.imageUrl}
-              mediaType="image"
+              mediaType={q.mediaType}
               uploading={q.questionImageUploading}
-              onUpload={handleQuestionImage}
-              onRemove={() => setField("imageUrl", undefined)}
+              onUpload={handleQuestionMedia}
+              onRemove={() => onPatch((cur) => ({ ...cur, imageUrl: undefined, mediaType: undefined }))}
               size="question"
+              acceptVideo
             />
           </div>
 
@@ -317,7 +376,7 @@ function QuestionCard({
               {q.type === "TRUE_FALSE" ? "Correct answer" : "Options"}
               {q.type !== "TRUE_FALSE" && (
                 <span className="text-muted-foreground font-normal ml-1">
-                  — add text and/or an image per option, click ○ to mark correct
+                  — add text and/or an image or video per option, click ○ to mark correct
                 </span>
               )}
             </Label>
@@ -391,15 +450,54 @@ function QuestionCard({
 // ─── QuizBuilder ──────────────────────────────────────────────────────────────
 
 export function QuizBuilder({ lessonId, questions, onChange }: Props) {
+  const [orderError, setOrderError] = useState<string | null>(null)
+
   function add(type: "MULTIPLE_CHOICE" | "TRUE_FALSE") {
-    onChange([...questions, type === "TRUE_FALSE" ? blankTrueFalse() : blankMultiple()])
+    onChange((current) => [...current, type === "TRUE_FALSE" ? blankTrueFalse() : blankMultiple()])
+  }
+
+  // On a saved test a new question goes to the end when it is saved, so it can
+  // only be moved once it has been.
+  const movable = (a: number, b: number) => !lessonId || (!!questions[a].id && !!questions[b].id)
+
+  const swap = (a: string, b: string) => onChange((current) => {
+    const from = current.findIndex((q) => q.uid === a)
+    const to = current.findIndex((q) => q.uid === b)
+    if (from < 0 || to < 0) return current
+    const next = [...current]
+    ;[next[from], next[to]] = [next[to], next[from]]
+    return next
+  })
+
+  // Swap two questions. On a saved test the new order is stored straight away.
+  async function move(from: number, to: number) {
+    const a = questions[from].uid
+    const b = questions[to].uid
+    swap(a, b)
+    setOrderError(null)
+
+    const next = [...questions]
+    ;[next[from], next[to]] = [next[to], next[from]]
+    const orderedIds = next.flatMap((q) => (q.id ? [q.id] : []))
+    if (!lessonId || orderedIds.length < 2) return
+    try {
+      const res = await fetch(`/api/tutor/lessons/${lessonId}/questions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      swap(a, b)
+      setOrderError("Could not save the new order. Please try again.")
+    }
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <FlaskConical className="size-4 text-primary" />
-        <h3 className="font-semibold text-sm">Quiz Questions</h3>
+        <h3 className="font-semibold text-sm">Test Questions</h3>
         <Badge variant="outline" className="text-[10px]">
           {questions.length} question{questions.length !== 1 ? "s" : ""}
         </Badge>
@@ -414,14 +512,18 @@ export function QuizBuilder({ lessonId, questions, onChange }: Props) {
 
       {questions.map((q, i) => (
         <QuestionCard
-          key={i}
+          key={q.uid}
           q={q}
           index={i}
           lessonId={lessonId}
-          onUpdate={(updated) => onChange(questions.map((old, idx) => (idx === i ? updated : old)))}
-          onDelete={() => onChange(questions.filter((_, idx) => idx !== i))}
+          onPatch={(change) => onChange((current) => current.map((old) => (old.uid === q.uid ? change(old) : old)))}
+          onDelete={() => onChange((current) => current.filter((old) => old.uid !== q.uid))}
+          onMoveUp={i > 0 && movable(i, i - 1) ? () => move(i, i - 1) : undefined}
+          onMoveDown={i < questions.length - 1 && movable(i, i + 1) ? () => move(i, i + 1) : undefined}
         />
       ))}
+
+      {orderError && <p className="text-xs text-destructive">{orderError}</p>}
 
       <div className="flex gap-2 flex-wrap">
         <Button type="button" variant="outline" size="sm" onClick={() => add("MULTIPLE_CHOICE")}>

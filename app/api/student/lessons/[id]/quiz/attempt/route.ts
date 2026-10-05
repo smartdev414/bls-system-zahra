@@ -4,9 +4,10 @@ import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
+import { attemptsLeft, revealsAnswers } from "@/lib/quiz"
 
 // POST /api/student/lessons/[id]/quiz/attempt
-// body: { enrollmentId: string; answers: { questionId: string; optionId: string }[] }
+// body: { answers: { questionId: string; optionId: string }[] }
 async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -27,7 +28,7 @@ async function handlePOST(
       },
     })
     // A test that has not been released yet cannot be read or taken.
-    if (!lesson || !isReleased(lesson)) {
+    if (!lesson || lesson.type !== "QUIZ" || !isReleased(lesson)) {
       return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
     }
 
@@ -39,12 +40,22 @@ async function handlePOST(
     }
 
     const body = await req.json() as {
-      enrollmentId: string
       answers: Array<{ questionId: string; optionId: string }>
     }
 
-    if (!body.answers?.length) {
+    if (!Array.isArray(body.answers) || body.answers.length === 0) {
       return NextResponse.json({ message: "answers are required" }, { status: 400 })
+    }
+    if (lesson.questions.length === 0) {
+      return NextResponse.json({ message: "This test has no questions yet" }, { status: 400 })
+    }
+
+    const previous = await prisma.quizAttempt.findMany({
+      where: { lessonId: id, userId: session.sub },
+      select: { passed: true },
+    })
+    if (attemptsLeft(lesson.maxAttempts, previous.length) === 0) {
+      return NextResponse.json({ message: "You have used all your attempts for this test" }, { status: 409 })
     }
 
     // Grade the attempt
@@ -52,16 +63,16 @@ async function handlePOST(
     let correct = 0
 
     const gradedAnswers = lesson.questions.map((q) => {
-      const selectedOptionId = answerMap.get(q.id) ?? null
-      const selectedOption = q.options.find((o) => o.id === selectedOptionId)
+      const selectedOption = q.options.find((o) => o.id === answerMap.get(q.id))
       const isCorrect = selectedOption?.isCorrect ?? false
       if (isCorrect) correct++
-      return { questionId: q.id, optionId: selectedOptionId, isCorrect }
+      // Only an option of this question is stored; anything else counts as unanswered.
+      return { questionId: q.id, optionId: selectedOption?.id ?? null, isCorrect }
     })
 
     const total = lesson.questions.length
-    const score = total > 0 ? Math.round((correct / total) * 100) : 0
-    const passed = score >= 70
+    const score = Math.round((correct / total) * 100)
+    const passed = score >= lesson.passMark
 
     const attempt = await prisma.quizAttempt.create({
       data: {
@@ -69,13 +80,7 @@ async function handlePOST(
         userId: session.sub,
         score,
         passed,
-        answers: {
-          create: gradedAnswers.map((a) => ({
-            questionId: a.questionId,
-            optionId: a.optionId,
-            isCorrect: a.isCorrect,
-          })),
-        },
+        answers: { create: gradedAnswers },
       },
       include: {
         answers: { select: { questionId: true, optionId: true, isCorrect: true } },
@@ -91,6 +96,9 @@ async function handlePOST(
       })
     }
 
+    const attempts = [...previous, { passed }]
+    const left = attemptsLeft(lesson.maxAttempts, attempts.length)
+
     // Notify the student of their quiz result
     void createNotification(
       session.sub,
@@ -98,18 +106,32 @@ async function handlePOST(
       passed ? `Quiz passed — ${score}%` : `Quiz failed — ${score}%`,
       passed
         ? `You scored ${correct}/${total} on "${lesson.title}". Keep it up!`
-        : `You scored ${correct}/${total} on "${lesson.title}". Review and try again.`,
+        : left === 0
+          ? `You scored ${correct}/${total} on "${lesson.title}". You have no attempts left — speak to your teacher.`
+          : `You scored ${correct}/${total} on "${lesson.title}". Review and try again.`,
       `/student/lessons/${id}`,
     )
 
-    // Fetch correct answers to return with result
-    const questionsWithAnswers = await prisma.quizQuestion.findMany({
+    // The questions to review against — with the correct answers only when the
+    // student may see them.
+    const reveal = revealsAnswers(lesson.maxAttempts, attempts)
+    const fullQuestions = await prisma.quizQuestion.findMany({
       where: { lessonId: id },
       orderBy: { order: "asc" },
       include: { options: { orderBy: { order: "asc" } } },
     })
+    const questions = fullQuestions.map((q) => ({
+      ...q,
+      options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
+    }))
 
-    return NextResponse.json({ attempt, score, passed, correct, total, questions: questionsWithAnswers })
+    return NextResponse.json({
+      attempt, score, passed, correct, total,
+      passMark: lesson.passMark,
+      attemptsLeft: left,
+      answersRevealed: reveal,
+      questions,
+    })
   } catch (err) {
     console.error("[POST /api/student/lessons/[id]/quiz/attempt]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
