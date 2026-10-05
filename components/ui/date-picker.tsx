@@ -27,8 +27,10 @@ export function DatePicker({
   disabled,
   className,
 }: DatePickerProps) {
+  // Picking a day is the whole job, so the calendar closes on it.
+  const [open, setOpen] = React.useState(false)
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -46,7 +48,9 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={value}
-          onSelect={onChange}
+          // Open on the month of the chosen date, not on today's.
+          defaultMonth={value}
+          onSelect={(date) => { onChange(date); if (date) setOpen(false) }}
           disabled={disabled}
           initialFocus
         />

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { courseContentScope } from "@/lib/permissions"
+import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
+import { parseReleaseAt } from "@/lib/lesson-release"
 
 async function verifyLessonOwnership(lessonId: string, session: { role: string; sub: string }) {
   const lesson = await prisma.lesson.findFirst({
@@ -24,7 +25,11 @@ async function handleGET(
     }
 
     const { id } = await params
-    const lesson = await verifyLessonOwnership(id, session)
+    // Reading is open to the course's teachers; changing it is not (see PUT).
+    const lesson = await prisma.lesson.findFirst({
+      where: { id, section: { course: courseTeachScope(session) } },
+      select: { id: true },
+    })
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const full = await prisma.lesson.findUnique({
@@ -35,11 +40,11 @@ async function handleGET(
           orderBy: { order: "asc" },
           include: { options: { orderBy: { order: "asc" } } },
         },
-        section: { select: { courseId: true } },
+        section: { select: { courseId: true, title: true, course: { select: { title: true } } } },
       },
     })
 
-    return NextResponse.json({ lesson: full })
+    return NextResponse.json({ lesson: full, canEdit: can(session.role, "lessons.manage") })
   } catch (err) {
     console.error("[GET /api/tutor/lessons/[id]]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
@@ -53,7 +58,7 @@ async function handlePUT(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -66,6 +71,13 @@ async function handlePUT(
       description?: string
       type?: "VIDEO" | "TEXT" | "QUIZ"
       isFree?: boolean
+      /** ISO date-time students get the lesson; null = straight away. */
+      releaseAt?: string | null
+    }
+
+    const releaseAt = body.releaseAt === undefined ? undefined : parseReleaseAt(body.releaseAt)
+    if (body.releaseAt !== undefined && releaseAt === undefined) {
+      return NextResponse.json({ message: "Release date is not a valid date" }, { status: 400 })
     }
 
     const updated = await prisma.lesson.update({
@@ -75,6 +87,7 @@ async function handlePUT(
         ...(body.description !== undefined && { description: body.description?.trim() ?? null }),
         ...(body.type && { type: body.type }),
         ...(typeof body.isFree === "boolean" && { isFree: body.isFree }),
+        ...(releaseAt !== undefined && { releaseAt }),
       },
       include: { assets: { orderBy: { order: "asc" } } },
     })
@@ -93,7 +106,7 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

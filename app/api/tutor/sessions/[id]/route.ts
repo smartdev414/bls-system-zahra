@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can, isStaff, ownerScope } from "@/lib/permissions"
+import { can, courseTeachScope, isStaff, ownerScope } from "@/lib/permissions"
 import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
@@ -107,12 +107,25 @@ async function handlePATCH(
       scheduledAt?: string
       durationMins?: number
       maxStudents?: number | null
+      /** null unlinks the session from its course. */
+      courseId?: string | null
       visibility?: "PUBLIC" | "INVITE_ONLY"
       invitedStudentIds?: string[]
       invitedTutorIds?: string[]
     }
 
     const data: Record<string, unknown> = {}
+    if (body.courseId !== undefined) {
+      // Same rule as scheduling: only a course this person teaches.
+      if (body.courseId && body.courseId !== existing.courseId) {
+        const course = await prisma.course.findFirst({
+          where: { id: body.courseId, ...courseTeachScope(session) },
+          select: { id: true },
+        })
+        if (!course) return NextResponse.json({ message: "Course not found" }, { status: 400 })
+      }
+      data.courseId = body.courseId || null
+    }
     if (body.title) data.title = body.title.trim()
     if (body.description !== undefined) data.description = body.description?.trim() ?? null
     if (body.scheduledAt) data.scheduledAt = new Date(body.scheduledAt)

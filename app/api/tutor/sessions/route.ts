@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can, isStaff } from "@/lib/permissions"
+import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { randomBytes } from "crypto"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
 import { reconcilePendingRecordings } from "@/lib/recording"
+import { usableGroups } from "@/lib/course-groups"
 
 /**
  * Resolves the tutor a live session belongs to.
@@ -34,7 +35,8 @@ async function resolveSessionOwner(
   return tutor.id
 }
 
-async function handleGET() {
+// GET /api/tutor/sessions[?courseId=…] — optionally just one course's classes
+async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -42,10 +44,14 @@ async function handleGET() {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
+    const courseId = req.nextUrl.searchParams.get("courseId")?.trim()
+    const courseFilter = courseId ? { courseId } : {}
+
     // Sessions this tutor owns, plus sessions they were invited to co-teach.
     // Staff (admin, support) build the whole timetable, so they see every one.
     const sessionInclude = {
       course: { select: { id: true, title: true } },
+      group: { select: { id: true, name: true } },
       tutor: { select: { id: true, name: true } },
       _count: { select: { attendances: true, invites: true } },
     } as const
@@ -54,12 +60,12 @@ async function handleGET() {
 
     const [owned, coTutorLinks] = await Promise.all([
       prisma.liveSession.findMany({
-        where: staff ? {} : { tutorId: session.sub },
+        where: { ...(staff ? {} : { tutorId: session.sub }), ...courseFilter },
         orderBy: { scheduledAt: "desc" },
         include: sessionInclude,
       }),
       prisma.liveSessionCoTutor.findMany({
-        where: { tutorId: session.sub },
+        where: { tutorId: session.sub, session: courseFilter },
         include: { session: { include: sessionInclude } },
       }),
     ])
@@ -105,6 +111,8 @@ async function handleGET() {
       status: s.status,
       visibility: s.visibility,
       course: s.course,
+      // Set when the class is for one group on the course.
+      group: s.group,
       attendeeCount: s._count.attendances,
       inviteCount: s._count.invites,
       startedAt: s.startedAt?.toISOString() ?? null,
@@ -155,9 +163,11 @@ async function handlePOST(req: NextRequest) {
       repeatWeeks?: number
       /** Staff only — the tutor who will take the class. */
       tutorId?: string
+      /** The class is for this group: its members are invited, nobody else. */
+      groupId?: string
     }
 
-    const { title, description, scheduledAt, durationMins, maxStudents, courseId, visibility = "PUBLIC", invitedStudentIds = [], invitedTutorIds = [], repeatWeeks = 1 } = body
+    const { title, description, scheduledAt, durationMins, maxStudents, courseId, invitedTutorIds = [], repeatWeeks = 1 } = body
 
     if (!title?.trim()) return NextResponse.json({ message: "Title is required" }, { status: 400 })
     if (!scheduledAt) return NextResponse.json({ message: "scheduledAt is required" }, { status: 400 })
@@ -169,6 +179,32 @@ async function handlePOST(req: NextRequest) {
     // schedule on a tutor's behalf and must name them.
     const ownerId = await resolveSessionOwner(session, body.tutorId)
     if (typeof ownerId !== "string") return ownerId
+
+    // The course link decides which students see the class, so a tutor may only
+    // link the courses they teach.
+    if (courseId) {
+      const course = await prisma.course.findFirst({
+        where: { id: courseId, ...courseTeachScope(session) },
+        select: { id: true },
+      })
+      if (!course) return NextResponse.json({ message: "Course not found" }, { status: 400 })
+    }
+
+    // A class for one group is invite-only by definition, and its invitees are
+    // the group's members — taken from the group, not from what was sent.
+    let visibility = body.visibility ?? "PUBLIC"
+    let invitedStudentIds = body.invitedStudentIds ?? []
+    let groupId: string | null = null
+    if (body.groupId) {
+      const group = await prisma.studentGroup.findFirst({
+        where: { id: body.groupId, ...usableGroups(session) },
+        select: { id: true, members: { select: { studentId: true } } },
+      })
+      if (!group) return NextResponse.json({ message: "Group not found" }, { status: 400 })
+      groupId = group.id
+      visibility = "INVITE_ONLY"
+      invitedStudentIds = group.members.map((m) => m.studentId)
+    }
 
     const occurrences = Math.min(Math.max(Math.floor(repeatWeeks) || 1, 1), 52)
     const baseDate = new Date(scheduledAt)
@@ -187,6 +223,7 @@ async function handlePOST(req: NextRequest) {
             roomName: `bsl-${randomBytes(6).toString("hex")}`,
             maxStudents: maxStudents ?? null,
             courseId: courseId ?? null,
+            groupId,
             status: "SCHEDULED",
             visibility,
             ...(visibility === "INVITE_ONLY" && invitedStudentIds.length > 0 && {

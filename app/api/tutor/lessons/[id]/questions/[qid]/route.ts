@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { courseContentScope } from "@/lib/permissions"
+import { can, courseContentScope } from "@/lib/permissions"
 
 async function verifyOwnership(lessonId: string, session: { role: string; sub: string }) {
   return prisma.lesson.findFirst({
@@ -18,7 +18,7 @@ async function handlePUT(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -80,7 +80,7 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

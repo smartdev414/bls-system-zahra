@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { courseContentScope } from "@/lib/permissions"
+import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
 
 async function verifyOwnership(lessonId: string, session: { role: string; sub: string }) {
   return prisma.lesson.findFirst({
@@ -23,7 +23,10 @@ async function handleGET(
     }
 
     const { id } = await params
-    const lesson = await verifyOwnership(id, session)
+    const lesson = await prisma.lesson.findFirst({
+      where: { id, section: { course: courseTeachScope(session) } },
+      select: { id: true },
+    })
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const questions = await prisma.quizQuestion.findMany({
@@ -47,7 +50,7 @@ async function handlePOST(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
+import { useDebounce } from "@/hooks/use-debounce"
 
 type Student = {
   id: string
@@ -25,6 +26,8 @@ type Student = {
 type Group = {
   id: string
   name: string
+  // Whose group it is — only sent to staff, who see every tutor's groups.
+  tutorName?: string
   members: Student[]
 }
 
@@ -37,36 +40,76 @@ function initials(name: string) {
 
 /**
  * A multi-select student picker modal that works without a session ID.
- * Used in the "new session" form to pre-select invitees before creation.
+ * Used in the "new session" form to pre-select invitees before creation, and on
+ * the course page to put students (or a whole group) onto a course.
  */
 export function StudentPickerModal({
   selected,
   onConfirm,
   onClose,
+  title = "Select Students to Invite",
+  description = "Choose individual students or pick a whole group.",
+  confirmLabel = "Confirm Selection",
+  excludeIds,
+  confirming = false,
+  hideGroups = false,
 }: {
   selected: Set<string>
   onConfirm: (ids: Set<string>, students: Student[]) => void
   onClose: () => void
+  title?: string
+  description?: string
+  confirmLabel?: string
+  /** Students to leave out entirely — e.g. the ones already on the course. */
+  excludeIds?: Set<string>
+  /** The caller is saving the selection; hold the modal open and block a second submit. */
+  confirming?: boolean
+  /** Individual students only — for when whole groups are added another way. */
+  hideGroups?: boolean
 }) {
   const { data: studentsData } = useFetch<StudentsData>("/api/tutor/students")
   const { data: groupsData } = useFetch<GroupsData>("/api/tutor/groups")
 
   const [search, setSearch] = useState("")
+  // The list above is the students this person already works with. Typing a
+  // name also looks through every student, so somebody new can be found.
+  const debouncedSearch = useDebounce(search.trim())
+  const { data: searchData } = useFetch<StudentsData>(
+    `/api/tutor/students/search?q=${encodeURIComponent(debouncedSearch)}`,
+    { immediate: debouncedSearch.length >= 2, errorMessage: false },
+  )
+  // Students ticked from a search, kept so they survive the search being cleared.
+  const [found, setFound] = useState<Map<string, Student>>(new Map())
   const [localSelected, setLocalSelected] = useState<Set<string>>(new Set(selected))
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const allStudents = studentsData?.students ?? []
-  const groups = groupsData?.groups ?? []
+  const allStudents = useMemo(
+    () => (studentsData?.students ?? []).filter((s) => !excludeIds?.has(s.id)),
+    [studentsData, excludeIds]
+  )
+  const groups = useMemo(
+    () => (groupsData?.groups ?? []).map((g) => ({
+      ...g,
+      members: g.members.filter((m) => !excludeIds?.has(m.id)),
+    })),
+    [groupsData, excludeIds]
+  )
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allStudents
-    const q = search.toLowerCase()
-    return allStudents.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
+    const q = search.trim().toLowerCase()
+    const matches = (s: Student) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
+    const local = allStudents.filter(matches)
+    const seen = new Set(local.map((s) => s.id))
+    const extra = (debouncedSearch.length >= 2 ? searchData?.students ?? [] : []).filter(
+      (s) => !seen.has(s.id) && !excludeIds?.has(s.id) && matches(s),
     )
-  }, [allStudents, search])
+    return [...local, ...extra]
+  }, [allStudents, search, debouncedSearch, searchData, excludeIds])
 
   function toggleStudent(id: string) {
+    const student = filtered.find((s) => s.id === id)
+    if (student) setFound((prev) => new Map(prev).set(id, student))
     setLocalSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -101,6 +144,11 @@ export function StudentPickerModal({
   function selectAll() {
     const allIds = filtered.map((s) => s.id)
     const allAreSelected = allIds.every((id) => localSelected.has(id))
+    setFound((prev) => {
+      const next = new Map(prev)
+      filtered.forEach((s) => next.set(s.id, s))
+      return next
+    })
     if (allAreSelected) {
       setLocalSelected((prev) => {
         const next = new Set(prev)
@@ -117,7 +165,10 @@ export function StudentPickerModal({
   }
 
   function handleConfirm() {
-    const selectedStudents = allStudents.filter((s) => localSelected.has(s.id))
+    const known = new Map<string, Student>(found)
+    groups.forEach((g) => g.members.forEach((m) => known.set(m.id, m)))
+    allStudents.forEach((s) => known.set(s.id, s))
+    const selectedStudents = [...localSelected].flatMap((id) => (known.has(id) ? [known.get(id)!] : []))
     onConfirm(localSelected, selectedStudents)
   }
 
@@ -128,10 +179,10 @@ export function StudentPickerModal({
       <DialogContent className="max-w-lg flex flex-col gap-0 p-0 h-[80vh]">
         <DialogHeader className="px-5 pt-5 pb-4 shrink-0">
           <DialogTitle className="flex items-center gap-2">
-            <Users className="size-4 text-primary" /> Select Students to Invite
+            <Users className="size-4 text-primary" /> {title}
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Choose individual students or pick a whole group.
+            {description}
           </p>
         </DialogHeader>
 
@@ -141,7 +192,7 @@ export function StudentPickerModal({
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search students..."
+              placeholder="Search all students by name or email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 text-sm"
@@ -161,7 +212,7 @@ export function StudentPickerModal({
 
         <ScrollArea className="flex-1 min-h-0">
           {/* Groups section */}
-          {groups.length > 0 && !search.trim() && (
+          {!hideGroups && groups.length > 0 && !search.trim() && (
             <div>
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
@@ -192,8 +243,11 @@ export function StudentPickerModal({
                         onClick={() => toggleGroupExpand(group.id)}
                       >
                         <span className="text-sm font-medium">{group.name}</span>
+                        {group.tutorName && (
+                          <span className="text-xs text-muted-foreground truncate">{group.tutorName}</span>
+                        )}
                         <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                          {group.members.length} students
+                          {group.members.length} student{group.members.length !== 1 ? "s" : ""}
                         </Badge>
                         {isExpanded
                           ? <ChevronDown className="size-3.5 text-muted-foreground ml-auto" />
@@ -235,7 +289,7 @@ export function StudentPickerModal({
 
           {/* All students */}
           <div>
-            {(groups.length > 0 || !search.trim()) && (
+            {((!hideGroups && groups.length > 0) || !search.trim()) && (
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   {search.trim() ? "Search Results" : "All Students"}
@@ -288,9 +342,10 @@ export function StudentPickerModal({
             )}
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" onClick={handleConfirm}>
-              Confirm Selection
+            <Button variant="outline" size="sm" onClick={onClose} disabled={confirming}>Cancel</Button>
+            <Button size="sm" onClick={handleConfirm} disabled={confirming}>
+              {confirming && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+              {confirmLabel}
             </Button>
           </div>
         </div>

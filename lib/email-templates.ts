@@ -419,6 +419,8 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.RECORDING_READY,
   NotificationType.TICKET_RESOLVED,
   NotificationType.TICKET_COMMENT,
+  NotificationType.HOMEWORK_REMINDER,
+  NotificationType.COURSE_TEACHER_ADDED,
 ])
 
 export function renderEmailTemplate(
@@ -452,6 +454,8 @@ export function renderEmailTemplate(
     [NotificationType.RECORDING_READY]:    `🎬 ${title}`,
     [NotificationType.TICKET_RESOLVED]:    `✅ Your ticket has been resolved — ${title}`,
     [NotificationType.TICKET_COMMENT]:     `💬 Support replied to your ticket — ${title}`,
+    [NotificationType.HOMEWORK_REMINDER]:  `⏰ ${title}`,
+    [NotificationType.COURSE_TEACHER_ADDED]: `🎓 ${title}`,
   }
 
   const subject = subjects[type] ?? `BSL Platform — ${title}`
@@ -480,6 +484,8 @@ export function renderEmailTemplate(
     case NotificationType.NEW_LESSON:        html = newLesson(recipientName, body, link);        break
     case NotificationType.RECORDING_READY:   html = recordingReady(recipientName, body, link);   break
     case NotificationType.TICKET_RESOLVED:   html = generic(recipientName, title, body, link);   break
+    case NotificationType.HOMEWORK_REMINDER:    html = generic(recipientName, title, body, link); break
+    case NotificationType.COURSE_TEACHER_ADDED: html = generic(recipientName, title, body, link); break
     // body = ticket title, title = comment preview (passed as title for subject reuse)
     case NotificationType.TICKET_COMMENT:    html = ticketComment(recipientName, `Re: "${title}"`, body, link); break
     default:                                 html = generic(recipientName, title, body, link);   break

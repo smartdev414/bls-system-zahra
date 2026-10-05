@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { releasedLessons } from "@/lib/lesson-release"
 
 async function handleGET(req: Request) {
   try {
@@ -22,6 +23,8 @@ async function handleGET(req: Request) {
               orderBy: { order: "asc" },
               include: {
                 lessons: {
+                  // Lessons held back for a later release are not shown yet.
+                  where: releasedLessons(),
                   orderBy: { order: "asc" },
                   include: { assets: { orderBy: { order: "asc" } } },
                 },

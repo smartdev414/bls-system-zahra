@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { toast } from "sonner"
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
@@ -9,9 +11,13 @@ import Link from "@tiptap/extension-link"
 import {
   Bold, Italic, UnderlineIcon, Strikethrough,
   List, ListOrdered, AlignLeft, AlignCenter, AlignRight,
-  Heading2, Heading3, Link2, Minus,
+  Heading2, Heading3, Link2, Minus, Sparkles, Loader2, ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import type { DescriptionMode } from "@/lib/description-grammar"
 
 type Props = {
   value: string
@@ -19,6 +25,14 @@ type Props = {
   placeholder?: string
   disabled?: boolean
 }
+
+// What the AI menu offers. "fix" only corrects; the others reword.
+const AI_MODES: { mode: DescriptionMode; label: string; hint: string; done: string }[] = [
+  { mode: "fix", label: "Fix English", hint: "Spelling and grammar only", done: "English corrected" },
+  { mode: "natural", label: "Make it natural", hint: "Smooth, fluent wording", done: "Rewritten to sound natural" },
+  { mode: "friendly", label: "Make it friendly", hint: "Warm and encouraging", done: "Rewritten in a friendly tone" },
+  { mode: "professional", label: "Make it professional", hint: "Polished and courteous", done: "Rewritten in a professional tone" },
+]
 
 function ToolbarButton({
   onClick,
@@ -69,6 +83,51 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: Props
       onChange(html === "<p></p>" ? "" : html)
     },
   })
+
+  // The AI menu: the whole description goes to the grammar model and comes
+  // back corrected, or reworded in the tone picked, with its formatting kept.
+  // It is asked for, never automatic, and the toast offers the way back.
+  const [fixing, setFixing] = useState(false)
+
+  async function improve({ mode, done }: (typeof AI_MODES)[number]) {
+    if (!editor || fixing || editor.isEmpty) return
+    const before = editor.getHTML()
+    setFixing(true)
+    // Anything typed while the model is reading would be overwritten by its answer.
+    editor.setEditable(false)
+    try {
+      const res = await fetch("/api/tutor/descriptions/correct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html: before, mode }),
+      })
+      const body = await res.json().catch(() => null) as
+        { message?: string; available?: boolean; corrected?: string | null; failed?: boolean } | null
+      if (editor.isDestroyed) return
+      if (!res.ok) {
+        toast.error(body?.message ?? "Could not improve the English")
+      } else if (body?.available === false) {
+        toast.error("The AI writing help is not set up on this server")
+      } else if (body?.failed) {
+        toast.error("Could not improve the English just now — please try again")
+      } else if (!body?.corrected) {
+        toast.success(mode === "fix" ? "The English looks good — nothing to correct" : "Nothing to change")
+      } else {
+        editor.commands.setContent(body.corrected)
+        toast.success(done, {
+          action: {
+            label: "Undo",
+            onClick: () => { if (!editor.isDestroyed) editor.commands.setContent(before) },
+          },
+        })
+      }
+    } catch {
+      toast.error("Could not improve the English just now — please try again")
+    } finally {
+      if (!editor.isDestroyed) editor.setEditable(!disabled)
+      setFixing(false)
+    }
+  }
 
   if (!editor) return null
 
@@ -136,6 +195,37 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: Props
         >
           <Link2 className="size-3.5" />
         </ToolbarButton>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              title="Correct or reword the description with AI"
+              disabled={fixing}
+              className={cn(
+                "ml-auto flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium transition-colors",
+                "text-primary hover:bg-primary/10 data-[state=open]:bg-primary/10",
+                fixing && "opacity-60 cursor-wait"
+              )}
+            >
+              {fixing ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+              {fixing ? "Working…" : "Improve English"}
+              {!fixing && <ChevronDown className="size-3" />}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {AI_MODES.map((m, i) => (
+              <div key={m.mode}>
+                {/* The first only corrects; everything below it rewords. */}
+                {i === 1 && <DropdownMenuSeparator />}
+                <DropdownMenuItem onSelect={() => improve(m)} className="flex-col items-start gap-0">
+                  <span className="font-medium">{m.label}</span>
+                  <span className="text-xs text-muted-foreground">{m.hint}</span>
+                </DropdownMenuItem>
+              </div>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Editor area */}

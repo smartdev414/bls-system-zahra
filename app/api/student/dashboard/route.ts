@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { studentVisibleSessions } from "@/lib/session-access"
+import { releasedLessons } from "@/lib/lesson-release"
 
 async function handleGET() {
   try {
@@ -23,7 +25,7 @@ async function handleGET() {
                 tutor: { select: { name: true } },
                 sections: {
                   orderBy: { order: "asc" },
-                  include: { lessons: { orderBy: { order: "asc" } } },
+                  include: { lessons: { where: releasedLessons(), orderBy: { order: "asc" } } },
                 },
               },
             },
@@ -108,9 +110,14 @@ async function handleGET() {
     // Upcoming live sessions — include LIVE ones (even if scheduledAt is past) + future SCHEDULED
     const upcomingSessions = await prisma.liveSession.findMany({
       where: {
-        OR: [
-          { status: "LIVE" },
-          { status: "SCHEDULED", scheduledAt: { gte: new Date() } },
+        AND: [
+          {
+            OR: [
+              { status: "LIVE" },
+              { status: "SCHEDULED", scheduledAt: { gte: new Date() } },
+            ],
+          },
+          studentVisibleSessions(session.sub),
         ],
       },
       orderBy: [{ status: "desc" }, { scheduledAt: "asc" }],

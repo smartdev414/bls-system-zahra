@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { releasedLessons } from "@/lib/lesson-release"
 
 async function handleGET() {
   try {
@@ -21,7 +22,8 @@ async function handleGET() {
             sections: {
               include: {
                 lessons: {
-                  where: { type: "QUIZ" },
+                  // Tests appear on their release date, not before.
+                  where: { type: "QUIZ", ...releasedLessons() },
                   orderBy: { order: "asc" },
                   include: { assets: { orderBy: { order: "asc" } } },
                 },

@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
-import { courseContentScope } from "@/lib/permissions"
+import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
 
 async function handleGET(
   _req: Request,
@@ -19,9 +19,15 @@ async function handleGET(
     const { id } = await params
 
     const course = await prisma.course.findFirst({
-      where: { id, ...courseContentScope(session) },
+      // Teachers open the courses they are on; only admins may change them.
+      where: { id, ...courseTeachScope(session) },
       include: {
         category: true,
+        tutor: { select: { id: true, name: true } },
+        teachers: {
+          orderBy: { assignedAt: "asc" },
+          select: { tutor: { select: { id: true, name: true } } },
+        },
         sections: {
           orderBy: { order: "asc" },
           include: {
@@ -37,7 +43,11 @@ async function handleGET(
 
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
-    return NextResponse.json({ course })
+    return NextResponse.json({
+      course: { ...course, teachers: course.teachers.map((t) => t.tutor) },
+      // Drives the page: without it the course is shown read-only.
+      canEdit: can(session.role, "lessons.manage"),
+    })
   } catch (err) {
     console.error("[GET /api/tutor/courses/[id]]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
@@ -51,7 +61,7 @@ async function handlePUT(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "lessons.manage")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -111,7 +121,7 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (!can(session.role, "courses.delete")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

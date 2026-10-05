@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { courseTeachScope } from "@/lib/permissions"
 
 async function handleGET() {
   try {
@@ -11,9 +12,13 @@ async function handleGET() {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
+    // The courses this tutor teaches — led or assigned. (An admin opening this
+    // endpoint only ever saw their own, so keep that rather than every course.)
+    const taught = session.role === "ADMIN" ? { tutorId: session.sub } : courseTeachScope(session)
+
     // Courses with enrollment counts
     const courses = await prisma.course.findMany({
-      where: { tutorId: session.sub },
+      where: taught,
       include: {
         _count: { select: { enrollments: true } },
         reviews: { select: { rating: true } },
@@ -24,7 +29,7 @@ async function handleGET() {
     // Count unique students: enrolled in any course OR invited by this tutor
     const [enrolledStudentIds, invitedStudentIds] = await Promise.all([
       prisma.enrollment.findMany({
-        where: { course: { tutorId: session.sub } },
+        where: { course: taught },
         select: { studentId: true },
         distinct: ["studentId"],
       }),
@@ -60,7 +65,7 @@ async function handleGET() {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     const recentEnrollments = await prisma.enrollment.findMany({
       where: {
-        course: { tutorId: session.sub },
+        course: taught,
         enrolledAt: { gte: thirtyDaysAgo },
       },
       include: {
@@ -74,7 +79,7 @@ async function handleGET() {
 
     // Average completion across all enrollments
     const allEnrollments = await prisma.enrollment.findMany({
-      where: { course: { tutorId: session.sub } },
+      where: { course: taught },
       include: { progress: true, course: { include: { sections: { include: { lessons: true } } } } },
     })
 

@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can } from "@/lib/permissions"
+import { can, courseTeachScope } from "@/lib/permissions"
 import { createNotification, createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { onStudentRemovedFromCourse } from "@/lib/course-groups"
 
 /**
  * Staff-side enrolment: putting students onto a course rather than waiting for
  * them to enrol themselves. Used by the Support Team desk, where office staff
  * book people onto classes on the phone.
  */
+
+/**
+ * The course, if this caller may manage who is on it. Staff manage any course;
+ * a tutor holds `enrolments.manage` too, but only for the courses they teach.
+ */
+async function findManagedCourse(session: { role: string; sub: string }, id: string) {
+  return prisma.course.findFirst({
+    where: { id, ...courseTeachScope(session) },
+    select: { id: true, title: true, tutorId: true },
+  })
+}
 
 // GET /api/admin/enrolments?courseId=… — who is on this course
 async function handleGET(req: NextRequest) {
@@ -22,6 +34,9 @@ async function handleGET(req: NextRequest) {
 
     const courseId = req.nextUrl.searchParams.get("courseId")?.trim()
     if (!courseId) return NextResponse.json({ message: "courseId is required" }, { status: 400 })
+
+    const course = await findManagedCourse(session, courseId)
+    if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
     const enrolments = await prisma.enrollment.findMany({
       where: { courseId },
@@ -63,10 +78,7 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "Select at least one student" }, { status: 400 })
     }
 
-    const course = await prisma.course.findUnique({
-      where: { id: courseId },
-      select: { id: true, title: true, tutorId: true },
-    })
+    const course = await findManagedCourse(session, courseId)
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
     // Only real students, and only ones not already on the course.
@@ -127,10 +139,14 @@ async function handleDELETE(req: NextRequest) {
       return NextResponse.json({ message: "courseId and studentId are required" }, { status: 400 })
     }
 
+    const course = await findManagedCourse(session, courseId)
+    if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
+
     const enrolment = await prisma.enrollment.findFirst({ where: { courseId, studentId } })
     if (!enrolment) return NextResponse.json({ message: "Enrolment not found" }, { status: 404 })
 
     await prisma.enrollment.delete({ where: { id: enrolment.id } })
+    await onStudentRemovedFromCourse(courseId, studentId)
     return NextResponse.json({ message: "Student removed from the course" })
   } catch (err) {
     console.error("[DELETE /api/admin/enrolments]", err)

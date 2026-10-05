@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
+import { studentMayJoinSession } from "@/lib/session-access"
 
 /**
  * Shared gate for classroom chat attachment uploads.
@@ -79,6 +80,7 @@ export async function authorizeChatUpload(sessionId: string): Promise<AccessResu
     select: {
       id: true,
       tutorId: true,
+      courseId: true,
       status: true,
       visibility: true,
       coTutors: { select: { tutorId: true } },
@@ -110,20 +112,8 @@ export async function authorizeChatUpload(sessionId: string): Promise<AccessResu
     return { ok: false, response: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
   }
 
-  if (isStudent && liveSession.visibility === "INVITE_ONLY") {
-    const [invite, approvedRequest] = await Promise.all([
-      prisma.liveSessionInvite.findUnique({
-        where: { sessionId_studentId: { sessionId, studentId: auth.sub } },
-        select: { id: true },
-      }),
-      prisma.sessionJoinRequest.findFirst({
-        where: { sessionId, studentId: auth.sub, status: "APPROVED" },
-        select: { id: true },
-      }),
-    ])
-    if (!invite && !approvedRequest) {
-      return { ok: false, response: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
-    }
+  if (isStudent && !(await studentMayJoinSession(liveSession, auth.sub))) {
+    return { ok: false, response: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
   }
 
   return { ok: true, userId: auth.sub }

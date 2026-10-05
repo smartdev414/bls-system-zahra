@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { releasedLessons } from "@/lib/lesson-release"
 
 async function handlePATCH(
   req: Request,
@@ -25,6 +26,13 @@ async function handlePATCH(
       where: { id: enrollmentId, studentId: session.sub },
     })
     if (!enrollment) return NextResponse.json({ message: "Enrollment not found" }, { status: 404 })
+
+    // Progress only counts for a lesson on that course which has been released.
+    const lesson = await prisma.lesson.findFirst({
+      where: { id: lessonId, section: { courseId: enrollment.courseId }, ...releasedLessons() },
+      select: { id: true },
+    })
+    if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const data: Record<string, unknown> = { updatedAt: new Date() }
     if (typeof watchedSecs === "number") data.watchedSecs = watchedSecs

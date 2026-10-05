@@ -13,10 +13,15 @@
  * sent with one click, so the tutor never has to stop signing to type them out.
  * They live in the tutor's resource library, one list for every lesson, and can
  * be written there before class or edited here during it.
+ *
+ * Typing mid-lesson is typing in a hurry, so a grammar assistant reads the
+ * caption whenever the tutor pauses and offers a corrected version above the
+ * box. It never changes what is sent on its own: Tab takes the suggestion,
+ * Enter sends whatever is in the box.
  */
 
 import { useEffect, useRef, useState } from "react"
-import { Send, X, ListPlus, Check, Keyboard, Loader2 } from "lucide-react"
+import { Send, X, ListPlus, Check, Keyboard, Loader2, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { parsePreparedCaptions, TYPED_CAPTION_MAX } from "@/lib/library"
 
@@ -44,6 +49,49 @@ async function savePrepared(captions: string[]): Promise<string[]> {
   const body = await res.json() as { captions?: string[] }
   cachedPrepared = body.captions ?? captions
   return cachedPrepared
+}
+
+// ── Grammar assistant ─────────────────────────────────────────────────────────
+
+/** How long the tutor has to stop typing before the caption is checked. */
+const GRAMMAR_PAUSE_MS = 700
+
+/** Too short to have grammar: a page number, "yes", a fingerspelled name. */
+const GRAMMAR_MIN_CHARS = 4
+
+// Switched off for the rest of the visit once the server says it has no model.
+let grammarAvailable = true
+
+// Corrections already fetched, by the exact text typed; null means "no change".
+// Backspacing to an earlier wording then costs nothing.
+const grammarCache = new Map<string, string | null>()
+const GRAMMAR_CACHE_LIMIT = 100
+
+function rememberGrammar(text: string, corrected: string | null): void {
+  if (grammarCache.size >= GRAMMAR_CACHE_LIMIT) grammarCache.clear()
+  grammarCache.set(text, corrected)
+}
+
+/** The corrected caption, or null when there is nothing to change. */
+async function checkGrammar(text: string, signal: AbortSignal): Promise<string | null> {
+  const cached = grammarCache.get(text)
+  if (cached !== undefined) return cached
+
+  const res = await fetch("/api/tutor/captions/correct", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal,
+  })
+  if (!res.ok) return null
+  const body = await res.json() as { available?: boolean; corrected?: string | null }
+  if (body.available === false) {
+    grammarAvailable = false
+    return null
+  }
+  const corrected = typeof body.corrected === "string" && body.corrected !== text ? body.corrected : null
+  rememberGrammar(text, corrected)
+  return corrected
 }
 
 // ── Composer ──────────────────────────────────────────────────────────────────
@@ -76,6 +124,41 @@ export function CaptionComposer({ onSend, onClose, sent, captionsHidden }: Props
       .catch(() => { /* keep the cached list; typing still works */ })
     return () => { alive = false }
   }, [])
+
+  // Check the grammar once the tutor pauses. Everything here is keyed by the
+  // text it was for, so an answer that arrives after they have typed on (or
+  // sent) is simply never shown.
+  const typed = text.trim()
+  const [correction, setCorrection] = useState<{ source: string; text: string } | null>(null)
+  const [checkingFor, setCheckingFor] = useState<string | null>(null)
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!grammarAvailable || typed.length < GRAMMAR_MIN_CHARS) return
+    const ctrl = new AbortController()
+    const timer = setTimeout(async () => {
+      setCheckingFor(typed)
+      try {
+        const corrected = await checkGrammar(typed, ctrl.signal)
+        if (!ctrl.signal.aborted && corrected) setCorrection({ source: typed, text: corrected })
+      } catch { /* no suggestion; what they typed still sends */ }
+      if (!ctrl.signal.aborted) setCheckingFor(null)
+    }, GRAMMAR_PAUSE_MS)
+    return () => { clearTimeout(timer); ctrl.abort() }
+  }, [typed])
+
+  const checking = checkingFor !== null && checkingFor === typed
+  const suggestion = correction && correction.source === typed && dismissedFor !== typed
+    ? correction.text
+    : null
+
+  function acceptSuggestion() {
+    if (!suggestion) return
+    // What the assistant wrote does not need the assistant's opinion.
+    rememberGrammar(suggestion, null)
+    setText(suggestion)
+    inputRef.current?.focus()
+  }
 
   function send(value: string) {
     const t = value.trim().slice(0, TYPED_CAPTION_MAX)
@@ -193,17 +276,54 @@ export function CaptionComposer({ onSend, onClose, sent, captionsHidden }: Props
             </button>
           </div>
 
+          {/* Grammar assistant: offered, never applied on its own */}
+          {suggestion && (
+            <div
+              className="flex items-start gap-2 rounded-xl bg-violet-500/10 border border-violet-400/25 px-3 py-2"
+              role="status"
+            >
+              <Sparkles className="size-3.5 mt-0.5 shrink-0 text-violet-300" aria-hidden />
+              <p className="flex-1 min-w-0 break-words text-sm leading-snug text-white">
+                <span className="sr-only">Suggested correction: </span>
+                {suggestion}
+              </p>
+              <button
+                type="button"
+                onClick={acceptSuggestion}
+                className="shrink-0 flex items-center gap-1.5 px-2 h-6 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white"
+                title="Replace what you typed with this correction"
+              >
+                Use
+                <kbd className="rounded bg-black/30 px-1 text-[10px] font-medium text-white/80">Tab</kbd>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissedFor(typed)}
+                className="shrink-0 p-1 rounded-lg text-white/50 hover:text-white hover:bg-white/10"
+                aria-label="Dismiss the suggested correction"
+                title="Keep what I typed"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Free typing */}
           <form
             className="flex items-center gap-2"
             onSubmit={(e) => { e.preventDefault(); send(text); setText("") }}
           >
-            <Keyboard className="size-4 text-white/50 shrink-0 ml-1" aria-hidden />
+            {checking
+              ? <Loader2 className="size-4 text-violet-300 shrink-0 ml-1 animate-spin" aria-label="Checking grammar" />
+              : <Keyboard className="size-4 text-white/50 shrink-0 ml-1" aria-hidden />}
             <input
               ref={inputRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape") onClose() }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") onClose()
+                if (e.key === "Tab" && !e.shiftKey && suggestion) { e.preventDefault(); acceptSuggestion() }
+              }}
               maxLength={TYPED_CAPTION_MAX}
               placeholder="Type a caption and press Enter — it shows at the bottom for everyone"
               aria-label="Type a caption"

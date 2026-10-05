@@ -28,6 +28,8 @@ export async function GET() {
     storage: present("AWS_S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
     // Captions use LiveKit Inference STT; agent worker is deployed separately on LiveKit Cloud.
     captions: present("LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "LIVEKIT_WS_URL"),
+    // Optional: grammar suggestions on captions a tutor types.
+    captionGrammar: present("OPENAI_API_KEY"),
     alerting: present("ALERT_WEBHOOK_URL"),
   }
 

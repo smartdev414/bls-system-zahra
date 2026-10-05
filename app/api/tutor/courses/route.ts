@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can, isStaff, ownerScope } from "@/lib/permissions"
+import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { uniqueCourseSlug } from "@/lib/course-slug"
 
 async function handleGET() {
   try {
@@ -13,7 +14,8 @@ async function handleGET() {
     }
 
     const courses = await prisma.course.findMany({
-      where: { ...ownerScope(session) },
+      // A tutor's courses are the ones they lead or have been put on as a teacher.
+      where: { ...courseTeachScope(session) },
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { id: true, name: true } },
@@ -85,17 +87,7 @@ async function handlePOST(req: NextRequest) {
       ownerId = tutor.id
     }
 
-    // Generate unique slug
-    const baseSlug = title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-    let slug = baseSlug
-    let attempt = 0
-    while (await prisma.course.findFirst({ where: { slug } })) {
-      attempt++
-      slug = `${baseSlug}-${attempt}`
-    }
+    const slug = await uniqueCourseSlug(title)
 
     const course = await prisma.course.create({
       data: {

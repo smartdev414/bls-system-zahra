@@ -30,6 +30,10 @@ async function handleGET(req: NextRequest) {
         skip,
         include: {
           tutor: { select: { id: true, name: true } },
+          teachers: {
+            orderBy: { assignedAt: "asc" },
+            select: { tutor: { select: { id: true, name: true } } },
+          },
           category: { select: { name: true } },
           _count: { select: { enrollments: true, sections: true } },
           reviews: { select: { rating: true } },
@@ -44,6 +48,7 @@ async function handleGET(req: NextRequest) {
         status: c.status,
         level: c.level,
         tutor: c.tutor,
+        teachers: c.teachers.map((t) => t.tutor),
         category: c.category,
         enrollmentCount: c._count.enrollments,
         sectionCount: c._count.sections,

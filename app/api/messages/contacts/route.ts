@@ -2,11 +2,12 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { courseTeachScope } from "@/lib/permissions"
 
 /**
  * Returns the list of people the current user can message:
- * - Students → tutors of courses they're enrolled in
- * - Tutors   → students enrolled in their courses
+ * - Students → the tutors teaching the courses they're enrolled in
+ * - Tutors   → students enrolled in the courses they teach
  */
 async function handleGET() {
   try {
@@ -19,7 +20,10 @@ async function handleGET() {
         include: {
           course: {
             include: {
-              tutor: { select: { id: true, name: true, avatarUrl: true } },
+              tutor: { select: { id: true, name: true, avatarUrl: true, role: true } },
+              teachers: {
+                select: { tutor: { select: { id: true, name: true, avatarUrl: true, role: true } } },
+              },
             },
           },
         },
@@ -27,7 +31,10 @@ async function handleGET() {
 
       const seen = new Set<string>()
       const contacts = enrollments
-        .map((e) => e.course.tutor)
+        .flatMap((e) => [e.course.tutor, ...e.course.teachers.map((t) => t.tutor)])
+        // An admin-built course is led by the office account, not a teacher.
+        .filter((t) => t.role === "TUTOR")
+        .map(({ role: _role, ...t }) => t)
         .filter((t) => {
           if (seen.has(t.id)) return false
           seen.add(t.id)
@@ -39,7 +46,7 @@ async function handleGET() {
 
     if (session.role === "TUTOR") {
       const enrollments = await prisma.enrollment.findMany({
-        where: { course: { tutorId: session.sub } },
+        where: { course: courseTeachScope(session) },
         include: {
           student: { select: { id: true, name: true, avatarUrl: true } },
         },

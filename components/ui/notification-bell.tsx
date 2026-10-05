@@ -53,6 +53,8 @@ type NotificationType =
   | "SESSION_REQUEST_REJECTED"
   | "QUIZ_PASSED"
   | "QUIZ_FAILED"
+  | "HOMEWORK_REMINDER"
+  | "COURSE_TEACHER_ADDED"
 
 type Notification = {
   id: string
@@ -85,6 +87,8 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   SESSION_REQUEST_REJECTED: XCircle,
   QUIZ_PASSED: Award,
   QUIZ_FAILED: Award,
+  HOMEWORK_REMINDER: CalendarPlus,
+  COURSE_TEACHER_ADDED: BookOpen,
 }
 
 const typeColor: Record<NotificationType, string> = {
@@ -108,6 +112,8 @@ const typeColor: Record<NotificationType, string> = {
   SESSION_REQUEST_REJECTED: "text-destructive",
   QUIZ_PASSED: "text-green-500",
   QUIZ_FAILED: "text-destructive",
+  HOMEWORK_REMINDER: "text-yellow-500",
+  COURSE_TEACHER_ADDED: "text-primary",
 }
 
 const POLL_INTERVAL = 30_000 // 30 seconds

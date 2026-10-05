@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import {
   Users, BookOpen, Video, TrendingUp,
-  Plus, CalendarPlus, ArrowRight, Clock, Star,
+  CalendarPlus, ArrowRight, Clock, Star,
   Loader2, UserPlus,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -82,26 +82,7 @@ export default function TutorDashboardPage() {
 
       {/* Quick-start strip — shown only when no courses and no students */}
       {isEmpty && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-          {/* Create a course */}
-          <div className="relative flex items-center gap-3 rounded-xl overflow-hidden border border-violet-200 bg-linear-to-r from-violet-50 to-purple-50 px-4 py-3">
-            <div className="absolute right-0 top-0 size-20 rounded-full bg-violet-200/40 -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-            <div className="rounded-xl bg-violet-500 p-2 shrink-0 shadow-sm">
-              <BookOpen className="size-4 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-violet-900 leading-none">Create your first course</p>
-              <p className="text-[11px] text-violet-600/80 mt-0.5 truncate">Students enrol and follow you automatically</p>
-            </div>
-            <Button asChild size="sm" className="shrink-0 relative gap-1.5 bg-violet-600 hover:bg-violet-700 text-white border-0 shadow-sm">
-              <Link href="/tutor/courses?new=1">
-                <span className="absolute -inset-1 rounded-lg animate-ping bg-violet-400/50 pointer-events-none" />
-                <span className="absolute -inset-0.5 rounded-md animate-ping bg-violet-300/30 pointer-events-none [animation-delay:150ms]" />
-                <Plus className="size-3.5" /> Create
-              </Link>
-            </Button>
-          </div>
+        <div className="grid grid-cols-1 gap-3">
 
           {/* Invite students */}
           <div className="relative flex items-center gap-3 rounded-xl overflow-hidden border border-sky-200 bg-linear-to-r from-sky-50 to-blue-50 px-4 py-3">
@@ -142,7 +123,7 @@ export default function TutorDashboardPage() {
               <p className="text-primary-foreground/80 mb-6">
                 {stats && stats.upcomingSessionCount > 0
                   ? `You have ${stats.upcomingSessionCount} session${stats.upcomingSessionCount !== 1 ? "s" : ""} coming up and ${stats.totalStudents} student${stats.totalStudents !== 1 ? "s" : ""} enrolled.`
-                  : "Schedule a session or create a new course to get started."}
+                  : "Schedule a session for one of your courses to get started."}
               </p>
               <div className="flex gap-3">
                 <Button asChild variant="secondary" size="sm">
@@ -152,9 +133,9 @@ export default function TutorDashboardPage() {
                   </Link>
                 </Button>
                 <Button asChild size="sm" className="bg-white/15 hover:bg-white/25 text-primary-foreground border-0">
-                  <Link href="/tutor/courses?new=1">
-                    <Plus className="size-4 mr-1.5" />
-                    New Course
+                  <Link href="/tutor/courses">
+                    <BookOpen className="size-4 mr-1.5" />
+                    My Courses
                   </Link>
                 </Button>
               </div>
@@ -273,10 +254,7 @@ export default function TutorDashboardPage() {
                 </div>
               ) : (
                 <div className="px-6 py-8 text-center text-sm text-muted-foreground">
-                  No courses yet.{" "}
-                  <Link href="/tutor/courses?new=1" className="text-primary underline underline-offset-2">
-                    Create one
-                  </Link>
+                  No courses yet. The school adds you to the courses you teach.
                 </div>
               )}
             </CardContent>

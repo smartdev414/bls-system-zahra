@@ -1,4 +1,6 @@
-// Shared shape of the tutor resource library, used by the API and the picker.
+// Shared shape of the resource library, used by the API and the picker.
+
+import type { CourseLevel } from "@/lib/levels"
 
 export type LibraryAssetType = "VIDEO" | "PDF" | "IMAGE" | "DOCUMENT" | "AUDIO" | "SUBTITLE"
 
@@ -6,11 +8,18 @@ export type LibraryItem = {
   /** LibraryFile id for files in the library; the source row's id otherwise. */
   id: string
   /**
-   * "library" — uploaded to the library, and can be removed from it.
-   * "used"    — not in the library, but already attached to one of this tutor's
-   *             lessons or sessions, so it can be picked again without re-uploading.
+   * "library" — uploaded to the library.
+   * "used"    — not in the library, but already attached to a lesson on a course
+   *             this person teaches or to one of their sessions, so it can be
+   *             picked again without re-uploading.
    */
   source: "library" | "used"
+  /** True for the school's library (uploaded by an admin, shared with every teacher). */
+  shared: boolean
+  /** Whether this viewer may take the file out of the library. */
+  canRemove: boolean
+  /** Level the file is filed under; null when it isn't level-specific. */
+  level: CourseLevel | null
   title: string
   fileUrl: string
   fileName: string

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { isReleased } from "@/lib/lesson-release"
 
 // GET /api/student/lessons/[id]/quiz  — returns questions WITHOUT isCorrect
 async function handleGET(
@@ -18,7 +19,10 @@ async function handleGET(
       where: { id },
       include: { section: { select: { courseId: true } } },
     })
-    if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    // A test that has not been released yet cannot be read or taken.
+    if (!lesson || !isReleased(lesson)) {
+      return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    }
 
     // Verify access
     const enrollment = await prisma.enrollment.findFirst({

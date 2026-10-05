@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { isReleased, releasedLessons } from "@/lib/lesson-release"
 
 async function handleGET(
   _req: Request,
@@ -33,7 +34,7 @@ async function handleGET(
                 sections: {
                   orderBy: { order: "asc" },
                   include: {
-                    lessons: { orderBy: { order: "asc" } },
+                    lessons: { where: releasedLessons(), orderBy: { order: "asc" } },
                   },
                 },
               },
@@ -43,7 +44,11 @@ async function handleGET(
       },
     })
 
-    if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    // A lesson held back for a later release does not exist yet as far as a
+    // student is concerned — same answer as an unknown id.
+    if (!lesson || !isReleased(lesson)) {
+      return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    }
 
     // Verify student is enrolled
     const enrollment = await prisma.enrollment.findFirst({

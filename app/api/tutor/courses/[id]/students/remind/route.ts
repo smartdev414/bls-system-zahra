@@ -1,0 +1,83 @@
+import { NextRequest, NextResponse } from "next/server"
+import prisma from "@/lib/prisma"
+import { getSession } from "@/lib/auth"
+import { can, courseTeachScope } from "@/lib/permissions"
+import { createNotifications } from "@/lib/notifications"
+import { withAudit } from "@/lib/audit"
+import { REMINDER_COOLDOWN_HOURS, reminderLink } from "@/lib/homework"
+
+/**
+ * Remind students to catch up on a course's lessons and tests.
+ *
+ * One click for the office or the teacher instead of chasing each student by
+ * hand. Each reminder is an ordinary notification (bell + email), which is also
+ * the record that it was sent — the student list shows when and how often.
+ */
+
+// POST /api/tutor/courses/[id]/students/remind — { studentIds: [...], message? }
+async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    if (!can(session.role, "enrolments.manage")) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+
+    const { id } = await params
+    const { studentIds, message } = await req.json() as { studentIds?: string[]; message?: string }
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return NextResponse.json({ message: "Select at least one student" }, { status: 400 })
+    }
+
+    const course = await prisma.course.findFirst({
+      where: { id, ...courseTeachScope(session) },
+      select: { id: true, title: true },
+    })
+    if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
+
+    // Only students who are actually on the course.
+    const enrolled = await prisma.enrollment.findMany({
+      where: { courseId: id, studentId: { in: [...new Set(studentIds)] } },
+      select: { studentId: true },
+    })
+    const onCourse = enrolled.map((e) => e.studentId)
+
+    // Two people pressing the button the same day should not mean two emails.
+    const link = reminderLink(id)
+    const recent = await prisma.notification.findMany({
+      where: {
+        type: "HOMEWORK_REMINDER",
+        link,
+        userId: { in: onCourse },
+        createdAt: { gte: new Date(Date.now() - REMINDER_COOLDOWN_HOURS * 60 * 60 * 1000) },
+      },
+      select: { userId: true },
+    })
+    const alreadyReminded = new Set(recent.map((n) => n.userId))
+    const toRemind = onCourse.filter((sid) => !alreadyReminded.has(sid))
+
+    if (toRemind.length === 0) {
+      return NextResponse.json({ sent: 0, skipped: alreadyReminded.size })
+    }
+
+    const note = message?.trim().slice(0, 300)
+    const delivered = await createNotifications(
+      toRemind,
+      "HOMEWORK_REMINDER",
+      `Reminder: catch up on "${course.title}"`,
+      `${session.name} is reminding you to catch up on your lessons and tests for "${course.title}".` +
+        (note ? ` ${note}` : ""),
+      link,
+    )
+    if (!delivered) {
+      return NextResponse.json({ message: "The reminder could not be sent. Please try again." }, { status: 502 })
+    }
+
+    return NextResponse.json({ sent: toRemind.length, skipped: alreadyReminded.size }, { status: 201 })
+  } catch (err) {
+    console.error("[POST /api/tutor/courses/[id]/students/remind]", err)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
+}
+
+export const POST = withAudit(handlePOST)

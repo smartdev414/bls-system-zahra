@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { can, isStaff, ownerScope } from "@/lib/permissions"
+import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { releasedLessons } from "@/lib/lesson-release"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -21,10 +22,10 @@ async function handleGET(req: NextRequest) {
         ] }
       : {}
 
-    // 1. All enrollments in this tutor's courses
+    // 1. All enrollments in the courses this tutor teaches
     const enrollments = await prisma.enrollment.findMany({
       where: {
-        course: { ...ownerScope(session) },
+        course: courseTeachScope(session),
         ...(q ? { student: nameEmailFilter } : {}),
       },
       include: {
@@ -54,7 +55,8 @@ async function handleGET(req: NextRequest) {
     const courseIds = [...new Set(enrollments.map((e) => e.courseId))]
     const courseLessonCounts = await Promise.all(
       courseIds.map(async (courseId) => {
-        const count = await prisma.lesson.count({ where: { section: { courseId } } })
+        // Completion is measured against what has been released so far.
+        const count = await prisma.lesson.count({ where: { section: { courseId }, ...releasedLessons() } })
         return { courseId, count }
       })
     )

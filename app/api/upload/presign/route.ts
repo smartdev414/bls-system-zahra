@@ -19,6 +19,8 @@ const ALLOWED: Record<string, { prefix: string; assetType: string }> = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document":  { prefix: "documents", assetType: "DOCUMENT" },
   "application/vnd.ms-powerpoint":                                            { prefix: "documents", assetType: "DOCUMENT" },
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": { prefix: "documents", assetType: "DOCUMENT" },
+  "application/vnd.ms-excel":                                                 { prefix: "documents", assetType: "DOCUMENT" },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":        { prefix: "documents", assetType: "DOCUMENT" },
 }
 
 async function handlePOST(req: NextRequest) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { withAudit } from "@/lib/audit"
+import { studentMayJoinSession } from "@/lib/session-access"
 
 const PPT_MIME_TYPES = [
   "application/pdf",
@@ -24,22 +25,16 @@ async function handleGET(
 
     const liveSession = await prisma.liveSession.findUnique({
       where: { id },
-      select: { status: true, visibility: true, invites: { select: { studentId: true } } },
+      select: { id: true, status: true, visibility: true, courseId: true },
     })
 
     if (!liveSession) {
       return NextResponse.json({ message: "Session not found" }, { status: 404 })
     }
 
-    // For INVITE_ONLY sessions, ensure the student is invited (tutors/admins can always access)
-    if (
-      liveSession.visibility === "INVITE_ONLY" &&
-      session.role === "STUDENT"
-    ) {
-      const invited = liveSession.invites.some((i) => i.studentId === session.sub)
-      if (!invited) {
-        return NextResponse.json({ message: "Forbidden" }, { status: 403 })
-      }
+    // Students only get the slides of a session they may join (tutors/admins can always access)
+    if (session.role === "STUDENT" && !(await studentMayJoinSession(liveSession, session.sub))) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const resource = await prisma.liveSessionResource.findFirst({
