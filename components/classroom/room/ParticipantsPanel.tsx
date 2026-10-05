@@ -637,13 +637,14 @@ export function ParticipantsPanel({
               {!isTutor && groupLabels?.get(p.identity) && (
                 <div
                   className={cn(
-                    "absolute top-1 left-1 rounded-full font-bold border",
-                    dense ? "size-2" : "text-[8px] px-1.5 py-0.5 max-w-[80%] truncate",
+                    "absolute top-1 left-1 z-10 rounded-full font-bold border border-black/30 shadow-sm shadow-black/40",
+                    dense ? "size-2.5" : "text-[10px] leading-none px-2 py-1 max-w-[80%] truncate",
                   )}
+                  // Solid fill with dark text: a tinted chip in its own colour
+                  // vanished against a bright camera feed.
                   style={{
-                    background:   `${groupLabels.get(p.identity)!.color}33`,
-                    color:        groupLabels.get(p.identity)!.color,
-                    borderColor:  `${groupLabels.get(p.identity)!.color}66`,
+                    background: groupLabels.get(p.identity)!.color,
+                    color:      "#0f172a",
                   }}
                   title={`In ${groupLabels.get(p.identity)!.name}`}
                 >
