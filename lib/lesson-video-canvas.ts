@@ -8,7 +8,9 @@
 //   2. Temporal pass — blends with the previous mask so edges don't shimmer,
 //      but snaps straight to the new value on big changes (a moving hand).
 //   3. Joint bilateral pass — pulls the low-res mask edge onto the real colour
-//      edges in the camera frame, which removes the blocky stair-steps.
+//      edges in the camera frame, which removes the blocky stair-steps. It
+//      reads a slightly blurred copy of the frame (a mip level) so camera
+//      grain doesn't end up as speckle along the cut-out.
 //   4. Composite — feathered mix of the flat colour and the camera frame.
 // Without one, the frame is drawn as-is and the model is never downloaded.
 // Either way the logo tile is drawn last, on top.
@@ -53,7 +55,7 @@ void main() {
   float prev = texture(u_prev, v_uv).r;
   // Small frame-to-frame differences are noise → average them out.
   // Large ones are real movement → follow immediately, no ghost trail.
-  float follow = mix(0.5, 1.0, smoothstep(0.03, 0.18, abs(raw - prev)));
+  float follow = mix(0.35, 1.0, smoothstep(0.08, 0.3, abs(raw - prev)));
   o = vec4(mix(prev, raw, max(follow, u_reset)), 0.0, 0.0, 1.0);
 }`
 
@@ -62,20 +64,26 @@ precision highp float;
 uniform sampler2D u_mask;
 uniform sampler2D u_frame;
 uniform vec2 u_step;
+uniform float u_lod;
 in vec2 v_uv;
 out vec4 o;
 void main() {
-  vec3 centre = texture(u_frame, v_uv).rgb;
+  // The frame is read from a mip level: the taps are a mask texel apart, so
+  // full-res samples would alias, and raw camera grain would make the weights
+  // (and so the edge) different on every frame.
+  vec3 centre = textureLod(u_frame, v_uv, u_lod).rgb;
   float sum = 0.0;
   float weights = 0.0;
   for (int y = -3; y <= 3; y++) {
     for (int x = -3; x <= 3; x++) {
       vec2 tap = vec2(float(x), float(y));
       vec2 uv = v_uv + tap * u_step;
-      vec3 diff = texture(u_frame, uv).rgb - centre;
+      vec3 diff = textureLod(u_frame, uv, u_lod).rgb - centre;
       // Neighbours count for more when they are close by and look like the
-      // same surface as this pixel, so the mask stops at real edges.
-      float w = exp(-dot(tap, tap) / 9.0) * exp(-dot(diff, diff) / 0.01);
+      // same surface as this pixel, so the mask stops at real edges. The small
+      // floor keeps a pixel that matches none of its neighbours from falling
+      // back to its own unsmoothed value.
+      float w = exp(-dot(tap, tap) / 9.0) * (exp(-dot(diff, diff) / 0.02) + 0.02);
       sum += texture(u_mask, uv).r * w;
       weights += w;
     }
@@ -368,6 +376,15 @@ export function createLessonVideoCanvas(
     })
   }
 
+  // The refine pass reads the camera frame through its mip chain; every other
+  // pass draws it 1:1 and must not depend on mips having been built.
+  function setFrameMipmaps(on: boolean) {
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, frameTexture)
+    if (on) gl.generateMipmap(gl.TEXTURE_2D)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, on ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
+  }
+
   function draw(target: MaskTarget | null, width: number, height: number) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.framebuffer : null)
     gl.viewport(0, 0, width, height)
@@ -477,9 +494,14 @@ export function createLessonVideoCanvas(
     const refinedWidth = Math.max(1, width >> 1)
     const refinedHeight = Math.max(1, height >> 1)
     resizeMaskTarget(gl, refined, refinedWidth, refinedHeight)
+    setFrameMipmaps(true)
     bind(refine, { u_mask: next.texture, u_frame: frameTexture }, 1)
     gl.uniform2f(gl.getUniformLocation(refine, "u_step"), 1 / maskWidth, 1 / maskHeight)
+    // At least one level down (the target is half size anyway), more when the
+    // camera is much sharper than the mask.
+    gl.uniform1f(gl.getUniformLocation(refine, "u_lod"), Math.max(1, Math.log2(width / maskWidth) - 0.5))
     draw(refined, refinedWidth, refinedHeight)
+    setFrameMipmaps(false)
 
     bind(composite, { u_frame: frameTexture, u_mask: refined.texture }, -1)
     gl.uniform3f(gl.getUniformLocation(composite, "u_color"), rgb[0], rgb[1], rgb[2])
