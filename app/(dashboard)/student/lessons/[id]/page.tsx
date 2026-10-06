@@ -97,7 +97,8 @@ const typeIcon = { VIDEO: PlayCircle, TEXT: FileText, QUIZ: FlaskConical }
 
 export default function LessonViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Closed to begin with on a phone, where it would cover most of the lesson.
+  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window === "undefined" || window.innerWidth >= 768)
   const [isCompleted, setIsCompleted] = useState(false)
   const completedRef = useRef(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
