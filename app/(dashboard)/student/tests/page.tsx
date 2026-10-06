@@ -40,7 +40,7 @@ type TestsData = {
 const STATUS: Record<TestItem["status"], { label: string; className: string }> = {
   PASSED: { label: "Passed", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   FAILED: { label: "Not passed", className: "bg-rose-100 text-rose-700 border-rose-200" },
-  IN_PROGRESS: { label: "Try again", className: "text-amber-700 bg-amber-50 border-amber-200" },
+  IN_PROGRESS: { label: "Not passed yet", className: "text-amber-700 bg-amber-50 border-amber-200" },
   NOT_STARTED: { label: "To do", className: "text-amber-700 bg-amber-50 border-amber-200" },
 }
 
@@ -59,10 +59,20 @@ function testFacts(test: TestItem) {
 
 const PAGE_SIZE = 10
 
+type Filter = "ALL" | "TODO" | "PASSED" | "FAILED"
+
+const FILTERS: Array<{ value: Filter; label: string; matches: (test: TestItem) => boolean }> = [
+  { value: "ALL", label: "All", matches: () => true },
+  { value: "TODO", label: "To do", matches: (t) => t.status === "NOT_STARTED" || t.status === "IN_PROGRESS" },
+  { value: "PASSED", label: "Passed", matches: (t) => t.status === "PASSED" },
+  { value: "FAILED", label: "Not passed", matches: (t) => t.status === "FAILED" },
+]
+
 export default function TestsPage() {
   const [page, setPage] = useState(1)
+  const [filter, setFilter] = useState<Filter>("ALL")
 
-  const { data, loading } = useFetch<TestsData>("/api/student/tests", {
+  const { data, loading, refetch } = useFetch<TestsData>("/api/student/tests", {
     errorMessage: "Could not load tests",
   })
 
@@ -73,8 +83,13 @@ export default function TestsPage() {
     : 0
 
   const allTests = data?.tests ?? []
-  const totalPages = Math.ceil(allTests.length / PAGE_SIZE)
-  const pagedTests = allTests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  // "All" is always offered; the others only when there is something behind them.
+  const filters = FILTERS
+    .map((f) => ({ ...f, count: allTests.filter(f.matches).length }))
+    .filter((f) => f.value === "ALL" || f.count > 0)
+  const shownTests = allTests.filter((filters.find((f) => f.value === filter) ?? FILTERS[0]).matches)
+  const totalPages = Math.ceil(shownTests.length / PAGE_SIZE)
+  const pagedTests = shownTests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div className="flex flex-col gap-8">
@@ -91,11 +106,20 @@ export default function TestsPage() {
         <div className="flex items-center justify-center min-h-[300px]">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
+      ) : !data ? (
+        // Not the same as having no tests — say so, and offer another go.
+        <Card className="shadow-sm">
+          <CardContent className="py-12 flex flex-col items-center gap-3 text-center">
+            <p className="font-semibold">Your tests could not be loaded</p>
+            <p className="text-sm text-muted-foreground">Check your connection and try again.</p>
+            <Button variant="outline" onClick={() => void refetch()}>Try again</Button>
+          </CardContent>
+        </Card>
       ) : (
         <>
           {/* Stats */}
           {data && data.stats.totalTests > 0 && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4">
               {[
                 { label: "Total Tests", value: data.stats.totalTests, icon: FlaskConical },
                 { label: "Passed", value: data.stats.passedTests, icon: CheckCircle2 },
@@ -106,12 +130,12 @@ export default function TestsPage() {
                 },
               ].map(({ label, value, icon: Icon }) => (
                 <Card key={label} className="shadow-sm">
-                  <CardContent className="p-5 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <Icon className="size-4 text-primary" />
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+                  <CardContent className="p-3 sm:p-5 flex flex-col gap-1.5 sm:gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <Icon className="size-4 text-primary shrink-0 hidden sm:block" />
+                      <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
                     </div>
-                    <p className="text-3xl font-black">{value}</p>
+                    <p className="text-2xl sm:text-3xl font-black">{value}</p>
                     {label === "Passed" && (
                       <Progress value={passRate} className="h-1.5" />
                     )}
@@ -124,6 +148,21 @@ export default function TestsPage() {
           {/* Test list */}
           {allTests.length > 0 ? (
             <div className="flex flex-col gap-4">
+              {filters.length > 2 && (
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Show tests">
+                  {filters.map((f) => (
+                    <Button
+                      key={f.value}
+                      size="sm"
+                      variant={filter === f.value ? "default" : "outline"}
+                      aria-pressed={filter === f.value}
+                      onClick={() => { setFilter(f.value); setPage(1) }}
+                    >
+                      {f.label} ({f.count})
+                    </Button>
+                  ))}
+                </div>
+              )}
               {pagedTests.map((test) => (
                 <Card key={test.id} className="shadow-sm overflow-hidden">
                   <CardHeader className="pb-3">
@@ -163,7 +202,7 @@ export default function TestsPage() {
                   </CardHeader>
 
                   <CardContent className="pt-0">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                       <p className="text-xs text-muted-foreground">{testFacts(test)}</p>
                       {test.questionCount === 0 ? (
                         <span className="text-xs text-muted-foreground">Questions coming soon</span>
@@ -173,6 +212,7 @@ export default function TestsPage() {
                             {test.isCompleted || test.status === "FAILED"
                               ? "Review"
                               : test.attempts > 0 ? "Try Again" : "Start Test"}
+                            <span className="sr-only">: {test.title}</span>
                             <ChevronRight className="size-4 ml-1" />
                           </Link>
                         </Button>

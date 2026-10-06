@@ -5,7 +5,7 @@ type LessonType = "VIDEO" | "TEXT" | "QUIZ"
 const KINDS: Record<string, { label: string; Icon: LucideIcon }> = {
   VIDEO: { label: "Video", Icon: PlayCircle },
   TEXT: { label: "Text", Icon: FileText },
-  QUIZ: { label: "Quiz", Icon: FlaskConical },
+  QUIZ: { label: "Test", Icon: FlaskConical },
   PDF: { label: "PDF", Icon: FileText },
   DOCUMENT: { label: "Document", Icon: FileText },
   IMAGE: { label: "Image", Icon: ImageIcon },

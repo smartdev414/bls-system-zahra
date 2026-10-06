@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Save, Upload, Camera, FolderOpen, X } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,7 +13,9 @@ import {
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
-import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
+import {
+  QuizBuilder, isBlankQuestion, questionProblem, saveQuestionDraft, type QuestionDraft,
+} from "@/components/quiz/QuizBuilder"
 import { LibraryPicker, itemIcon, formatBytes } from "@/components/library/LibraryPicker"
 import type { LibraryAssetType } from "@/lib/library"
 import { ReleaseField, releaseToIso } from "@/components/courses/ReleaseField"
@@ -52,24 +55,26 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
   const [testSettings, setTestSettings] = useState<TestSettingsDraft>(DEFAULT_TEST_SETTINGS)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [warning, setWarning] = useState<string | null>(null)
+
+  const isTest = type === "QUIZ"
 
   async function handleSubmit() {
     if (!title.trim()) return
 
-    // Warn about incomplete quiz questions
-    if (type === "QUIZ" && questions.length > 0) {
-      const incomplete = questions.filter(
-        (q) => !q.question.trim() || !q.options.some((o) => o.isCorrect) || q.options.some((o) => !o.text?.trim() && !o.imageUrl)
+    // Every question that was started has to be finished — one left half-done
+    // would otherwise be dropped without a word. Untouched blanks are ignored.
+    const drafts = type === "QUIZ" ? questions.filter((q) => !isBlankQuestion(q)) : []
+    const unfinished = drafts.filter((q) => questionProblem(q))
+    if (unfinished.length > 0) {
+      const ids = new Set(unfinished.map((q) => q.uid))
+      setQuestions((current) => current.map((q) => (
+        ids.has(q.uid) ? { ...q, isOpen: true, error: questionProblem(q) } : q
+      )))
+      const numbers = questions.flatMap((q, i) => (ids.has(q.uid) ? [i + 1] : []))
+      setError(
+        `Question${numbers.length > 1 ? "s" : ""} ${numbers.join(", ")} ${numbers.length > 1 ? "are" : "is"} not finished. Complete or delete ${numbers.length > 1 ? "them" : "it"}, then add the test.`
       )
-      if (incomplete.length === questions.length) {
-        setError("None of your questions are valid. Each question needs text, at least one option marked correct, and all options must have text or an image.")
-        return
-      }
-      if (incomplete.length > 0 && !warning) {
-        setWarning(`${incomplete.length} question${incomplete.length > 1 ? "s are" : " is"} incomplete and will be skipped. Click "Add Lesson" again to proceed anyway, or fix the questions first.`)
-        return
-      }
+      return
     }
 
     setLoading(true)
@@ -105,24 +110,22 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
 
       const lessonId = data.lesson!.id
 
-      // 2. Save quiz questions sequentially
-      if (type === "QUIZ" && questions.length > 0) {
-        for (const q of questions) {
-          if (!q.question.trim()) continue
-          if (!q.options.some((o) => o.isCorrect)) continue
-          if (q.options.some((o) => !o.text?.trim() && !o.imageUrl)) continue
-          await fetch(`/api/tutor/lessons/${lessonId}/questions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              question: q.question,
-              imageUrl: q.imageUrl ?? null,
-              mediaType: q.mediaType ?? null,
-              type: q.type,
-              options: q.options.map((o) => ({ text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect })),
-            }),
-          })
+      // 2. Save the questions, in order
+      let failed = 0
+      for (const q of drafts) {
+        try {
+          await saveQuestionDraft(lessonId, q)
+        } catch {
+          failed++
         }
+      }
+      // The test itself exists by now, so this is reported rather than thrown:
+      // pressing the button again would create it a second time.
+      if (failed > 0) {
+        toast.error(
+          `The test was added, but ${failed} question${failed > 1 ? "s" : ""} could not be saved. Open the test to add ${failed > 1 ? "them" : "it"} again.`,
+          { duration: 10000 },
+        )
       }
 
       onSuccess()
@@ -139,12 +142,14 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">Add Lesson</h1>
-          <p className="text-muted-foreground mt-1">Fill in the details for this lesson.</p>
+          <h1 className="text-2xl font-black tracking-tight">{isTest ? "Add Test" : "Add Lesson"}</h1>
+          <p className="text-muted-foreground mt-1">
+            {isTest ? "Name the test, set how it is passed, then add the questions." : "Fill in the details for this lesson."}
+          </p>
         </div>
         <Button onClick={handleSubmit} disabled={!title.trim() || loading}>
           <Save className="size-4 mr-1.5" />
-          {loading ? "Adding..." : "Add Lesson"}
+          {loading ? "Adding..." : isTest ? "Add Test" : "Add Lesson"}
         </Button>
       </div>
 
@@ -153,19 +158,13 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
           {error}
         </p>
       )}
-      {warning && !error && (
-        <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <span className="shrink-0 mt-0.5">⚠</span>
-          <span>{warning}</span>
-        </div>
-      )}
 
       {/* Title */}
       <div className="flex flex-col gap-1.5">
-        <Label>Lesson Title</Label>
+        <Label>{isTest ? "Test Title" : "Lesson Title"}</Label>
         <Input
           className="h-11"
-          placeholder="e.g. Greetings — Hello and Goodbye"
+          placeholder={isTest ? "e.g. Greetings — end of unit test" : "e.g. Greetings — Hello and Goodbye"}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
@@ -180,7 +179,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
             <SelectContent>
               <SelectItem value="VIDEO">Video</SelectItem>
               <SelectItem value="TEXT">Text / Article</SelectItem>
-              <SelectItem value="QUIZ">Test / Quiz</SelectItem>
+              <SelectItem value="QUIZ">Test</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -198,7 +197,13 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
 
       <ReleaseField value={releaseAt} onChange={setReleaseAt} />
 
-      {type === "QUIZ" && <TestSettingsFields value={testSettings} onChange={setTestSettings} />}
+      {isTest && (
+        <TestSettingsFields
+          value={testSettings}
+          onChange={setTestSettings}
+          questionCount={questions.filter((q) => !isBlankQuestion(q)).length}
+        />
+      )}
 
       {/* Description */}
       <div className="flex flex-col gap-1.5">
@@ -319,7 +324,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Pro
           <QuizBuilder
             lessonId={null}
             questions={questions}
-            onChange={(q) => { setQuestions(q); setWarning(null) }}
+            onChange={(q) => { setQuestions(q); setError(null) }}
           />
         </>
       )}

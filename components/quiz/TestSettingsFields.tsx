@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { DEFAULT_PASS_MARK, MAX_ATTEMPTS_LIMIT } from "@/lib/quiz"
+import { DEFAULT_PASS_MARK, MAX_ATTEMPTS_LIMIT, correctNeeded } from "@/lib/quiz"
 
 /**
  * How a test is passed: the score needed and how many goes a student gets.
@@ -28,13 +28,24 @@ export function testSettingsBody(draft: TestSettingsDraft): { passMark: number; 
   }
 }
 
-export function TestSettingsFields({ value, onChange }: {
+/** "at least 7 of 10 questions" — what the pass mark means for a test of this length. */
+function neededToPass(passMark: string, questionCount: number): string | null {
+  const mark = Number(passMark)
+  if (questionCount < 1 || !Number.isInteger(mark) || mark < 1 || mark > 100) return null
+  const needed = correctNeeded(mark, questionCount)
+  return `at least ${needed} of ${questionCount} question${questionCount !== 1 ? "s" : ""} right`
+}
+
+export function TestSettingsFields({ value, onChange, questionCount = 0 }: {
   value: TestSettingsDraft
   onChange: (value: TestSettingsDraft) => void
+  /** Questions on the test so far, to say what the pass mark comes to. */
+  questionCount?: number
 }) {
   const limited = value.maxAttempts !== null
+  const needed = neededToPass(value.passMark, questionCount)
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="test-pass-mark">Pass mark (%)</Label>
         <Input
@@ -46,7 +57,9 @@ export function TestSettingsFields({ value, onChange }: {
           value={value.passMark}
           onChange={(e) => onChange({ ...value, passMark: e.target.value })}
         />
-        <p className="text-xs text-muted-foreground">The score a student needs to pass.</p>
+        <p className="text-xs text-muted-foreground">
+          The score a student needs to pass{needed ? ` — ${needed}.` : "."}
+        </p>
       </div>
 
       <div className="flex flex-col gap-1.5">

@@ -58,6 +58,16 @@ export function revealsAnswers(maxAttempts: number | null, attempts: ReadonlyArr
   return attempts.some((a) => a.passed) || attempts.length >= maxAttempts
 }
 
+/**
+ * How many questions must be right to reach the pass mark. Scores are rounded
+ * to a whole percent when an attempt is marked, so the same rounding is used.
+ */
+export function correctNeeded(passMark: number, total: number): number {
+  let needed = 0
+  while (needed < total && Math.round((needed / total) * 100) < passMark) needed++
+  return needed
+}
+
 /** Question and answer media is stored as one URL; this says how to show it. */
 export function isVideoMedia(url: string | null | undefined, mediaType?: string | null): boolean {
   if (mediaType === "video") return true

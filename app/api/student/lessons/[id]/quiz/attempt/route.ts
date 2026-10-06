@@ -103,7 +103,7 @@ async function handlePOST(
     void createNotification(
       session.sub,
       passed ? "QUIZ_PASSED" : "QUIZ_FAILED",
-      passed ? `Quiz passed — ${score}%` : `Quiz failed — ${score}%`,
+      passed ? `Test passed — ${score}%` : `Test not passed — ${score}%`,
       passed
         ? `You scored ${correct}/${total} on "${lesson.title}". Keep it up!`
         : left === 0

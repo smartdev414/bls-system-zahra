@@ -384,6 +384,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 lessonId={id}
                 enrollmentId={data.enrollmentId}
                 onCompleted={() => { setIsCompleted(true); completedRef.current = true }}
+                nextHref={navigation.next ? `/student/lessons/${navigation.next.id}` : undefined}
               />
             </div>
           ) : (

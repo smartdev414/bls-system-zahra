@@ -1,16 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, XCircle, ChevronLeft,
-  ChevronRight, RotateCcw, Trophy, Loader2, Circle, History,
+  ChevronRight, RotateCcw, Trophy, Loader2, Circle, History, LogOut,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
-import { isVideoMedia } from "@/lib/quiz"
+import { correctNeeded, isVideoMedia } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -53,6 +54,39 @@ type Props = {
   lessonId: string
   enrollmentId: string | null
   onCompleted: () => void
+  /** Where "Continue" goes once the test is passed — the next lesson, if there is one. */
+  nextHref?: string
+}
+
+// ─── Answers in progress ──────────────────────────────────────────────────────
+// Kept on the device while a test is being sat, so a refresh, a dropped
+// connection or opening another page does not throw the answers away. Keyed by
+// enrolment as well as test, so two students sharing a computer never see each
+// other's.
+
+type Draft = { selected: Record<string, string>; currentIndex: number }
+
+function draftKey(lessonId: string, enrollmentId: string | null) {
+  return `bls-test-draft:${enrollmentId ?? "preview"}:${lessonId}`
+}
+
+function readDraft(key: string): Draft | null {
+  try {
+    const draft = JSON.parse(window.localStorage.getItem(key) ?? "null") as Partial<Draft> | null
+    if (!draft || typeof draft.selected !== "object" || draft.selected === null) return null
+    return { selected: draft.selected, currentIndex: Number(draft.currentIndex) || 0 }
+  } catch {
+    return null
+  }
+}
+
+function writeDraft(key: string, draft: Draft | null) {
+  try {
+    if (draft) window.localStorage.setItem(key, JSON.stringify(draft))
+    else window.localStorage.removeItem(key)
+  } catch {
+    // Private browsing or a full disk — the test still works, it just is not kept.
+  }
 }
 
 function shortDate(iso: string) {
@@ -73,6 +107,13 @@ function QuestionMedia({ question, className }: { question: Question; className?
     : <img src={question.imageUrl} alt="question" className={cn("rounded-xl object-contain border", className)} />
 }
 
+/** Answers side by side when they are pictures; one per row on a phone when they are videos, to keep them watchable. */
+function optionsLayout(q: Question, gridGap: string, listGap: string) {
+  if (q.options.some((o) => isVideoMedia(o.imageUrl, o.mediaType))) return cn("grid grid-cols-1 sm:grid-cols-2", gridGap)
+  if (q.options.some((o) => o.imageUrl)) return cn("grid grid-cols-2", gridGap)
+  return cn("flex flex-col", listGap)
+}
+
 // ─── Review — one attempt's answers, question by question ─────────────────────
 
 function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
@@ -83,12 +124,33 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
   onBack: () => void
   onRetry?: () => void
 }) {
+  const [wrongOnly, setWrongOnly] = useState(false)
+  const isRight = (q: Question) => !!answers.find((a) => a.questionId === q.id)?.isCorrect
+  const right = questions.filter(isRight).length
+  const wrong = questions.length - right
+
   return (
     <div className="flex flex-col gap-5 py-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold">Review Answers</h3>
-        <Button variant="outline" size="sm" onClick={onBack}>Back</Button>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-bold">Review Answers</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">{right} of {questions.length} correct</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onBack}>
+          <ChevronLeft className="size-4 mr-1" /> Back
+        </Button>
       </div>
+
+      {wrong > 0 && right > 0 && (
+        <div className="flex gap-2" role="group" aria-label="Which questions to show">
+          <Button size="sm" variant={wrongOnly ? "outline" : "default"} aria-pressed={!wrongOnly} onClick={() => setWrongOnly(false)}>
+            All ({questions.length})
+          </Button>
+          <Button size="sm" variant={wrongOnly ? "default" : "outline"} aria-pressed={wrongOnly} onClick={() => setWrongOnly(true)}>
+            To work on ({wrong})
+          </Button>
+        </div>
+      )}
 
       {!answersRevealed && (
         <p className="text-xs text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">
@@ -98,6 +160,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
 
       {questions.map((q, i) => {
         const answer = answers.find((a) => a.questionId === q.id)
+        if (wrongOnly && answer?.isCorrect) return null
         return (
           <div key={q.id} className="rounded-xl border p-4 flex flex-col gap-3">
             <div className="flex items-start gap-2">
@@ -111,8 +174,8 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
               </div>
             </div>
             <div className={cn(
-              "pl-6",
-              q.options.some((o) => o.imageUrl) ? "grid grid-cols-2 gap-2" : "flex flex-col gap-1.5"
+              "sm:pl-6",
+              optionsLayout(q, "gap-2", "gap-1.5")
             )}>
               {q.options.map((opt) => {
                 const isSelected = answer?.optionId === opt.id
@@ -135,12 +198,12 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
                       <div className="relative w-full">
                         {isVideo
                           ? <ProtectedVideo src={opt.imageUrl} autoPlay muted loop playsInline controls className="w-full aspect-video object-cover" />
-                          : <img src={opt.imageUrl} alt={opt.text} className="w-full aspect-square object-cover" />}
+                          : <img src={opt.imageUrl} alt={opt.text || "Answer"} className="w-full aspect-square object-cover" />}
                         {isCorrect && (
                           <span className="absolute top-1 right-1 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase">✓ Correct</span>
                         )}
                         {isSelected && !isCorrect && (
-                          <span className="absolute top-1 right-1 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase">✗ Wrong</span>
+                          <span className="absolute top-1 right-1 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase">✗ Your answer</span>
                         )}
                       </div>
                     )}
@@ -163,7 +226,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
       })}
 
       <div className="flex gap-3 pt-2">
-        <Button variant="outline" onClick={onBack}>Back</Button>
+        <Button variant="outline" onClick={onBack}><ChevronLeft className="size-4 mr-1" /> Back</Button>
         {onRetry && <Button onClick={onRetry}><RotateCcw className="size-4 mr-1.5" /> Try again</Button>}
       </div>
     </div>
@@ -176,17 +239,26 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
  * A test as the student sits it: a start screen with the rules and their past
  * attempts, the questions one at a time, the result, and a review of the answers.
  */
-export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
+export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Props) {
   const { data, loading, refetch } = useFetch<QuizData>(`/api/student/lessons/${lessonId}/quiz`, {
     errorMessage: "Could not load this test",
   })
 
+  const storageKey = draftKey(lessonId, enrollmentId)
   const [view, setView] = useState<"start" | "taking" | "result" | "review-result" | "review-best">("start")
-  const [selected, setSelected] = useState<Record<string, string>>({})
-  const [currentIndex, setCurrentIndex] = useState(0)
+  // Starts from whatever was answered last time, if the test was left part-way.
+  const [stored] = useState(() => readDraft(storageKey))
+  const [rawSelected, setSelected] = useState<Record<string, string>>(stored?.selected ?? {})
+  const [currentIndex, setCurrentIndex] = useState(stored?.currentIndex ?? 0)
+  const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Result | null>(null)
+  const topRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (view === "taking") writeDraft(storageKey, { selected: rawSelected, currentIndex })
+  }, [view, storageKey, rawSelected, currentIndex])
 
   if (!data) {
     return loading
@@ -209,12 +281,43 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
   const hasPassed = attempts.some((a) => a.passed)
   const canAttempt = data.attemptsLeft !== 0
 
+  // Only answers that still fit the test count: a question or an option may
+  // have been changed by the teacher since they were given.
+  const selected = Object.fromEntries(
+    questions.flatMap((q) => {
+      const optionId = rawSelected[q.id]
+      return optionId && q.options.some((o) => o.id === optionId) ? [[q.id, optionId]] : []
+    })
+  ) as Record<string, string>
+  const answered = Object.keys(selected).length
+  const firstUnanswered = questions.findIndex((q) => !selected[q.id])
+
   function start() {
     setSelected({})
     setCurrentIndex(0)
     setResult(null)
     setError(null)
+    setConfirming(false)
     setView("taking")
+  }
+
+  // Pick the test up where it was left.
+  function resume() {
+    setCurrentIndex(firstUnanswered >= 0 ? firstUnanswered : 0)
+    setError(null)
+    setConfirming(false)
+    setView("taking")
+  }
+
+  function go(index: number) {
+    setCurrentIndex(Math.min(Math.max(index, 0), questions.length - 1))
+    setConfirming(false)
+    // On a phone the next question would otherwise open scrolled to its answers.
+    topRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+  }
+
+  function choose(questionId: string, optionId: string) {
+    setSelected((s) => ({ ...s, [questionId]: optionId }))
   }
 
   async function submit() {
@@ -232,6 +335,9 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
       if (!res.ok) throw new Error(body.message ?? "Could not submit your answers")
       setResult({ ...body, answers: body.attempt.answers })
       setView("result")
+      setSelected({})
+      setConfirming(false)
+      writeDraft(storageKey, null)
       if (body.passed) onCompleted()
       // Pick up the new attempt for the start screen.
       void refetch()
@@ -248,8 +354,9 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
   // ── Results screen ────────────────────────────────────────────────────────
   if (view === "result" && result) {
     const left = attemptsLeftText(result.attemptsLeft)
+    const missed = Math.max(1, correctNeeded(result.passMark, result.total) - result.correct)
     return (
-      <div className="flex flex-col items-center gap-6 py-8 px-4 text-center">
+      <div className="flex flex-col items-center gap-6 py-8 px-4 text-center" aria-live="polite">
         <div className={cn(
           "size-24 rounded-full flex items-center justify-center",
           result.passed ? "bg-emerald-100" : "bg-rose-100"
@@ -278,19 +385,27 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
           {result.passed ? "Passed" : `Not passed — need ${result.passMark}%`}
         </Badge>
 
-        {!result.passed && left && (
-          <p className="text-sm text-muted-foreground">
-            {result.attemptsLeft === 0 ? "You have no attempts left. Speak to your teacher if you need another go." : left}
+        {!result.passed && (
+          <p className="text-sm text-muted-foreground max-w-sm">
+            {missed === 1 ? "One more correct answer" : `${missed} more correct answers`} would have passed.
+            {result.attemptsLeft === 0
+              ? " You have no attempts left. Speak to your teacher if you need another go."
+              : ` Look over your answers, then try again${left ? ` — ${left}` : ""}.`}
           </p>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap justify-center gap-3">
           <Button variant="outline" onClick={() => setView("review-result")}>
             Review answers
           </Button>
           {!result.passed && result.attemptsLeft !== 0 && (
             <Button onClick={start}>
               <RotateCcw className="size-4 mr-1.5" /> Try again
+            </Button>
+          )}
+          {result.passed && nextHref && (
+            <Button asChild>
+              <Link href={nextHref}>Continue <ChevronRight className="size-4 ml-1" /></Link>
             </Button>
           )}
         </div>
@@ -326,35 +441,72 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
   // ── Quiz taking ───────────────────────────────────────────────────────────
   if (view === "taking") {
     const q = questions[currentIndex]
-    const answered = questions.filter((question) => selected[question.id]).length
     const progress = Math.round((answered / questions.length) * 100)
+    const isLast = currentIndex === questions.length - 1
+    const allAnswered = answered === questions.length
+    const limited = settings.maxAttempts !== null
 
     return (
-      <div className="flex flex-col gap-6 py-2">
+      <div ref={topRef} className="flex flex-col gap-5 py-2 scroll-mt-24">
         {/* Progress */}
         <div className="flex flex-col gap-1.5">
-          <div className="flex justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
             <span>Question {currentIndex + 1} of {questions.length}</span>
-            <span>{answered} answered</span>
+            <span className="flex items-center gap-3">
+              <span>{answered} answered</span>
+              <button
+                type="button"
+                onClick={() => setView("start")}
+                className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
+                title="Your answers are kept, so you can carry on later"
+              >
+                <LogOut className="size-3" /> Finish later
+              </button>
+            </span>
           </div>
           <Progress value={progress} className="h-1.5" />
         </div>
 
+        {/* Every question at a glance — jump to any of them, in any order */}
+        {questions.length > 1 && (
+          <nav aria-label="Questions" className="flex flex-wrap gap-1.5">
+            {questions.map((question, i) => {
+              const isCurrent = i === currentIndex
+              const isAnswered = !!selected[question.id]
+              return (
+                <button
+                  key={question.id}
+                  type="button"
+                  onClick={() => go(i)}
+                  aria-current={isCurrent ? "step" : undefined}
+                  aria-label={`Question ${i + 1}, ${isAnswered ? "answered" : "not answered"}`}
+                  className={cn(
+                    "size-8 rounded-lg border text-xs font-semibold transition-colors",
+                    isAnswered ? "bg-primary/10 border-primary/30 text-primary" : "bg-background text-muted-foreground hover:bg-muted",
+                    isCurrent && "ring-2 ring-primary ring-offset-1"
+                  )}
+                >
+                  {i + 1}
+                </button>
+              )
+            })}
+          </nav>
+        )}
+
         {/* Question */}
         {q && (
-          <div className="rounded-xl border bg-muted/20 p-5 flex flex-col gap-4">
-            <p className="font-semibold text-base leading-snug">{currentIndex + 1}. {q.question}</p>
+          <div className="rounded-xl border bg-muted/20 p-4 sm:p-5 flex flex-col gap-4">
+            <p id={`question-${q.id}`} className="font-semibold text-base leading-snug">{currentIndex + 1}. {q.question}</p>
 
             {/* Optional question image or video */}
             <QuestionMedia question={q} className="max-h-64 mx-auto" />
 
-            {/* Options — grid layout when any option has an image */}
-            <div className={cn(
-              q.options.some((o) => o.imageUrl) ? "grid grid-cols-2 gap-3" : "flex flex-col gap-2"
-            )}>
-              {q.options.map((opt) => {
+            {/* Options — side by side when they are pictures or videos */}
+            <div role="radiogroup" aria-labelledby={`question-${q.id}`} className={optionsLayout(q, "gap-3", "gap-2")}>
+              {q.options.map((opt, n) => {
                 const isSelected = selected[q.id] === opt.id
                 const isVideo = isVideoMedia(opt.imageUrl, opt.mediaType)
+                const name = opt.text || `Answer ${n + 1}`
 
                 if (opt.imageUrl && isVideo) {
                   // ── Video option card — video is for watching only; text label selects
@@ -384,15 +536,17 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setSelected((s) => ({ ...s, [q.id]: opt.id }))}
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => choose(q.id, opt.id)}
                         className={cn(
-                          "px-3 py-2.5 text-xs font-medium text-center w-full transition-colors",
+                          "px-3 py-3 text-sm font-medium text-center w-full transition-colors",
                           isSelected
                             ? "bg-primary text-primary-foreground"
                             : "bg-background text-foreground hover:bg-muted"
                         )}
                       >
-                        {opt.text || "Select this answer"}
+                        {isSelected ? `✓ ${opt.text || "Selected"}` : opt.text || "Select this answer"}
                       </button>
                     </div>
                   )
@@ -404,7 +558,10 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
                     <button
                       key={opt.id}
                       type="button"
-                      onClick={() => setSelected((s) => ({ ...s, [q.id]: opt.id }))}
+                      role="radio"
+                      aria-checked={isSelected}
+                      aria-label={name}
+                      onClick={() => choose(q.id, opt.id)}
                       className={cn(
                         "rounded-xl border overflow-hidden flex flex-col transition-all",
                         isSelected
@@ -412,8 +569,8 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
                           : "border-border hover:border-primary/50"
                       )}
                     >
-                      <div className="relative">
-                        <img src={opt.imageUrl} alt={opt.text} className="w-full aspect-square object-cover" />
+                      <div className="relative w-full">
+                        <img src={opt.imageUrl} alt={name} className="w-full aspect-square object-cover" />
                         {isSelected && (
                           <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
                             <CheckCircle2 className="size-8 text-primary drop-shadow" />
@@ -422,7 +579,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
                       </div>
                       {opt.text && (
                         <div className={cn(
-                          "px-3 py-2 text-xs font-medium text-center",
+                          "px-3 py-2 text-xs font-medium text-center w-full",
                           isSelected ? "bg-primary text-primary-foreground" : "bg-background text-foreground"
                         )}>
                           {opt.text}
@@ -437,7 +594,9 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => setSelected((s) => ({ ...s, [q.id]: opt.id }))}
+                    role="radio"
+                    aria-checked={isSelected}
+                    onClick={() => choose(q.id, opt.id)}
                     className={cn(
                       "flex items-center gap-3 rounded-xl border px-4 py-3 text-sm text-left transition-colors",
                       isSelected
@@ -460,47 +619,80 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
         )}
 
         {error && (
-          <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+          <p role="alert" className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
             {error}
           </p>
         )}
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline" size="sm"
-            onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-            disabled={currentIndex === 0}
-          >
-            <ChevronLeft className="size-4 mr-1" /> Previous
-          </Button>
+        {/* At the end with gaps: say which, rather than a dead Submit button */}
+        {isLast && !allAnswered && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <span>
+              {questions.length - answered === 1
+                ? "1 question still needs an answer"
+                : `${questions.length - answered} questions still need an answer`} before you can submit.
+            </span>
+            {firstUnanswered !== currentIndex && (
+              <Button size="sm" variant="outline" className="bg-background" onClick={() => go(firstUnanswered)}>
+                Go to question {firstUnanswered + 1}
+              </Button>
+            )}
+          </div>
+        )}
 
-          {currentIndex < questions.length - 1 ? (
-            <Button
-              size="sm"
-              onClick={() => setCurrentIndex((i) => i + 1)}
-              disabled={!selected[q?.id]}
-            >
-              Next <ChevronRight className="size-4 ml-1" />
+        {confirming ? (
+          // Asked only when attempts are limited — a practice test just submits.
+          <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-4">
+            <div>
+              <p className="text-sm font-semibold">Submit your answers?</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                You can&apos;t change them afterwards. This is attempt {attempts.length + 1} of {settings.maxAttempts}.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={submit} disabled={submitting}>
+                {submitting
+                  ? <><Loader2 className="size-4 mr-1.5 animate-spin" /> Submitting…</>
+                  : "Yes, submit"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setConfirming(false)} disabled={submitting}>
+                Check my answers first
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <Button variant="outline" onClick={() => go(currentIndex - 1)} disabled={currentIndex === 0}>
+              <ChevronLeft className="size-4 mr-1" /> Previous
             </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={submit}
-              disabled={answered < questions.length || submitting || !enrollmentId}
-            >
-              {submitting
-                ? <><Loader2 className="size-4 mr-1.5 animate-spin" /> Submitting…</>
-                : "Submit Test"}
-            </Button>
-          )}
-        </div>
+
+            <div className="flex items-center gap-2">
+              {!isLast && (
+                <Button variant={allAnswered ? "outline" : "default"} onClick={() => go(currentIndex + 1)}>
+                  {selected[q?.id] ? "Next" : "Skip"} <ChevronRight className="size-4 ml-1" />
+                </Button>
+              )}
+              {/* Offered as soon as everything is answered, wherever the student is */}
+              {(isLast || allAnswered) && (
+                <Button
+                  onClick={limited ? () => setConfirming(true) : submit}
+                  disabled={!allAnswered || submitting || !enrollmentId}
+                >
+                  {submitting
+                    ? <><Loader2 className="size-4 mr-1.5 animate-spin" /> Submitting…</>
+                    : "Submit Test"}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     )
   }
 
   // ── Start screen — the rules, and how previous attempts went ───────────────
   const left = attemptsLeftText(data.attemptsLeft)
+  const inProgress = answered > 0
   return (
     <div className="flex flex-col gap-6 py-2">
       <div className="flex flex-col items-center gap-3 text-center">
@@ -521,12 +713,12 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground max-w-sm">
-            Answer every question, then submit. You can go back and change an answer before you submit.
+            Answer every question, then submit. You can skip a question and come back to it, and change any answer before you submit.
           </p>
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 text-center">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">
         {[
           { label: "Questions", value: questions.length },
           { label: "Pass mark", value: `${settings.passMark}%` },
@@ -543,7 +735,16 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
-        {canAttempt ? (
+        {canAttempt && inProgress ? (
+          <>
+            <Button onClick={resume} disabled={!enrollmentId}>
+              Continue test <ChevronRight className="size-4 ml-1" />
+            </Button>
+            <Button onClick={start} disabled={!enrollmentId} variant="outline">
+              <RotateCcw className="size-4 mr-1.5" /> Start again
+            </Button>
+          </>
+        ) : canAttempt ? (
           <Button onClick={start} disabled={!enrollmentId} variant={hasPassed ? "outline" : "default"}>
             {attempts.length === 0
               ? "Start Test"
@@ -559,8 +760,16 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted }: Props) {
         )}
       </div>
 
-      {canAttempt && left && attempts.length > 0 && !hasPassed && (
-        <p className="text-xs text-muted-foreground text-center">{left}</p>
+      {canAttempt && inProgress && (
+        <p className="text-xs text-muted-foreground text-center">
+          You answered {answered} of {questions.length} last time — your answers have been kept.
+        </p>
+      )}
+
+      {canAttempt && left && !hasPassed && (
+        <p className="text-xs text-muted-foreground text-center">
+          {left}.{!data.answersRevealed && " The correct answers are shown once you pass or have used every attempt."}
+        </p>
       )}
 
       {!enrollmentId && (

@@ -2,11 +2,12 @@
 
 import { useState } from "react"
 import {
-  CheckCircle2, ChevronDown, ChevronUp, Loader2, RotateCcw, XCircle,
+  CheckCircle2, ChevronDown, ChevronUp, Download, Loader2, RotateCcw, Search, XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
@@ -47,7 +48,11 @@ type Attempt = {
 }
 
 /** The test's questions, as the lesson page already has them — to name what a student chose. */
-export type ResultsQuestion = { id: string; question: string; options: Array<{ id: string; text: string }> }
+export type ResultsQuestion = {
+  id: string
+  question: string
+  options: Array<{ id: string; text: string; isCorrect?: boolean }>
+}
 
 const STATUS: Record<Status, { label: string; className: string }> = {
   PASSED: { label: "Passed", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
@@ -58,6 +63,41 @@ const STATUS: Record<Status, { label: string; className: string }> = {
 
 function initials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+}
+
+type Filter = "ALL" | Status
+
+/** Shown only when someone is in them, in this order. */
+const FILTERS: Array<{ value: Filter; label: string }> = [
+  { value: "ALL", label: "All" },
+  { value: "NOT_STARTED", label: "Not taken" },
+  { value: "IN_PROGRESS", label: "Not passed yet" },
+  { value: "FAILED", label: "Not passed" },
+  { value: "PASSED", label: "Passed" },
+]
+
+/** The table as a spreadsheet file, for the teacher's own records. */
+function downloadCsv(test: ResultsData["test"], students: StudentResult[]) {
+  // Quoted, and never starting with a character a spreadsheet would run as a formula.
+  const cell = (value: string | number | null) => {
+    const text = value === null ? "" : String(value)
+    return `"${(/^[=+\-@]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`
+  }
+  const rows = [
+    ["Student", "Email", "Result", "Best score (%)", "Latest score (%)", "Attempts", "Last attempt"],
+    ...students.map((s) => [
+      s.name, s.email, STATUS[s.status].label, s.bestScore, s.latestScore, s.attempts,
+      s.lastAttemptAt ? new Date(s.lastAttemptAt).toLocaleString("en-GB") : null,
+    ]),
+  ]
+  const csv = rows.map((row) => row.map(cell).join(",")).join("\r\n")
+  // The BOM makes Excel read accented names correctly.
+  const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }))
+  const link = document.createElement("a")
+  link.href = url
+  link.download = `${test.title.replace(/[^\w\- ]+/g, "").trim() || "test"} results.csv`
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 function shortDate(iso: string) {
@@ -134,6 +174,8 @@ function StudentAttempts({ lessonId, student, questions, onReset }: {
                 // A question added after this attempt was never put to the student.
                 if (!answer) return null
                 const chosen = q.options.find((o) => o.id === answer.optionId)
+                const name = (o: ResultsQuestion["options"][number]) => o.text || `option ${q.options.indexOf(o) + 1}`
+                const right = q.options.find((o) => o.isCorrect)
                 return (
                   <li key={q.id} className="flex items-start gap-2 px-3 py-2 text-xs">
                     {answer.isCorrect
@@ -145,9 +187,12 @@ function StudentAttempts({ lessonId, student, questions, onReset }: {
                         {!answer.optionId
                           ? "Not answered"
                           : chosen
-                            ? `Answered: ${chosen.text || `option ${q.options.indexOf(chosen) + 1}`}`
+                            ? `Answered: ${name(chosen)}`
                             : "Answered with an option that has since been removed"}
                       </p>
+                      {!answer.isCorrect && right && (
+                        <p className="text-emerald-700">Correct answer: {name(right)}</p>
+                      )}
                     </div>
                   </li>
                 )
@@ -182,6 +227,8 @@ export function QuizResults({ lessonId, questions }: { lessonId: string; questio
     errorMessage: "Could not load the results",
   })
   const [openStudent, setOpenStudent] = useState<string | null>(null)
+  const [filter, setFilter] = useState<Filter>("ALL")
+  const [search, setSearch] = useState("")
 
   if (!data) {
     return loading
@@ -194,6 +241,17 @@ export function QuizResults({ lessonId, questions }: { lessonId: string; questio
   if (students.length === 0) {
     return <p className="text-sm text-muted-foreground">There are no students on this course yet.</p>
   }
+
+  const filters = FILTERS
+    .map((f) => ({ ...f, count: f.value === "ALL" ? students.length : students.filter((s) => s.status === f.value).length }))
+    .filter((f) => f.value === "ALL" || f.count > 0)
+  // A filter whose last student has moved on (after a reset, say) falls back to everyone.
+  const activeFilter = filters.some((f) => f.value === filter) ? filter : "ALL"
+  const term = search.trim().toLowerCase()
+  const shown = students.filter((s) =>
+    (activeFilter === "ALL" || s.status === activeFilter) &&
+    (!term || s.name.toLowerCase().includes(term) || s.email.toLowerCase().includes(term))
+  )
 
   const hardestFirst = data.questions
     // Numbered as on the Questions tab, whatever order they are listed in here.
@@ -218,6 +276,49 @@ export function QuizResults({ lessonId, questions }: { lessonId: string; questio
         ))}
       </div>
 
+      {/* Who to show, and a copy to keep */}
+      <div className="flex flex-wrap items-center gap-2">
+        {filters.length > 2 && (
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show students">
+            {filters.map((f) => (
+              <Button
+                key={f.value}
+                size="sm"
+                variant={activeFilter === f.value ? "default" : "outline"}
+                className="h-8 text-xs"
+                aria-pressed={activeFilter === f.value}
+                onClick={() => { setFilter(f.value); setOpenStudent(null) }}
+              >
+                {f.label} ({f.count})
+              </Button>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 ml-auto">
+          {students.length > 8 && (
+            <div className="relative">
+              <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Find a student"
+                aria-label="Find a student"
+                className="h-8 w-44 pl-8 text-xs"
+              />
+            </div>
+          )}
+          <Button
+            variant="outline" size="sm" className="h-8 text-xs gap-1.5"
+            onClick={() => downloadCsv(test, shown)}
+            disabled={shown.length === 0}
+            title="Download these results as a spreadsheet (CSV)"
+          >
+            <Download className="size-3.5" /> Download
+          </Button>
+        </div>
+      </div>
+
       {/* Students */}
       <div className="rounded-xl border overflow-hidden">
         <div className={`hidden sm:grid ${COLUMNS} items-center gap-3 px-4 py-2 border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>
@@ -231,7 +332,10 @@ export function QuizResults({ lessonId, questions }: { lessonId: string; questio
         </div>
 
         <div className="divide-y">
-          {students.map((student) => {
+          {shown.length === 0 && (
+            <p className="px-4 py-6 text-sm text-muted-foreground text-center">No students match.</p>
+          )}
+          {shown.map((student) => {
             const expandable = data.seesAnswers && student.attempts > 0
             const isOpen = expandable && openStudent === student.id
             return (

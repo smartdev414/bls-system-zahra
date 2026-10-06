@@ -166,7 +166,7 @@ export default function ViewLessonPage({
 
           <TabsContent value="questions">
           {lesson.questions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No questions have been added to this quiz yet.</p>
+            <p className="text-sm text-muted-foreground">No questions have been added to this test yet.</p>
           ) : (
             <div className="flex flex-col gap-6">
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">

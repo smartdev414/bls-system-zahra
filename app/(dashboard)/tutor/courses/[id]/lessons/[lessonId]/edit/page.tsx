@@ -15,7 +15,9 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
-import { QuizBuilder, type QuestionDraft } from "@/components/quiz/QuizBuilder"
+import {
+  QuizBuilder, isBlankQuestion, questionProblem, saveQuestionDraft, withSaved, type QuestionDraft,
+} from "@/components/quiz/QuizBuilder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { lessonKind } from "@/lib/lesson-kind"
@@ -140,27 +142,40 @@ export default function EditLessonPage({
   async function handleSave() {
     if (!title.trim()) return
 
-    // Warn about unsaved quiz questions
-    if (lesson?.type === "QUIZ") {
-      const unsavedNew = questions.filter((q) => !q.id)
-      const unsavedEdits = questions.filter((q) => q.id && q.isOpen)
-      if (unsavedNew.length > 0) {
-        setError(
-          `${unsavedNew.length} question${unsavedNew.length > 1 ? "s have" : " has"} not been saved yet. Use the "Save question" button on each question before saving the lesson.`
-        )
-        return
-      }
-      if (unsavedEdits.length > 0) {
-        setError(
-          `${unsavedEdits.length} question${unsavedEdits.length > 1 ? "s have" : " has"} unsaved edits. Use the "Update question" button on each open question before saving the lesson.`
-        )
-        return
-      }
+    // Questions that were added or changed are saved along with the test, so
+    // there is no need to press "Save question" on each one first.
+    const pending = lesson?.type === "QUIZ"
+      ? questions.filter((q) => !isBlankQuestion(q) && (!q.id || q.dirty))
+      : []
+    const unfinished = pending.filter((q) => questionProblem(q))
+    if (unfinished.length > 0) {
+      const ids = new Set(unfinished.map((q) => q.uid))
+      setQuestions((current) => current.map((q) => (
+        ids.has(q.uid) ? { ...q, isOpen: true, error: questionProblem(q) } : q
+      )))
+      const numbers = questions.flatMap((q, i) => (ids.has(q.uid) ? [i + 1] : []))
+      setError(
+        `Question${numbers.length > 1 ? "s" : ""} ${numbers.join(", ")} ${numbers.length > 1 ? "are" : "is"} not finished. Complete or delete ${numbers.length > 1 ? "them" : "it"}, then save.`
+      )
+      return
     }
 
     setSaving(true)
     setError(null)
     try {
+      for (const q of pending) {
+        try {
+          const saved = await saveQuestionDraft(lessonId, q)
+          setQuestions((current) => current.map((old) => (old.uid === q.uid ? withSaved(old, saved) : old)))
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "Could not save this question"
+          setQuestions((current) => current.map((old) => (
+            old.uid === q.uid ? { ...old, isOpen: true, error: message } : old
+          )))
+          throw new Error(`Question ${questions.indexOf(q) + 1} could not be saved: ${message}`)
+        }
+      }
+
       // 1. Update lesson fields
       const res = await fetch(`/api/tutor/lessons/${lessonId}`, {
         method: "PUT",
@@ -250,12 +265,12 @@ export default function EditLessonPage({
 
       {/* Title */}
       <div className="flex flex-col gap-1.5">
-        <Label>Lesson Title</Label>
+        <Label>{lesson.type === "QUIZ" ? "Test Title" : "Lesson Title"}</Label>
         <Input
           className="h-11"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Lesson title"
+          placeholder={lesson.type === "QUIZ" ? "Test title" : "Lesson title"}
         />
       </div>
 
@@ -279,7 +294,13 @@ export default function EditLessonPage({
 
       <ReleaseField value={releaseAt} onChange={setReleaseAt} />
 
-      {lesson.type === "QUIZ" && <TestSettingsFields value={testSettings} onChange={setTestSettings} />}
+      {lesson.type === "QUIZ" && (
+        <TestSettingsFields
+          value={testSettings}
+          onChange={setTestSettings}
+          questionCount={questions.filter((q) => !isBlankQuestion(q)).length}
+        />
+      )}
 
       {/* Description */}
       <div className="flex flex-col gap-1.5">
