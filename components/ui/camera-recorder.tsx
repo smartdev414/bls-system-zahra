@@ -50,11 +50,12 @@ function writeBackgroundPreference(color: string | null): void {
 
 /** Whether the tutor last recorded against a coloured backdrop. */
 function readMethodPreference(): BackgroundMethod {
-  if (typeof window === "undefined") return "model"
+  if (typeof window === "undefined") return "auto"
   try {
-    return window.localStorage.getItem(BACKGROUND_METHOD_PREF_KEY) === "backdrop" ? "backdrop" : "model"
+    const value = window.localStorage.getItem(BACKGROUND_METHOD_PREF_KEY)
+    return value === "model" || value === "backdrop" ? value : "auto"
   } catch {
-    return "model"
+    return "auto"
   }
 }
 
@@ -113,7 +114,8 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const [backgroundError, setBackgroundError] = useState<string | null>(null)
   const backgroundOn = background !== null
   // How the tutor is cut out: by the model (works anywhere), or by replacing
-  // the colour of a plain cloth hung behind them (much cleaner hands).
+  // the colour of a plain cloth hung behind them (much cleaner hands). "auto"
+  // does the second whenever it can see such a cloth.
   const [method, setMethod] = useState<BackgroundMethod>(() => readMethodPreference())
   const [backdropDetected, setBackdropDetected] = useState(false)
   const [backdropStrength, setBackdropStrength] = useState(0.5)
@@ -210,7 +212,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   function chooseMethod(next: BackgroundMethod) {
     setBackgroundError(null)
     // The model may still need downloading; the backdrop method never does.
-    if (next === "model") setBackgroundReady(false)
+    if (next !== "backdrop") setBackgroundReady(false)
     setMethod(next)
     writeMethodPreference(next)
   }
@@ -382,7 +384,8 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   // A colour is chosen but the model is still loading — hold recording until
   // the processed picture is actually there.
   const backgroundPending =
-    ready && backgroundOn && rendererActive && method === "model" && !backgroundReady
+    ready && backgroundOn && rendererActive && method !== "backdrop" && !backgroundReady
+  const keying = method === "backdrop" || (method === "auto" && backdropDetected)
   const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
 
@@ -501,6 +504,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         <div className="flex flex-wrap items-center justify-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Behind me</span>
           {([
+            ["auto", "Auto"],
             ["model", "Any room"],
             ["backdrop", "Green / blue backdrop"],
           ] as const).map(([value, label]) => (
@@ -518,7 +522,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
               {label}
             </button>
           ))}
-          {method === "backdrop" && (
+          {keying && (
             <>
               <button
                 type="button"
@@ -544,11 +548,11 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
           )}
         </div>
       )}
-      {backgroundOn && rendererActive && method === "backdrop" && (
+      {backgroundOn && rendererActive && keying && (
         <p className={cn("text-xs text-center", backdropMissing ? "text-destructive" : "text-muted-foreground")}>
           {backdropMissing
             ? "No backdrop found — recording your real background. Hang a plain green or blue cloth so it fills both top corners of the picture, light it evenly, then press Re-detect."
-            : "Backdrop found. Avoid wearing its colour, and raise Strength if shadows or creases show through."}
+            : "Coloured backdrop found — replacing it directly for cleaner hands. Avoid wearing its colour, and raise Strength if shadows or creases show through."}
         </p>
       )}
 

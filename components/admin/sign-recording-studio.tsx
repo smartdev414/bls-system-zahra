@@ -91,9 +91,10 @@ function writeBackgroundPreference(color: string | null): void {
 
 function readMethodPreference(): BackgroundMethod {
   try {
-    return window.localStorage.getItem(BACKGROUND_METHOD_PREF_KEY) === "backdrop" ? "backdrop" : "model"
+    const value = window.localStorage.getItem(BACKGROUND_METHOD_PREF_KEY)
+    return value === "model" || value === "backdrop" ? value : "auto"
   } catch {
-    return "model"
+    return "auto"
   }
 }
 
@@ -199,7 +200,8 @@ export function SignRecordingStudio() {
   const [backgroundReady, setBackgroundReady] = useState(false)
   const [backgroundError, setBackgroundError] = useState<string | null>(null)
   // How the signer is cut out: by the model (works anywhere), or by replacing
-  // the colour of a plain cloth hung behind them (much cleaner hands).
+  // the colour of a plain cloth hung behind them (much cleaner hands). "auto"
+  // does the second whenever it can see such a cloth.
   const [method, setMethod] = useState<BackgroundMethod>(() => readMethodPreference())
   const [backdropDetected, setBackdropDetected] = useState(false)
   const [backdropStrength, setBackdropStrength] = useState(0.5)
@@ -224,7 +226,8 @@ export function SignRecordingStudio() {
   const current: QueueSign | undefined = items[index]
   const backgroundOn = background !== null
   const backgroundPending =
-    ready && backgroundOn && rendererActive && method === "model" && !backgroundReady
+    ready && backgroundOn && rendererActive && method !== "backdrop" && !backgroundReady
+  const keying = method === "backdrop" || (method === "auto" && backdropDetected)
   const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
   const canRecord = ready && !backgroundPending && !!current
@@ -374,7 +377,7 @@ export function SignRecordingStudio() {
   function chooseMethod(next: BackgroundMethod) {
     setBackgroundError(null)
     // The model may still need downloading; the backdrop method never does.
-    if (next === "model") setBackgroundReady(false)
+    if (next !== "backdrop") setBackgroundReady(false)
     setMethod(next)
     writeMethodPreference(next)
   }
@@ -873,6 +876,7 @@ export function SignRecordingStudio() {
             <div className="flex flex-wrap items-center justify-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">Behind me</span>
               {([
+                ["auto", "Auto"],
                 ["model", "Any room"],
                 ["backdrop", "Green / blue backdrop"],
               ] as const).map(([value, label]) => (
@@ -890,7 +894,7 @@ export function SignRecordingStudio() {
                   {label}
                 </button>
               ))}
-              {method === "backdrop" && (
+              {keying && (
                 <>
                   <button
                     type="button"
@@ -919,11 +923,11 @@ export function SignRecordingStudio() {
               )}
             </div>
           )}
-          {backgroundOn && rendererActive && method === "backdrop" && (
+          {backgroundOn && rendererActive && keying && (
             <p className={cn("text-center text-xs", backdropMissing ? "text-destructive" : "text-muted-foreground")}>
               {backdropMissing
                 ? "No backdrop found — recording your real background. Hang a plain green or blue cloth so it fills both top corners of the picture, light it evenly, then press Re-detect."
-                : "Backdrop found. Avoid wearing its colour, and raise Strength if shadows or creases show through."}
+                : "Coloured backdrop found — replacing it directly for cleaner hands. Avoid wearing its colour, and raise Strength if shadows or creases show through."}
             </p>
           )}
           {backgroundError && <p className="text-center text-xs text-destructive">{backgroundError}</p>}

@@ -163,6 +163,14 @@ const KEY_PATCH_HEIGHT = 9
 const KEY_SAMPLE_INTERVAL = 30
 /** Below this much colour the "backdrop" is a white or grey wall, which can't be keyed. */
 const KEY_MIN_SATURATION = 0.07
+// The "auto" method switches to the chroma key by itself, so it asks for more
+// before believing the corners are a backdrop: a stronger colour, and one that
+// isn't on the skin side of the colour wheel (a beige or wooden wall keyed out
+// would take the tutor's face with it).
+const AUTO_KEY_MIN_SATURATION = 0.1
+const SKIN_HUE: [number, number] = [-0.6, 0.8]
+/** Failed re-reads in a row before "auto" decides the backdrop has gone. */
+const AUTO_KEY_MAX_MISSES = 5
 
 function toCbCr(r: number, g: number, b: number): [number, number] {
   const y = 0.299 * r + 0.587 * g + 0.114 * b
@@ -287,16 +295,17 @@ function resizeMaskTarget(gl: WebGL2RenderingContext, target: MaskTarget, width:
 /**
  * How the tutor is separated from what is behind them: "model" works anywhere
  * (segmentation), "backdrop" needs a plain coloured cloth behind the tutor and
- * gives much cleaner hands (chroma key).
+ * gives much cleaner hands (chroma key). "auto" uses the chroma key whenever
+ * it can see such a cloth and the model otherwise.
  */
-export type BackgroundMethod = "model" | "backdrop"
+export type BackgroundMethod = "auto" | "model" | "backdrop"
 
 export type LessonVideoCanvas = {
   /**
    * Set the background colour (`#rrggbb`), or null for the real background.
-   * With the "model" method the first colour downloads the segmentation
-   * model; the promise resolves once the colour is actually on screen and
-   * rejects if the model can't load. The "backdrop" method resolves at once
+   * With the "model" and "auto" methods the first colour downloads the
+   * segmentation model; the promise resolves once the colour is actually on
+   * screen and rejects if the model can't load. The "backdrop" method resolves at once
    * and shows the colour as soon as a backdrop is found (see
    * `onBackdropDetected`).
    */
@@ -400,6 +409,7 @@ export function createLessonVideoCanvas(
   let key: [number, number] | null = null
   let keyStrength = 0.5
   let framesSinceKeySample = KEY_SAMPLE_INTERVAL
+  let keyMisses = 0
   let keySampler: CanvasRenderingContext2D | null = null
 
   function setKey(next: [number, number] | null) {
@@ -432,6 +442,10 @@ export function createLessonVideoCanvas(
     const sample: [number, number] = [median(cb), median(cr)]
     const saturation = Math.hypot(sample[0], sample[1])
     if (saturation < KEY_MIN_SATURATION) return null
+    if (method === "auto") {
+      if (saturation < AUTO_KEY_MIN_SATURATION) return null
+      if (sample[0] * SKIN_HUE[0] + sample[1] * SKIN_HUE[1] > 0) return null
+    }
     // Even = most of the corner pixels sit close to the middle colour.
     const tolerance = saturation * 0.35
     let close = 0
@@ -448,7 +462,13 @@ export function createLessonVideoCanvas(
     if (++framesSinceKeySample < KEY_SAMPLE_INTERVAL) return
     framesSinceKeySample = 0
     const sample = sampleKey()
-    if (!sample) return
+    if (!sample) {
+      // "auto" goes back to the model once the backdrop has clearly gone — not
+      // on one bad read, which is usually just a hand passing a corner.
+      if (method === "auto" && key && ++keyMisses >= AUTO_KEY_MAX_MISSES) setKey(null)
+      return
+    }
+    keyMisses = 0
     if (!key) {
       setKey(sample)
       return
@@ -584,6 +604,16 @@ export function createLessonVideoCanvas(
     // Mask rows are tightly packed single bytes.
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
 
+    if (rgb && method !== "model") {
+      try {
+        updateKey()
+      } catch (err) {
+        // Reading the frame back can be refused (e.g. a tainted source); keep
+        // whatever key we already have.
+        console.warn("[lesson-video-canvas] backdrop sample failed", err)
+      }
+    }
+
     // The camera keeps advancing while we work, so pin one frame and use it
     // for both the mask and the picture — otherwise the cut-out can trail a
     // frame behind a moving hand.
@@ -596,7 +626,8 @@ export function createLessonVideoCanvas(
       gl.bindTexture(gl.TEXTURE_2D, frameTexture)
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
 
-      if (rgb && method === "model" && segmenter) {
+      // A found backdrop is keyed directly below; the model isn't needed.
+      if (rgb && segmenter && method !== "backdrop" && !key) {
         const startedAt = performance.now()
         segmenter.segmentForVideo(source, startedAt, (result) => {
           // The mask is only valid inside this callback, so copy it out now.
@@ -614,16 +645,8 @@ export function createLessonVideoCanvas(
       frame?.close()
     }
 
-    if (rgb && method === "backdrop") {
-      try {
-        updateKey()
-      } catch (err) {
-        // Reading the frame back can be refused (e.g. a tainted source); keep
-        // whatever key we already have.
-        console.warn("[lesson-video-canvas] backdrop sample failed", err)
-      }
-    }
-    if (rgb && method === "backdrop" && key) {
+    if (rgb && key) {
+      historyValid = false
       const saturation = Math.hypot(key[0], key[1])
       // Stronger = the cut starts closer to neutral, so darker shadows and
       // creases in the cloth go too, at the cost of eating into dull colours.
@@ -709,11 +732,14 @@ export function createLessonVideoCanvas(
         rgb = null
         return
       }
-      if (nextMethod === "model" && !segmenter) await loadSegmenter()
+      if (nextMethod !== "backdrop" && !segmenter) await loadSegmenter()
       // A newer choice was made while the model was loading — leave it be.
       if (destroyed || request !== backgroundRequest) return
-      if (nextMethod === "backdrop" && method !== "backdrop") {
-        // Look for the backdrop straight away rather than on the next interval.
+      if (nextMethod !== method) {
+        // Each method has its own idea of what counts as a backdrop, so look
+        // again — straight away rather than on the next interval.
+        setKey(null)
+        keyMisses = 0
         framesSinceKeySample = KEY_SAMPLE_INTERVAL
       }
       method = nextMethod
@@ -721,6 +747,7 @@ export function createLessonVideoCanvas(
     },
     resampleBackdrop() {
       setKey(null)
+      keyMisses = 0
       framesSinceKeySample = KEY_SAMPLE_INTERVAL
     },
     setBackdropStrength(strength) {
