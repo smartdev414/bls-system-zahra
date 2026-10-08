@@ -13,6 +13,8 @@ import {
 
 const BACKGROUND_PREF_KEY = "recorder:background"
 const WATERMARK_TILE_ASPECT = watermarkTileAspect(MARK_W / MARK_H)
+// About 30 MB a minute, so the 500 MB upload cap is reached at roughly 16 minutes.
+const RECORDING_VIDEO_BITRATE = 4_000_000
 
 const BACKGROUND_PRESETS = [
   { label: "White", value: "#ffffff" },
@@ -102,7 +104,13 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     }
 
     navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
+      // Ask for 720p at 30 fps: left to itself the browser opens the camera at
+      // 640×480, which is too soft to read fingers. These are preferences, so
+      // a camera that can't do it still opens at whatever it has.
+      .getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        audio: true,
+      })
       .then((stream) => {
         streamRef.current = stream
         if (videoRef.current) {
@@ -183,6 +191,9 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     // alongside the microphone. Falls back to the raw camera where the canvas
     // renderer isn't available.
     const processed = rendererRef.current?.captureStream(30)
+    // Signing is fast hand movement: have the encoder keep the frame rate up
+    // rather than hold back frames to sharpen a still picture.
+    processed?.getVideoTracks().forEach((track) => { track.contentHint = "motion" })
     const recordStream = processed
       ? new MediaStream([...processed.getVideoTracks(), ...streamRef.current.getAudioTracks()])
       : streamRef.current
@@ -196,7 +207,8 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
     const recorder = new MediaRecorder(
       recordStream,
-      mimeType ? { mimeType } : undefined
+      // The browser's default (about 2.5 Mbps) smears moving hands at 720p.
+      { ...(mimeType ? { mimeType } : {}), videoBitsPerSecond: RECORDING_VIDEO_BITRATE }
     )
     recorderRef.current = recorder
 

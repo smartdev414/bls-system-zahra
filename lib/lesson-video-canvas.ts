@@ -100,9 +100,10 @@ in vec2 v_uv;
 out vec4 o;
 void main() {
   float person = texture(u_mask, v_uv).r;
-  // Feathered edge, biased slightly inwards so a rim of the real room
-  // doesn't show around the person.
-  float alpha = smoothstep(0.6, 0.9, person);
+  // Feathered edge around the half-way point. A hand in motion only scores
+  // middling confidence, so a cut biased any further inwards thins the fingers
+  // and lets the flat colour bleed through them.
+  float alpha = smoothstep(0.4, 0.7, person);
   o = vec4(mix(u_color, texture(u_frame, v_uv).rgb, alpha), 1.0);
 }`
 
