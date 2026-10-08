@@ -15,6 +15,14 @@
 // Without one, the frame is drawn as-is and the model is never downloaded.
 // Either way the logo tile is drawn last, on top.
 //
+// The model only guesses where the person is, and guesses worst on fast,
+// motion-blurred hands. A tutor who records in front of a plain coloured
+// backdrop (green or blue cloth) can use the "backdrop" method instead: the
+// backdrop's colour is read from the top corners of the picture and every
+// pixel of that colour is replaced directly (a chroma key). No model, exact
+// per-pixel edges, and a blurred hand blends into the flat colour the way it
+// would have blended into the cloth.
+//
 // The classroom's background blur uses @livekit/track-processors, which works
 // from a hard on/off mask; that reads fine under a blur and looks jagged
 // against a flat colour, hence the separate renderer here.
@@ -106,6 +114,65 @@ void main() {
   float alpha = smoothstep(0.4, 0.7, person);
   o = vec4(mix(u_color, texture(u_frame, v_uv).rgb, alpha), 1.0);
 }`
+
+// Chroma key for the "backdrop" method. Works on colour only (the Cb/Cr part
+// of YCbCr), so shadows and uneven light on the cloth — which mostly change
+// brightness — are still treated as backdrop.
+const CHROMA_SHADER = `#version 300 es
+precision highp float;
+uniform sampler2D u_frame;
+uniform vec3 u_color;
+uniform vec2 u_key;   // backdrop colour as (Cb, Cr)
+uniform vec2 u_range; // keyness where the cut starts and where it is complete
+in vec2 v_uv;
+out vec4 o;
+vec3 toYcc(vec3 c) {
+  float y = dot(c, vec3(0.299, 0.587, 0.114));
+  return vec3(y, (c.b - y) * 0.564, (c.r - y) * 0.713);
+}
+void main() {
+  vec3 px = toYcc(texture(u_frame, v_uv).rgb);
+  // Cameras store colour at half resolution and it is noisy, so the decision
+  // is made on a slightly blurred copy (one mip level down) to keep speckle
+  // off the edge.
+  vec2 chroma = toYcc(textureLod(u_frame, v_uv, 1.0).rgb).yz;
+  vec2 dir = normalize(u_key);
+  // How far the pixel's colour goes in the backdrop's direction, less part of
+  // how far it strays to either side: high for the cloth (lit or in shadow),
+  // zero or below for skin, hair and clothes of any other hue, and in between
+  // for a motion-blurred hand, which really is part cloth.
+  float along = dot(chroma, dir);
+  float keyness = along - 0.5 * length(chroma - dir * along);
+  float alpha = 1.0 - smoothstep(u_range.x, u_range.y, keyness);
+  // The cloth reflects its colour onto the person's edges; take that tint out
+  // of what is kept so there is no green rim against the new colour.
+  px.yz -= dir * max(dot(px.yz, dir), 0.0);
+  float r = px.x + px.z / 0.713;
+  float b = px.x + px.y / 0.564;
+  float g = (px.x - 0.299 * r - 0.114 * b) / 0.587;
+  o = vec4(mix(u_color, clamp(vec3(r, g, b), 0.0, 1.0), alpha), 1.0);
+}`
+
+// The backdrop colour is read from a small copy of the frame: the two top
+// corners, where the tutor's head and hands don't normally reach.
+const KEY_SAMPLE_WIDTH = 64
+const KEY_SAMPLE_HEIGHT = 36
+const KEY_PATCH_WIDTH = 10
+const KEY_PATCH_HEIGHT = 9
+/** Frames between re-reads, so the key follows the camera's exposure settling. */
+const KEY_SAMPLE_INTERVAL = 30
+/** Below this much colour the "backdrop" is a white or grey wall, which can't be keyed. */
+const KEY_MIN_SATURATION = 0.07
+
+function toCbCr(r: number, g: number, b: number): [number, number] {
+  const y = 0.299 * r + 0.587 * g + 0.114 * b
+  return [(b - y) * 0.564, (r - y) * 0.713]
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[sorted.length >> 1]
+}
 
 const GPU_WARMUP_FRAMES = 3
 const GPU_SAMPLE_FRAMES = 10
@@ -217,13 +284,27 @@ function resizeMaskTarget(gl: WebGL2RenderingContext, target: MaskTarget, width:
   return true
 }
 
+/**
+ * How the tutor is separated from what is behind them: "model" works anywhere
+ * (segmentation), "backdrop" needs a plain coloured cloth behind the tutor and
+ * gives much cleaner hands (chroma key).
+ */
+export type BackgroundMethod = "model" | "backdrop"
+
 export type LessonVideoCanvas = {
   /**
    * Set the background colour (`#rrggbb`), or null for the real background.
-   * The first colour downloads the segmentation model; the promise resolves
-   * once the colour is actually on screen and rejects if the model can't load.
+   * With the "model" method the first colour downloads the segmentation
+   * model; the promise resolves once the colour is actually on screen and
+   * rejects if the model can't load. The "backdrop" method resolves at once
+   * and shows the colour as soon as a backdrop is found (see
+   * `onBackdropDetected`).
    */
-  setBackground: (hex: string | null) => Promise<void>
+  setBackground: (hex: string | null, method?: BackgroundMethod) => Promise<void>
+  /** Forget the backdrop colour and read it again from the next frame. */
+  resampleBackdrop: () => void
+  /** 0–1: how much of the backdrop's shadows and creases to remove. Default 0.5. */
+  setBackdropStrength: (strength: number) => void
   /** The processed picture as a video track, ready for MediaRecorder. */
   captureStream: (fps?: number) => MediaStream
   destroy: () => void
@@ -236,7 +317,11 @@ export type LessonVideoCanvas = {
 export function createLessonVideoCanvas(
   video: HTMLVideoElement,
   canvas: HTMLCanvasElement,
-  options: { watermarkSrc?: string } = {},
+  options: {
+    watermarkSrc?: string
+    /** Called when the "backdrop" method finds, or loses, a usable backdrop. */
+    onBackdropDetected?: (detected: boolean) => void
+  } = {},
 ): LessonVideoCanvas {
   const context = canvas.getContext("webgl2", { alpha: false, antialias: false })
   if (!context) throw new Error("WebGL2 is not available")
@@ -291,6 +376,7 @@ export function createLessonVideoCanvas(
   const temporal = link(gl, vertex, TEMPORAL_SHADER)
   const refine = link(gl, vertex, REFINE_SHADER)
   const composite = link(gl, vertex, COMPOSITE_SHADER)
+  const chroma = link(gl, vertex, CHROMA_SHADER)
   const overlay = link(gl, vertex, OVERLAY_SHADER)
 
   const quad = gl.createBuffer()
@@ -306,8 +392,71 @@ export function createLessonVideoCanvas(
   let historyValid = false
   let maskBytes = new Uint8Array(0)
   let rgb: [number, number, number] | null = null
+  let method: BackgroundMethod = "model"
   let backgroundRequest = 0
   let destroyed = false
+
+  // "backdrop" method state: the backdrop's colour as (Cb, Cr), once found.
+  let key: [number, number] | null = null
+  let keyStrength = 0.5
+  let framesSinceKeySample = KEY_SAMPLE_INTERVAL
+  let keySampler: CanvasRenderingContext2D | null = null
+
+  function setKey(next: [number, number] | null) {
+    const changed = (key === null) !== (next === null)
+    key = next
+    if (changed) options.onBackdropDetected?.(next !== null)
+  }
+
+  // Reads the backdrop colour from the top corners of the current frame.
+  // Returns null unless those corners are one even, clearly coloured surface.
+  function sampleKey(): [number, number] | null {
+    if (!keySampler) {
+      const sampler = document.createElement("canvas")
+      sampler.width = KEY_SAMPLE_WIDTH
+      sampler.height = KEY_SAMPLE_HEIGHT
+      keySampler = sampler.getContext("2d", { willReadFrequently: true })
+      if (!keySampler) return null
+    }
+    keySampler.drawImage(video, 0, 0, KEY_SAMPLE_WIDTH, KEY_SAMPLE_HEIGHT)
+    const cb: number[] = []
+    const cr: number[] = []
+    for (const x of [0, KEY_SAMPLE_WIDTH - KEY_PATCH_WIDTH]) {
+      const { data } = keySampler.getImageData(x, 0, KEY_PATCH_WIDTH, KEY_PATCH_HEIGHT)
+      for (let i = 0; i < data.length; i += 4) {
+        const [b, r] = toCbCr(data[i] / 255, data[i + 1] / 255, data[i + 2] / 255)
+        cb.push(b)
+        cr.push(r)
+      }
+    }
+    const sample: [number, number] = [median(cb), median(cr)]
+    const saturation = Math.hypot(sample[0], sample[1])
+    if (saturation < KEY_MIN_SATURATION) return null
+    // Even = most of the corner pixels sit close to the middle colour.
+    const tolerance = saturation * 0.35
+    let close = 0
+    for (let i = 0; i < cb.length; i++) {
+      if (Math.hypot(cb[i] - sample[0], cr[i] - sample[1]) < tolerance) close++
+    }
+    return close >= cb.length * 0.75 ? sample : null
+  }
+
+  // Keeps the key in step with the camera (exposure and white balance drift
+  // for a few seconds after it opens) without letting something that wanders
+  // into a corner replace it.
+  function updateKey() {
+    if (++framesSinceKeySample < KEY_SAMPLE_INTERVAL) return
+    framesSinceKeySample = 0
+    const sample = sampleKey()
+    if (!sample) return
+    if (!key) {
+      setKey(sample)
+      return
+    }
+    const sameHue =
+      (sample[0] * key[0] + sample[1] * key[1]) / (Math.hypot(...sample) * Math.hypot(...key)) > 0.9
+    if (sameHue) key = [key[0] + (sample[0] - key[0]) * 0.3, key[1] + (sample[1] - key[1]) * 0.3]
+  }
 
   // The logo tile is painted once per video size on a 2D canvas (white rounded
   // tile + logo, same look as LogoWatermark) and kept as a texture.
@@ -447,7 +596,7 @@ export function createLessonVideoCanvas(
       gl.bindTexture(gl.TEXTURE_2D, frameTexture)
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
 
-      if (rgb && segmenter) {
+      if (rgb && method === "model" && segmenter) {
         const startedAt = performance.now()
         segmenter.segmentForVideo(source, startedAt, (result) => {
           // The mask is only valid inside this callback, so copy it out now.
@@ -463,6 +612,31 @@ export function createLessonVideoCanvas(
       }
     } finally {
       frame?.close()
+    }
+
+    if (rgb && method === "backdrop") {
+      try {
+        updateKey()
+      } catch (err) {
+        // Reading the frame back can be refused (e.g. a tainted source); keep
+        // whatever key we already have.
+        console.warn("[lesson-video-canvas] backdrop sample failed", err)
+      }
+    }
+    if (rgb && method === "backdrop" && key) {
+      const saturation = Math.hypot(key[0], key[1])
+      // Stronger = the cut starts closer to neutral, so darker shadows and
+      // creases in the cloth go too, at the cost of eating into dull colours.
+      const start = saturation * (0.25 - 0.2 * keyStrength)
+      setFrameMipmaps(true)
+      bind(chroma, { u_frame: frameTexture }, -1)
+      gl.uniform3f(gl.getUniformLocation(chroma, "u_color"), rgb[0], rgb[1], rgb[2])
+      gl.uniform2f(gl.getUniformLocation(chroma, "u_key"), key[0], key[1])
+      gl.uniform2f(gl.getUniformLocation(chroma, "u_range"), start, saturation * (0.85 - 0.5 * keyStrength))
+      draw(null, width, height)
+      setFrameMipmaps(false)
+      drawWatermark(height)
+      return
     }
 
     if (!rgb || !maskWidth || !maskHeight) {
@@ -529,16 +703,28 @@ export function createLessonVideoCanvas(
   schedule()
 
   return {
-    async setBackground(hex) {
+    async setBackground(hex, nextMethod = "model") {
       const request = ++backgroundRequest
       if (hex === null) {
         rgb = null
         return
       }
-      if (!segmenter) await loadSegmenter()
+      if (nextMethod === "model" && !segmenter) await loadSegmenter()
       // A newer choice was made while the model was loading — leave it be.
       if (destroyed || request !== backgroundRequest) return
+      if (nextMethod === "backdrop" && method !== "backdrop") {
+        // Look for the backdrop straight away rather than on the next interval.
+        framesSinceKeySample = KEY_SAMPLE_INTERVAL
+      }
+      method = nextMethod
       rgb = hexToRgb(hex)
+    },
+    resampleBackdrop() {
+      setKey(null)
+      framesSinceKeySample = KEY_SAMPLE_INTERVAL
+    },
+    setBackdropStrength(strength) {
+      keyStrength = Math.min(1, Math.max(0, strength))
     },
     captureStream(fps = 30) {
       return canvas.captureStream(fps)
@@ -551,7 +737,7 @@ export function createLessonVideoCanvas(
       segmenter?.close()
       // Free our objects but leave the context alive — the same canvas may be
       // handed to a new renderer.
-      for (const program of [temporal, refine, composite, overlay]) gl.deleteProgram(program)
+      for (const program of [temporal, refine, composite, chroma, overlay]) gl.deleteProgram(program)
       for (const target of [...history, refined]) {
         gl.deleteTexture(target.texture)
         gl.deleteFramebuffer(target.framebuffer)

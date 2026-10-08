@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import {
-  Library, Plus, Pencil, Trash2, Loader2,
+  Library, Plus, Pencil, Trash2, Loader2, ListPlus, Camera, Upload,
   Search, Filter, Video, Check, X, Database, Image as ImageIcon,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -18,6 +19,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
+import { CameraRecorder } from "@/components/ui/camera-recorder"
+import { cn } from "@/lib/utils"
 import { useFetch, usePostCallback, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
@@ -52,6 +55,7 @@ export default function AdminSignsPage() {
   const [levelFilter, setLevelFilter] = useState("all")
   const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [form, setForm] = useState(blank())
 
   const debouncedQuery = useDebounce(query)
@@ -112,6 +116,14 @@ export default function AdminSignsPage() {
               {seeding ? "Seeding..." : "Seed defaults"}
             </Button>
           )}
+          <Button variant="outline" asChild>
+            <Link href="/admin/signs/record">
+              <Video className="size-4 mr-1.5" /> Record videos
+            </Link>
+          </Button>
+          <Button variant="outline" onClick={() => setBulkOpen(true)}>
+            <ListPlus className="size-4 mr-1.5" /> Bulk add
+          </Button>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4 mr-1.5" /> Add Sign
           </Button>
@@ -192,7 +204,110 @@ export default function AdminSignsPage() {
         onSubmit={() => create(form)}
         loading={creating}
       />
+
+      <BulkAddDialog
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        categories={data?.categories ?? []}
+        onAdded={refetch}
+      />
     </div>
+  )
+}
+
+// ─── Bulk add dialog ──────────────────────────────────────────────────────────
+
+function BulkAddDialog({
+  open, onClose, categories, onAdded,
+}: {
+  open: boolean
+  onClose: () => void
+  categories: string[]
+  onAdded: () => void
+}) {
+  const [text, setText] = useState("")
+  const [category, setCategory] = useState("")
+  const [level, setLevel] = useState<CourseLevel>("L1")
+
+  const words = text.split("\n").map((w) => w.trim()).filter(Boolean)
+
+  const { execute: add, loading } = usePostCallback<
+    { created: number; skipped: number },
+    { words: string[]; category: string; level: CourseLevel }
+  >("/api/admin/signs/bulk", {
+    successMessage: (d) =>
+      `${d.created} sign${d.created !== 1 ? "s" : ""} added` +
+      (d.skipped ? `, ${d.skipped} already in the dictionary` : ""),
+    errorMessage: "Could not add the signs",
+    // Category and level are kept: the next list is usually another batch of the same.
+    onSuccess: () => { setText(""); onClose(); onAdded() },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Bulk add signs</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-2">
+          <p className="text-sm text-muted-foreground">
+            Paste a list of words, one per line. They are added without a video, ready to be
+            recorded one after another under <span className="font-medium text-foreground">Record videos</span>.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Category *</Label>
+              <Input
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="e.g. Greetings"
+                list="bulk-sign-categories"
+              />
+              <datalist id="bulk-sign-categories">
+                {categories.map((c) => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Level *</Label>
+              <Select value={level} onValueChange={(v) => setLevel(v as CourseLevel)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {COURSE_LEVELS.map((l) => (
+                    <SelectItem key={l} value={l}>{l}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Words *</Label>
+            <Textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={"Hello\nThank you\nPlease"}
+              rows={10}
+              className="max-h-[40vh]"
+            />
+            <p className="text-xs text-muted-foreground">
+              {words.length} word{words.length !== 1 ? "s" : ""} · words already in the dictionary are left as they are
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            <X className="size-4 mr-1.5" /> Cancel
+          </Button>
+          <Button
+            disabled={!words.length || !category.trim() || loading}
+            onClick={() => add({ words, category: category.trim(), level })}
+          >
+            {loading ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Check className="size-4 mr-1.5" />}
+            {loading ? "Adding..." : `Add ${words.length || ""} sign${words.length !== 1 ? "s" : ""}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -256,7 +371,9 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
                 )}
               </div>
               <p className="text-xs text-muted-foreground line-clamp-1">{sign.description}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Handshape: {sign.handshape}</p>
+              {sign.handshape && (
+                <p className="text-xs text-muted-foreground mt-0.5">Handshape: {sign.handshape}</p>
+              )}
             </div>
             <div className="flex gap-1.5 shrink-0">
               <Button
@@ -307,8 +424,9 @@ function SignDialog({
   const set = (key: keyof Omit<Sign, "id">, value: string | null) =>
     setForm({ ...form, [key]: value })
 
-  const valid = form.word.trim() && form.category.trim() && form.description.trim() &&
-    form.handshape.trim() && form.usage.trim()
+  const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
+
+  const valid = form.word.trim() && form.category.trim()
 
   // Track uploaded file objects so we can show the FileUpload "uploaded" state
   const videoUploaded: UploadedFile | null = form.videoUrl
@@ -347,13 +465,13 @@ function SignDialog({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Handshape *</Label>
+              <Label>Handshape</Label>
               <Input value={form.handshape} onChange={(e) => set("handshape", e.target.value)} placeholder="e.g. Open hand" />
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Description *</Label>
+            <Label>Description</Label>
             <Textarea
               value={form.description}
               onChange={(e) => set("description", e.target.value)}
@@ -363,21 +481,51 @@ function SignDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Usage *</Label>
+            <Label>Usage</Label>
             <Input value={form.usage} onChange={(e) => set("usage", e.target.value)} placeholder="e.g. Used as a general greeting" />
           </div>
 
           {/* Video upload */}
           <div className="flex flex-col gap-1.5">
-            <Label>Sign Video (optional)</Label>
-            <FileUpload
-              accept="video/mp4,video/webm,video/quicktime"
-              label="Upload sign video"
-              uploaded={videoUploaded}
-              onUploaded={(f) => set("videoUrl", f.fileUrl)}
-              onRemove={() => set("videoUrl", null)}
-              disabled={loading}
-            />
+            <div className="flex items-center justify-between gap-2">
+              <Label>Sign Video (optional)</Label>
+              {!videoUploaded && (
+                <div className="flex rounded-lg border p-0.5">
+                  {([
+                    { mode: "upload", label: "Upload", icon: Upload },
+                    { mode: "record", label: "Record", icon: Camera },
+                  ] as const).map(({ mode, label, icon: Icon }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setVideoMode(mode)}
+                      aria-pressed={videoMode === mode}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                        videoMode === mode ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="size-3.5" /> {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {videoMode === "record" && !videoUploaded ? (
+              <CameraRecorder
+                onUploaded={(f) => set("videoUrl", f.fileUrl)}
+                disabled={loading}
+              />
+            ) : (
+              <FileUpload
+                accept="video/mp4,video/webm,video/quicktime"
+                label="Upload sign video"
+                uploaded={videoUploaded}
+                onUploaded={(f) => set("videoUrl", f.fileUrl)}
+                onRemove={() => set("videoUrl", null)}
+                disabled={loading}
+              />
+            )}
           </div>
 
           {/* Image upload */}

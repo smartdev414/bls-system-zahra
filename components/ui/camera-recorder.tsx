@@ -7,11 +7,13 @@ import { cn } from "@/lib/utils"
 import type { UploadedFile } from "@/components/ui/file-upload"
 import { LOGO_MARK_SRC, MARK_W, MARK_H } from "@/components/layout/logo"
 import {
-  createLessonVideoCanvas, supportsLessonVideoCanvas, watermarkTileAspect, type LessonVideoCanvas,
+  createLessonVideoCanvas, supportsLessonVideoCanvas, watermarkTileAspect,
+  type BackgroundMethod, type LessonVideoCanvas,
   WATERMARK_HEIGHT, WATERMARK_MARGIN, WATERMARK_PADDING, WATERMARK_RADIUS,
 } from "@/lib/lesson-video-canvas"
 
 const BACKGROUND_PREF_KEY = "recorder:background"
+const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
 const WATERMARK_TILE_ASPECT = watermarkTileAspect(MARK_W / MARK_H)
 // About 30 MB a minute, so the 500 MB upload cap is reached at roughly 16 minutes.
 const RECORDING_VIDEO_BITRATE = 4_000_000
@@ -41,6 +43,25 @@ function writeBackgroundPreference(color: string | null): void {
   try {
     if (color) window.localStorage.setItem(BACKGROUND_PREF_KEY, color)
     else window.localStorage.removeItem(BACKGROUND_PREF_KEY)
+  } catch {
+    // Private mode / quota — ignore. The preference simply won't persist.
+  }
+}
+
+/** Whether the tutor last recorded against a coloured backdrop. */
+function readMethodPreference(): BackgroundMethod {
+  if (typeof window === "undefined") return "model"
+  try {
+    return window.localStorage.getItem(BACKGROUND_METHOD_PREF_KEY) === "backdrop" ? "backdrop" : "model"
+  } catch {
+    return "model"
+  }
+}
+
+function writeMethodPreference(method: BackgroundMethod): void {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(BACKGROUND_METHOD_PREF_KEY, method)
   } catch {
     // Private mode / quota — ignore. The preference simply won't persist.
   }
@@ -91,6 +112,11 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const [backgroundReady, setBackgroundReady] = useState(false)
   const [backgroundError, setBackgroundError] = useState<string | null>(null)
   const backgroundOn = background !== null
+  // How the tutor is cut out: by the model (works anywhere), or by replacing
+  // the colour of a plain cloth hung behind them (much cleaner hands).
+  const [method, setMethod] = useState<BackgroundMethod>(() => readMethodPreference())
+  const [backdropDetected, setBackdropDetected] = useState(false)
+  const [backdropStrength, setBackdropStrength] = useState(0.5)
   // Camera picture shape (width ÷ height), so the preview shows the whole
   // frame that is being recorded rather than a cropped one.
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
@@ -138,7 +164,10 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
     let renderer: LessonVideoCanvas
     try {
-      renderer = createLessonVideoCanvas(video, canvas, { watermarkSrc: LOGO_MARK_SRC })
+      renderer = createLessonVideoCanvas(video, canvas, {
+        watermarkSrc: LOGO_MARK_SRC,
+        onBackdropDetected: setBackdropDetected,
+      })
     } catch (err) {
       console.error("[recorder] canvas renderer failed", err)
       return
@@ -151,6 +180,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
       rendererRef.current = null
       setRendererActive(false)
       setBackgroundReady(false)
+      setBackdropDetected(false)
     }
   }, [ready, uploaded])
 
@@ -160,7 +190,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     const renderer = rendererRef.current
     if (!rendererActive || !renderer) return
     let cancelled = false
-    renderer.setBackground(background)
+    renderer.setBackground(background, method)
       .then(() => {
         if (!cancelled && background) setBackgroundReady(true)
       })
@@ -171,7 +201,19 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         setBackground(null)
       })
     return () => { cancelled = true }
-  }, [rendererActive, background])
+  }, [rendererActive, background, method])
+
+  useEffect(() => {
+    if (rendererActive) rendererRef.current?.setBackdropStrength(backdropStrength)
+  }, [rendererActive, backdropStrength])
+
+  function chooseMethod(next: BackgroundMethod) {
+    setBackgroundError(null)
+    // The model may still need downloading; the backdrop method never does.
+    if (next === "model") setBackgroundReady(false)
+    setMethod(next)
+    writeMethodPreference(next)
+  }
 
   function chooseBackground(color: string | null) {
     if (color && !supportsLessonVideoCanvas()) {
@@ -339,7 +381,9 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
   // A colour is chosen but the model is still loading — hold recording until
   // the processed picture is actually there.
-  const backgroundPending = ready && backgroundOn && rendererActive && !backgroundReady
+  const backgroundPending =
+    ready && backgroundOn && rendererActive && method === "model" && !backgroundReady
+  const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
 
   return (
@@ -452,6 +496,61 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
           />
         </label>
       </div>
+
+      {backgroundOn && rendererActive && (
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Behind me</span>
+          {([
+            ["model", "Any room"],
+            ["backdrop", "Green / blue backdrop"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              disabled={recording || disabled}
+              onClick={() => chooseMethod(value)}
+              aria-pressed={method === value}
+              className={cn(
+                "h-7 rounded-full border px-2.5 text-xs font-medium transition-colors disabled:opacity-50",
+                method === value ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+          {method === "backdrop" && (
+            <>
+              <button
+                type="button"
+                disabled={recording || disabled}
+                onClick={() => rendererRef.current?.resampleBackdrop()}
+                className="h-7 rounded-full border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
+              >
+                Re-detect
+              </button>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                Strength
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={backdropStrength}
+                  onChange={(e) => setBackdropStrength(Number(e.target.value))}
+                  className="w-24 accent-primary"
+                />
+              </label>
+            </>
+          )}
+        </div>
+      )}
+      {backgroundOn && rendererActive && method === "backdrop" && (
+        <p className={cn("text-xs text-center", backdropMissing ? "text-destructive" : "text-muted-foreground")}>
+          {backdropMissing
+            ? "No backdrop found — recording your real background. Hang a plain green or blue cloth so it fills both top corners of the picture, light it evenly, then press Re-detect."
+            : "Backdrop found. Avoid wearing its colour, and raise Strength if shadows or creases show through."}
+        </p>
+      )}
 
       {rendererActive && !backgroundError && (
         <p className="text-xs text-muted-foreground text-center">

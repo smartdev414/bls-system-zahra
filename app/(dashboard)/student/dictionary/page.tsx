@@ -292,22 +292,28 @@ export default function DictionaryPage() {
               </div>
 
               {/* Description */}
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">How to sign</p>
-                <p className="text-sm text-foreground leading-relaxed">{selectedSign.description}</p>
-              </div>
+              {selectedSign.description && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">How to sign</p>
+                  <p className="text-sm text-foreground leading-relaxed">{selectedSign.description}</p>
+                </div>
+              )}
 
               {/* Handshape */}
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">Handshape</p>
-                <p className="text-sm">{selectedSign.handshape}</p>
-              </div>
+              {selectedSign.handshape && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">Handshape</p>
+                  <p className="text-sm">{selectedSign.handshape}</p>
+                </div>
+              )}
 
               {/* Usage */}
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">Usage example</p>
-                <p className="text-sm text-muted-foreground">{selectedSign.usage}</p>
-              </div>
+              {selectedSign.usage && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-1">Usage example</p>
+                  <p className="text-sm text-muted-foreground">{selectedSign.usage}</p>
+                </div>
+              )}
 
               <Button
                 variant="outline"

@@ -65,27 +65,25 @@ async function handlePOST(req: NextRequest) {
       word: string
       category: string
       level: import("@/app/generated/prisma/client").CourseLevel
-      description: string
-      handshape: string
-      usage: string
+      description?: string
+      handshape?: string
+      usage?: string
       videoUrl?: string | null
       imageUrl?: string | null
     }
 
+    // The written details are optional: a sign can be just a word and a video.
     if (!body.word?.trim()) return NextResponse.json({ message: "Word is required" }, { status: 400 })
     if (!body.category?.trim()) return NextResponse.json({ message: "Category is required" }, { status: 400 })
-    if (!body.description?.trim()) return NextResponse.json({ message: "Description is required" }, { status: 400 })
-    if (!body.handshape?.trim()) return NextResponse.json({ message: "Handshape is required" }, { status: 400 })
-    if (!body.usage?.trim()) return NextResponse.json({ message: "Usage is required" }, { status: 400 })
 
     const sign = await prisma.sign.create({
       data: {
         word: body.word.trim(),
         category: body.category.trim(),
         level: body.level ?? "L1",
-        description: body.description.trim(),
-        handshape: body.handshape.trim(),
-        usage: body.usage.trim(),
+        description: body.description?.trim() ?? "",
+        handshape: body.handshape?.trim() ?? "",
+        usage: body.usage?.trim() ?? "",
         videoUrl: body.videoUrl?.trim() || null,
         imageUrl: body.imageUrl?.trim() || null,
       },
