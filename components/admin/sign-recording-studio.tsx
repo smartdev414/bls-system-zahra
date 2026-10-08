@@ -230,8 +230,10 @@ export function SignRecordingStudio() {
   const [method, setMethod] = useState<BackgroundMethod>(() => readMethodPreference())
   const [backdropDetected, setBackdropDetected] = useState(false)
   const [backdropStrength, setBackdropStrength] = useState(0.5)
-  // Whether the server can replace the background after upload.
+  // Whether the server can replace the background after upload. The live
+  // picture is then only a preview, so the signer isn't asked how to cut it out.
   const [cleanAvailable, setCleanAvailable] = useState(false)
+  const liveMethod: BackgroundMethod = cleanAvailable ? "auto" : method
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
 
   // ── Recording ──────────────────────────────────────────────────────────────
@@ -252,12 +254,12 @@ export function SignRecordingStudio() {
 
   const current: QueueSign | undefined = items[index]
   const backgroundOn = background !== null
+  // Whether the next take goes to the server for its background. The camera is
+  // then recorded untouched, so there is no model to wait for.
+  const cleanLater = cleanAvailable && backgroundOn
   const backgroundPending =
-    ready && backgroundOn && rendererActive && method !== "backdrop" && !backgroundReady
+    ready && backgroundOn && rendererActive && !cleanLater && method !== "backdrop" && !backgroundReady
   const keying = method === "backdrop" || (method === "auto" && backdropDetected)
-  // Whether the next take goes to the server for its background: a colour is
-  // chosen and there is no cloth being keyed live.
-  const cleanLater = cleanAvailable && backgroundOn && !(method !== "model" && backdropDetected)
   const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
   const canRecord = ready && !backgroundPending && !!current
@@ -398,18 +400,20 @@ export function SignRecordingStudio() {
     const renderer = rendererRef.current
     if (!rendererActive || !renderer) return
     let cancelled = false
-    renderer.setBackground(background, method)
+    renderer.setBackground(background, liveMethod)
       .then(() => {
         if (!cancelled && background) setBackgroundReady(true)
       })
       .catch((err) => {
         if (cancelled) return
         console.error("[sign-recorder] background colour failed", err)
+        // Only the preview is lost; the server still replaces the background.
+        if (cleanAvailable) return
         setBackgroundError("Couldn't load the background effect. Recording with your real background.")
         setBackground(null)
       })
     return () => { cancelled = true }
-  }, [rendererActive, background, method])
+  }, [rendererActive, background, liveMethod, cleanAvailable])
 
   useEffect(() => {
     if (rendererActive) rendererRef.current?.setBackdropStrength(backdropStrength)
@@ -917,7 +921,7 @@ export function SignRecordingStudio() {
               />
             </label>
           </div>
-          {backgroundOn && rendererActive && (
+          {backgroundOn && rendererActive && !cleanAvailable && (
             <div className="flex flex-wrap items-center justify-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">Behind me</span>
               {([
@@ -968,7 +972,7 @@ export function SignRecordingStudio() {
               )}
             </div>
           )}
-          {backgroundOn && rendererActive && keying && (
+          {backgroundOn && rendererActive && !cleanAvailable && keying && (
             <p className={cn("text-center text-xs", backdropMissing ? "text-destructive" : "text-muted-foreground")}>
               {backdropMissing
                 ? "No backdrop found, so this is the Any room result. Hang a plain green or blue cloth behind you so it shows on both sides of your head, then press Re-detect."
@@ -1010,8 +1014,8 @@ export function SignRecordingStudio() {
           </div>
           {cleanLater && (
             <p className="text-center text-xs text-muted-foreground">
-              This preview is a rough guide. Each take is saved with your real background, then replaced properly on
-              our server a few minutes later.
+              The background of each take is replaced automatically in the background after it is saved. It takes a
+              few minutes — the preview here is only a rough guide.
             </p>
           )}
           {rendererActive && (

@@ -121,10 +121,13 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const [backdropDetected, setBackdropDetected] = useState(false)
   const [backdropStrength, setBackdropStrength] = useState(0.5)
   // Whether the server can replace the background after upload (see
-  // lib/background-clean.ts). When it can, a recording made without a cloth
-  // behind the tutor is uploaded as the camera saw it and redone there — the
-  // live cut-out can't follow fast hands — and `cleanStatus` follows that job.
+  // lib/background-clean.ts). When it can, a recording with a colour chosen is
+  // uploaded as the camera saw it and redone there — the live cut-out can't
+  // follow fast hands — and `cleanStatus` follows that job. The live picture
+  // is then only a preview, so the tutor isn't asked how to cut it out.
   const [cleanAvailable, setCleanAvailable] = useState(false)
+  const liveMethod: BackgroundMethod = cleanAvailable ? "auto" : method
+  const cleanLater = cleanAvailable && backgroundOn
   const cleanColorRef = useRef<string | null>(null)
   const [cleanJob, setCleanJob] = useState<string | null>(null)
   const [cleanStatus, setCleanStatus] = useState<"working" | "done" | "failed" | null>(null)
@@ -238,18 +241,20 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     const renderer = rendererRef.current
     if (!rendererActive || !renderer) return
     let cancelled = false
-    renderer.setBackground(background, method)
+    renderer.setBackground(background, liveMethod)
       .then(() => {
         if (!cancelled && background) setBackgroundReady(true)
       })
       .catch((err) => {
         if (cancelled) return
         console.error("[recorder] background colour failed", err)
+        // Only the preview is lost; the server still replaces the background.
+        if (cleanAvailable) return
         setBackgroundError("Couldn't load the background effect. Recording with your real background.")
         setBackground(null)
       })
     return () => { cancelled = true }
-  }, [rendererActive, background, method])
+  }, [rendererActive, background, liveMethod, cleanAvailable])
 
   useEffect(() => {
     if (rendererActive) rendererRef.current?.setBackdropStrength(backdropStrength)
@@ -277,8 +282,8 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     if (!streamRef.current) return
     chunksRef.current = []
 
-    // With a colour chosen and no cloth being keyed, the server redoes the
-    // cut-out after upload: record the camera untouched for it to work from.
+    // With a colour chosen, the server redoes the cut-out after upload: record
+    // the camera untouched for it to work from.
     cleanColorRef.current = cleanLater ? background : null
 
     // Otherwise record the canvas picture (logo and background colour baked
@@ -469,12 +474,11 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   }
 
   // A colour is chosen but the model is still loading — hold recording until
-  // the processed picture is actually there.
+  // the processed picture is actually there. Not when the server does the
+  // background: the camera is recorded untouched, so there is nothing to wait for.
   const backgroundPending =
-    ready && backgroundOn && rendererActive && method !== "backdrop" && !backgroundReady
+    ready && backgroundOn && rendererActive && !cleanLater && method !== "backdrop" && !backgroundReady
   const keying = method === "backdrop" || (method === "auto" && backdropDetected)
-  // Whether the next recording goes to the server for its background.
-  const cleanLater = cleanAvailable && backgroundOn && !(method !== "model" && backdropDetected)
   const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
 
@@ -589,7 +593,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         </label>
       </div>
 
-      {backgroundOn && rendererActive && (
+      {backgroundOn && rendererActive && !cleanAvailable && (
         <div className="flex flex-wrap items-center justify-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Behind me</span>
           {([
@@ -637,7 +641,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
           )}
         </div>
       )}
-      {backgroundOn && rendererActive && keying && (
+      {backgroundOn && rendererActive && !cleanAvailable && keying && (
         <p className={cn("text-xs text-center", backdropMissing ? "text-destructive" : "text-muted-foreground")}>
           {backdropMissing
             ? "No backdrop found, so this is the Any room result. Hang a plain green or blue cloth behind you so it shows on both sides of your head, then press Re-detect."
@@ -647,8 +651,8 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
       {cleanLater && (
         <p className="text-xs text-muted-foreground text-center">
-          This preview is a rough guide. After you stop, the background is replaced properly on our server and the
-          finished video is ready a few minutes later.
+          Your background is replaced automatically in the background after you stop recording. It takes a few
+          minutes — the preview here is only a rough guide.
         </p>
       )}
       {rendererActive && !backgroundError && (
