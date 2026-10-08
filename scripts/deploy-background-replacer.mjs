@@ -104,7 +104,10 @@ if (existingTemplate) {
 const endpoints = await api("GET", "/endpoints")
 let existingEndpoint = endpoints.find((e) => e.name === NAME || e.name?.startsWith(`${NAME} `))
 if (existingEndpoint) {
-  await api("PATCH", `/endpoints/${existingEndpoint.id}`, { ...endpoint, templateId: existingTemplate.id })
+  // GPU-or-CPU is fixed when an endpoint is created.
+  const changes = { ...endpoint, templateId: existingTemplate.id }
+  delete changes.computeType
+  await api("PATCH", `/endpoints/${existingEndpoint.id}`, changes)
   console.log(`Updated endpoint ${existingEndpoint.id}`)
 } else {
   existingEndpoint = await api("POST", "/endpoints", { ...endpoint, templateId: existingTemplate.id })

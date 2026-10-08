@@ -133,6 +133,37 @@ def matte(frames):
     return ((alpha - 0.05) / 0.9).clamp(0, 1)
 
 
+def box_blur(x, radius):
+    """Mean over a (2r+1)² window, done as two 1-D passes."""
+    k = 2 * radius + 1
+    x = F.avg_pool2d(x, (1, k), stride=1, padding=(0, radius), count_include_pad=False)
+    return F.avg_pool2d(x, (k, 1), stride=1, padding=(radius, 0), count_include_pad=False)
+
+
+def blur_fusion(image, foreground, background, alpha, radius):
+    blurred_alpha = box_blur(alpha, radius)
+    blurred_fg = box_blur(foreground * alpha, radius) / (blurred_alpha + 1e-5)
+    blurred_bg = box_blur(background * (1 - alpha), radius) / (1 - blurred_alpha + 1e-5)
+    foreground = blurred_fg + alpha * (image - alpha * blurred_fg - (1 - alpha) * blurred_bg)
+    return foreground.clamp(0, 255), blurred_bg
+
+
+@torch.inference_mode()
+def person_colour(image, alpha):
+    """What colour the person is in each pixel, with the room taken out.
+
+    A pixel on the person's outline is part person, part room — more so when
+    they move and the edge blurs. Laid over the new colour as it is, it keeps
+    the room's share and shows as a pale rim round the head and neck. This
+    estimates the person's own colour there from nearby pixels that are fully
+    person (blur fusion, Forte & Pitié 2021: a wide pass, then a tight one).
+    image: float (B, 3, H, W) 0–255; alpha: (B, 1, H, W).
+    """
+    height = image.shape[2]
+    foreground, background = blur_fusion(image, image, image, alpha, max(8, round(height * 0.09)))
+    return blur_fusion(image, foreground, background, alpha, max(2, round(height * 0.006)))[0]
+
+
 def process(source, output, color, logo_url, on_progress):
     width, height = probe_size(source)
     frame_bytes = width * height * 3
@@ -164,7 +195,8 @@ def process(source, output, color, logo_url, on_progress):
     def flush(batch):
         frames = torch.from_numpy(np.stack(batch)).to(DEVICE)
         alpha = matte(frames)
-        out = frames.permute(0, 3, 1, 2).float() * alpha + background * (1 - alpha)
+        image = frames.permute(0, 3, 1, 2).float()
+        out = person_colour(image, alpha) * alpha + background * (1 - alpha)
         if logo:
             rgb, logo_alpha = logo
             h, w = rgb.shape[2:]
