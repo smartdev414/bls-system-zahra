@@ -29,6 +29,7 @@ import {
   type BackgroundMethod, type LessonVideoCanvas,
   WATERMARK_HEIGHT, WATERMARK_MARGIN, WATERMARK_PADDING, WATERMARK_RADIUS,
 } from "@/lib/lesson-video-canvas"
+import { rawRecordingName } from "@/lib/background-clean-keys"
 
 // Shared with the lesson recorder, so a colour chosen there carries over.
 const BACKGROUND_PREF_KEY = "recorder:background"
@@ -127,22 +128,34 @@ function writeStudioPrefs(prefs: StudioPrefs): void {
   }
 }
 
+// Takes recorded as the raw camera, for the server to replace the background
+// of after upload (see lib/background-clean.ts), and the colour each wants.
+// Kept against the blob so a retried upload asks for the same thing.
+const cleanColors = new WeakMap<Blob, string>()
+
 /** Uploads one take and attaches it to its sign. */
 async function persistTake(sign: QueueSign, blob: Blob): Promise<void> {
   const contentType = blob.type === "video/mp4" ? "video/mp4" : "video/webm"
   const extension = contentType === "video/mp4" ? "mp4" : "webm"
   const baseName = sign.word.replace(/[^\w\- ]+/g, "").trim() || "sign"
+  const cleanColor = cleanColors.get(blob)
 
   const presignRes = await fetch("/api/upload/presign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileName: `${baseName}.${extension}`, contentType, fileSize: blob.size }),
+    body: JSON.stringify({
+      fileName: cleanColor ? rawRecordingName(`${baseName}.${extension}`) : `${baseName}.${extension}`,
+      contentType,
+      fileSize: blob.size,
+    }),
   })
   if (!presignRes.ok) {
     const err = await presignRes.json().catch(() => ({})) as { message?: string }
     throw new Error(err.message ?? "Could not get upload URL")
   }
-  const { presignedUrl, fileUrl } = await presignRes.json() as { presignedUrl: string; fileUrl: string }
+  const { presignedUrl, fileUrl, key } = await presignRes.json() as {
+    presignedUrl: string; fileUrl: string; key: string
+  }
 
   const uploadRes = await fetch(presignedUrl, {
     method: "PUT",
@@ -159,6 +172,18 @@ async function persistTake(sign: QueueSign, blob: Blob): Promise<void> {
   if (!saveRes.ok) {
     const err = await saveRes.json().catch(() => ({})) as { message?: string }
     throw new Error(err.message ?? "Could not save the video to the sign")
+  }
+
+  if (cleanColor) {
+    // The take is saved either way; if this can't start it keeps the real background.
+    const cleanRes = await fetch("/api/upload/clean-background", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, color: cleanColor }),
+    }).catch(() => null)
+    if (!cleanRes?.ok) {
+      toast.warning(`"${sign.word}" was saved, but its background could not be replaced`)
+    }
   }
 }
 
@@ -205,6 +230,8 @@ export function SignRecordingStudio() {
   const [method, setMethod] = useState<BackgroundMethod>(() => readMethodPreference())
   const [backdropDetected, setBackdropDetected] = useState(false)
   const [backdropStrength, setBackdropStrength] = useState(0.5)
+  // Whether the server can replace the background after upload.
+  const [cleanAvailable, setCleanAvailable] = useState(false)
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
 
   // ── Recording ──────────────────────────────────────────────────────────────
@@ -228,6 +255,9 @@ export function SignRecordingStudio() {
   const backgroundPending =
     ready && backgroundOn && rendererActive && method !== "backdrop" && !backgroundReady
   const keying = method === "backdrop" || (method === "auto" && backdropDetected)
+  // Whether the next take goes to the server for its background: a colour is
+  // chosen and there is no cloth being keyed live.
+  const cleanLater = cleanAvailable && backgroundOn && !(method !== "model" && backdropDetected)
   const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
   const canRecord = ready && !backgroundPending && !!current
@@ -320,6 +350,17 @@ export function SignRecordingStudio() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/upload/clean-background")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { available?: boolean } | null) => {
+        if (!cancelled && data?.available) setCleanAvailable(true)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
   // Starts the canvas render loop once the camera is live. The canvas — not
   // the raw camera — is what gets recorded, so the logo and background colour
   // end up in the video file itself.
@@ -410,7 +451,9 @@ export function SignRecordingStudio() {
     const camera = streamRef.current
     if (!camera) return
 
-    const processed = rendererRef.current?.captureStream(30)
+    // The server redoes the cut-out from the untouched camera (see cleanColors).
+    const cleanColor = cleanLater ? background : null
+    const processed = cleanColor ? undefined : rendererRef.current?.captureStream(30)
     // Signing is fast hand movement: have the encoder keep the frame rate up
     // rather than hold back frames to sharpen a still picture.
     processed?.getVideoTracks().forEach((track) => { track.contentHint = "motion" })
@@ -444,7 +487,9 @@ export function SignRecordingStudio() {
       recorderRef.current = null
       if (discardRef.current) return
       const type = (recorder.mimeType || mimeType || "video/webm").split(";")[0]
-      onTakeRef.current(sign, new Blob(chunksRef.current, { type }))
+      const blob = new Blob(chunksRef.current, { type })
+      if (cleanColor) cleanColors.set(blob, cleanColor)
+      onTakeRef.current(sign, blob)
     }
 
     recorder.start(1000)
@@ -963,6 +1008,12 @@ export function SignRecordingStudio() {
               <span className="font-medium">Review each take before saving</span>
             </label>
           </div>
+          {cleanLater && (
+            <p className="text-center text-xs text-muted-foreground">
+              This preview is a rough guide. Each take is saved with your real background, then replaced properly on
+              our server a few minutes later.
+            </p>
+          )}
           {rendererActive && (
             <p className="text-center text-xs text-muted-foreground">
               Keep this tab open and visible while recording — the picture pauses in a hidden tab.

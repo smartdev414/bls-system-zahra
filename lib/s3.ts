@@ -14,14 +14,14 @@ const s3 = new S3Client({
   responseChecksumValidation: "WHEN_REQUIRED",
 })
 
-/** Returns a presigned PUT URL valid for 5 minutes */
-export async function getPresignedUploadUrl(key: string, contentType: string): Promise<string> {
+/** Returns a presigned PUT URL valid for the given seconds (default 5 minutes) */
+export async function getPresignedUploadUrl(key: string, contentType: string, expiresIn = 300): Promise<string> {
   const command = new PutObjectCommand({
     Bucket: BUCKET,
     Key: key,
     ContentType: contentType,
   })
-  return getSignedUrl(s3, command, { expiresIn: 300 })
+  return getSignedUrl(s3, command, { expiresIn })
 }
 
 /** Public URL for an object */

@@ -11,6 +11,7 @@ import {
   type BackgroundMethod, type LessonVideoCanvas,
   WATERMARK_HEIGHT, WATERMARK_MARGIN, WATERMARK_PADDING, WATERMARK_RADIUS,
 } from "@/lib/lesson-video-canvas"
+import { rawRecordingName } from "@/lib/background-clean-keys"
 
 const BACKGROUND_PREF_KEY = "recorder:background"
 const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
@@ -119,6 +120,14 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const [method, setMethod] = useState<BackgroundMethod>(() => readMethodPreference())
   const [backdropDetected, setBackdropDetected] = useState(false)
   const [backdropStrength, setBackdropStrength] = useState(0.5)
+  // Whether the server can replace the background after upload (see
+  // lib/background-clean.ts). When it can, a recording made without a cloth
+  // behind the tutor is uploaded as the camera saw it and redone there — the
+  // live cut-out can't follow fast hands — and `cleanStatus` follows that job.
+  const [cleanAvailable, setCleanAvailable] = useState(false)
+  const cleanColorRef = useRef<string | null>(null)
+  const [cleanJob, setCleanJob] = useState<string | null>(null)
+  const [cleanStatus, setCleanStatus] = useState<"working" | "done" | "failed" | null>(null)
   // Camera picture shape (width ÷ height), so the preview shows the whole
   // frame that is being recorded rather than a cropped one.
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
@@ -156,6 +165,43 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
       streamRef.current = null
     }
   }, [uploaded])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/upload/clean-background")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { available?: boolean } | null) => {
+        if (!cancelled && data?.available) setCleanAvailable(true)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Follows the background job so the tutor can see when the video is final.
+  useEffect(() => {
+    if (!cleanJob) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    const check = async () => {
+      try {
+        const res = await fetch(`/api/upload/clean-background?jobId=${encodeURIComponent(cleanJob)}`)
+        const { status } = await res.json() as { status?: string }
+        if (cancelled) return
+        if (status === "done" || status === "failed") {
+          setCleanStatus(status)
+          return
+        }
+      } catch {
+        // A dropped poll isn't a failed job — ask again.
+      }
+      if (!cancelled) timer = setTimeout(check, 5000)
+    }
+    timer = setTimeout(check, 5000)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [cleanJob])
 
   // Starts the canvas render loop once the camera is live.
   useEffect(() => {
@@ -231,10 +277,14 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     if (!streamRef.current) return
     chunksRef.current = []
 
-    // Record the canvas picture (logo and background colour baked in)
-    // alongside the microphone. Falls back to the raw camera where the canvas
-    // renderer isn't available.
-    const processed = rendererRef.current?.captureStream(30)
+    // With a colour chosen and no cloth being keyed, the server redoes the
+    // cut-out after upload: record the camera untouched for it to work from.
+    cleanColorRef.current = cleanLater ? background : null
+
+    // Otherwise record the canvas picture (logo and background colour baked
+    // in) alongside the microphone. Falls back to the raw camera where the
+    // canvas renderer isn't available.
+    const processed = cleanLater ? undefined : rendererRef.current?.captureStream(30)
     // Signing is fast hand movement: have the encoder keep the frame rate up
     // rather than hold back frames to sharpen a still picture.
     processed?.getVideoTracks().forEach((track) => { track.contentHint = "motion" })
@@ -287,7 +337,10 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   async function handleUpload(blob: Blob) {
     setError(null)
     setUploading(true)
-    const fileName = `recording-${Date.now()}.webm`
+    const cleanColor = cleanColorRef.current
+    const fileName = cleanColor ? rawRecordingName(`recording-${Date.now()}.webm`) : `recording-${Date.now()}.webm`
+    setCleanJob(null)
+    setCleanStatus(null)
 
     try {
       const presignRes = await fetch("/api/upload/presign", {
@@ -305,9 +358,10 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         throw new Error(err.message ?? "Could not get upload URL")
       }
 
-      const { presignedUrl, fileUrl, assetType } = await presignRes.json() as {
+      const { presignedUrl, fileUrl, key, assetType } = await presignRes.json() as {
         presignedUrl: string
         fileUrl: string
+        key: string
         assetType: string
       }
 
@@ -318,6 +372,23 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
       })
 
       if (!uploadRes.ok) throw new Error("Upload to S3 failed")
+
+      if (cleanColor) {
+        // The recording is safely uploaded either way; if this can't start it
+        // just keeps the real background.
+        const cleanRes = await fetch("/api/upload/clean-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, color: cleanColor }),
+        }).catch(() => null)
+        const { jobId } = cleanRes?.ok ? await cleanRes.json() as { jobId?: string } : {}
+        if (jobId) {
+          setCleanJob(jobId)
+          setCleanStatus("working")
+        } else {
+          setCleanStatus("failed")
+        }
+      }
 
       onUploaded({
         fileUrl,
@@ -335,6 +406,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
   if (uploaded) {
     return (
+      <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3 overflow-hidden">
         <div className="rounded-lg bg-primary/10 p-2 shrink-0">
           <Camera className="size-4 text-primary" />
@@ -358,6 +430,21 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
             <X className="size-3.5" />
           </Button>
         )}
+      </div>
+      {cleanStatus === "working" && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin shrink-0" />
+          Replacing the background — this takes a few minutes. You can carry on and save; the video updates by itself.
+        </p>
+      )}
+      {cleanStatus === "done" && (
+        <p className="text-xs text-muted-foreground">Background replaced — the video is ready.</p>
+      )}
+      {cleanStatus === "failed" && (
+        <p className="text-xs text-destructive">
+          The background could not be replaced, so this video keeps your real background. Record again to retry.
+        </p>
+      )}
       </div>
     )
   }
@@ -386,6 +473,8 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const backgroundPending =
     ready && backgroundOn && rendererActive && method !== "backdrop" && !backgroundReady
   const keying = method === "backdrop" || (method === "auto" && backdropDetected)
+  // Whether the next recording goes to the server for its background.
+  const cleanLater = cleanAvailable && backgroundOn && !(method !== "model" && backdropDetected)
   const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
 
@@ -556,6 +645,12 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         </p>
       )}
 
+      {cleanLater && (
+        <p className="text-xs text-muted-foreground text-center">
+          This preview is a rough guide. After you stop, the background is replaced properly on our server and the
+          finished video is ready a few minutes later.
+        </p>
+      )}
       {rendererActive && !backgroundError && (
         <p className="text-xs text-muted-foreground text-center">
           Keep this tab open and visible while recording — the picture pauses in a hidden tab.

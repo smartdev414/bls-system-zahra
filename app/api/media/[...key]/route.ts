@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession, type SessionPayload } from "@/lib/auth"
-import { getPresignedDownloadUrl } from "@/lib/s3"
+import { getPresignedDownloadUrl, objectExists } from "@/lib/s3"
+import { cleanKeyFor, isRawRecordingKey } from "@/lib/background-clean-keys"
 import { assertCanAccessSession } from "@/lib/session-access"
 import { isProtectedMediaKey } from "@/lib/protected-media"
 import { withAudit } from "@/lib/audit"
@@ -79,9 +80,17 @@ async function handleGET(
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
+    // A recording sent for background replacement (lib/background-clean.ts)
+    // keeps its raw address; serve the finished version once there is one.
+    let serveKey = key
+    if (isRawRecordingKey(key)) {
+      const cleanKey = cleanKeyFor(key)
+      if (await objectExists(cleanKey)) serveKey = cleanKey
+    }
+
     const url = download
-      ? await getPresignedDownloadUrl(key, DOWNLOAD_URL_TTL_SECS, segments[segments.length - 1])
-      : await getPresignedDownloadUrl(key, MEDIA_URL_TTL_SECS)
+      ? await getPresignedDownloadUrl(serveKey, DOWNLOAD_URL_TTL_SECS, serveKey.split("/").pop())
+      : await getPresignedDownloadUrl(serveKey, MEDIA_URL_TTL_SECS)
     const res = NextResponse.redirect(url, 302)
     // The signed URL is per-request — never let a shared cache replay it.
     res.headers.set("Cache-Control", "private, no-store")
