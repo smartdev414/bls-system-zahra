@@ -25,12 +25,14 @@ import { cn } from "@/lib/utils"
 import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
 import { LOGO_MARK_SRC, MARK_W, MARK_H } from "@/components/layout/logo"
 import {
-  createLessonVideoCanvas, supportsLessonVideoCanvas, watermarkTileAspect, type LessonVideoCanvas,
+  createLessonVideoCanvas, supportsLessonVideoCanvas, watermarkTileAspect,
+  type BackgroundMethod, type LessonVideoCanvas,
   WATERMARK_HEIGHT, WATERMARK_MARGIN, WATERMARK_PADDING, WATERMARK_RADIUS,
 } from "@/lib/lesson-video-canvas"
 
 // Shared with the lesson recorder, so a colour chosen there carries over.
 const BACKGROUND_PREF_KEY = "recorder:background"
+const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
 const STUDIO_PREFS_KEY = "sign-recorder:prefs"
 const WATERMARK_TILE_ASPECT = watermarkTileAspect(MARK_W / MARK_H)
 const RECORDING_VIDEO_BITRATE = 4_000_000
@@ -82,6 +84,22 @@ function writeBackgroundPreference(color: string | null): void {
   try {
     if (color) window.localStorage.setItem(BACKGROUND_PREF_KEY, color)
     else window.localStorage.removeItem(BACKGROUND_PREF_KEY)
+  } catch {
+    // Private mode / quota — ignore. The preference simply won't persist.
+  }
+}
+
+function readMethodPreference(): BackgroundMethod {
+  try {
+    return window.localStorage.getItem(BACKGROUND_METHOD_PREF_KEY) === "backdrop" ? "backdrop" : "model"
+  } catch {
+    return "model"
+  }
+}
+
+function writeMethodPreference(method: BackgroundMethod): void {
+  try {
+    window.localStorage.setItem(BACKGROUND_METHOD_PREF_KEY, method)
   } catch {
     // Private mode / quota — ignore. The preference simply won't persist.
   }
@@ -180,6 +198,11 @@ export function SignRecordingStudio() {
   const [background, setBackground] = useState<string | null>(() => readBackgroundPreference())
   const [backgroundReady, setBackgroundReady] = useState(false)
   const [backgroundError, setBackgroundError] = useState<string | null>(null)
+  // How the signer is cut out: by the model (works anywhere), or by replacing
+  // the colour of a plain cloth hung behind them (much cleaner hands).
+  const [method, setMethod] = useState<BackgroundMethod>(() => readMethodPreference())
+  const [backdropDetected, setBackdropDetected] = useState(false)
+  const [backdropStrength, setBackdropStrength] = useState(0.5)
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
 
   // ── Recording ──────────────────────────────────────────────────────────────
@@ -200,7 +223,9 @@ export function SignRecordingStudio() {
 
   const current: QueueSign | undefined = items[index]
   const backgroundOn = background !== null
-  const backgroundPending = ready && backgroundOn && rendererActive && !backgroundReady
+  const backgroundPending =
+    ready && backgroundOn && rendererActive && method === "model" && !backgroundReady
+  const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
   const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
   const canRecord = ready && !backgroundPending && !!current
   const savedCount = Object.values(statuses).filter((s) => s === "saved").length
@@ -303,7 +328,10 @@ export function SignRecordingStudio() {
 
     let renderer: LessonVideoCanvas
     try {
-      renderer = createLessonVideoCanvas(video, canvas, { watermarkSrc: LOGO_MARK_SRC })
+      renderer = createLessonVideoCanvas(video, canvas, {
+        watermarkSrc: LOGO_MARK_SRC,
+        onBackdropDetected: setBackdropDetected,
+      })
     } catch (err) {
       console.error("[sign-recorder] canvas renderer failed", err)
       return
@@ -316,6 +344,7 @@ export function SignRecordingStudio() {
       rendererRef.current = null
       setRendererActive(false)
       setBackgroundReady(false)
+      setBackdropDetected(false)
     }
   }, [ready])
 
@@ -325,7 +354,7 @@ export function SignRecordingStudio() {
     const renderer = rendererRef.current
     if (!rendererActive || !renderer) return
     let cancelled = false
-    renderer.setBackground(background)
+    renderer.setBackground(background, method)
       .then(() => {
         if (!cancelled && background) setBackgroundReady(true)
       })
@@ -336,7 +365,19 @@ export function SignRecordingStudio() {
         setBackground(null)
       })
     return () => { cancelled = true }
-  }, [rendererActive, background])
+  }, [rendererActive, background, method])
+
+  useEffect(() => {
+    if (rendererActive) rendererRef.current?.setBackdropStrength(backdropStrength)
+  }, [rendererActive, backdropStrength])
+
+  function chooseMethod(next: BackgroundMethod) {
+    setBackgroundError(null)
+    // The model may still need downloading; the backdrop method never does.
+    if (next === "model") setBackgroundReady(false)
+    setMethod(next)
+    writeMethodPreference(next)
+  }
 
   function chooseBackground(color: string | null) {
     if (color && !supportsLessonVideoCanvas()) {
@@ -828,6 +869,63 @@ export function SignRecordingStudio() {
               />
             </label>
           </div>
+          {backgroundOn && rendererActive && (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Behind me</span>
+              {([
+                ["model", "Any room"],
+                ["backdrop", "Green / blue backdrop"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={phase !== "idle"}
+                  onClick={() => chooseMethod(value)}
+                  aria-pressed={method === value}
+                  className={cn(
+                    "h-7 rounded-full border px-2.5 text-xs font-medium transition-colors disabled:opacity-50",
+                    method === value ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+              {method === "backdrop" && (
+                <>
+                  <button
+                    type="button"
+                    disabled={phase !== "idle"}
+                    onClick={() => rendererRef.current?.resampleBackdrop()}
+                    className="h-7 rounded-full border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
+                  >
+                    Re-detect
+                  </button>
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    Strength
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={backdropStrength}
+                      onChange={(e) => setBackdropStrength(Number(e.target.value))}
+                      // Keyboard shortcuts are off while an input has focus, so
+                      // let go of it once the drag ends.
+                      onPointerUp={(e) => e.currentTarget.blur()}
+                      className="w-24 accent-primary"
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+          )}
+          {backgroundOn && rendererActive && method === "backdrop" && (
+            <p className={cn("text-center text-xs", backdropMissing ? "text-destructive" : "text-muted-foreground")}>
+              {backdropMissing
+                ? "No backdrop found — recording your real background. Hang a plain green or blue cloth so it fills both top corners of the picture, light it evenly, then press Re-detect."
+                : "Backdrop found. Avoid wearing its colour, and raise Strength if shadows or creases show through."}
+            </p>
+          )}
           {backgroundError && <p className="text-center text-xs text-destructive">{backgroundError}</p>}
 
           {/* Options */}
