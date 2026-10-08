@@ -926,7 +926,7 @@ export function SignRecordingStudio() {
           {backgroundOn && rendererActive && keying && (
             <p className={cn("text-center text-xs", backdropMissing ? "text-destructive" : "text-muted-foreground")}>
               {backdropMissing
-                ? "No backdrop found — recording your real background. Hang a plain green or blue cloth so it fills both top corners of the picture, light it evenly, then press Re-detect."
+                ? "No backdrop found, so this is the Any room result. Hang a plain green or blue cloth behind you so it shows on both sides of your head, then press Re-detect."
                 : "Coloured backdrop found — replacing it directly for cleaner hands. Avoid wearing its colour, and raise Strength if shadows or creases show through."}
             </p>
           )}

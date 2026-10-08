@@ -16,12 +16,15 @@
 // Either way the logo tile is drawn last, on top.
 //
 // The model only guesses where the person is, and guesses worst on fast,
-// motion-blurred hands. A tutor who records in front of a plain coloured
-// backdrop (green or blue cloth) can use the "backdrop" method instead: the
-// backdrop's colour is read from the top corners of the picture and every
-// pixel of that colour is replaced directly (a chroma key). No model, exact
-// per-pixel edges, and a blurred hand blends into the flat colour the way it
-// would have blended into the cloth.
+// motion-blurred hands. Where a plain coloured backdrop (green or blue cloth)
+// hangs behind the tutor, the "backdrop" and "auto" methods do better: the
+// cloth's colour is read from the top of the picture and every pixel of that
+// colour is replaced directly (a chroma key) — exact per-pixel edges, and a
+// blurred hand blends into the flat colour the way it would have blended into
+// the cloth. The cloth rarely fills the whole picture, so the model still
+// runs and decides the parts with no cloth nearby (the room past the cloth's
+// edge, the middle of the tutor's body); around the cloth the key decides
+// alone, so the model's misses on moving hands don't matter there.
 //
 // The classroom's background blur uses @livekit/track-processors, which works
 // from a hard on/off mask; that reads fine under a blur and looks jagged
@@ -118,34 +121,81 @@ void main() {
 // Chroma key for the "backdrop" method. Works on colour only (the Cb/Cr part
 // of YCbCr), so shadows and uneven light on the cloth — which mostly change
 // brightness — are still treated as backdrop.
-const CHROMA_SHADER = `#version 300 es
-precision highp float;
-uniform sampler2D u_frame;
-uniform vec3 u_color;
+const KEY_GLSL = `
 uniform vec2 u_key;   // backdrop colour as (Cb, Cr)
 uniform vec2 u_range; // keyness where the cut starts and where it is complete
-in vec2 v_uv;
-out vec4 o;
 vec3 toYcc(vec3 c) {
   float y = dot(c, vec3(0.299, 0.587, 0.114));
   return vec3(y, (c.b - y) * 0.564, (c.r - y) * 0.713);
 }
+// 1 = backdrop, 0 = not. How far the colour goes in the backdrop's direction,
+// less part of how far it strays to either side: high for the cloth (lit or
+// in shadow), zero or below for skin, hair and clothes of any other hue, and
+// in between for a motion-blurred hand, which really is part cloth.
+float backdrop(vec2 chroma) {
+  vec2 dir = normalize(u_key);
+  float along = dot(chroma, dir);
+  float keyness = along - 0.5 * length(chroma - dir * along);
+  return smoothstep(u_range.x, u_range.y, keyness);
+}`
+
+// A coarse map of where the cloth is, drawn very small from a blurred copy of
+// the frame. The composite looks along it in each direction to ask "is this
+// pixel surrounded by cloth?".
+const COVERAGE_SHADER = `#version 300 es
+precision highp float;
+uniform sampler2D u_frame;
+uniform float u_lod;
+${KEY_GLSL}
+in vec2 v_uv;
+out vec4 o;
+void main() {
+  o = vec4(backdrop(toYcc(textureLod(u_frame, v_uv, u_lod).rgb).yz), 0.0, 0.0, 1.0);
+}`
+
+const CHROMA_SHADER = `#version 300 es
+precision highp float;
+uniform sampler2D u_frame;
+uniform sampler2D u_cover;
+uniform sampler2D u_mask;
+uniform vec2 u_coverStep;
+uniform float u_useMask;
+uniform vec3 u_color;
+${KEY_GLSL}
+in vec2 v_uv;
+out vec4 o;
 void main() {
   vec3 px = toYcc(texture(u_frame, v_uv).rgb);
   // Cameras store colour at half resolution and it is noisy, so the decision
   // is made on a slightly blurred copy (one mip level down) to keep speckle
   // off the edge.
-  vec2 chroma = toYcc(textureLod(u_frame, v_uv, 1.0).rgb).yz;
-  vec2 dir = normalize(u_key);
-  // How far the pixel's colour goes in the backdrop's direction, less part of
-  // how far it strays to either side: high for the cloth (lit or in shadow),
-  // zero or below for skin, hair and clothes of any other hue, and in between
-  // for a motion-blurred hand, which really is part cloth.
-  float along = dot(chroma, dir);
-  float keyness = along - 0.5 * length(chroma - dir * along);
-  float alpha = 1.0 - smoothstep(u_range.x, u_range.y, keyness);
+  float alpha = 1.0 - backdrop(toYcc(textureLod(u_frame, v_uv, 1.0).rgb).yz);
+
+  // Is there cloth on two opposite sides of this pixel, within reach? True
+  // for a hand or arm held out over the cloth. False for the room beyond the
+  // cloth's edge (cloth on one side only) and the middle of the tutor's body
+  // (cloth too far away).
+  float enclosed = 0.0;
+  for (int d = 0; d < 4; d++) {
+    vec2 ray = d == 0 ? vec2(1.0, 0.0) : d == 1 ? vec2(0.0, 1.0) : d == 2 ? vec2(0.7, 0.7) : vec2(0.7, -0.7);
+    float ahead = 0.0;
+    float behind = 0.0;
+    for (int i = 1; i <= 4; i++) {
+      vec2 offset = ray * float(i) * u_coverStep;
+      ahead = max(ahead, texture(u_cover, v_uv + offset).r);
+      behind = max(behind, texture(u_cover, v_uv - offset).r);
+    }
+    enclosed = max(enclosed, min(ahead, behind));
+  }
+  // Among cloth, not being cloth-coloured is all it takes to be kept. Away
+  // from it the pixel must also be a person according to the model.
+  float amongCloth = smoothstep(0.5, 0.8, enclosed);
+  float person = smoothstep(0.4, 0.7, texture(u_mask, v_uv).r);
+  alpha *= mix(mix(person, 1.0, amongCloth), 1.0, 1.0 - u_useMask);
+
   // The cloth reflects its colour onto the person's edges; take that tint out
   // of what is kept so there is no green rim against the new colour.
+  vec2 dir = normalize(u_key);
   px.yz -= dir * max(dot(px.yz, dir), 0.0);
   float r = px.x + px.z / 0.713;
   float b = px.x + px.y / 0.564;
@@ -153,21 +203,24 @@ void main() {
   o = vec4(mix(u_color, clamp(vec3(r, g, b), 0.0, 1.0), alpha), 1.0);
 }`
 
-// The backdrop colour is read from a small copy of the frame: the two top
-// corners, where the tutor's head and hands don't normally reach.
+// The backdrop colour is read from a small copy of the frame: its top third,
+// where there is cloth either side of the tutor's head and no clothing (a
+// bright shirt lower down must not be mistaken for the backdrop).
 const KEY_SAMPLE_WIDTH = 64
 const KEY_SAMPLE_HEIGHT = 36
-const KEY_PATCH_WIDTH = 10
-const KEY_PATCH_HEIGHT = 9
+const KEY_BAND_HEIGHT = 12
+const KEY_HUE_BINS = 24
+/** Share of that band one colour must fill to count as a backdrop. */
+const KEY_MIN_SHARE = 0.3
 /** Frames between re-reads, so the key follows the camera's exposure settling. */
 const KEY_SAMPLE_INTERVAL = 30
 /** Below this much colour the "backdrop" is a white or grey wall, which can't be keyed. */
 const KEY_MIN_SATURATION = 0.07
-// The "auto" method switches to the chroma key by itself, so it asks for more
-// before believing the corners are a backdrop: a stronger colour, and one that
-// isn't on the skin side of the colour wheel (a beige or wooden wall keyed out
-// would take the tutor's face with it).
+// The "auto" method switches to the chroma key by itself, so it asks for a
+// stronger colour before believing it is looking at a backdrop.
 const AUTO_KEY_MIN_SATURATION = 0.1
+// Colours on the skin side of the colour wheel are never a backdrop: a beige
+// or wooden wall keyed out would take the tutor's face with it.
 const SKIN_HUE: [number, number] = [-0.6, 0.8]
 /** Failed re-reads in a row before "auto" decides the backdrop has gone. */
 const AUTO_KEY_MAX_MISSES = 5
@@ -385,6 +438,7 @@ export function createLessonVideoCanvas(
   const temporal = link(gl, vertex, TEMPORAL_SHADER)
   const refine = link(gl, vertex, REFINE_SHADER)
   const composite = link(gl, vertex, COMPOSITE_SHADER)
+  const coverage = link(gl, vertex, COVERAGE_SHADER)
   const chroma = link(gl, vertex, CHROMA_SHADER)
   const overlay = link(gl, vertex, OVERLAY_SHADER)
 
@@ -397,6 +451,7 @@ export function createLessonVideoCanvas(
   // Two targets so the temporal pass can read last frame's mask while writing this one's.
   const history = [createMaskTarget(gl), createMaskTarget(gl)]
   const refined = createMaskTarget(gl)
+  const cover = createMaskTarget(gl)
   let current = 0
   let historyValid = false
   let maskBytes = new Uint8Array(0)
@@ -418,8 +473,9 @@ export function createLessonVideoCanvas(
     if (changed) options.onBackdropDetected?.(next !== null)
   }
 
-  // Reads the backdrop colour from the top corners of the current frame.
-  // Returns null unless those corners are one even, clearly coloured surface.
+  // Reads the backdrop colour from the top of the current frame: the hue that
+  // most of the strongly coloured pixels there share. Returns null if no one
+  // colour fills enough of it. The cloth doesn't have to reach the edges.
   function sampleKey(): [number, number] | null {
     if (!keySampler) {
       const sampler = document.createElement("canvas")
@@ -429,42 +485,39 @@ export function createLessonVideoCanvas(
       if (!keySampler) return null
     }
     keySampler.drawImage(video, 0, 0, KEY_SAMPLE_WIDTH, KEY_SAMPLE_HEIGHT)
-    const cb: number[] = []
-    const cr: number[] = []
-    for (const x of [0, KEY_SAMPLE_WIDTH - KEY_PATCH_WIDTH]) {
-      const { data } = keySampler.getImageData(x, 0, KEY_PATCH_WIDTH, KEY_PATCH_HEIGHT)
-      for (let i = 0; i < data.length; i += 4) {
-        const [b, r] = toCbCr(data[i] / 255, data[i + 1] / 255, data[i + 2] / 255)
-        cb.push(b)
-        cr.push(r)
-      }
+    const { data } = keySampler.getImageData(0, 0, KEY_SAMPLE_WIDTH, KEY_BAND_HEIGHT)
+    const minSaturation = method === "auto" ? AUTO_KEY_MIN_SATURATION : KEY_MIN_SATURATION
+    const bins: [number, number][][] = Array.from({ length: KEY_HUE_BINS }, () => [])
+    for (let i = 0; i < data.length; i += 4) {
+      const [cb, cr] = toCbCr(data[i] / 255, data[i + 1] / 255, data[i + 2] / 255)
+      if (Math.hypot(cb, cr) < minSaturation) continue
+      if (cb * SKIN_HUE[0] + cr * SKIN_HUE[1] > 0) continue
+      const hue = (Math.atan2(cr, cb) / (2 * Math.PI) + 1) % 1
+      bins[Math.min(KEY_HUE_BINS - 1, Math.floor(hue * KEY_HUE_BINS))].push([cb, cr])
     }
-    const sample: [number, number] = [median(cb), median(cr)]
-    const saturation = Math.hypot(sample[0], sample[1])
-    if (saturation < KEY_MIN_SATURATION) return null
-    if (method === "auto") {
-      if (saturation < AUTO_KEY_MIN_SATURATION) return null
-      if (sample[0] * SKIN_HUE[0] + sample[1] * SKIN_HUE[1] > 0) return null
+    // The busiest hue, with its two neighbours so a colour that straddles a
+    // bin boundary isn't split in half.
+    let best: [number, number][] = []
+    for (let i = 0; i < KEY_HUE_BINS; i++) {
+      const group = [
+        ...bins[(i + KEY_HUE_BINS - 1) % KEY_HUE_BINS], ...bins[i], ...bins[(i + 1) % KEY_HUE_BINS],
+      ]
+      if (group.length > best.length) best = group
     }
-    // Even = most of the corner pixels sit close to the middle colour.
-    const tolerance = saturation * 0.35
-    let close = 0
-    for (let i = 0; i < cb.length; i++) {
-      if (Math.hypot(cb[i] - sample[0], cr[i] - sample[1]) < tolerance) close++
-    }
-    return close >= cb.length * 0.75 ? sample : null
+    if (best.length < (data.length / 4) * KEY_MIN_SHARE) return null
+    return [median(best.map((c) => c[0])), median(best.map((c) => c[1]))]
   }
 
   // Keeps the key in step with the camera (exposure and white balance drift
-  // for a few seconds after it opens) without letting something that wanders
-  // into a corner replace it.
+  // for a few seconds after it opens) without letting something else that
+  // fills the top of the picture for a moment replace it.
   function updateKey() {
     if (++framesSinceKeySample < KEY_SAMPLE_INTERVAL) return
     framesSinceKeySample = 0
     const sample = sampleKey()
     if (!sample) {
       // "auto" goes back to the model once the backdrop has clearly gone — not
-      // on one bad read, which is usually just a hand passing a corner.
+      // on one bad read, which is usually just the tutor leaning across it.
       if (method === "auto" && key && ++keyMisses >= AUTO_KEY_MAX_MISSES) setKey(null)
       return
     }
@@ -626,8 +679,7 @@ export function createLessonVideoCanvas(
       gl.bindTexture(gl.TEXTURE_2D, frameTexture)
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
 
-      // A found backdrop is keyed directly below; the model isn't needed.
-      if (rgb && segmenter && method !== "backdrop" && !key) {
+      if (rgb && segmenter) {
         const startedAt = performance.now()
         segmenter.segmentForVideo(source, startedAt, (result) => {
           // The mask is only valid inside this callback, so copy it out now.
@@ -645,25 +697,10 @@ export function createLessonVideoCanvas(
       frame?.close()
     }
 
-    if (rgb && key) {
-      historyValid = false
-      const saturation = Math.hypot(key[0], key[1])
-      // Stronger = the cut starts closer to neutral, so darker shadows and
-      // creases in the cloth go too, at the cost of eating into dull colours.
-      const start = saturation * (0.25 - 0.2 * keyStrength)
-      setFrameMipmaps(true)
-      bind(chroma, { u_frame: frameTexture }, -1)
-      gl.uniform3f(gl.getUniformLocation(chroma, "u_color"), rgb[0], rgb[1], rgb[2])
-      gl.uniform2f(gl.getUniformLocation(chroma, "u_key"), key[0], key[1])
-      gl.uniform2f(gl.getUniformLocation(chroma, "u_range"), start, saturation * (0.85 - 0.5 * keyStrength))
-      draw(null, width, height)
-      setFrameMipmaps(false)
-      drawWatermark(height)
-      return
-    }
-
-    if (!rgb || !maskWidth || !maskHeight) {
-      // No background colour (or no mask this frame): the camera as it is.
+    const haveMask = maskWidth > 0 && maskHeight > 0
+    if (!rgb || (!key && !haveMask)) {
+      // No background colour (or nothing to cut it out with this frame): the
+      // camera as it is.
       historyValid = false
       bind(overlay, { u_tex: frameTexture }, -1)
       draw(null, width, height)
@@ -671,39 +708,70 @@ export function createLessonVideoCanvas(
       return
     }
 
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, rawMaskTexture)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, maskWidth, maskHeight, 0, gl.RED, gl.UNSIGNED_BYTE, maskBytes)
-
-    // A resized target has no usable history, so start it from the raw mask.
-    const previous = history[current]
-    const next = history[1 - current]
-    const resizedPrevious = resizeMaskTarget(gl, previous, maskWidth, maskHeight)
-    const resizedNext = resizeMaskTarget(gl, next, maskWidth, maskHeight)
-    if (resizedPrevious || resizedNext) historyValid = false
-
-    bind(temporal, { u_raw: rawMaskTexture, u_prev: previous.texture }, 1)
-    gl.uniform1f(gl.getUniformLocation(temporal, "u_reset"), historyValid ? 0 : 1)
-    draw(next, maskWidth, maskHeight)
-    current = 1 - current
-    historyValid = true
-
-    // Half the output size is plenty for the mask and halves the filter cost.
-    const refinedWidth = Math.max(1, width >> 1)
-    const refinedHeight = Math.max(1, height >> 1)
-    resizeMaskTarget(gl, refined, refinedWidth, refinedHeight)
     setFrameMipmaps(true)
-    bind(refine, { u_mask: next.texture, u_frame: frameTexture }, 1)
-    gl.uniform2f(gl.getUniformLocation(refine, "u_step"), 1 / maskWidth, 1 / maskHeight)
-    // At least one level down (the target is half size anyway), more when the
-    // camera is much sharper than the mask.
-    gl.uniform1f(gl.getUniformLocation(refine, "u_lod"), Math.max(1, Math.log2(width / maskWidth) - 0.5))
-    draw(refined, refinedWidth, refinedHeight)
-    setFrameMipmaps(false)
+    if (haveMask) {
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, rawMaskTexture)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, maskWidth, maskHeight, 0, gl.RED, gl.UNSIGNED_BYTE, maskBytes)
 
-    bind(composite, { u_frame: frameTexture, u_mask: refined.texture }, -1)
-    gl.uniform3f(gl.getUniformLocation(composite, "u_color"), rgb[0], rgb[1], rgb[2])
+      // A resized target has no usable history, so start it from the raw mask.
+      const previous = history[current]
+      const next = history[1 - current]
+      const resizedPrevious = resizeMaskTarget(gl, previous, maskWidth, maskHeight)
+      const resizedNext = resizeMaskTarget(gl, next, maskWidth, maskHeight)
+      if (resizedPrevious || resizedNext) historyValid = false
+
+      bind(temporal, { u_raw: rawMaskTexture, u_prev: previous.texture }, 1)
+      gl.uniform1f(gl.getUniformLocation(temporal, "u_reset"), historyValid ? 0 : 1)
+      draw(next, maskWidth, maskHeight)
+      current = 1 - current
+      historyValid = true
+
+      // Half the output size is plenty for the mask and halves the filter cost.
+      const refinedWidth = Math.max(1, width >> 1)
+      const refinedHeight = Math.max(1, height >> 1)
+      resizeMaskTarget(gl, refined, refinedWidth, refinedHeight)
+      bind(refine, { u_mask: next.texture, u_frame: frameTexture }, 1)
+      gl.uniform2f(gl.getUniformLocation(refine, "u_step"), 1 / maskWidth, 1 / maskHeight)
+      // At least one level down (the target is half size anyway), more when the
+      // camera is much sharper than the mask.
+      gl.uniform1f(gl.getUniformLocation(refine, "u_lod"), Math.max(1, Math.log2(width / maskWidth) - 0.5))
+      draw(refined, refinedWidth, refinedHeight)
+    } else {
+      historyValid = false
+    }
+
+    if (key) {
+      const saturation = Math.hypot(key[0], key[1])
+      // Stronger = the cut starts closer to neutral, so darker shadows and
+      // creases in the cloth go too, at the cost of eating into dull colours.
+      const start = saturation * (0.25 - 0.2 * keyStrength)
+      const end = saturation * (0.85 - 0.5 * keyStrength)
+
+      // 1/32 of the picture each way: the composite looks four of these
+      // texels out, a reach a little wider than a hand.
+      const coverWidth = Math.max(1, width >> 5)
+      const coverHeight = Math.max(1, height >> 5)
+      resizeMaskTarget(gl, cover, coverWidth, coverHeight)
+      bind(coverage, { u_frame: frameTexture }, 1)
+      gl.uniform1f(gl.getUniformLocation(coverage, "u_lod"), 5)
+      gl.uniform2f(gl.getUniformLocation(coverage, "u_key"), key[0], key[1])
+      gl.uniform2f(gl.getUniformLocation(coverage, "u_range"), start, end)
+      draw(cover, coverWidth, coverHeight)
+
+      // Without a mask (model still loading, or it failed) the key works alone.
+      bind(chroma, { u_frame: frameTexture, u_cover: cover.texture, u_mask: haveMask ? refined.texture : cover.texture }, -1)
+      gl.uniform3f(gl.getUniformLocation(chroma, "u_color"), rgb[0], rgb[1], rgb[2])
+      gl.uniform2f(gl.getUniformLocation(chroma, "u_key"), key[0], key[1])
+      gl.uniform2f(gl.getUniformLocation(chroma, "u_range"), start, end)
+      gl.uniform2f(gl.getUniformLocation(chroma, "u_coverStep"), 1 / coverWidth, 1 / coverHeight)
+      gl.uniform1f(gl.getUniformLocation(chroma, "u_useMask"), haveMask ? 1 : 0)
+    } else {
+      bind(composite, { u_frame: frameTexture, u_mask: refined.texture }, -1)
+      gl.uniform3f(gl.getUniformLocation(composite, "u_color"), rgb[0], rgb[1], rgb[2])
+    }
     draw(null, width, height)
+    setFrameMipmaps(false)
     drawWatermark(height)
   }
 
@@ -732,7 +800,12 @@ export function createLessonVideoCanvas(
         rgb = null
         return
       }
-      if (nextMethod !== "backdrop" && !segmenter) await loadSegmenter()
+      if (nextMethod === "backdrop") {
+        // The key can start alone; the model joins in once it has loaded.
+        if (!segmenter) loadSegmenter().catch((err) => console.warn("[lesson-video-canvas] model failed to load", err))
+      } else if (!segmenter) {
+        await loadSegmenter()
+      }
       // A newer choice was made while the model was loading — leave it be.
       if (destroyed || request !== backgroundRequest) return
       if (nextMethod !== method) {
@@ -764,8 +837,8 @@ export function createLessonVideoCanvas(
       segmenter?.close()
       // Free our objects but leave the context alive — the same canvas may be
       // handed to a new renderer.
-      for (const program of [temporal, refine, composite, chroma, overlay]) gl.deleteProgram(program)
-      for (const target of [...history, refined]) {
+      for (const program of [temporal, refine, composite, coverage, chroma, overlay]) gl.deleteProgram(program)
+      for (const target of [...history, refined, cover]) {
         gl.deleteTexture(target.texture)
         gl.deleteFramebuffer(target.framebuffer)
       }
