@@ -16,12 +16,15 @@ export function BreakoutBanner({
   allParticipantNames,
   tutorVisiting,
   endsAt,
+  closing,
 }: {
   group: BreakoutGroup | null
   allParticipantNames: Map<string, string>
   tutorVisiting: boolean
   // Unix ms when the breakout is scheduled to close. `null` = no timer set.
   endsAt: number | null
+  // True once the wrap-up countdown back to the main room has started.
+  closing: boolean
 }) {
   const [expanded, setExpanded] = useState(true)
   // Reset the expanded state whenever we move between groups — React's
@@ -65,7 +68,7 @@ export function BreakoutBanner({
             Tutor is here
           </span>
         )}
-        {endsAt && <BreakoutCountdown endsAt={endsAt} />}
+        {endsAt && <BreakoutCountdown endsAt={endsAt} closing={closing} />}
         {expanded && mateNames.length > 0 && (
           <span className="text-xs text-zinc-300 truncate max-w-[40ch]">
             · with {mateNames.slice(0, 4).join(", ")}

@@ -1770,8 +1770,8 @@ export function ClassroomRoom({
       if (data.action === "closing") {
         setBreakoutClosingAt(data.endsAt)
         if (!isTutor) {
-          toast.info("Breakouts ending soon", {
-            description: "Wrap up — we'll return to the main room shortly.",
+          toast.info(`${BREAKOUT_WRAP_UP_SEC} seconds left — back to class`, {
+            description: "Pairs are closed — we're returning to the main room.",
           })
         }
         return
@@ -3641,8 +3641,8 @@ export function ClassroomRoom({
     const endsAt = Date.now() + BREAKOUT_WRAP_UP_SEC * 1000
     setBreakoutClosingAt(endsAt)
     safeSendBreakout({ action: "closing", endsAt })
-    toast.info(`Ending breakouts in ${BREAKOUT_WRAP_UP_SEC} seconds`, {
-      description: "Students can finish signing — click End now to skip the wait.",
+    toast.info(`${BREAKOUT_WRAP_UP_SEC} seconds left — back to class`, {
+      description: "Pairs are closed — click End now to skip the wait.",
     })
   }, [isTutor, breakoutsActive, breakoutClosingAt, safeSendBreakout])
 
@@ -3995,10 +3995,12 @@ export function ClassroomRoom({
     const tick = () => {
       const remaining = breakoutEndsAt - Date.now()
 
-      if (remaining <= 30_000 && remaining > 0 && endWarningShownRef.current !== breakoutEndsAt) {
+      // The wrap-up countdown announces itself when it starts, so this only
+      // covers the last stretch of the breakout timer.
+      if (!breakoutClosingAt && remaining <= 30_000 && remaining > 0 && endWarningShownRef.current !== breakoutEndsAt) {
         endWarningShownRef.current = breakoutEndsAt
-        toast.info("Breakouts ending in 30 seconds", {
-          description: "Wrap up — we'll return to the main room shortly.",
+        toast.info("30 seconds left — closing pairs", {
+          description: "Finish up with your partner.",
         })
       }
 
@@ -4204,6 +4206,7 @@ export function ClassroomRoom({
           onNudgeGroup={(groupId) => handleNudge({ groupId })}
           onExtend={handleExtendBreakouts}
           endsAt={breakoutEndsAt}
+          closing={!!breakoutClosingAt}
         />
       )}
 
@@ -4404,6 +4407,7 @@ export function ClassroomRoom({
             allParticipantNames={new Map(participants.map((p) => [participantBaseId(p.identity), p.name ?? p.identity]))}
             tutorVisiting={visitingGroupId === ownBreakoutGroup.id}
             endsAt={breakoutEndsAt}
+            closing={!!breakoutClosingAt}
           />
         ) : (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 max-w-[90%] px-4 py-2 rounded-full bg-amber-500/20 border border-amber-500/40 text-xs font-semibold text-amber-100 text-center">
@@ -4423,7 +4427,7 @@ export function ClassroomRoom({
           <span className="text-xs font-bold text-white truncate">
             You&apos;re in {breakoutGroups.find((g) => g.id === visitingGroupId)?.name ?? "a group"}
           </span>
-          {breakoutEndsAt && <BreakoutCountdown endsAt={breakoutEndsAt} />}
+          {breakoutEndsAt && <BreakoutCountdown endsAt={breakoutEndsAt} closing={!!breakoutClosingAt} />}
           <button
             onClick={() => handleVisitBreakout(null)}
             className="text-[11px] font-semibold text-emerald-200 hover:text-white bg-emerald-500/25 hover:bg-emerald-500/50 rounded-full px-2.5 py-0.5 transition-colors"
@@ -4445,7 +4449,7 @@ export function ClassroomRoom({
         >
           <Users2 className="size-4 text-emerald-400 shrink-0" />
           <span className="text-xs font-bold text-white truncate">Breakouts live</span>
-          <BreakoutCountdown endsAt={breakoutEndsAt} />
+          <BreakoutCountdown endsAt={breakoutEndsAt} closing={!!breakoutClosingAt} />
         </button>
       )}
 

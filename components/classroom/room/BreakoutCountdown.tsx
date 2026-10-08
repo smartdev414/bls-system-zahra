@@ -6,9 +6,13 @@ import { cn } from "@/lib/utils"
 
 export function BreakoutCountdown({
   endsAt,
+  closing = false,
   variant = "default",
 }: {
   endsAt: number | null
+  // True during the wrap-up countdown that follows the breakout timer — the
+  // pairs are already closed and the class is about to regroup.
+  closing?: boolean
   variant?: "default" | "compact"
 }) {
   const [now, setNow] = useState(() => Date.now())
@@ -29,6 +33,9 @@ export function BreakoutCountdown({
 
   const urgent = totalSec <= 30 && totalSec > 0
   const expired = totalSec === 0
+  // Two back-to-back 30-second stretches look identical on a bare clock, so
+  // each one says what it is counting down to.
+  const phase = closing ? "back to class" : urgent || expired ? "closing pairs" : null
 
   if (variant === "compact") {
     return (
@@ -41,7 +48,7 @@ export function BreakoutCountdown({
               ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse"
               : "bg-zinc-800 text-zinc-300 border-zinc-700"
         )}
-        title={expired ? "Time's up — ending now" : `${mmss} left before breakouts close`}
+        title={expired ? "Time's up — ending now" : `${mmss} left${phase ? ` · ${phase}` : " before breakouts close"}`}
       >
         {expired ? <AlertTriangle className="size-2.5" /> : <Timer className="size-2.5" />}
         {expired ? "Ending…" : mmss}
@@ -59,10 +66,17 @@ export function BreakoutCountdown({
             ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse"
             : "bg-zinc-800 text-zinc-200 border-zinc-700"
       )}
-      title={expired ? "Time's up — ending now" : `${mmss} until we return to the main room`}
+      title={
+        expired
+          ? "Time's up — ending now"
+          : closing
+            ? `${mmss} until we return to the main room`
+            : `${mmss} until the pairs close`
+      }
     >
       {expired ? <AlertTriangle className="size-3" /> : <Timer className="size-3" />}
       {expired ? "Time's up" : `${mmss} left`}
+      {phase && <span className="font-medium opacity-80">· {phase}</span>}
     </span>
   )
 }

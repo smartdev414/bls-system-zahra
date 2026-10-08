@@ -201,7 +201,7 @@ export function BreakoutsPanel({
                 LIVE
               </span>
             )}
-            {active && <BreakoutCountdown endsAt={endsAt} />}
+            {active && <BreakoutCountdown endsAt={endsAt} closing={!!closingAt} />}
           </div>
           <button
             onClick={onClose}
@@ -308,7 +308,7 @@ export function BreakoutsPanel({
                 </button>
                 {closingAt ? (
                   <>
-                    <BreakoutCountdown endsAt={closingAt} />
+                    <BreakoutCountdown endsAt={closingAt} closing />
                     <button
                       onClick={onEndNow}
                       className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white"

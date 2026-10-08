@@ -48,6 +48,7 @@ export function BreakoutMonitor({
   onNudgeGroup,
   onExtend,
   endsAt,
+  closing,
 }: {
   groups: BreakoutGroup[]
   visitingGroupId: string | null
@@ -57,6 +58,8 @@ export function BreakoutMonitor({
   /** Push the deadline out by N minutes without recreating the rooms. */
   onExtend: (minutes: number) => void
   endsAt: number | null
+  /** True once the wrap-up countdown back to the main room has started. */
+  closing: boolean
 }) {
   const participants = useParticipants()
   const camTracks    = useTracks([Track.Source.Camera])
@@ -109,7 +112,7 @@ export function BreakoutMonitor({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <BreakoutCountdown endsAt={endsAt} />
+          <BreakoutCountdown endsAt={endsAt} closing={closing} />
           <div className="flex items-center gap-1">
             <TimerReset className="size-3.5 text-zinc-500" />
             {[5, 10].map((n) => (
