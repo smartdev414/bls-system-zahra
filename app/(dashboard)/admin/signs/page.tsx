@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import {
   Library, Plus, Pencil, Trash2, Loader2, ListPlus, Camera, Upload,
-  Search, Filter, Video, Check, X, Database, Image as ImageIcon,
+  Search, Filter, Video, Check, X, Database, Image as ImageIcon, PlayCircle,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,7 @@ import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
+import { ProtectedVideo } from "@/components/ui/protected-video"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -316,6 +317,7 @@ function BulkAddDialog({
 
 function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
   const [editOpen, setEditOpen] = useState(false)
+  const [playOpen, setPlayOpen] = useState(false)
   const [form, setForm] = useState<Omit<Sign, "id">>({ ...sign })
 
   const { execute: update, loading: updating } = usePatchCallback<{ sign: Sign }, Partial<Sign>>(
@@ -342,16 +344,36 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
         <CardContent className="p-4">
           <div className="flex items-center gap-4">
             {/* Thumbnail */}
-            <div className="shrink-0 size-12 rounded-lg bg-primary/10 overflow-hidden flex items-center justify-center">
-              {sign.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={sign.imageUrl} alt={sign.word} className="size-full object-cover" />
-              ) : sign.videoUrl ? (
-                <Video className="size-5 text-primary" />
-              ) : (
-                <Library className="size-5 text-primary" />
-              )}
-            </div>
+            {sign.videoUrl ? (
+              <button
+                type="button"
+                onClick={() => setPlayOpen(true)}
+                aria-label={`Play video for ${sign.word}`}
+                title="Play video"
+                className="group relative shrink-0 size-12 rounded-lg bg-primary/10 overflow-hidden flex items-center justify-center cursor-pointer transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {sign.imageUrl ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={sign.imageUrl} alt={sign.word} className="size-full object-cover" />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <PlayCircle className="size-5 text-white" />
+                    </span>
+                  </>
+                ) : (
+                  <PlayCircle className="size-5 text-primary transition-transform group-hover:scale-110" />
+                )}
+              </button>
+            ) : (
+              <div className="shrink-0 size-12 rounded-lg bg-primary/10 overflow-hidden flex items-center justify-center">
+                {sign.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={sign.imageUrl} alt={sign.word} className="size-full object-cover" />
+                ) : (
+                  <Library className="size-5 text-primary" />
+                )}
+              </div>
+            )}
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -396,6 +418,24 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
           </div>
         </CardContent>
       </Card>
+
+      {sign.videoUrl && (
+        <Dialog open={playOpen} onOpenChange={setPlayOpen}>
+          <DialogContent className="max-w-md max-h-[90vh]">
+            <DialogHeader>
+              <DialogTitle className="pr-8">{sign.word}</DialogTitle>
+            </DialogHeader>
+            <ProtectedVideo
+              src={sign.videoUrl}
+              controls
+              autoPlay
+              allowDownload
+              className="w-full rounded-xl max-h-[60vh] object-contain bg-black"
+              poster={sign.imageUrl ?? undefined}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
 
       <SignDialog
         open={editOpen}
