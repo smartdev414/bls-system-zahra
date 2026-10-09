@@ -9,7 +9,7 @@ One job = one video:
   input.source_url   signed GET for the raw recording (camera as-is)
   input.upload_url   signed PUT the finished MP4 is sent to
   input.color        "#rrggbb" to put behind the tutor
-  input.logo_url     optional logo, stamped top-left the way the recorder does
+  input.logo_url     optional logo, stamped on the lower chest the way the recorder does
 
 The worker never holds storage credentials: it only sees the two signed URLs.
 Deployed by scripts/deploy-background-replacer.mjs.
@@ -26,7 +26,7 @@ import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
-from PIL import Image, ImageDraw
+from PIL import Image
 from transformers import AutoModelForImageSegmentation
 
 MODEL_ID = os.environ.get("MATTING_MODEL", "ZhengPeng7/BiRefNet-matting")
@@ -40,12 +40,10 @@ FPS = 30
 # only stops a runaway job from burning GPU time.
 MAX_SECONDS = int(os.environ.get("MAX_SECONDS", "1500"))
 
-# Logo tile geometry as fractions of the video height — keep in step with the
+# Logo geometry as fractions of the video height — keep in step with the
 # WATERMARK_* constants in lib/lesson-video-canvas.ts.
 WATERMARK_HEIGHT = 0.1
-WATERMARK_MARGIN = 0.025
-WATERMARK_PADDING = 0.1
-WATERMARK_RADIUS = 0.12
+WATERMARK_CENTER_Y = 0.76
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 HALF = DEVICE == "cuda"
@@ -95,25 +93,17 @@ def probe_size(path):
     return width - width % 2, height - height % 2
 
 
-def build_logo(url, video_height):
-    """The white rounded tile with the logo on it, as float RGB + alpha tensors."""
+def build_logo(url, video_width, video_height):
+    """The logo on its own (no tile behind it), as float RGB + alpha tensors."""
     res = requests.get(url, timeout=30)
     res.raise_for_status()
     logo = Image.open(BytesIO(res.content)).convert("RGBA")
 
-    tile_h = max(8, round(video_height * WATERMARK_HEIGHT))
-    pad = round(tile_h * WATERMARK_PADDING)
-    logo_h = tile_h - pad * 2
-    logo_w = round(logo_h * logo.width / logo.height)
-    tile = Image.new("RGBA", (logo_w + pad * 2, tile_h), (0, 0, 0, 0))
-    ImageDraw.Draw(tile).rounded_rectangle(
-        (0, 0, tile.width - 1, tile.height - 1),
-        radius=tile_h * WATERMARK_RADIUS,
-        fill=(255, 255, 255, 242),
-    )
-    tile.alpha_composite(logo.resize((logo_w, logo_h), Image.LANCZOS), (pad, pad))
+    logo_h = max(8, round(video_height * WATERMARK_HEIGHT))
+    logo_w = min(video_width, round(logo_h * logo.width / logo.height))
+    logo = logo.resize((logo_w, logo_h), Image.LANCZOS)
 
-    data = torch.from_numpy(np.array(tile)).to(DEVICE).float()
+    data = torch.from_numpy(np.array(logo)).to(DEVICE).float()
     rgb = data[..., :3].permute(2, 0, 1).unsqueeze(0)
     alpha = (data[..., 3:] / 255).permute(2, 0, 1).unsqueeze(0)
     return rgb, alpha
@@ -189,8 +179,7 @@ def process(source, output, color, logo_url, on_progress):
     )
 
     background = torch.tensor(color, device=DEVICE).float().view(1, 3, 1, 1)
-    logo = build_logo(logo_url, height) if logo_url else None
-    margin = round(height * WATERMARK_MARGIN)
+    logo = build_logo(logo_url, width, height) if logo_url else None
 
     def flush(batch):
         frames = torch.from_numpy(np.stack(batch)).to(DEVICE)
@@ -200,8 +189,11 @@ def process(source, output, color, logo_url, on_progress):
         if logo:
             rgb, logo_alpha = logo
             h, w = rgb.shape[2:]
-            region = out[:, :, margin:margin + h, margin:margin + w]
-            out[:, :, margin:margin + h, margin:margin + w] = rgb * logo_alpha + region * (1 - logo_alpha)
+            # Centred on the lower chest.
+            x = (width - w) // 2
+            y = min(height - h, round(height * WATERMARK_CENTER_Y - h / 2))
+            region = out[:, :, y:y + h, x:x + w]
+            out[:, :, y:y + h, x:x + w] = rgb * logo_alpha + region * (1 - logo_alpha)
         encoder.stdin.write(out.round().clamp(0, 255).byte().permute(0, 2, 3, 1).cpu().numpy().tobytes())
 
     count = 0

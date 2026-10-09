@@ -23,11 +23,11 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
-import { LOGO_MARK_SRC, MARK_W, MARK_H } from "@/components/layout/logo"
+import { LOGO_MARK_SRC } from "@/components/layout/logo"
 import {
-  createLessonVideoCanvas, supportsLessonVideoCanvas, watermarkTileAspect,
+  createLessonVideoCanvas, supportsLessonVideoCanvas,
   type BackgroundMethod, type LessonVideoCanvas,
-  WATERMARK_HEIGHT, WATERMARK_MARGIN, WATERMARK_PADDING, WATERMARK_RADIUS,
+  WATERMARK_CENTER_Y, WATERMARK_HEIGHT,
 } from "@/lib/lesson-video-canvas"
 import { rawRecordingName } from "@/lib/background-clean-keys"
 import { setVideoCleanState } from "@/hooks/use-video-clean"
@@ -37,7 +37,6 @@ import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 const BACKGROUND_PREF_KEY = "recorder:background"
 const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
 const STUDIO_PREFS_KEY = "sign-recorder:prefs"
-const WATERMARK_TILE_ASPECT = watermarkTileAspect(MARK_W / MARK_H)
 // Signs are watched full screen, where 720p looks soft: film at 1080p, with
 // the bitrate to match (a take is seconds long, so the file stays small).
 const RECORDING_WIDTH = 1920
@@ -796,24 +795,17 @@ export function SignRecordingStudio() {
                   !rendererActive && "opacity-0"
                 )}
               />
-              {/* The preview is mirrored, which would show the logo baked into
-                  the canvas back to front. This readable copy sits exactly
-                  over it — top-right here is top-left in the recorded video. */}
-              {rendererActive && videoAspect && (
-                <div
+              {/* The logo is stamped on the recorded picture, not on this (mirrored)
+                  canvas. This copy shows where it lands: the signer's lower chest. */}
+              {rendererActive && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={LOGO_MARK_SRC}
+                  alt=""
                   aria-hidden
-                  className="pointer-events-none absolute flex select-none items-center justify-center bg-white"
-                  style={{
-                    top: `${WATERMARK_MARGIN * 100}%`,
-                    right: `${(WATERMARK_MARGIN / videoAspect) * 100}%`,
-                    height: `${WATERMARK_HEIGHT * 100}%`,
-                    width: `${((WATERMARK_HEIGHT * WATERMARK_TILE_ASPECT) / videoAspect) * 100}%`,
-                    borderRadius: `${(WATERMARK_RADIUS / WATERMARK_TILE_ASPECT) * 100}% / ${WATERMARK_RADIUS * 100}%`,
-                  }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={LOGO_MARK_SRC} alt="" style={{ height: `${(1 - 2 * WATERMARK_PADDING) * 100}%` }} />
-                </div>
+                  className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 select-none"
+                  style={{ top: `${WATERMARK_CENTER_Y * 100}%`, height: `${WATERMARK_HEIGHT * 100}%` }}
+                />
               )}
               {(!ready || backgroundPending) && (
                 <div className="absolute inset-0 flex items-center justify-center">

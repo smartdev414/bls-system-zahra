@@ -13,7 +13,7 @@
 //      grain doesn't end up as speckle along the cut-out.
 //   4. Composite — feathered mix of the flat colour and the camera frame.
 // Without one, the frame is drawn as-is and the model is never downloaded.
-// Either way the logo tile is drawn last, on top.
+// Either way the logo is stamped on the recorded picture last, on top.
 //
 // The model only guesses where the person is, and guesses worst on fast,
 // motion-blurred hands. Where a plain coloured backdrop (green or blue cloth)
@@ -255,20 +255,14 @@ void main() {
   o = texture(u_tex, v_uv);
 }`
 
-// Logo tile geometry, as fractions of the video height so it scales with the
-// camera resolution. The recorder's preview covers the tile with a matching
-// DOM element, so keep the two in step through these.
+// Logo geometry, as fractions of the video height so it scales with the
+// camera resolution. The logo sits on the signer's lower chest, centred, with
+// no tile behind it: there it can't be cropped out of a copied video the way a
+// corner mark can. The recorder's preview shows a matching DOM element, so
+// keep the two in step through these.
 export const WATERMARK_HEIGHT = 0.1
-export const WATERMARK_MARGIN = 0.025
-/** Padding inside the tile, as a fraction of the tile height. */
-export const WATERMARK_PADDING = 0.1
-/** Corner radius, as a fraction of the tile height. */
-export const WATERMARK_RADIUS = 0.12
-
-/** Width ÷ height of the tile for a logo of the given width ÷ height. */
-export function watermarkTileAspect(logoAspect: number): number {
-  return (1 - 2 * WATERMARK_PADDING) * logoAspect + 2 * WATERMARK_PADDING
-}
+/** Where the middle of the logo sits, down from the top of the picture. */
+export const WATERMARK_CENTER_Y = 0.76
 
 export function supportsLessonVideoCanvas(): boolean {
   if (typeof document === "undefined" || typeof WebAssembly === "undefined") return false
@@ -367,14 +361,18 @@ export type LessonVideoCanvas = {
   resampleBackdrop: () => void
   /** 0–1: how much of the backdrop's shadows and creases to remove. Default 0.5. */
   setBackdropStrength: (strength: number) => void
-  /** The processed picture as a video track, ready for MediaRecorder. */
+  /**
+   * The processed picture, logo included, as a video track ready for
+   * MediaRecorder. Stop the track when the recording is over.
+   */
   captureStream: (fps?: number) => MediaStream
   destroy: () => void
 }
 
 /**
- * Start drawing `video` onto `canvas`, with the logo at `watermarkSrc` (if
- * given) stamped in the top-left corner. Throws if the browser has no WebGL2.
+ * Start drawing `video` onto `canvas`. The logo at `watermarkSrc` (if given)
+ * is stamped on the recorded picture only (see `captureStream`), not on
+ * `canvas`. Throws if the browser has no WebGL2.
  */
 export function createLessonVideoCanvas(
   video: HTMLVideoElement,
@@ -531,62 +529,44 @@ export function createLessonVideoCanvas(
     if (sameHue) key = [key[0] + (sample[0] - key[0]) * 0.3, key[1] + (sample[1] - key[1]) * 0.3]
   }
 
-  // The logo tile is painted once per video size on a 2D canvas (white rounded
-  // tile + logo, same look as LogoWatermark) and kept as a texture.
-  const watermarkTexture = createTexture(gl)
+  // The logo is not drawn on `canvas`: the recorder shows that mirrored, which
+  // would turn the logo back to front, and it has no tile behind it that a
+  // readable copy could cover. Instead each finished frame is copied to a
+  // second canvas while a recording is running, and the logo is stamped there.
   let watermarkImage: HTMLImageElement | null = null
-  let watermarkWidth = 0
-  let watermarkHeight = 0
-  let watermarkBuiltFor = 0
   if (options.watermarkSrc) {
     const image = new Image()
     image.onload = () => { watermarkImage = image }
     image.onerror = () => console.warn("[lesson-video-canvas] logo failed to load")
     image.src = options.watermarkSrc
   }
+  let output: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; track?: MediaStreamTrack } | null = null
 
-  function buildWatermark(image: HTMLImageElement, videoHeight: number) {
-    const tileHeight = Math.max(8, Math.round(videoHeight * WATERMARK_HEIGHT))
-    const pad = Math.round(tileHeight * WATERMARK_PADDING)
-    const logoHeight = tileHeight - pad * 2
-    const logoWidth = Math.round(logoHeight * (image.naturalWidth / image.naturalHeight))
-    const tile = document.createElement("canvas")
-    tile.width = logoWidth + pad * 2
-    tile.height = tileHeight
-    const ctx = tile.getContext("2d")
-    if (!ctx) return
-    ctx.fillStyle = "rgba(255, 255, 255, 0.95)"
-    ctx.beginPath()
-    if (typeof ctx.roundRect === "function") {
-      ctx.roundRect(0, 0, tile.width, tile.height, tileHeight * WATERMARK_RADIUS)
-    } else {
-      ctx.rect(0, 0, tile.width, tile.height)
+  // Must run in the same task as the frame's last draw call, while the WebGL
+  // drawing buffer still holds it.
+  function copyToOutput(width: number, height: number) {
+    if (!output) return
+    if (output.track?.readyState === "ended") {
+      output = null
+      return
     }
-    ctx.fill()
-    ctx.imageSmoothingQuality = "high"
-    ctx.drawImage(image, pad, pad, logoWidth, logoHeight)
-
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, watermarkTexture)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tile)
-    watermarkWidth = tile.width
-    watermarkHeight = tile.height
-    watermarkBuiltFor = videoHeight
-  }
-
-  function drawWatermark(height: number) {
+    if (output.canvas.width !== width || output.canvas.height !== height) {
+      output.canvas.width = width
+      output.canvas.height = height
+    }
+    const { ctx } = output
+    ctx.drawImage(canvas, 0, 0, width, height)
     if (!watermarkImage) return
-    if (watermarkBuiltFor !== height) buildWatermark(watermarkImage, height)
-    if (!watermarkWidth) return
-    const margin = Math.round(height * WATERMARK_MARGIN)
-    bind(overlay, { u_tex: watermarkTexture }, -1)
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    // GL's origin is the bottom-left corner; the tile goes top-left.
-    gl.viewport(margin, height - margin - watermarkHeight, watermarkWidth, watermarkHeight)
-    gl.enable(gl.BLEND)
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-    gl.disable(gl.BLEND)
+    const logoHeight = Math.max(8, Math.round(height * WATERMARK_HEIGHT))
+    const logoWidth = Math.round(logoHeight * (watermarkImage.naturalWidth / watermarkImage.naturalHeight))
+    ctx.imageSmoothingQuality = "high"
+    ctx.drawImage(
+      watermarkImage,
+      Math.round((width - logoWidth) / 2),
+      Math.round(height * WATERMARK_CENTER_Y - logoHeight / 2),
+      logoWidth,
+      logoHeight,
+    )
   }
 
   function bind(program: WebGLProgram, textures: Record<string, WebGLTexture>, flipY: number) {
@@ -704,7 +684,7 @@ export function createLessonVideoCanvas(
       historyValid = false
       bind(overlay, { u_tex: frameTexture }, -1)
       draw(null, width, height)
-      drawWatermark(height)
+      copyToOutput(width, height)
       return
     }
 
@@ -772,7 +752,7 @@ export function createLessonVideoCanvas(
     }
     draw(null, width, height)
     setFrameMipmaps(false)
-    drawWatermark(height)
+    copyToOutput(width, height)
   }
 
   // Drive the loop from the camera's own frames where the browser can tell us
@@ -827,7 +807,15 @@ export function createLessonVideoCanvas(
       keyStrength = Math.min(1, Math.max(0, strength))
     },
     captureStream(fps = 30) {
-      return canvas.captureStream(fps)
+      const copy = document.createElement("canvas")
+      copy.width = canvas.width
+      copy.height = canvas.height
+      const ctx = copy.getContext("2d", { alpha: false })
+      // No 2D canvas to stamp the logo on: the picture without it.
+      if (!ctx) return canvas.captureStream(fps)
+      const stream = copy.captureStream(fps)
+      output = { canvas: copy, ctx, track: stream.getVideoTracks()[0] }
+      return stream
     },
     destroy() {
       if (destroyed) return
@@ -844,7 +832,7 @@ export function createLessonVideoCanvas(
       }
       gl.deleteTexture(frameTexture)
       gl.deleteTexture(rawMaskTexture)
-      gl.deleteTexture(watermarkTexture)
+      output = null
       gl.deleteBuffer(quad)
     },
   }
