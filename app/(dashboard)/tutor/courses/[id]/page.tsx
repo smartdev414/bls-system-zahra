@@ -32,6 +32,7 @@ import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 import { lessonKind } from "@/lib/lesson-kind"
 import { ReleaseScheduleDialog } from "@/components/courses/ReleaseScheduleDialog"
+import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -773,6 +774,7 @@ function LessonRow({ lesson, courseId, canEdit, hideRelease, onMoveUp, onMoveDow
           {lesson.isFree && <Badge variant="outline" className="text-[10px] h-4 px-1">Free</Badge>}
           {!hideRelease && <ReleaseBadge releaseAt={lesson.releaseAt} className="text-[10px] h-4 px-1" />}
           {lesson.assets.length > 0 && <span>· {lesson.assets.length} file{lesson.assets.length !== 1 ? "s" : ""}</span>}
+          {lesson.assets.map((asset) => <VideoCleanBadge key={asset.id} url={asset.fileUrl} />)}
         </div>
       </div>
       <div className="flex gap-1.5 shrink-0">

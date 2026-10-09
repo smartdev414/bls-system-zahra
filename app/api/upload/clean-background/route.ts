@@ -1,44 +1,27 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { backgroundCleanConfigured, backgroundCleanStatus, submitBackgroundClean } from "@/lib/background-clean"
+import { backgroundCleanConfigured, startBackgroundClean } from "@/lib/background-clean"
 import { isRawRecordingKey } from "@/lib/background-clean-keys"
-import { LOGO_MARK_SRC } from "@/components/layout/logo"
 
 // Background replacement after upload — see lib/background-clean.ts.
 
-async function staffSession() {
+/** Whether the recorders should use this at all. */
+export async function GET() {
   const session = await getSession()
-  if (!session) return { error: NextResponse.json({ message: "Unauthorized" }, { status: 401 }) }
-  if (session.role !== "TUTOR" && session.role !== "ADMIN") {
-    return { error: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
-  }
-  return { session }
-}
-
-/**
- * Without `jobId`: whether the recorders should use this at all.
- * With it: how that job is getting on. Polled by the recorder, so not audited.
- */
-export async function GET(req: NextRequest) {
-  try {
-    const { error } = await staffSession()
-    if (error) return error
-
-    const jobId = req.nextUrl.searchParams.get("jobId")
-    if (!jobId) return NextResponse.json({ available: backgroundCleanConfigured() })
-    if (!backgroundCleanConfigured()) return NextResponse.json({ message: "Not configured" }, { status: 503 })
-    return NextResponse.json({ status: await backgroundCleanStatus(jobId) })
-  } catch (err) {
-    console.error("[GET /api/upload/clean-background]", err)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
-  }
+  if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+  return NextResponse.json({
+    available: (session.role === "TUTOR" || session.role === "ADMIN") && backgroundCleanConfigured(),
+  })
 }
 
 async function handlePOST(req: NextRequest) {
   try {
-    const { session, error } = await staffSession()
-    if (error) return error
+    const session = await getSession()
+    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
     if (!backgroundCleanConfigured()) return NextResponse.json({ message: "Not configured" }, { status: 503 })
 
     const { key, color } = await req.json() as { key?: string; color?: string }
@@ -54,11 +37,11 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "Not a recording of yours" }, { status: 400 })
     }
 
-    const jobId = await submitBackgroundClean(segments.join("/"), color, LOGO_MARK_SRC)
-    return NextResponse.json({ jobId })
+    const job = await startBackgroundClean(segments.join("/"), session.sub, color)
+    return NextResponse.json({ state: job.status === "FAILED" ? "failed" : "processing" })
   } catch (err) {
     console.error("[POST /api/upload/clean-background]", err)
-    return NextResponse.json({ message: "Could not start background replacement" }, { status: 502 })
+    return NextResponse.json({ message: "Could not start background replacement" }, { status: 500 })
   }
 }
 

@@ -82,10 +82,12 @@ async function handleGET(
 
     // A recording sent for background replacement (lib/background-clean.ts)
     // keeps its raw address; serve the finished version once there is one.
+    // Until then it shows the tutor's real room, so students don't get it.
     let serveKey = key
     if (isRawRecordingKey(key)) {
       const cleanKey = cleanKeyFor(key)
       if (await objectExists(cleanKey)) serveKey = cleanKey
+      else if (session.role === "STUDENT") return notFound()
     }
 
     const url = download

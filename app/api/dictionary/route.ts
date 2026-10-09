@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { urlsHiddenFromStudents } from "@/lib/background-clean"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -47,8 +48,14 @@ async function handleGET(req: NextRequest) {
       }),
     ])
 
+    // Students don't get a sign's video while its background is still being
+    // replaced (lib/background-clean.ts); the sign itself still shows.
+    const hiddenUrls = session.role === "STUDENT"
+      ? await urlsHiddenFromStudents(signs.map((sign) => sign.videoUrl))
+      : new Set<string>()
+
     return NextResponse.json({
-      signs,
+      signs: signs.map((sign) => (sign.videoUrl && hiddenUrls.has(sign.videoUrl) ? { ...sign, videoUrl: null } : sign)),
       total,
       page,
       totalPages: Math.ceil(total / limit),

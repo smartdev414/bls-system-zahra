@@ -55,6 +55,8 @@ type NotificationType =
   | "QUIZ_FAILED"
   | "HOMEWORK_REMINDER"
   | "COURSE_TEACHER_ADDED"
+  | "VIDEO_BACKGROUND_READY"
+  | "VIDEO_BACKGROUND_FAILED"
 
 type Notification = {
   id: string
@@ -89,6 +91,8 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   QUIZ_FAILED: Award,
   HOMEWORK_REMINDER: CalendarPlus,
   COURSE_TEACHER_ADDED: BookOpen,
+  VIDEO_BACKGROUND_READY: Video,
+  VIDEO_BACKGROUND_FAILED: Video,
 }
 
 const typeColor: Record<NotificationType, string> = {
@@ -114,6 +118,8 @@ const typeColor: Record<NotificationType, string> = {
   QUIZ_FAILED: "text-destructive",
   HOMEWORK_REMINDER: "text-yellow-500",
   COURSE_TEACHER_ADDED: "text-primary",
+  VIDEO_BACKGROUND_READY: "text-emerald-500",
+  VIDEO_BACKGROUND_FAILED: "text-destructive",
 }
 
 const POLL_INTERVAL = 30_000 // 30 seconds

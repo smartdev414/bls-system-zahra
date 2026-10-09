@@ -19,3 +19,13 @@ export function isRawRecordingKey(key: string): boolean {
 export function cleanKeyFor(rawKey: string): string {
   return rawKey.replace(RAW_SUFFIX, ".clean.mp4")
 }
+
+/** The raw-recording key a stored file URL points at, or null if it isn't one. */
+export function rawKeyFromUrl(url: string): string | null {
+  try {
+    const key = decodeURIComponent(new URL(url).pathname.slice(1))
+    return isRawRecordingKey(key) ? key : null
+  } catch {
+    return null
+  }
+}

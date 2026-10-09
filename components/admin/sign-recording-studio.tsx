@@ -30,6 +30,8 @@ import {
   WATERMARK_HEIGHT, WATERMARK_MARGIN, WATERMARK_PADDING, WATERMARK_RADIUS,
 } from "@/lib/lesson-video-canvas"
 import { rawRecordingName } from "@/lib/background-clean-keys"
+import { setVideoCleanState } from "@/hooks/use-video-clean"
+import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 // Shared with the lesson recorder, so a colour chosen there carries over.
 const BACKGROUND_PREF_KEY = "recorder:background"
@@ -133,8 +135,11 @@ function writeStudioPrefs(prefs: StudioPrefs): void {
 // Kept against the blob so a retried upload asks for the same thing.
 const cleanColors = new WeakMap<Blob, string>()
 
-/** Uploads one take and attaches it to its sign. */
-async function persistTake(sign: QueueSign, blob: Blob): Promise<void> {
+/**
+ * Uploads one take and attaches it to its sign. Returns the saved URL when the
+ * take was sent to have its background replaced, so that can be followed.
+ */
+async function persistTake(sign: QueueSign, blob: Blob): Promise<string | null> {
   const contentType = blob.type === "video/mp4" ? "video/mp4" : "video/webm"
   const extension = contentType === "video/mp4" ? "mp4" : "webm"
   const baseName = sign.word.replace(/[^\w\- ]+/g, "").trim() || "sign"
@@ -174,17 +179,17 @@ async function persistTake(sign: QueueSign, blob: Blob): Promise<void> {
     throw new Error(err.message ?? "Could not save the video to the sign")
   }
 
-  if (cleanColor) {
-    // The take is saved either way; if this can't start it keeps the real background.
-    const cleanRes = await fetch("/api/upload/clean-background", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, color: cleanColor }),
-    }).catch(() => null)
-    if (!cleanRes?.ok) {
-      toast.warning(`"${sign.word}" was saved, but its background could not be replaced`)
-    }
-  }
+  if (!cleanColor) return null
+  // The take is saved either way; if this can't start it shows as failed in
+  // the queue, with a retry.
+  const cleanRes = await fetch("/api/upload/clean-background", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, color: cleanColor }),
+  }).catch(() => null)
+  const { state } = cleanRes?.ok ? await cleanRes.json() as { state?: "processing" | "failed" } : {}
+  setVideoCleanState(fileUrl, state ?? "failed")
+  return fileUrl
 }
 
 function Key({ children }: { children: React.ReactNode }) {
@@ -233,6 +238,9 @@ export function SignRecordingStudio() {
   // Whether the server can replace the background after upload. The live
   // picture is then only a preview, so the signer isn't asked how to cut it out.
   const [cleanAvailable, setCleanAvailable] = useState(false)
+  // Saved video per sign for takes sent to have their background replaced, so
+  // the queue can show how each is getting on.
+  const [cleanUrls, setCleanUrls] = useState<Record<string, string | null>>({})
   const liveMethod: BackgroundMethod = cleanAvailable ? "auto" : method
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
 
@@ -543,7 +551,8 @@ export function SignRecordingStudio() {
   function saveTake(sign: QueueSign, blob: Blob) {
     setStatuses((prev) => ({ ...prev, [sign.id]: "uploading" }))
     persistTake(sign, blob)
-      .then(() => {
+      .then((cleanUrl) => {
+        setCleanUrls((prev) => ({ ...prev, [sign.id]: cleanUrl }))
         failedTakesRef.current.delete(sign.id)
         setStatuses((prev) => ({ ...prev, [sign.id]: "saved" }))
       })
@@ -1056,6 +1065,7 @@ export function SignRecordingStudio() {
                         Retry
                       </Button>
                     )}
+                    {status === "saved" && <VideoCleanBadge compact url={cleanUrls[sign.id]} className="pr-1" />}
                   </div>
                 )
               })}

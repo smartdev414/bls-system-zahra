@@ -6,8 +6,8 @@
 // Safe to re-run: it finds the template and endpoint by name and updates them.
 // Prints the endpoint id to set as RUNPOD_BACKGROUND_ENDPOINT_ID.
 //
-// There is no image to build. The worker runs on RunPod's stock PyTorch image
-// and its start command installs the few extra packages and unpacks
+// There is no image to build. The worker runs on the stock PyTorch image and
+// its start command installs the few extra packages and unpacks
 // handler.py from an environment variable. That costs a minute or two on each
 // cold start; baking a proper image would remove it, but needs a container
 // registry this project doesn't have yet.
@@ -18,7 +18,10 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const NAME = "bls-background-replacer"
-const IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
+// PyTorch built for CUDA 12.8. RunPod's 24 GB pool hands out slices of newer
+// (Blackwell) cards as well as the ones listed below, and an older PyTorch
+// starts on those and then dies loading the model — the job just sits queued.
+const IMAGE = "pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime"
 const API = "https://rest.runpod.io/v1"
 
 const apiKey = process.env.RUNPOD_API_KEY
@@ -86,6 +89,8 @@ const endpoint = {
   scalerType: "QUEUE_DELAY",
   scalerValue: 4,
   flashboot: true,
+  // Hosts whose driver is too old for the image's CUDA can't run it at all.
+  allowedCudaVersions: ["12.8", "12.9", "13.0"],
 }
 
 const templates = await api("GET", "/templates")

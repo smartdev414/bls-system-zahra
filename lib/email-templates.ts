@@ -421,6 +421,8 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.TICKET_COMMENT,
   NotificationType.HOMEWORK_REMINDER,
   NotificationType.COURSE_TEACHER_ADDED,
+  NotificationType.VIDEO_BACKGROUND_READY,
+  NotificationType.VIDEO_BACKGROUND_FAILED,
 ])
 
 export function renderEmailTemplate(
@@ -456,6 +458,8 @@ export function renderEmailTemplate(
     [NotificationType.TICKET_COMMENT]:     `💬 Support replied to your ticket — ${title}`,
     [NotificationType.HOMEWORK_REMINDER]:  `⏰ ${title}`,
     [NotificationType.COURSE_TEACHER_ADDED]: `🎓 ${title}`,
+    [NotificationType.VIDEO_BACKGROUND_READY]:  `🎬 ${title}`,
+    [NotificationType.VIDEO_BACKGROUND_FAILED]: `⚠️ ${title}`,
   }
 
   const subject = subjects[type] ?? `BSL Platform — ${title}`

@@ -60,6 +60,8 @@ type LessonData = {
     description: string | null
     isFree: boolean
     assets: Asset[]
+    /** A video exists but is still being prepared, so it isn't in `assets` yet. */
+    videoPending?: boolean
     isCompleted: boolean
     watchedSecs: number
   }
@@ -261,6 +263,11 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {lesson.videoPending && (
+            <p className="mx-6 mt-6 rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+              The video for this lesson is still being prepared. Please check back in a few minutes.
+            </p>
+          )}
           {/* Video player */}
           {lesson.type === "VIDEO" && videoAsset ? (
             <div className="bg-black aspect-video w-full">

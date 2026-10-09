@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased, releasedLessons } from "@/lib/lesson-release"
+import { urlsHiddenFromStudents } from "@/lib/background-clean"
 
 async function handleGET(
   _req: Request,
@@ -92,6 +93,8 @@ async function handleGET(
     const totalLessons = allLessons.length
     const completedCount = enrollment?.progress.filter((p) => p.isCompleted).length ?? 0
 
+    const hiddenUrls = await urlsHiddenFromStudents(lesson.assets.map((asset) => asset.fileUrl))
+
     return NextResponse.json({
       lesson: {
         id: lesson.id,
@@ -99,7 +102,9 @@ async function handleGET(
         type: lesson.type,
         description: lesson.description,
         isFree: lesson.isFree,
-        assets: lesson.assets,
+        // A recording whose background is still being replaced isn't shown yet.
+        assets: lesson.assets.filter((asset) => !hiddenUrls.has(asset.fileUrl)),
+        videoPending: hiddenUrls.size > 0,
         isCompleted: progress?.isCompleted ?? false,
         watchedSecs: progress?.watchedSecs ?? 0,
       },

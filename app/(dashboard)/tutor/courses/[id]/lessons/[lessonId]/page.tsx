@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 import { QuizResults } from "@/components/quiz/QuizResults"
 import { isVideoMedia } from "@/lib/quiz"
+import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -240,6 +241,7 @@ function AssetView({ asset }: { asset: Asset }) {
         <div className="rounded-xl overflow-hidden border bg-black">
           <ProtectedVideo src={asset.fileUrl} controls allowDownload className="w-full aspect-video" />
         </div>
+        <VideoCleanBadge url={asset.fileUrl} />
         {download}
       </div>
     )

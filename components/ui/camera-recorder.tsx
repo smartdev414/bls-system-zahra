@@ -12,6 +12,8 @@ import {
   WATERMARK_HEIGHT, WATERMARK_MARGIN, WATERMARK_PADDING, WATERMARK_RADIUS,
 } from "@/lib/lesson-video-canvas"
 import { rawRecordingName } from "@/lib/background-clean-keys"
+import { setVideoCleanState, useVideoCleanState } from "@/hooks/use-video-clean"
+import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 const BACKGROUND_PREF_KEY = "recorder:background"
 const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
@@ -129,8 +131,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const liveMethod: BackgroundMethod = cleanAvailable ? "auto" : method
   const cleanLater = cleanAvailable && backgroundOn
   const cleanColorRef = useRef<string | null>(null)
-  const [cleanJob, setCleanJob] = useState<string | null>(null)
-  const [cleanStatus, setCleanStatus] = useState<"working" | "done" | "failed" | null>(null)
+  const { state: cleanStatus } = useVideoCleanState(uploaded?.fileUrl)
   // Camera picture shape (width ÷ height), so the preview shows the whole
   // frame that is being recorded rather than a cropped one.
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
@@ -179,32 +180,6 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
-
-  // Follows the background job so the tutor can see when the video is final.
-  useEffect(() => {
-    if (!cleanJob) return
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout>
-    const check = async () => {
-      try {
-        const res = await fetch(`/api/upload/clean-background?jobId=${encodeURIComponent(cleanJob)}`)
-        const { status } = await res.json() as { status?: string }
-        if (cancelled) return
-        if (status === "done" || status === "failed") {
-          setCleanStatus(status)
-          return
-        }
-      } catch {
-        // A dropped poll isn't a failed job — ask again.
-      }
-      if (!cancelled) timer = setTimeout(check, 5000)
-    }
-    timer = setTimeout(check, 5000)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [cleanJob])
 
   // Starts the canvas render loop once the camera is live.
   useEffect(() => {
@@ -344,8 +319,6 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     setUploading(true)
     const cleanColor = cleanColorRef.current
     const fileName = cleanColor ? rawRecordingName(`recording-${Date.now()}.webm`) : `recording-${Date.now()}.webm`
-    setCleanJob(null)
-    setCleanStatus(null)
 
     try {
       const presignRes = await fetch("/api/upload/presign", {
@@ -380,19 +353,14 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
       if (cleanColor) {
         // The recording is safely uploaded either way; if this can't start it
-        // just keeps the real background.
+        // shows as failed, with a retry.
         const cleanRes = await fetch("/api/upload/clean-background", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ key, color: cleanColor }),
         }).catch(() => null)
-        const { jobId } = cleanRes?.ok ? await cleanRes.json() as { jobId?: string } : {}
-        if (jobId) {
-          setCleanJob(jobId)
-          setCleanStatus("working")
-        } else {
-          setCleanStatus("failed")
-        }
+        const { state } = cleanRes?.ok ? await cleanRes.json() as { state?: "processing" | "failed" } : {}
+        setVideoCleanState(fileUrl, state ?? "failed")
       }
 
       onUploaded({
@@ -436,19 +404,15 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
           </Button>
         )}
       </div>
-      {cleanStatus === "working" && (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Loader2 className="size-3 animate-spin shrink-0" />
-          Replacing the background — this takes a few minutes. You can carry on and save; the video updates by itself.
+      <VideoCleanBadge url={uploaded.fileUrl} />
+      {cleanStatus === "processing" && (
+        <p className="text-xs text-muted-foreground">
+          This takes a few minutes. You can carry on and save — students see the video once it is ready, and you
+          will get a notification.
         </p>
       )}
       {cleanStatus === "done" && (
         <p className="text-xs text-muted-foreground">Background replaced — the video is ready.</p>
-      )}
-      {cleanStatus === "failed" && (
-        <p className="text-xs text-destructive">
-          The background could not be replaced, so this video keeps your real background. Record again to retry.
-        </p>
       )}
       </div>
     )

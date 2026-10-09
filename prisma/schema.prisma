@@ -101,6 +101,9 @@ enum NotificationType {
   HOMEWORK_REMINDER
   // A tutor was put on a course as one of its teachers
   COURSE_TEACHER_ADDED
+  // A recording's background replacement finished or failed (for whoever recorded it)
+  VIDEO_BACKGROUND_READY
+  VIDEO_BACKGROUND_FAILED
   // Ticket / feedback events
   TICKET_CREATED
   TICKET_UPDATED
@@ -174,6 +177,7 @@ model User {
   liveSessionChatMessages LiveSessionChatMessage[] @relation("LiveSessionChatMessages")
   libraryFiles         LibraryFile[]           @relation("TutorLibraryFiles")
   preparedCaptions     PreparedCaption[]       @relation("TutorPreparedCaptions")
+  videoCleanJobs       VideoCleanJob[]
 }
 
 model PasswordResetToken {
@@ -206,6 +210,33 @@ model Notification {
   @@index([userId])
   @@index([userId, isRead])
   @@index([createdAt])
+}
+
+enum VideoCleanStatus {
+  PROCESSING
+  DONE
+  FAILED
+}
+
+// One per recording sent to have its background replaced after upload (see
+// lib/background-clean.ts). Keyed by the raw upload rather than tied to a
+// lesson or sign, because the recording is uploaded — and the job started —
+// before whatever it belongs to has been saved.
+model VideoCleanJob {
+  id          String           @id @default(cuid())
+  // S3 key of the raw upload: videos/{userId}/{uuid}/{name}.raw.webm
+  rawKey      String           @unique
+  userId      String
+  color       String
+  runpodJobId String?
+  status      VideoCleanStatus @default(PROCESSING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
 }
 
 model TutorProfile {

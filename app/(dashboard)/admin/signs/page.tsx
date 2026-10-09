@@ -25,6 +25,7 @@ import { useFetch, usePostCallback, usePatchCallback, useDeleteCallback } from "
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
+import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -364,6 +365,7 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
                     <Video className="size-2.5" /> Video
                   </Badge>
                 )}
+                <VideoCleanBadge url={sign.videoUrl} />
                 {sign.imageUrl && (
                   <Badge variant="outline" className="text-[10px] gap-1 bg-sky-50 text-sky-700 border-sky-200">
                     <ImageIcon className="size-2.5" /> Image
