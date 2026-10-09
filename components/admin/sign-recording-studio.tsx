@@ -29,6 +29,7 @@ import {
   type BackgroundMethod, type LessonVideoCanvas,
   WATERMARK_CENTER_Y, WATERMARK_HEIGHT, WATERMARK_OPACITY,
 } from "@/lib/lesson-video-canvas"
+import { createHandsRestDetector, type HandsRestDetector } from "@/lib/hands-rest-detector"
 import { rawRecordingName } from "@/lib/background-clean-keys"
 import { setVideoCleanState } from "@/hooks/use-video-clean"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
@@ -75,7 +76,7 @@ type QueueData = { signs: QueueSign[]; hasMore: boolean; remaining: number; cate
 type Phase = "idle" | "countdown" | "recording" | "review"
 type TakeStatus = "uploading" | "saved" | "failed"
 type Take = { sign: QueueSign; blob: Blob; url: string }
-type StudioPrefs = { review: boolean; countdown: number }
+type StudioPrefs = { review: boolean; countdown: number; autoStop: boolean }
 
 function readBackgroundPreference(): string | null {
   try {
@@ -113,12 +114,13 @@ function writeMethodPreference(method: BackgroundMethod): void {
 }
 
 function readStudioPrefs(): StudioPrefs {
-  const fallback = { review: true, countdown: 3 }
+  const fallback = { review: true, countdown: 3, autoStop: true }
   try {
     const saved = JSON.parse(window.localStorage.getItem(STUDIO_PREFS_KEY) ?? "null") as Partial<StudioPrefs> | null
     return {
       review: typeof saved?.review === "boolean" ? saved.review : fallback.review,
       countdown: COUNTDOWN_OPTIONS.includes(saved?.countdown as number) ? (saved?.countdown as number) : fallback.countdown,
+      autoStop: typeof saved?.autoStop === "boolean" ? saved.autoStop : fallback.autoStop,
     }
   } catch {
     return fallback
@@ -258,6 +260,9 @@ export function SignRecordingStudio() {
   const [duration, setDuration] = useState(0)
   const [take, setTake] = useState<Take | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
+  // Watches the signer's hands and ends the take when they come back to rest.
+  const restDetectorRef = useRef<HandsRestDetector | null>(null)
+  const [autoStopReady, setAutoStopReady] = useState(false)
   const chunksRef = useRef<Blob[]>([])
   const discardRef = useRef(false)
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -437,6 +442,29 @@ export function SignRecordingStudio() {
     if (rendererActive) rendererRef.current?.setBackdropStrength(backdropStrength)
   }, [rendererActive, backdropStrength])
 
+  // Loads the pose model the first time auto-stop is wanted. Without it takes
+  // are simply stopped by hand, as before.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!ready || !prefs.autoStop || !video) return
+    let cancelled = false
+    let detector: HandsRestDetector | null = null
+    createHandsRestDetector(video)
+      .then((created) => {
+        if (cancelled) return created.destroy()
+        detector = created
+        restDetectorRef.current = created
+        setAutoStopReady(true)
+      })
+      .catch((err) => console.error("[sign-recorder] auto-stop unavailable", err))
+    return () => {
+      cancelled = true
+      detector?.destroy()
+      restDetectorRef.current = null
+      setAutoStopReady(false)
+    }
+  }, [ready, prefs.autoStop])
+
   function chooseMethod(next: BackgroundMethod) {
     setBackgroundError(null)
     // The model may still need downloading; the backdrop method never does.
@@ -492,6 +520,7 @@ export function SignRecordingStudio() {
     } catch (err) {
       console.error("[sign-recorder] could not start recording", err)
       recordStream.getTracks().forEach((t) => t.stop())
+      restDetectorRef.current?.end()
       toast.error("Could not start recording in this browser")
       setPhase("idle")
       return
@@ -507,6 +536,7 @@ export function SignRecordingStudio() {
     recorder.onstop = () => {
       recordStream.getTracks().forEach((t) => t.stop())
       recorderRef.current = null
+      restDetectorRef.current?.end()
       if (discardRef.current) return
       const type = (recorder.mimeType || mimeType || "video/webm").split(";")[0]
       const blob = new Blob(chunksRef.current, { type })
@@ -515,6 +545,8 @@ export function SignRecordingStudio() {
     }
 
     recorder.start(1000)
+    // The take ends itself once the signer's hands are back where they rested.
+    restDetectorRef.current?.begin(() => stopRecording())
     setDuration(0)
     setPhase("recording")
     let elapsed = 0
@@ -535,6 +567,8 @@ export function SignRecordingStudio() {
     let left = prefs.countdown
     setCountdown(left)
     setPhase("countdown")
+    // Learns where the hands rest while the countdown runs.
+    restDetectorRef.current?.watch()
     countdownTimerRef.current = setInterval(() => {
       left -= 1
       if (left > 0) {
@@ -548,6 +582,7 @@ export function SignRecordingStudio() {
 
   function cancelCountdown() {
     clearTimers()
+    restDetectorRef.current?.end()
     setPhase("idle")
   }
 
@@ -823,6 +858,13 @@ export function SignRecordingStudio() {
                   <span className="font-mono text-xs text-white">0:{duration.toString().padStart(2, "0")}</span>
                 </div>
               )}
+              {phase === "recording" && autoStopReady && (
+                <div className="absolute inset-x-0 bottom-3 flex justify-center">
+                  <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white">
+                    Rest your hands to finish
+                  </span>
+                </div>
+              )}
               {/* The take, the right way round — as students will see it. */}
               {phase === "review" && take && (
                 <>
@@ -1028,6 +1070,16 @@ export function SignRecordingStudio() {
                 className="size-4 accent-primary"
               />
               <span className="font-medium">Review each take before saving</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={prefs.autoStop}
+                disabled={phase !== "idle"}
+                onChange={(e) => updatePrefs({ ...prefs, autoStop: e.target.checked })}
+                className="size-4 accent-primary"
+              />
+              <span className="font-medium">Stop when my hands come back to rest</span>
             </label>
           </div>
           {cleanLater && (

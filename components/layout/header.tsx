@@ -212,8 +212,6 @@ export function Header({ role, user }: HeaderProps) {
 
         {/* Right: theme + notifications + avatar */}
         <div className="flex items-center gap-1">
-          {role === "ADMIN" && <RunpodCredit />}
-
           {/* Theme toggle — UI utility, lives outside the user cluster */}
           <ThemeToggle />
 
@@ -308,6 +306,8 @@ export function Header({ role, user }: HeaderProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {role === "ADMIN" && <RunpodCredit />}
         </div>
       </div>
 

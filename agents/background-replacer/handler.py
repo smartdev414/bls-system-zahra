@@ -44,7 +44,7 @@ MAX_SECONDS = int(os.environ.get("MAX_SECONDS", "1500"))
 # WATERMARK_* constants in lib/lesson-video-canvas.ts.
 WATERMARK_HEIGHT = 0.1
 WATERMARK_CENTER_Y = 0.76
-WATERMARK_OPACITY = 0.9
+WATERMARK_OPACITY = 0.1
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 HALF = DEVICE == "cuda"

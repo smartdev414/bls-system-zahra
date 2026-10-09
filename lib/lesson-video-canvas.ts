@@ -263,8 +263,8 @@ void main() {
 export const WATERMARK_HEIGHT = 0.1
 /** Where the middle of the logo sits, down from the top of the picture. */
 export const WATERMARK_CENTER_Y = 0.76
-/** Slightly see-through, so the logo sits on the clothing rather than over it. */
-export const WATERMARK_OPACITY = 0.9
+/** Faint: enough to mark the video as ours without covering the signing. */
+export const WATERMARK_OPACITY = 0.1
 
 export function supportsLessonVideoCanvas(): boolean {
   if (typeof document === "undefined" || typeof WebAssembly === "undefined") return false
