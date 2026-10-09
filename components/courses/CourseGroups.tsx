@@ -351,30 +351,29 @@ export function CourseGroups({
           <Loader2 className="size-6 animate-spin text-primary" />
         </div>
       ) : empty ? (
-        <Card className="shadow-sm border-dashed">
-          <CardContent className="py-10 flex flex-col items-center gap-5 text-center">
-            <ol className="flex flex-col @xl:flex-row gap-4 @xl:gap-8 text-left text-sm">
+        <Card className="shadow-sm border-dashed py-0">
+          <CardContent className="py-4 flex flex-col gap-3">
+            <ol className="flex flex-col @xl:flex-row gap-2 @xl:gap-6 text-xs">
               {[
-                ["Add a group", "Pick a group of students, or start a new one."],
-                ["Schedule its class", "Give the group its day and time. It can repeat every week."],
-                ["That's it", "The students see the lessons and their class."],
+                ["Add a group", "of students, or start a new one."],
+                ["Schedule its class", "— a day and time, repeating weekly if you like."],
+                ["That's it", "— students see the lessons and their class."],
               ].map(([title, text], i) => (
-                <li key={title} className="flex gap-3 max-w-52">
-                  <span className="size-6 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
+                <li key={title} className="flex gap-2 @xl:flex-1">
+                  <span className="size-4.5 shrink-0 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center">
                     {i + 1}
                   </span>
-                  <span>
-                    <span className="font-semibold block">{title}</span>
-                    <span className="text-muted-foreground">{text}</span>
+                  <span className="text-muted-foreground">
+                    <span className="font-semibold text-foreground">{title}</span> {text}
                   </span>
                 </li>
               ))}
             </ol>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={() => setAddGroupOpen(true)}>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => setAddGroupOpen(true)}>
                 <Plus className="size-4 mr-1.5" /> Add Group
               </Button>
-              <Button variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
+              <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
                 <UserPlus className="size-4 mr-1.5" /> Add Students without a group
               </Button>
             </div>
