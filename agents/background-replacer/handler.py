@@ -44,6 +44,7 @@ MAX_SECONDS = int(os.environ.get("MAX_SECONDS", "1500"))
 # WATERMARK_* constants in lib/lesson-video-canvas.ts.
 WATERMARK_HEIGHT = 0.1
 WATERMARK_CENTER_Y = 0.76
+WATERMARK_OPACITY = 0.9
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 HALF = DEVICE == "cuda"
@@ -105,7 +106,7 @@ def build_logo(url, video_width, video_height):
 
     data = torch.from_numpy(np.array(logo)).to(DEVICE).float()
     rgb = data[..., :3].permute(2, 0, 1).unsqueeze(0)
-    alpha = (data[..., 3:] / 255).permute(2, 0, 1).unsqueeze(0)
+    alpha = (data[..., 3:] / 255 * WATERMARK_OPACITY).permute(2, 0, 1).unsqueeze(0)
     return rgb, alpha
 
 

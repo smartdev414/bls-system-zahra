@@ -9,7 +9,7 @@ import { LOGO_MARK_SRC } from "@/components/layout/logo"
 import {
   createLessonVideoCanvas, supportsLessonVideoCanvas,
   type BackgroundMethod, type LessonVideoCanvas,
-  WATERMARK_CENTER_Y, WATERMARK_HEIGHT,
+  WATERMARK_CENTER_Y, WATERMARK_HEIGHT, WATERMARK_OPACITY,
 } from "@/lib/lesson-video-canvas"
 import { rawRecordingName } from "@/lib/background-clean-keys"
 import { setVideoCleanState, useVideoCleanState } from "@/hooks/use-video-clean"
@@ -561,7 +561,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
             alt=""
             aria-hidden
             className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 select-none"
-            style={{ top: `${WATERMARK_CENTER_Y * 100}%`, height: `${WATERMARK_HEIGHT * 100}%` }}
+            style={{ top: `${WATERMARK_CENTER_Y * 100}%`, height: `${WATERMARK_HEIGHT * 100}%`, opacity: WATERMARK_OPACITY }}
           />
         )}
         {(!ready || backgroundPending) && (

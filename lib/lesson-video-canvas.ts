@@ -263,6 +263,8 @@ void main() {
 export const WATERMARK_HEIGHT = 0.1
 /** Where the middle of the logo sits, down from the top of the picture. */
 export const WATERMARK_CENTER_Y = 0.76
+/** Slightly see-through, so the logo sits on the clothing rather than over it. */
+export const WATERMARK_OPACITY = 0.9
 
 export function supportsLessonVideoCanvas(): boolean {
   if (typeof document === "undefined" || typeof WebAssembly === "undefined") return false
@@ -560,6 +562,7 @@ export function createLessonVideoCanvas(
     const logoHeight = Math.max(8, Math.round(height * WATERMARK_HEIGHT))
     const logoWidth = Math.round(logoHeight * (watermarkImage.naturalWidth / watermarkImage.naturalHeight))
     ctx.imageSmoothingQuality = "high"
+    ctx.globalAlpha = WATERMARK_OPACITY
     ctx.drawImage(
       watermarkImage,
       Math.round((width - logoWidth) / 2),
@@ -567,6 +570,7 @@ export function createLessonVideoCanvas(
       logoWidth,
       logoHeight,
     )
+    ctx.globalAlpha = 1
   }
 
   function bind(program: WebGLProgram, textures: Record<string, WebGLTexture>, flipY: number) {
