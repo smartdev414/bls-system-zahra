@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, useEffect } from "react"
+import { useRef, useState, useEffect, type SyntheticEvent } from "react"
 import { Camera, Square, Circle, Loader2, CheckCircle2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -135,6 +135,10 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   // Camera picture shape (width ÷ height), so the preview shows the whole
   // frame that is being recorded rather than a cropped one.
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
+  const syncVideoAspect = (e: SyntheticEvent<HTMLVideoElement>) => {
+    const { videoWidth, videoHeight } = e.currentTarget
+    if (videoWidth && videoHeight) setVideoAspect(videoWidth / videoHeight)
+  }
 
   useEffect(() => {
     if (uploaded) return
@@ -449,17 +453,23 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   return (
     <div className="flex flex-col gap-3">
       <div
-        className="relative rounded-xl overflow-hidden bg-black"
-        style={{ aspectRatio: videoAspect ?? 16 / 9 }}
+        className="relative mx-auto rounded-xl overflow-hidden bg-black"
+        // Narrowed, never squashed, when full width would make it taller than
+        // the screen (a phone on its side) — the whole frame stays in view.
+        style={{
+          aspectRatio: videoAspect ?? 16 / 9,
+          width: `min(100%, calc(85svh * ${videoAspect ?? 16 / 9}))`,
+        }}
       >
         <video
           ref={videoRef}
           muted
           playsInline
-          onLoadedMetadata={(e) => {
-            const { videoWidth, videoHeight } = e.currentTarget
-            if (videoWidth && videoHeight) setVideoAspect(videoWidth / videoHeight)
-          }}
+          onLoadedMetadata={syncVideoAspect}
+          // A phone turned on its side swaps the camera's width and height
+          // mid-stream. Without this the box keeps its old shape and the
+          // new picture is cropped to fill it — a close-up of the face.
+          onResize={syncVideoAspect}
           className="w-full h-full object-cover -scale-x-100"
         />
         {/* Sits over the camera preview and is what gets recorded. The <video>

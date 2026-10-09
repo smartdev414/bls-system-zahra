@@ -8,7 +8,7 @@
 // components/ui/camera-recorder.tsx is the one-off version of this (one
 // recording, then the camera is released) used by lessons and the sign form.
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
@@ -243,6 +243,10 @@ export function SignRecordingStudio() {
   const [cleanUrls, setCleanUrls] = useState<Record<string, string | null>>({})
   const liveMethod: BackgroundMethod = cleanAvailable ? "auto" : method
   const [videoAspect, setVideoAspect] = useState<number | null>(null)
+  const syncVideoAspect = (e: SyntheticEvent<HTMLVideoElement>) => {
+    const { videoWidth, videoHeight } = e.currentTarget
+    if (videoWidth && videoHeight) setVideoAspect(videoWidth / videoHeight)
+  }
 
   // ── Recording ──────────────────────────────────────────────────────────────
   const [prefs, setPrefs] = useState<StudioPrefs>(() => readStudioPrefs())
@@ -756,17 +760,23 @@ export function SignRecordingStudio() {
             </div>
           ) : (
             <div
-              className="relative overflow-hidden rounded-xl bg-black"
-              style={{ aspectRatio: videoAspect ?? 16 / 9 }}
+              className="relative mx-auto overflow-hidden rounded-xl bg-black"
+              // Narrowed, never squashed, when full width would make it taller than
+              // the screen (a phone on its side) — the whole frame stays in view.
+              style={{
+                aspectRatio: videoAspect ?? 16 / 9,
+                width: `min(100%, calc(85svh * ${videoAspect ?? 16 / 9}))`,
+              }}
             >
               <video
                 ref={videoRef}
                 muted
                 playsInline
-                onLoadedMetadata={(e) => {
-                  const { videoWidth, videoHeight } = e.currentTarget
-                  if (videoWidth && videoHeight) setVideoAspect(videoWidth / videoHeight)
-                }}
+                onLoadedMetadata={syncVideoAspect}
+                // A phone turned on its side swaps the camera's width and height
+                // mid-stream. Without this the box keeps its old shape and the
+                // new picture is cropped to fill it — a close-up of the face.
+                onResize={syncVideoAspect}
                 className="h-full w-full -scale-x-100 object-cover"
               />
               {/* Sits over the camera preview and is what gets recorded. The
