@@ -32,7 +32,6 @@ export function RunpodCredit() {
       )}
     >
       <Cpu className="size-3.5" />
-      <span className="hidden sm:inline">RunPod</span>
       ${balance.toFixed(2)}
     </a>
   )
