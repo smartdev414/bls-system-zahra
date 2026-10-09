@@ -38,7 +38,11 @@ const BACKGROUND_PREF_KEY = "recorder:background"
 const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
 const STUDIO_PREFS_KEY = "sign-recorder:prefs"
 const WATERMARK_TILE_ASPECT = watermarkTileAspect(MARK_W / MARK_H)
-const RECORDING_VIDEO_BITRATE = 4_000_000
+// Signs are watched full screen, where 720p looks soft: film at 1080p, with
+// the bitrate to match (a take is seconds long, so the file stays small).
+const RECORDING_WIDTH = 1920
+const RECORDING_HEIGHT = 1080
+const RECORDING_VIDEO_BITRATE = 8_000_000
 // A sign takes a few seconds. This only catches a recording left running.
 const MAX_TAKE_SECONDS = 60
 const COUNTDOWN_OPTIONS = [0, 3, 5]
@@ -340,7 +344,10 @@ export function SignRecordingStudio() {
     let cancelled = false
     navigator.mediaDevices
       // Video only — a sign has no sound, and this avoids the microphone prompt.
-      .getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } })
+      // Preferences, so a camera that can't do 1080p still opens at what it has.
+      .getUserMedia({
+        video: { width: { ideal: RECORDING_WIDTH }, height: { ideal: RECORDING_HEIGHT }, frameRate: { ideal: 30 } },
+      })
       .then((stream) => {
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop())

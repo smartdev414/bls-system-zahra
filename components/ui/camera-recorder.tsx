@@ -22,6 +22,9 @@ const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
 const WATERMARK_TILE_ASPECT = watermarkTileAspect(MARK_W / MARK_H)
 // About 30 MB a minute, so the 500 MB upload cap is reached at roughly 16 minutes.
 const RECORDING_VIDEO_BITRATE = 4_000_000
+// Dictionary signs are watched full screen and last seconds, so they can
+// afford 1080p at twice the bitrate (see the highDefinition prop).
+const HD_RECORDING_VIDEO_BITRATE = 8_000_000
 
 const BACKGROUND_PRESETS = [
   { label: "White", value: "#ffffff" },
@@ -89,9 +92,11 @@ type Props = {
   onRemove?: () => void
   uploaded?: UploadedFile | null
   disabled?: boolean
+  /** Film at 1080p instead of 720p. For short clips only: the file is twice the size. */
+  highDefinition?: boolean
 }
 
-export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Props) {
+export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highDefinition = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -164,7 +169,11 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
       // 640×480, which is too soft to read fingers. These are preferences, so
       // a camera that can't do it still opens at whatever it has.
       .getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        video: {
+          width: { ideal: highDefinition ? 1920 : 1280 },
+          height: { ideal: highDefinition ? 1080 : 720 },
+          frameRate: { ideal: 30 },
+        },
         audio: true,
       })
       .then((stream) => {
@@ -186,7 +195,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
       streamRef.current = null
       setReady(false)
     }
-  }, [uploaded, reviewing])
+  }, [uploaded, reviewing, highDefinition])
 
   useEffect(() => () => {
     if (takeUrlRef.current) URL.revokeObjectURL(takeUrlRef.current)
@@ -304,7 +313,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     const options: MediaRecorderOptions & { videoKeyFrameIntervalDuration?: number } = {
       ...(mimeType ? { mimeType } : {}),
       // The browser's default (about 2.5 Mbps) smears moving hands at 720p.
-      videoBitsPerSecond: RECORDING_VIDEO_BITRATE,
+      videoBitsPerSecond: highDefinition ? HD_RECORDING_VIDEO_BITRATE : RECORDING_VIDEO_BITRATE,
       // Trimming can only start a video on a key frame, and left alone the
       // browser makes one every five seconds or so.
       videoKeyFrameIntervalDuration: KEYFRAME_INTERVAL_MS,

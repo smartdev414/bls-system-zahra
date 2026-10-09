@@ -557,6 +557,7 @@ function SignDialog({
               <CameraRecorder
                 onUploaded={(f) => set("videoUrl", f.fileUrl)}
                 disabled={loading}
+                highDefinition
               />
             ) : (
               <FileUpload
