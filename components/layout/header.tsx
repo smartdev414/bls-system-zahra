@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import { useDeleteCallback } from "@/hooks/use-fetch"
 import { NotificationBell } from "@/components/ui/notification-bell"
 import { MessagesBadge } from "@/components/layout/messages-badge"
+import { RunpodCredit } from "@/components/layout/runpod-credit"
 import { roleLabel } from "@/lib/permissions"
 
 type Role = "STUDENT" | "TUTOR" | "SUPPORT" | "ADMIN"
@@ -211,6 +212,8 @@ export function Header({ role, user }: HeaderProps) {
 
         {/* Right: theme + notifications + avatar */}
         <div className="flex items-center gap-1">
+          {role === "ADMIN" && <RunpodCredit />}
+
           {/* Theme toggle — UI utility, lives outside the user cluster */}
           <ThemeToggle />
 

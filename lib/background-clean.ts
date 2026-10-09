@@ -51,6 +51,30 @@ export function backgroundCleanConfigured(): boolean {
   return endpoint() !== null
 }
 
+/**
+ * Prepaid credit left on the RunPod account, in US dollars, or null when it
+ * can't be read. Background replacement stops when this runs out.
+ */
+export async function runpodBalance(): Promise<number | null> {
+  const target = endpoint()
+  if (!target) return null
+  try {
+    // The balance is only on RunPod's GraphQL API, not the REST one.
+    const res = await fetch("https://api.runpod.io/graphql", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${target.key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "query { myself { clientBalance } }" }),
+    })
+    if (!res.ok) return null
+    const body = await res.json() as { data?: { myself?: { clientBalance?: number } } }
+    const balance = body.data?.myself?.clientBalance
+    return typeof balance === "number" ? balance : null
+  } catch (err) {
+    console.error("[background-clean] could not read the RunPod balance", err)
+    return null
+  }
+}
+
 // ─── Webhook signature ───────────────────────────────────────────────────────
 // RunPod calls back to a URL we give it and sends nothing to prove who it is,
 // so the URL itself carries a signature only this server could have made.
