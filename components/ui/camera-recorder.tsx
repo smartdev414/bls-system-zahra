@@ -14,6 +14,8 @@ import {
 import { rawRecordingName } from "@/lib/background-clean-keys"
 import { setVideoCleanState, useVideoCleanState } from "@/hooks/use-video-clean"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
+import { RecordingTrimmer } from "@/components/ui/recording-trimmer"
+import { KEYFRAME_INTERVAL_MS, trimRecording, type TrimRange } from "@/lib/video-trim"
 
 const BACKGROUND_PREF_KEY = "recorder:background"
 const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
@@ -102,7 +104,13 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
   const [ready, setReady] = useState(false)
   const [recording, setRecording] = useState(false)
   const [duration, setDuration] = useState(0)
-  const [uploading, setUploading] = useState(false)
+  // A finished recording waiting to be trimmed and saved. Nothing is uploaded
+  // until the tutor has looked at it. `raw` is the camera as it was, for the
+  // server to replace the background of.
+  const [take, setTake] = useState<{ blob: Blob; url: string; raw: boolean } | null>(null)
+  const takeUrlRef = useRef<string | null>(null)
+  // What is being done to the take while it is saved, for the button to show.
+  const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cameraError, setCameraError] = useState<string | null>(null)
   // The camera is redrawn on a canvas, and the canvas — not the raw camera —
@@ -140,14 +148,17 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     if (videoWidth && videoHeight) setVideoAspect(videoWidth / videoHeight)
   }
 
+  const reviewing = take !== null
   useEffect(() => {
-    if (uploaded) return
+    // The camera is only on while there is something to film.
+    if (uploaded || reviewing) return
 
     if (!navigator?.mediaDevices?.getUserMedia) {
       setCameraError("Camera access is not supported in this browser.")
       return
     }
 
+    let cancelled = false
     navigator.mediaDevices
       // Ask for 720p at 30 fps: left to itself the browser opens the camera at
       // 640×480, which is too soft to read fingers. These are preferences, so
@@ -157,6 +168,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         audio: true,
       })
       .then((stream) => {
+        if (cancelled) return stream.getTracks().forEach((t) => t.stop())
         streamRef.current = stream
         if (videoRef.current) {
           videoRef.current.srcObject = stream
@@ -165,14 +177,20 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         setReady(true)
       })
       .catch(() => {
-        setCameraError("Could not access camera. Please allow camera and microphone permissions.")
+        if (!cancelled) setCameraError("Could not access camera. Please allow camera and microphone permissions.")
       })
 
     return () => {
+      cancelled = true
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
+      setReady(false)
     }
-  }, [uploaded])
+  }, [uploaded, reviewing])
+
+  useEffect(() => () => {
+    if (takeUrlRef.current) URL.revokeObjectURL(takeUrlRef.current)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -283,11 +301,15 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
       ? "video/webm"
       : ""
 
-    const recorder = new MediaRecorder(
-      recordStream,
+    const options: MediaRecorderOptions & { videoKeyFrameIntervalDuration?: number } = {
+      ...(mimeType ? { mimeType } : {}),
       // The browser's default (about 2.5 Mbps) smears moving hands at 720p.
-      { ...(mimeType ? { mimeType } : {}), videoBitsPerSecond: RECORDING_VIDEO_BITRATE }
-    )
+      videoBitsPerSecond: RECORDING_VIDEO_BITRATE,
+      // Trimming can only start a video on a key frame, and left alone the
+      // browser makes one every five seconds or so.
+      videoKeyFrameIntervalDuration: KEYFRAME_INTERVAL_MS,
+    }
+    const recorder = new MediaRecorder(recordStream, options)
     recorderRef.current = recorder
 
     recorder.ondataavailable = (e) => {
@@ -296,7 +318,10 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
     recorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: "video/webm" })
-      void handleUpload(blob)
+      chunksRef.current = []
+      const url = URL.createObjectURL(blob)
+      takeUrlRef.current = url
+      setTake({ blob, url, raw: cleanColorRef.current !== null })
     }
 
     recorder.start(1000)
@@ -318,9 +343,39 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     recordStreamRef.current = null
   }
 
+  function clearTake() {
+    if (takeUrlRef.current) URL.revokeObjectURL(takeUrlRef.current)
+    takeUrlRef.current = null
+    setTake(null)
+  }
+
+  function discardTake() {
+    if (!window.confirm("Delete this recording and record again?")) return
+    setError(null)
+    clearTake()
+  }
+
+  async function saveTake(range: TrimRange | null) {
+    if (!take) return
+    setError(null)
+    let blob = take.blob
+    if (range) {
+      setSaving("Trimming…")
+      try {
+        blob = await trimRecording(take.blob, range)
+      } catch (err) {
+        console.error("[recorder] trim failed", err)
+        setError("Couldn't trim the recording. Try again, or press Reset to save it whole.")
+        setSaving(null)
+        return
+      }
+    }
+    await handleUpload(blob)
+  }
+
   async function handleUpload(blob: Blob) {
     setError(null)
-    setUploading(true)
+    setSaving("Uploading…")
     const cleanColor = cleanColorRef.current
     const fileName = cleanColor ? rawRecordingName(`recording-${Date.now()}.webm`) : `recording-${Date.now()}.webm`
 
@@ -367,6 +422,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         setVideoCleanState(fileUrl, state ?? "failed")
       }
 
+      clearTake()
       onUploaded({
         fileUrl,
         fileName,
@@ -375,9 +431,10 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
         assetType,
       })
     } catch (e) {
+      // The take is still here, so Save can simply be pressed again.
       setError(e instanceof Error ? e.message : "Upload failed")
     } finally {
-      setUploading(false)
+      setSaving(null)
     }
   }
 
@@ -431,13 +488,19 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
     )
   }
 
-  if (uploading) {
+  if (take) {
     return (
-      <div className="rounded-xl border p-8 flex flex-col items-center gap-3 bg-muted/30">
-        <Loader2 className="size-8 animate-spin text-primary" />
-        <p className="text-sm font-semibold">Uploading recording…</p>
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </div>
+      <RecordingTrimmer
+        url={take.url}
+        blob={take.blob}
+        note={take.raw
+          ? "This is the camera as it was. Your background colour and the logo are added after you save."
+          : undefined}
+        busy={saving}
+        error={error}
+        onSave={(range) => void saveTake(range)}
+        onDiscard={discardTake}
+      />
     )
   }
 
@@ -625,8 +688,8 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
 
       {cleanLater && (
         <p className="text-xs text-muted-foreground text-center">
-          Your background is replaced automatically in the background after you stop recording. It takes a few
-          minutes — the preview here is only a rough guide.
+          Your background is replaced automatically in the background after you save the recording. It takes a
+          few minutes — the preview here is only a rough guide.
         </p>
       )}
       {rendererActive && !backgroundError && (
@@ -655,7 +718,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled }: Pro
             className="gap-2"
           >
             <Square className="size-4 fill-current" />
-            Stop & Save
+            Stop
           </Button>
         )}
       </div>
