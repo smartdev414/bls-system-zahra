@@ -280,7 +280,10 @@ const { execute: updateCourseStatus, loading: updating } = usePutCallback<
   }
 
 return (
-    <div className="flex flex-col gap-6 max-w-4xl">
+    // From xl the groups sit in their own column on the right, beside the
+    // course header and its content; below that everything stacks in one column.
+    <div className="grid gap-6 max-w-4xl xl:max-w-none xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[auto_1fr] xl:gap-x-8 xl:items-start">
+      <div className="flex flex-col gap-6 min-w-0">
       {/* Back */}
       <Button asChild variant="ghost" size="sm" className="self-start -ml-2">
         <Link href={coursesBase}>
@@ -302,7 +305,7 @@ return (
           }}
         />
 
-        <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-start md:justify-between gap-3 md:gap-4">
+        <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-start md:justify-between xl:flex-col xl:justify-start gap-3 md:gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Badge
@@ -378,20 +381,24 @@ return (
         </p>
       )}
 
-      <Separator />
+      </div>
 
-      <CourseGroups
-        courseId={id}
-        courseTitle={course.title}
-        onTotalChange={(total) =>
-          mutate((prev) => prev && { ...prev, course: { ...prev.course, _count: { enrollments: total } } })
-        }
-      />
-
-      <Separator />
+      {/* Groups — stays in view while the lessons scroll past. */}
+      <div className="flex flex-col gap-6 min-w-0 xl:col-start-2 xl:row-start-1 xl:row-span-2 xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto">
+        <Separator className="xl:hidden" />
+        <CourseGroups
+          courseId={id}
+          courseTitle={course.title}
+          onTotalChange={(total) =>
+            mutate((prev) => prev && { ...prev, course: { ...prev.course, _count: { enrollments: total } } })
+          }
+        />
+      </div>
 
       {/* Sections & Lessons */}
-      <div>
+      <div className="flex flex-col gap-6 min-w-0">
+        <Separator />
+        <div>
         <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
           <div>
             <h2 className="font-bold flex items-center gap-2">
@@ -450,6 +457,7 @@ return (
             ))}
           </div>
         )}
+        </div>
       </div>
 
       {releaseOpen && (

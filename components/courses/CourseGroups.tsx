@@ -315,7 +315,9 @@ export function CourseGroups({
   )
 
   return (
-    <div>
+    // A container, so the cards lay themselves out by the width they are given
+    // (a side column on wide screens) rather than by the width of the screen.
+    <div className="@container">
       {/* Heading */}
       <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div>
@@ -333,7 +335,7 @@ export function CourseGroups({
           </p>
         </div>
         {!empty && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
               <UserPlus className="size-4 mr-1.5" /> Add Students
             </Button>
@@ -351,7 +353,7 @@ export function CourseGroups({
       ) : empty ? (
         <Card className="shadow-sm border-dashed">
           <CardContent className="py-10 flex flex-col items-center gap-5 text-center">
-            <ol className="flex flex-col sm:flex-row gap-4 sm:gap-8 text-left text-sm">
+            <ol className="flex flex-col @xl:flex-row gap-4 @xl:gap-8 text-left text-sm">
               {[
                 ["Add a group", "Pick a group of students, or start a new one."],
                 ["Schedule its class", "Give the group its day and time. It can repeat every week."],
@@ -368,7 +370,7 @@ export function CourseGroups({
                 </li>
               ))}
             </ol>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => setAddGroupOpen(true)}>
                 <Plus className="size-4 mr-1.5" /> Add Group
               </Button>
@@ -417,19 +419,20 @@ export function CourseGroups({
                   </button>
                   {/* Lead with the next thing this group needs. */}
                   {list.length === 0 && group.canEdit ? (
-                    <Button size="sm" className="shrink-0" onClick={() => setAddStudentsTo(group.id)}>
-                      <UserPlus className="size-4 sm:mr-1.5" />
-                      <span className="hidden sm:inline">Add students</span>
+                    <Button size="sm" className="shrink-0" title="Add students" onClick={() => setAddStudentsTo(group.id)}>
+                      <UserPlus className="size-4 @lg:mr-1.5" />
+                      <span className="hidden @lg:inline">Add students</span>
                     </Button>
                   ) : (
                     <Button
                       size="sm"
                       variant={summary ? "outline" : "default"}
                       className="shrink-0"
+                      title="Schedule class"
                       onClick={() => setScheduleFor(group.id)}
                     >
-                      <CalendarPlus className="size-4 sm:mr-1.5" />
-                      <span className="hidden sm:inline">Schedule class</span>
+                      <CalendarPlus className="size-4 @lg:mr-1.5" />
+                      <span className="hidden @lg:inline">Schedule class</span>
                     </Button>
                   )}
                 </div>
@@ -520,9 +523,9 @@ export function CourseGroups({
                   </span>
                 </button>
                 {groups.length === 0 && (
-                  <Button size="sm" variant="outline" className="shrink-0" onClick={() => setScheduleFor(WHOLE_COURSE)}>
-                    <CalendarPlus className="size-4 sm:mr-1.5" />
-                    <span className="hidden sm:inline">Schedule class</span>
+                  <Button size="sm" variant="outline" className="shrink-0" title="Schedule class" onClick={() => setScheduleFor(WHOLE_COURSE)}>
+                    <CalendarPlus className="size-4 @lg:mr-1.5" />
+                    <span className="hidden @lg:inline">Schedule class</span>
                   </Button>
                 )}
               </div>

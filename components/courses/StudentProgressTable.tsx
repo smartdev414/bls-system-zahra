@@ -37,7 +37,7 @@ function lastActive(iso: string | null) {
 }
 
 // Fixed widths (not `auto`) so the headings sit exactly over their columns.
-const COLUMNS = "grid-cols-[minmax(0,1fr)_7rem] sm:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_7rem_7rem]"
+const COLUMNS = "grid-cols-[minmax(0,1fr)_7rem] @xl:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_7rem_7rem]"
 
 /**
  * Students with their homework progress, one per row, under plain column
@@ -62,8 +62,10 @@ export function StudentProgressTable({
   onRemove: (student: CourseStudent) => void
 }) {
   return (
-    <div>
-      <div className={`hidden sm:grid ${COLUMNS} items-center gap-3 px-4 py-2 border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>
+    // Sized by its own width, not the screen's: in a narrow column the progress
+    // columns fold into one line under the student's name.
+    <div className="@container">
+      <div className={`hidden @xl:grid ${COLUMNS} items-center gap-3 px-4 py-2 border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>
         <span>Student</span>
         <span>Lessons done</span>
         <span>Tests</span>
@@ -93,23 +95,27 @@ export function StudentProgressTable({
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">{student.email}</p>
+                  <p className="@xl:hidden text-xs text-muted-foreground truncate">
+                    {totalLessons > 0 ? `${student.completedLessons} of ${totalLessons} lessons` : "No lessons yet"}
+                    {totalTests > 0 ? ` · ${student.testsPassed} of ${totalTests} tests` : ""}
+                  </p>
                 </div>
               </div>
 
               {totalLessons > 0 ? (
-                <div className="hidden sm:flex flex-col gap-1">
+                <div className="hidden @xl:flex flex-col gap-1">
                   <span className="text-xs">{student.completedLessons} of {totalLessons}</span>
                   <Progress value={pct} className="h-1.5" />
                 </div>
               ) : (
-                <span className="hidden sm:block text-xs text-muted-foreground">No lessons yet</span>
+                <span className="hidden @xl:block text-xs text-muted-foreground">No lessons yet</span>
               )}
 
-              <span className="hidden sm:block text-xs">
+              <span className="hidden @xl:block text-xs">
                 {totalTests > 0 ? `${student.testsPassed} of ${totalTests}` : "—"}
               </span>
 
-              <div className="hidden sm:block text-xs">
+              <div className="hidden @xl:block text-xs">
                 <span className={student.lastActiveAt ? "" : "text-muted-foreground"}>{lastActive(student.lastActiveAt)}</span>
                 {student.lastRemindedAt && (
                   <span className="block text-[11px] text-muted-foreground">
