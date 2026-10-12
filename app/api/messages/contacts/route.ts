@@ -3,11 +3,14 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { courseTeachScope } from "@/lib/permissions"
+import { joinedClassOf } from "@/lib/session-access"
 
 /**
  * Returns the list of people the current user can message:
- * - Students → the tutors teaching the courses they're enrolled in
- * - Tutors   → students enrolled in the courses they teach
+ * - Students → the tutors teaching the courses they're enrolled in, and the
+ *              tutors whose classes they have joined
+ * - Tutors   → students enrolled in the courses they teach, and students who
+ *              have joined one of their classes
  */
 async function handleGET() {
   try {
@@ -15,23 +18,37 @@ async function handleGET() {
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
 
     if (session.role === "STUDENT") {
-      const enrollments = await prisma.enrollment.findMany({
-        where: { studentId: session.sub },
-        include: {
-          course: {
-            include: {
-              tutor: { select: { id: true, name: true, avatarUrl: true, role: true } },
-              teachers: {
-                select: { tutor: { select: { id: true, name: true, avatarUrl: true, role: true } } },
+      const tutorSelect = { id: true, name: true, avatarUrl: true, role: true } as const
+      const [enrollments, attended] = await Promise.all([
+        prisma.enrollment.findMany({
+          where: { studentId: session.sub },
+          include: {
+            course: {
+              include: {
+                tutor: { select: tutorSelect },
+                teachers: { select: { tutor: { select: tutorSelect } } },
               },
             },
           },
-        },
-      })
+        }),
+        prisma.liveSessionAttendance.findMany({
+          where: { studentId: session.sub, joinedAt: { not: null } },
+          select: {
+            session: {
+              select: {
+                tutor: { select: tutorSelect },
+                coTutors: { select: { tutor: { select: tutorSelect } } },
+              },
+            },
+          },
+        }),
+      ])
 
       const seen = new Set<string>()
-      const contacts = enrollments
-        .flatMap((e) => [e.course.tutor, ...e.course.teachers.map((t) => t.tutor)])
+      const contacts = [
+        ...enrollments.flatMap((e) => [e.course.tutor, ...e.course.teachers.map((t) => t.tutor)]),
+        ...attended.flatMap((a) => [a.session.tutor, ...a.session.coTutors.map((c) => c.tutor)]),
+      ]
         // An admin-built course is led by the office account, not a teacher.
         .filter((t) => t.role === "TUTOR")
         .map(({ role: _role, ...t }) => t)
@@ -45,16 +62,21 @@ async function handleGET() {
     }
 
     if (session.role === "TUTOR") {
-      const enrollments = await prisma.enrollment.findMany({
-        where: { course: courseTeachScope(session) },
-        include: {
-          student: { select: { id: true, name: true, avatarUrl: true } },
-        },
-      })
+      const [enrollments, classStudents] = await Promise.all([
+        prisma.enrollment.findMany({
+          where: { course: courseTeachScope(session) },
+          include: {
+            student: { select: { id: true, name: true, avatarUrl: true } },
+          },
+        }),
+        prisma.user.findMany({
+          where: joinedClassOf(session.sub),
+          select: { id: true, name: true, avatarUrl: true },
+        }),
+      ])
 
       const seen = new Set<string>()
-      const contacts = enrollments
-        .map((e) => e.student)
+      const contacts = [...enrollments.map((e) => e.student), ...classStudents]
         .filter((s) => {
           if (seen.has(s.id)) return false
           seen.add(s.id)

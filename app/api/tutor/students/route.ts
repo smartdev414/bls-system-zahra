@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
+import { joinedClassOf } from "@/lib/session-access"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -50,6 +51,18 @@ async function handleGET(req: NextRequest) {
       select: { id: true, name: true, email: true, avatarUrl: true, bslLevel: true, createdAt: true },
     })
     const invitedStudentIds = new Set(invitedStudents.map((s) => s.id))
+
+    // 3. Students who joined one of this tutor's classes, whatever the class
+    //    was (public or invite-only, with or without a course).
+    const classStudents = await prisma.user.findMany({
+      where: {
+        ...(isStaff(session.role)
+          ? { role: "STUDENT" as const, attendances: { some: { joinedAt: { not: null } } } }
+          : joinedClassOf(session.sub)),
+        ...nameEmailFilter,
+      },
+      select: { id: true, name: true, email: true, avatarUrl: true, bslLevel: true, createdAt: true },
+    })
 
     // Pre-fetch lesson counts per course
     const courseIds = [...new Set(enrollments.map((e) => e.courseId))]
@@ -127,6 +140,21 @@ async function handleGET(req: NextRequest) {
         // Already in map from enrollment — upgrade source
         studentMap.get(student.id)!.source = "both"
       }
+    }
+
+    // Merge students known only from a class they joined
+    for (const student of classStudents) {
+      if (studentMap.has(student.id)) continue
+      studentMap.set(student.id, {
+        id: student.id,
+        name: student.name,
+        email: student.email,
+        avatarUrl: student.avatarUrl,
+        bslLevel: student.bslLevel,
+        joinedAt: student.createdAt.toISOString(),
+        source: "enrolled",
+        courses: [],
+      })
     }
 
     const students = [...studentMap.values()]

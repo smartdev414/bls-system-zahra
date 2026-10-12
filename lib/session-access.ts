@@ -61,6 +61,24 @@ export function studentVisibleSessions(studentId: string): Prisma.LiveSessionWhe
 }
 
 /**
+ * Prisma `where` fragment for the students who have been in one of a tutor's
+ * classrooms. Joining a class — public or invite-only, on a course or not —
+ * makes a student that tutor's student, the same as enrolling on their course
+ * does, so the tutor's student list and both sides' message contacts read this.
+ */
+export function joinedClassOf(tutorId: string): Prisma.UserWhereInput {
+  return {
+    role: "STUDENT",
+    attendances: {
+      some: {
+        joinedAt: { not: null },
+        session: { OR: [{ tutorId }, { coTutors: { some: { tutorId } } }] },
+      },
+    },
+  }
+}
+
+/**
  * Who is allowed to read/write the live-classroom side channels (chat history,
  * stage state) for a session.
  *

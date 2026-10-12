@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { courseTeachScope } from "@/lib/permissions"
+import { joinedClassOf } from "@/lib/session-access"
 
 async function handleGET() {
   try {
@@ -26,8 +27,9 @@ async function handleGET() {
       orderBy: { createdAt: "desc" },
     })
 
-    // Count unique students: enrolled in any course OR invited by this tutor
-    const [enrolledStudentIds, invitedStudentIds] = await Promise.all([
+    // Count unique students: enrolled in any course, invited by this tutor, or
+    // joined one of their classes
+    const [enrolledStudentIds, invitedStudentIds, classStudentIds] = await Promise.all([
       prisma.enrollment.findMany({
         where: { course: taught },
         select: { studentId: true },
@@ -37,10 +39,15 @@ async function handleGET() {
         where: { invitedById: session.sub },
         select: { id: true },
       }),
+      prisma.user.findMany({
+        where: joinedClassOf(session.sub),
+        select: { id: true },
+      }),
     ])
     const uniqueStudentIds = new Set([
       ...enrolledStudentIds.map((e) => e.studentId),
       ...invitedStudentIds.map((s) => s.id),
+      ...classStudentIds.map((s) => s.id),
     ])
     const totalStudents = uniqueStudentIds.size
     const publishedCount = courses.filter((c) => c.status === "PUBLISHED").length
