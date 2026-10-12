@@ -3,13 +3,14 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope } from "@/lib/permissions"
+import { isSignTest } from "@/lib/quiz"
 import { validateQuestion, type QuestionBody } from "../validate"
 
 /** The question, if it belongs to this lesson and the caller may change it. */
 async function findQuestion(lessonId: string, qid: string, session: { role: string; sub: string }) {
   return prisma.quizQuestion.findFirst({
     where: { id: qid, lessonId, lesson: { section: { course: courseContentScope(session) } } },
-    include: { options: { select: { id: true } } },
+    include: { options: { select: { id: true } }, lesson: { select: { testKind: true } } },
   })
 }
 
@@ -30,8 +31,9 @@ async function handlePUT(
     if (!existing) return NextResponse.json({ message: "Question not found" }, { status: 404 })
 
     const body = await req.json() as QuestionBody
-    const invalid = validateQuestion(body)
+    const invalid = validateQuestion(body, existing.lesson.testKind)
     if (invalid) return NextResponse.json({ message: invalid }, { status: 400 })
+    if (isSignTest(existing.lesson.testKind)) body.options = []
 
     // Options are updated in place. Replacing them wholesale (as this used to)
     // blanks the answer every student gave to this question, because their

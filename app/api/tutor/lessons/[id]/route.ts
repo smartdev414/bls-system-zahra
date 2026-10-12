@@ -77,6 +77,9 @@ async function handlePUT(
       /** Tests only: score out of 100 needed to pass, and attempts allowed (null = unlimited). */
       passMark?: number
       maxAttempts?: number | null
+      /** Timed tests: seconds for each sign. Story tests: the story's video. */
+      answerSeconds?: number
+      storyUrl?: string | null
     }
 
     const releaseAt = body.releaseAt === undefined ? undefined : parseReleaseAt(body.releaseAt)

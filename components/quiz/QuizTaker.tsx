@@ -4,14 +4,16 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, XCircle, ChevronLeft,
-  ChevronRight, RotateCcw, Trophy, Loader2, Circle, History, LogOut,
+  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
-import { correctNeeded, isVideoMedia } from "@/lib/quiz"
+import { correctNeeded, isSignTest, isVideoMedia, type TestKind } from "@/lib/quiz"
+import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
+import { SignTestTaker, type SignTestData } from "./SignTestTaker"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -26,11 +28,16 @@ type Question = {
 }
 
 type AttemptAnswer = { questionId: string; optionId: string | null; isCorrect: boolean }
-type AttemptSummary = { id: string; score: number; passed: boolean; createdAt: string }
 
 type QuizData = {
   questions: Question[]
-  settings: { passMark: number; maxAttempts: number | null }
+  settings: {
+    passMark: number
+    maxAttempts: number | null
+    kind: TestKind
+    /** Story tests: the video the questions are about. */
+    storyUrl: string | null
+  }
   /** Newest first. */
   attempts: AttemptSummary[]
   attemptsLeft: number | null
@@ -87,15 +94,6 @@ function writeDraft(key: string, draft: Draft | null) {
   } catch {
     // Private browsing or a full disk — the test still works, it just is not kept.
   }
-}
-
-function shortDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
-}
-
-function attemptsLeftText(left: number | null) {
-  if (left === null) return null
-  return left === 0 ? "No attempts left" : `${left} attempt${left !== 1 ? "s" : ""} left`
 }
 
 // ─── Question media — image or video ──────────────────────────────────────────
@@ -254,6 +252,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Result | null>(null)
+  const [storyOpen, setStoryOpen] = useState(false)
   const topRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -267,6 +266,21 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   }
 
   const { questions, settings, attempts, bestAttempt } = data
+
+  // Fingerspelling and vocabulary are played against the clock, one sign at a
+  // time, and are sent in their own shape — the word is the answer.
+  if (isSignTest(settings.kind)) {
+    return (
+      <SignTestTaker
+        lessonId={lessonId}
+        enrollmentId={enrollmentId}
+        data={data as unknown as SignTestData}
+        refetch={refetch}
+        onCompleted={onCompleted}
+        nextHref={nextHref}
+      />
+    )
+  }
 
   if (questions.length === 0) {
     return (
@@ -493,6 +507,22 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
           </nav>
         )}
 
+        {/* The story stays to hand while its questions are answered */}
+        {settings.storyUrl && (
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button" variant="outline" size="sm" className="self-start"
+              aria-expanded={storyOpen}
+              onClick={() => setStoryOpen((open) => !open)}
+            >
+              <BookOpen className="size-4 mr-1.5" /> {storyOpen ? "Hide the story" : "Watch the story again"}
+            </Button>
+            {storyOpen && (
+              <ProtectedVideo src={settings.storyUrl} autoPlay playsInline controls className="w-full max-h-80 rounded-xl border bg-black" />
+            )}
+          </div>
+        )}
+
         {/* Question */}
         {q && (
           <div className="rounded-xl border bg-muted/20 p-4 sm:p-5 flex flex-col gap-4">
@@ -713,10 +743,15 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
           </div>
         ) : (
           <p className="text-sm text-muted-foreground max-w-sm">
+            {settings.storyUrl && "Watch the story first — you can watch it again while you answer. "}
             Answer every question, then submit. You can skip a question and come back to it, and change any answer before you submit.
           </p>
         )}
       </div>
+
+      {settings.storyUrl && (
+        <ProtectedVideo src={settings.storyUrl} playsInline controls className="w-full max-h-96 rounded-xl border bg-black" />
+      )}
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">
         {[
@@ -776,37 +811,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         <p className="text-xs text-muted-foreground text-center">Enrol in this course to take this test.</p>
       )}
 
-      {/* Past attempts */}
-      {attempts.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-            <History className="size-3.5" /> Your attempts
-          </p>
-          <div className="rounded-xl border divide-y">
-            {attempts.map((a, i) => (
-              <div key={a.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                <span className="text-muted-foreground">
-                  Attempt {attempts.length - i} · {shortDate(a.createdAt)}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="font-semibold">{a.score}%</span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px]",
-                      a.passed
-                        ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                        : "bg-rose-100 text-rose-700 border-rose-200"
-                    )}
-                  >
-                    {a.passed ? "Passed" : "Not passed"}
-                  </Badge>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <AttemptHistory attempts={attempts} />
     </div>
   )
 }

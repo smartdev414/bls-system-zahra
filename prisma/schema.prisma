@@ -35,6 +35,14 @@ enum LessonType {
   QUIZ
 }
 
+// What a test (a lesson of type QUIZ) asks of the student.
+enum TestKind {
+  STANDARD // questions, each with or without a video
+  STORY // one signed story, then questions about it
+  FINGERSPELLING // watch a word being spelled and type it, against the clock
+  VOCABULARY // watch a sign and pick its word, against the clock
+}
+
 enum QuestionType {
   MULTIPLE_CHOICE
   TRUE_FALSE
@@ -360,6 +368,13 @@ model Lesson {
   // how many times they may sit it. Null attempts = as often as they like.
   passMark    Int        @default(70)
   maxAttempts Int?
+  testKind    TestKind   @default(STANDARD)
+  // STORY: the video the questions are about.
+  storyUrl    String?
+  // FINGERSPELLING / VOCABULARY: seconds a student has for each sign. In these
+  // tests a question is just a video and its word (QuizQuestion.question), with
+  // no options.
+  answerSeconds Int?
 
   section   Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   assets    LessonAsset[]
@@ -822,6 +837,9 @@ model QuizAttempt {
   userId    String
   score     Int
   passed    Boolean
+  // How long the go took, as timed by the student's device — splits a tie on
+  // the high scores of a timed test.
+  durationMs Int?
   createdAt DateTime @default(now())
 
   lesson  Lesson              @relation(fields: [lessonId], references: [id], onDelete: Cascade)
@@ -837,6 +855,8 @@ model QuizAttemptAnswer {
   attemptId  String
   questionId String
   optionId   String?
+  // Fingerspelling / vocabulary: the word the student typed or picked.
+  answerText String?
   isCorrect  Boolean
 
   attempt  QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)

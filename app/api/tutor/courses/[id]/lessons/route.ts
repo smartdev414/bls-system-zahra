@@ -5,7 +5,7 @@ import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope } from "@/lib/permissions"
 import { isReleased, parseReleaseAt } from "@/lib/lesson-release"
-import { parseTestSettings } from "@/lib/quiz"
+import { DEFAULT_ANSWER_SECONDS, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
 
 async function handlePOST(
   req: NextRequest,
@@ -33,6 +33,10 @@ async function handlePOST(
       /** Tests only: score out of 100 needed to pass, and attempts allowed (null = unlimited). */
       passMark?: number
       maxAttempts?: number | null
+      /** Tests only: what the test asks (see TestKind), and what goes with that kind. */
+      testKind?: string
+      answerSeconds?: number
+      storyUrl?: string | null
       assets?: Array<{
         type: "VIDEO" | "PDF" | "IMAGE" | "DOCUMENT" | "AUDIO" | "SUBTITLE"
         title: string
@@ -61,6 +65,11 @@ async function handlePOST(
       return NextResponse.json({ message: testSettings }, { status: 400 })
     }
 
+    // The kind is chosen when the test is made and stays: its questions are
+    // stored differently from one kind to the next.
+    const testKind = type === "QUIZ" ? parseTestKind(body.testKind ?? "STANDARD") : "STANDARD"
+    if (!testKind) return NextResponse.json({ message: "Unknown kind of test" }, { status: 400 })
+
     const section = await prisma.section.findFirst({
       where: { id: sectionId, courseId },
       include: { lessons: { select: { releaseAt: true } } },
@@ -86,6 +95,8 @@ async function handlePOST(
         isFree,
         releaseAt: effectiveRelease,
         ...testSettings,
+        testKind,
+        ...(isSignTest(testKind) && { answerSeconds: testSettings.answerSeconds ?? DEFAULT_ANSWER_SECONDS }),
         order: lessonCount + 1,
         assets: {
           create: assets.map((asset, i) => ({

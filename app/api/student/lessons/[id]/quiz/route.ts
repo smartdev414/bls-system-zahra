@@ -3,7 +3,8 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
-import { attemptsLeft, revealsAnswers } from "@/lib/quiz"
+import { DEFAULT_ANSWER_SECONDS, attemptsLeft, isSignTest, revealsAnswers, signQuestionsForStudent } from "@/lib/quiz"
+import { highScores } from "@/lib/quiz-high-scores"
 
 // GET /api/student/lessons/[id]/quiz — the test as the student sits it, plus
 // their own history. Correct answers are only included once they may be shown
@@ -54,10 +55,13 @@ async function handleGET(
     ])
 
     const reveal = attempts.length > 0 && revealsAnswers(lesson.maxAttempts, attempts)
-    const questions = fullQuestions.map((q) => ({
-      ...q,
-      options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
-    }))
+    const kind = lesson.testKind
+    const questions = isSignTest(kind)
+      ? signQuestionsForStudent(kind, fullQuestions, reveal)
+      : fullQuestions.map((q) => ({
+          ...q,
+          options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
+        }))
 
     // Best attempt so far — the most recent one when two share a score.
     const best = [...attempts].sort((a, b) => b.score - a.score || b.createdAt.getTime() - a.createdAt.getTime())[0]
@@ -66,18 +70,26 @@ async function handleGET(
           ...best,
           answers: await prisma.quizAttemptAnswer.findMany({
             where: { attemptId: best.id },
-            select: { questionId: true, optionId: true, isCorrect: true },
+            select: { questionId: true, optionId: true, answerText: true, isCorrect: true },
           }),
         }
       : null
 
     return NextResponse.json({
       questions,
-      settings: { passMark: lesson.passMark, maxAttempts: lesson.maxAttempts },
+      settings: {
+        passMark: lesson.passMark,
+        maxAttempts: lesson.maxAttempts,
+        kind,
+        answerSeconds: lesson.answerSeconds ?? DEFAULT_ANSWER_SECONDS,
+        storyUrl: kind === "STORY" ? lesson.storyUrl : null,
+      },
       attempts,
       attemptsLeft: attemptsLeft(lesson.maxAttempts, attempts.length),
       answersRevealed: reveal,
       bestAttempt,
+      // Fingerspelling is played for the high score.
+      ...(kind === "FINGERSPELLING" && { highScores: await highScores(id, session.sub) }),
     })
   } catch (err) {
     console.error("[GET /api/student/lessons/[id]/quiz]", err)

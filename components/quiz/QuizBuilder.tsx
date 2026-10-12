@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
-import { isVideoMedia } from "@/lib/quiz"
+import { isSignTest, isVideoMedia } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -100,7 +100,13 @@ export function isBlankQuestion(q: QuestionDraft): boolean {
 }
 
 /** What still has to be done before a question can be saved, or null when it is ready. */
-export function questionProblem(q: QuestionDraft): string | null {
+export function questionProblem(q: QuestionDraft, testKind?: string): string | null {
+  // A sign in a fingerspelling or vocabulary test is a video and its word.
+  if (isSignTest(testKind)) {
+    if (q.questionImageUploading) return "Wait for the upload to finish"
+    if (!q.imageUrl) return "Add the video of this sign"
+    return q.question.trim() ? null : "Type the word"
+  }
   if (!q.question.trim()) return "Type the question"
   if (q.options.some((o) => !o.text.trim() && !o.imageUrl)) return "Each answer needs text, an image or a video"
   if (!q.options.some((o) => o.isCorrect)) return "Choose which answer is correct"
@@ -145,14 +151,14 @@ export function withSaved(draft: QuestionDraft, saved: SavedQuestion): QuestionD
 
 // Images are converted to WebP by the server; a video goes straight to storage
 // like a lesson video does, so a signed clip can be the question or an answer.
-async function uploadMedia(file: File): Promise<{ url: string; mediaType: "image" | "video" }> {
+export async function uploadMedia(file: File): Promise<{ url: string; mediaType: "image" | "video" }> {
   const { fileUrl } = await uploadFile(file)
   return { url: fileUrl, mediaType: file.type.startsWith("video/") ? "video" : "image" }
 }
 
 // ─── MediaUploadButton ────────────────────────────────────────────────────────
 
-function MediaUploadButton({
+export function MediaUploadButton({
   mediaUrl,
   mediaType,
   uploading,
@@ -160,6 +166,7 @@ function MediaUploadButton({
   onRemove,
   size = "option",
   acceptVideo = false,
+  videoOnly = false,
 }: {
   mediaUrl?: string
   mediaType?: "image" | "video"
@@ -168,8 +175,13 @@ function MediaUploadButton({
   onRemove: () => void
   size?: "option" | "question"
   acceptVideo?: boolean
+  /** For a slot that only makes sense as a clip, such as a test's story. */
+  videoOnly?: boolean
 }) {
-  const accept = acceptVideo
+  const label = videoOnly ? "Add video" : acceptVideo ? "Add image or video" : "Add image"
+  const accept = videoOnly
+    ? "video/mp4,video/webm,video/quicktime"
+    : acceptVideo
     ? "image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
     : "image/jpeg,image/png,image/webp"
 
@@ -197,21 +209,21 @@ function MediaUploadButton({
   }
 
   return (
-    <label title={acceptVideo ? "Add image or video" : "Add image"} className={cn(
+    <label title={label} className={cn(
       "relative flex flex-col items-center justify-center rounded-lg border border-dashed cursor-pointer hover:bg-muted/50 transition-colors text-muted-foreground focus-within:ring-2 focus-within:ring-ring",
       size === "question" ? "w-full max-w-xs aspect-video gap-1.5" : "size-16 gap-1 shrink-0",
       uploading && "opacity-50 pointer-events-none"
     )}>
       {uploading
         ? <Loader2 className={cn("animate-spin", size === "question" ? "size-6" : "size-4")} />
-        : acceptVideo
+        : acceptVideo || videoOnly
           ? <VideoIcon className={size === "question" ? "size-6" : "size-4"} />
           : <ImageIcon className={size === "question" ? "size-6" : "size-4"} />}
-      {size === "question" && <span className="text-xs">{acceptVideo ? "Add image / video" : "Add image"}</span>}
+      {size === "question" && <span className="text-xs">{videoOnly ? "Add video" : acceptVideo ? "Add image / video" : "Add image"}</span>}
       <input
         type="file"
         accept={accept}
-        aria-label={acceptVideo ? "Add image or video" : "Add image"}
+        aria-label={label}
         className="sr-only"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = "" }}
       />

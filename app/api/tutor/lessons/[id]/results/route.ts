@@ -56,7 +56,7 @@ async function handleGET(
         orderBy: { createdAt: "desc" },
         select: {
           id: true, score: true, passed: true, createdAt: true,
-          answers: { select: { questionId: true, optionId: true, isCorrect: true } },
+          answers: { select: { questionId: true, optionId: true, answerText: true, isCorrect: true } },
         },
       })
       return NextResponse.json({ attempts })

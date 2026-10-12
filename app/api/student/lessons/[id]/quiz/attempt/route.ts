@@ -4,10 +4,11 @@ import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
-import { attemptsLeft, revealsAnswers } from "@/lib/quiz"
+import { attemptsLeft, isSignTest, revealsAnswers, sameWord, signQuestionsForStudent } from "@/lib/quiz"
 
 // POST /api/student/lessons/[id]/quiz/attempt
-// body: { answers: { questionId: string; optionId: string }[] }
+// body: { answers: { questionId: string; optionId?: string; text?: string }[]; durationMs?: number }
+// `text` is the word typed or picked in a fingerspelling or vocabulary test.
 async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,7 +41,8 @@ async function handlePOST(
     }
 
     const body = await req.json() as {
-      answers: Array<{ questionId: string; optionId: string }>
+      answers: Array<{ questionId: string; optionId?: string; text?: string }>
+      durationMs?: number
     }
 
     if (!Array.isArray(body.answers) || body.answers.length === 0) {
@@ -59,16 +61,29 @@ async function handlePOST(
     }
 
     // Grade the attempt
-    const answerMap = new Map(body.answers.map((a) => [a.questionId, a.optionId]))
+    const kind = lesson.testKind
+    const answerMap = new Map(body.answers.map((a) => [a.questionId, a]))
     let correct = 0
 
     const gradedAnswers = lesson.questions.map((q) => {
-      const selectedOption = q.options.find((o) => o.id === answerMap.get(q.id))
+      const given = answerMap.get(q.id)
+      if (isSignTest(kind)) {
+        // The question's text is the word; a sign that ran out of time has none.
+        const answerText = typeof given?.text === "string" ? given.text.trim().slice(0, 100) : ""
+        const isCorrect = sameWord(answerText, q.question)
+        if (isCorrect) correct++
+        return { questionId: q.id, optionId: null, answerText: answerText || null, isCorrect }
+      }
+      const selectedOption = q.options.find((o) => o.id === given?.optionId)
       const isCorrect = selectedOption?.isCorrect ?? false
       if (isCorrect) correct++
       // Only an option of this question is stored; anything else counts as unanswered.
       return { questionId: q.id, optionId: selectedOption?.id ?? null, isCorrect }
     })
+
+    const durationMs = Number.isFinite(body.durationMs) && Number(body.durationMs) > 0
+      ? Math.min(Math.round(Number(body.durationMs)), 24 * 60 * 60 * 1000)
+      : null
 
     const total = lesson.questions.length
     const score = Math.round((correct / total) * 100)
@@ -80,10 +95,11 @@ async function handlePOST(
         userId: session.sub,
         score,
         passed,
+        durationMs,
         answers: { create: gradedAnswers },
       },
       include: {
-        answers: { select: { questionId: true, optionId: true, isCorrect: true } },
+        answers: { select: { questionId: true, optionId: true, answerText: true, isCorrect: true } },
       },
     })
 
@@ -120,10 +136,12 @@ async function handlePOST(
       orderBy: { order: "asc" },
       include: { options: { orderBy: { order: "asc" } } },
     })
-    const questions = fullQuestions.map((q) => ({
-      ...q,
-      options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
-    }))
+    const questions = isSignTest(kind)
+      ? signQuestionsForStudent(kind, fullQuestions, reveal)
+      : fullQuestions.map((q) => ({
+          ...q,
+          options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
+        }))
 
     return NextResponse.json({
       attempt, score, passed, correct, total,

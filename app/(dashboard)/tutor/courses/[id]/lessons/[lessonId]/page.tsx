@@ -46,6 +46,8 @@ type LessonFull = {
   releaseAt: string | null
   passMark: number
   maxAttempts: number | null
+  /** Story tests: the video the questions are about. */
+  storyUrl: string | null
   assets: Asset[]
   questions: Array<{
     id: string
@@ -166,6 +168,12 @@ export default function ViewLessonPage({
           </TabsContent>
 
           <TabsContent value="questions">
+          {lesson.storyUrl && (
+            <div className="flex flex-col gap-2 mb-6">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">The story</p>
+              <ProtectedVideo src={lesson.storyUrl} playsInline controls className="rounded-lg max-h-72 border bg-black self-start" />
+            </div>
+          )}
           {lesson.questions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No questions have been added to this test yet.</p>
           ) : (

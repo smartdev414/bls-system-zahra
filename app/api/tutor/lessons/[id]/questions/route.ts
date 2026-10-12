@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
+import { isSignTest } from "@/lib/quiz"
 import { validateQuestion, type QuestionBody } from "./validate"
 
 async function verifyOwnership(lessonId: string, session: { role: string; sub: string }) {
@@ -60,8 +61,9 @@ async function handlePOST(
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const body = await req.json() as QuestionBody
-    const invalid = validateQuestion(body)
+    const invalid = validateQuestion(body, lesson.testKind)
     if (invalid) return NextResponse.json({ message: invalid }, { status: 400 })
+    const options = isSignTest(lesson.testKind) ? [] : body.options
 
     // After the last question — not `count + 1`, which repeats a number once a
     // question in the middle has been deleted.
@@ -76,7 +78,7 @@ async function handlePOST(
         type: body.type ?? "MULTIPLE_CHOICE",
         order: (last._max.order ?? 0) + 1,
         options: {
-          create: body.options.map((opt, i) => ({
+          create: options.map((opt, i) => ({
             text: opt.text?.trim() ?? "",
             imageUrl: opt.imageUrl ?? null,
             mediaType: opt.imageUrl ? opt.mediaType ?? null : null,

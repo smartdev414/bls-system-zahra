@@ -44,7 +44,7 @@ type Attempt = {
   score: number
   passed: boolean
   createdAt: string
-  answers: Array<{ questionId: string; optionId: string | null; isCorrect: boolean }>
+  answers: Array<{ questionId: string; optionId: string | null; answerText?: string | null; isCorrect: boolean }>
 }
 
 /** The test's questions, as the lesson page already has them — to name what a student chose. */
@@ -184,7 +184,10 @@ function StudentAttempts({ lessonId, student, questions, onReset }: {
                     <div className="min-w-0">
                       <p className="font-medium">{n + 1}. {q.question}</p>
                       <p className="text-muted-foreground">
-                        {!answer.optionId
+                        {/* A fingerspelling or vocabulary sign: the question is the word, the answer what was typed or picked. */}
+                        {q.options.length === 0
+                          ? answer.answerText ? `Answered: ${answer.answerText}` : "Not answered"
+                          : !answer.optionId
                           ? "Not answered"
                           : chosen
                             ? `Answered: ${name(chosen)}`
