@@ -1,13 +1,15 @@
 "use client"
 
-import { useEffect, useRef, useState, type PointerEvent } from "react"
-import { Loader2, Pause, Play, RotateCcw } from "lucide-react"
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, Pause, Play, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { inspectRecording, type RecordingInfo, type TrimRange } from "@/lib/video-trim"
 
 // Shortest video a cut may leave, in seconds.
 const MIN_LENGTH = 0.5
+// How far one small step moves the playhead, in seconds.
+const STEP = 0.1
 // Width of a handle in px. A range input keeps its thumb inside the track, so
 // everything drawn along the bar is inset by half of this to line up with it.
 const HANDLE_PX = 12
@@ -130,6 +132,43 @@ export function RecordingTrimmer({ url, blob, note, busy, error, onSave, onDisca
     seek(next)
   }
 
+  /** Moves the playhead a little, paused, so a cut can be checked frame by frame. */
+  function nudge(seconds: number) {
+    const video = videoRef.current
+    if (!video) return
+    video.pause()
+    seek(Math.min(duration || video.duration || 0, Math.max(0, video.currentTime + seconds)))
+  }
+
+  /** Begins the video at the last place before the playhead where it can begin. */
+  function startHere() {
+    if (!timeline) return
+    const allowed = timeline.cutPoints.filter((point) => point <= end - MIN_LENGTH && point <= time + 0.001)
+    const next = allowed.length ? allowed[allowed.length - 1] : first
+    videoRef.current?.pause()
+    setCut({ start: next, end })
+    // The playhead stays where it was, so the result can be seen straight away.
+  }
+
+  function endHere() {
+    if (!timeline) return
+    const next = Math.min(duration, Math.max(time, start + MIN_LENGTH))
+    videoRef.current?.pause()
+    setCut({ start, end: next })
+  }
+
+  function handleKey(e: KeyboardEvent<HTMLDivElement>) {
+    // Only when the row itself has focus: a button inside handles its own keys.
+    if (busy || !timeline || e.target !== e.currentTarget) return
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault()
+      nudge((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 1 : STEP))
+    } else if (e.key === " ") {
+      e.preventDefault()
+      togglePlay()
+    }
+  }
+
   function seekFromBar(e: PointerEvent<HTMLDivElement>) {
     if (!timeline || busy) return
     const box = e.currentTarget.getBoundingClientRect()
@@ -217,6 +256,36 @@ export function RecordingTrimmer({ url, blob, note, busy, error, onSave, onDisca
       </div>
 
       {timeline && (
+        <div
+          tabIndex={0}
+          onKeyDown={handleKey}
+          aria-label="Move through the video"
+          className="flex flex-wrap items-center justify-center gap-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Button type="button" size="sm" variant="outline" className="h-8 gap-1 px-2 text-xs" disabled={!!busy} onClick={() => nudge(-1)} title="Back 1 second">
+            <ChevronsLeft className="size-3.5" /> 1s
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-8 gap-1 px-2 text-xs" disabled={!!busy} onClick={() => nudge(-STEP)} title="Back a tenth of a second">
+            <ChevronLeft className="size-3.5" /> 0.1s
+          </Button>
+          <span className="min-w-16 text-center font-mono text-xs tabular-nums">{formatTime(time - first)}</span>
+          <Button type="button" size="sm" variant="outline" className="h-8 gap-1 px-2 text-xs" disabled={!!busy} onClick={() => nudge(STEP)} title="Forward a tenth of a second">
+            0.1s <ChevronRight className="size-3.5" />
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-8 gap-1 px-2 text-xs" disabled={!!busy} onClick={() => nudge(1)} title="Forward 1 second">
+            1s <ChevronsRight className="size-3.5" />
+          </Button>
+          <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden />
+          <Button type="button" size="sm" variant="secondary" className="h-8 px-2 text-xs" disabled={!!busy} onClick={startHere} title="Cut everything before this point">
+            Start here
+          </Button>
+          <Button type="button" size="sm" variant="secondary" className="h-8 px-2 text-xs" disabled={!!busy} onClick={endHere} title="Cut everything after this point">
+            End here
+          </Button>
+        </div>
+      )}
+
+      {timeline && (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>
             {startCut || endCut
@@ -235,8 +304,12 @@ export function RecordingTrimmer({ url, blob, note, busy, error, onSave, onDisca
           )}
         </div>
       )}
-      {timeline && startCut && (
-        <p className="text-xs text-muted-foreground">The start moves in steps of about a second; the end can go anywhere.</p>
+      {timeline && (
+        <p className="text-xs text-muted-foreground">
+          Step through the video to check where it should begin and end, then press Start here or End here.
+          The start moves in steps of about a second; the end can go anywhere.
+          Arrow keys step too (hold Shift for a second at a time).
+        </p>
       )}
       {note && <p className="text-xs text-muted-foreground">{note}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}

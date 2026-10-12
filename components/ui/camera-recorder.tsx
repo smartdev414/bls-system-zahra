@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect, type SyntheticEvent } from "react"
-import { Camera, Square, Circle, Loader2, CheckCircle2, X } from "lucide-react"
+import { Camera, Square, Circle, Loader2, CheckCircle2, X, Pause, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { UploadedFile } from "@/components/ui/file-upload"
@@ -16,6 +16,7 @@ import { setVideoCleanState, useVideoCleanState } from "@/hooks/use-video-clean"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 import { RecordingTrimmer } from "@/components/ui/recording-trimmer"
 import { KEYFRAME_INTERVAL_MS, trimRecording, type TrimRange } from "@/lib/video-trim"
+import { BACKGROUND_PRESETS } from "@/lib/background-presets"
 
 const BACKGROUND_PREF_KEY = "recorder:background"
 const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
@@ -25,14 +26,6 @@ const RECORDING_VIDEO_BITRATE = 4_000_000
 // afford 1080p at twice the bitrate (see the highDefinition prop).
 const HD_RECORDING_VIDEO_BITRATE = 8_000_000
 
-const BACKGROUND_PRESETS = [
-  { label: "White", value: "#ffffff" },
-  { label: "Light grey", value: "#d1d5db" },
-  { label: "Dark grey", value: "#374151" },
-  { label: "Black", value: "#000000" },
-  { label: "Blue", value: "#1e40af" },
-  { label: "Green", value: "#166534" },
-]
 
 /** The tutor's last background colour, or null for the camera's real background. */
 function readBackgroundPreference(): string | null {
@@ -107,6 +100,9 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
 
   const [ready, setReady] = useState(false)
   const [recording, setRecording] = useState(false)
+  // Recording can be paused for a breather or to check notes; the paused
+  // stretch is left out of the file, so nothing has to be cut out later.
+  const [paused, setPaused] = useState(false)
   const [duration, setDuration] = useState(0)
   // A finished recording waiting to be trimmed and saved. Nothing is uploaded
   // until the tutor has looked at it. `raw` is the camera as it was, for the
@@ -334,13 +330,39 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
 
     recorder.start(1000)
     setRecording(true)
+    setPaused(false)
     setDuration(0)
+    startTimer()
+  }
+
+  function startTimer() {
+    if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000)
+  }
+
+  function pauseRecording() {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state !== "recording") return
+    recorder.pause()
+    setPaused(true)
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }
+
+  function resumeRecording() {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state !== "paused") return
+    recorder.resume()
+    setPaused(false)
+    startTimer()
   }
 
   function stopRecording() {
     recorderRef.current?.stop()
     setRecording(false)
+    setPaused(false)
     if (timerRef.current) {
       clearInterval(timerRef.current)
       timerRef.current = null
@@ -571,8 +593,9 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
         )}
         {recording && (
           <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 rounded-full px-2.5 py-1">
-            <span className="size-2 rounded-full bg-red-500 animate-pulse" />
+            <span className={cn("size-2 rounded-full", paused ? "bg-amber-400" : "bg-red-500 animate-pulse")} />
             <span className="text-xs font-mono text-white">{formatDuration(duration)}</span>
+            {paused && <span className="text-xs font-medium text-amber-300">Paused</span>}
           </div>
         )}
       </div>
@@ -712,17 +735,35 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
             Start Recording
           </Button>
         ) : (
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={stopRecording}
-            className="gap-2"
-          >
-            <Square className="size-4 fill-current" />
-            Stop
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={paused ? resumeRecording : pauseRecording}
+              className="gap-2"
+            >
+              {paused ? <Play className="size-4 fill-current" /> : <Pause className="size-4 fill-current" />}
+              {paused ? "Resume" : "Pause"}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={stopRecording}
+              className="gap-2"
+            >
+              <Square className="size-4 fill-current" />
+              Stop
+            </Button>
+          </div>
         )}
       </div>
+      {recording && (
+        <p className="text-xs text-muted-foreground text-center">
+          {paused
+            ? "Paused — nothing is being recorded. Press Resume to carry on from here; the pause is left out of the video."
+            : "Pause whenever you need a moment. After Stop you can watch the take and cut the start and end before saving."}
+        </p>
+      )}
 
       {error && <p className="text-xs text-destructive text-center">{error}</p>}
     </div>

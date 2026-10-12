@@ -14,14 +14,14 @@ import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
 import {
-  QuizBuilder, isBlankQuestion, questionProblem, saveQuestionDraft, type QuestionDraft,
+  QuizBuilder, blankMultiple, isBlankQuestion, questionProblem, saveQuestionDraft, type QuestionDraft,
 } from "@/components/quiz/QuizBuilder"
 import { LibraryPicker, itemIcon, formatBytes } from "@/components/library/LibraryPicker"
 import type { LibraryAssetType } from "@/lib/library"
 import { ReleaseField, releaseToIso } from "@/components/courses/ReleaseField"
 import { DEFAULT_TEST_SETTINGS, TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
 
-type LessonType = "VIDEO" | "TEXT" | "QUIZ"
+export type LessonType = "VIDEO" | "TEXT" | "QUIZ"
 
 /** What a video or text lesson can hold — matches the upload box's `accept`. */
 export const LESSON_FILE_TYPES: readonly LibraryAssetType[] = ["VIDEO", "PDF", "DOCUMENT", "IMAGE", "AUDIO"]
@@ -38,20 +38,30 @@ type Props = {
   sectionId: string
   onClose: () => void
   onSuccess: () => void
+  /** Opened from the library with a file chosen: the kind of lesson to start with. */
+  initialType?: LessonType
+  /**
+   * Files chosen in the library before this screen opened. Attached to a video
+   * or text lesson; for a test, a video among them becomes the first question's clip.
+   */
+  initialFiles?: UploadedFile[]
 }
 
-export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess }: Props) {
+export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initialType, initialFiles }: Props) {
   const [title, setTitle] = useState("")
-  const [type, setType] = useState<LessonType>("VIDEO")
+  const [type, setType] = useState<LessonType>(initialType ?? "VIDEO")
   const [desc, setDesc] = useState("")
   const [isFree, setIsFree] = useState(false)
   const [releaseAt, setReleaseAt] = useState("")
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   // Files picked from the resource library, added alongside any fresh upload.
-  const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
+  const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>(initialFiles ?? [])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
-  const [questions, setQuestions] = useState<QuestionDraft[]>([])
+  const [questions, setQuestions] = useState<QuestionDraft[]>(() => {
+    const clip = initialType === "QUIZ" ? initialFiles?.find((f) => f.assetType === "VIDEO") : undefined
+    return clip ? [{ ...blankMultiple(), imageUrl: clip.fileUrl, mediaType: "video", dirty: true }] : []
+  })
   const [testSettings, setTestSettings] = useState<TestSettingsDraft>(DEFAULT_TEST_SETTINGS)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

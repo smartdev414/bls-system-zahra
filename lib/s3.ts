@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, type ListObjectsV2CommandOutput, type PutObjectCommandInput } from "@aws-sdk/client-s3"
+import { S3Client, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, type ListObjectsV2CommandOutput, type PutObjectCommandInput } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 const REGION = process.env.AWS_REGION ?? "eu-west-2"
@@ -43,6 +43,16 @@ export async function getPresignedDownloadUrl(key: string, expiresIn = 14400, do
     }),
   })
   return getSignedUrl(s3, command, { expiresIn })
+}
+
+/** Copy an object to another key in the same bucket (up to 5 GB in one call). */
+export async function copyObject(fromKey: string, toKey: string, contentType?: string): Promise<void> {
+  await s3.send(new CopyObjectCommand({
+    Bucket: BUCKET,
+    CopySource: `${BUCKET}/${fromKey.split("/").map(encodeURIComponent).join("/")}`,
+    Key: toKey,
+    ...(contentType ? { ContentType: contentType, MetadataDirective: "REPLACE" } : {}),
+  }))
 }
 
 export async function deleteObject(key: string): Promise<void> {

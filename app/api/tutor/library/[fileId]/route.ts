@@ -3,8 +3,31 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
+import { findVisibleFile } from "@/lib/library-access"
 
 type RouteContext = { params: Promise<{ fileId: string }> }
+
+/**
+ * One file as the library lists it. The id may be a library file's, or — for
+ * the files the list shows as "already used" — a lesson file's or a session
+ * resource's. Used when a screen is opened with a file chosen in the library.
+ */
+async function handleGET(_req: Request, { params }: RouteContext) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+    const { fileId } = await params
+    const file = await findVisibleFile(session, { id: fileId })
+    if (!file) return NextResponse.json({ message: "File not found" }, { status: 404 })
+    return NextResponse.json({ file })
+  } catch (err) {
+    console.error("[GET /api/tutor/library/[fileId]]", err)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
+}
 
 /**
  * Which library files this person may change: admins look after the school's
@@ -73,5 +96,6 @@ async function handleDELETE(_req: Request, { params }: RouteContext) {
   }
 }
 
+export const GET = withAudit(handleGET)
 export const PATCH = withAudit(handlePATCH)
 export const DELETE = withAudit(handleDELETE)

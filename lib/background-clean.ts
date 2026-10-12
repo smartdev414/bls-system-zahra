@@ -160,20 +160,29 @@ export async function settleBackgroundClean(jobId: string, succeeded: boolean): 
   if (count === 0) return
 
   const fileUrl = publicUrl(job.rawKey)
-  const [sign, asset, user] = await Promise.all([
+  const [sign, asset, libraryFile, user] = await Promise.all([
     prisma.sign.findFirst({ where: { videoUrl: fileUrl }, select: { word: true } }),
     prisma.lessonAsset.findFirst({
       where: { fileUrl },
       select: { lesson: { select: { id: true, title: true, section: { select: { courseId: true } } } } },
     }),
+    prisma.libraryFile.findFirst({ where: { fileUrl, tutorId: job.userId }, select: { title: true } }),
     prisma.user.findUnique({ where: { id: job.userId }, select: { role: true } }),
   ])
   const lesson = asset?.lesson
-  const what = sign ? `the sign "${sign.word}"` : lesson ? `the lesson "${lesson.title}"` : "your recording"
+  const what = sign
+    ? `the sign "${sign.word}"`
+    : lesson
+    ? `the lesson "${lesson.title}"`
+    : libraryFile
+    ? `"${libraryFile.title}" in your library`
+    : "your recording"
   const link = sign
     ? "/admin/signs"
     : lesson && user?.role === "TUTOR"
     ? `/tutor/courses/${lesson.section.courseId}/lessons/${lesson.id}`
+    : libraryFile
+    ? (user?.role === "ADMIN" ? "/admin/library" : "/tutor/library")
     : undefined
 
   if (!done) {

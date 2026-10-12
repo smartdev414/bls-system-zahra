@@ -61,7 +61,7 @@ type Props = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function blankMultiple(): QuestionDraft {
+export function blankMultiple(): QuestionDraft {
   return {
     uid: crypto.randomUUID(),
     question: "",

@@ -6,28 +6,45 @@
  * Admins upload a level's materials once, in advance, filed by level — then,
  * when building a lesson or scheduling a class, the day's files are picked from
  * here instead of being uploaded on the day. Teachers browse and pick from the
- * same library; they do not add to it, so everyone works from one set of files.
+ * same library, and keep their own videos here too: recordings made on this
+ * page, clips someone filmed for them, and videos given a new background.
+ * From any file, "Use" starts a lesson or a test with it, or adds it to a class.
  */
 
-import { useMemo, useRef, useState } from "react"
-import { Upload, Loader2, Trash2, Search, FolderOpen, CheckCircle2, AlertCircle, Captions, Save } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  Upload, Loader2, Trash2, Search, FolderOpen, CheckCircle2, AlertCircle, Captions, Save, Camera,
+  MoreHorizontal, BookOpen, FlaskConical, Presentation, Wand2,
+} from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 import { uploadFile } from "@/lib/upload-file"
 import { mediaSrc } from "@/lib/protected-media"
 import { itemIcon, formatBytes } from "@/components/library/LibraryPicker"
+import { RecordToLibraryCard } from "@/components/library/RecordToLibraryCard"
+import { UseInCourseDialog } from "@/components/library/UseInCourseDialog"
+import { UseInClassDialog } from "@/components/library/UseInClassDialog"
+import { ReplaceBackgroundDialog } from "@/components/library/ReplaceBackgroundDialog"
 import { parsePreparedCaptions, PREPARED_CAPTION_LIMIT, type LibraryItem } from "@/lib/library"
 import { COURSE_LEVELS, levelColorSolid, levelLabel, type CourseLevel } from "@/lib/levels"
 
+const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime"
 const ACCEPT =
-  "video/mp4,video/webm,video/quicktime,application/pdf,application/msword," +
+  VIDEO_ACCEPT + ",application/pdf,application/msword," +
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
   "application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation," +
   ".ppt,.pptx,image/*,audio/mpeg,audio/wav"
+
+/** What a row's "Use" menu was opened for. */
+type UseAction = { item: LibraryItem; action: "lesson" | "test" | "class" | "background" }
 
 type UploadRow = { key: string; name: string; status: "uploading" | "done" | "error"; error?: string }
 
@@ -107,10 +124,24 @@ export default function TutorLibraryPage() {
   // Level new uploads are filed under, and the level the list is narrowed to.
   const [uploadLevel, setUploadLevel] = useState<CourseLevel | "">("")
   const [levelFilter, setLevelFilter] = useState<CourseLevel | "" | "NONE">("")
+  const [recording, setRecording] = useState(false)
+  const [use, setUse] = useState<UseAction | null>(null)
+  // Whether the server can replace a video's background (lib/background-clean.ts).
+  const [cleanAvailable, setCleanAvailable] = useState(false)
 
-  // Only admins add to (and re-file) the school's library.
+  // Only admins add to (and re-file) the school's library; teachers add
+  // videos to their own.
   const canManage = data?.canManage ?? false
   const busy = uploads.some((u) => u.status === "uploading")
+
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/upload/clean-background")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((d: { available?: boolean } | null) => { if (!cancelled && d?.available) setCleanAvailable(true) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -215,7 +246,42 @@ export default function TutorLibraryPage() {
           <p className="text-xs text-muted-foreground truncate">
             {[item.assetType.toLowerCase(), formatBytes(item.fileSize), item.usedIn].filter(Boolean).join(" · ")}
           </p>
+          <VideoCleanBadge url={item.fileUrl} className="mt-0.5" />
         </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 text-xs" aria-label={`Use ${item.title}`}>
+              Use <MoreHorizontal className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{item.title}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {canManage && (
+              <>
+                <DropdownMenuItem onSelect={() => setUse({ item, action: "lesson" })}>
+                  <BookOpen className="size-4" /> Add to a new lesson
+                </DropdownMenuItem>
+                {item.assetType === "VIDEO" && (
+                  <DropdownMenuItem onSelect={() => setUse({ item, action: "test" })}>
+                    <FlaskConical className="size-4" /> Make a test with it
+                  </DropdownMenuItem>
+                )}
+              </>
+            )}
+            <DropdownMenuItem onSelect={() => setUse({ item, action: "class" })}>
+              <Presentation className="size-4" /> Add to a class
+            </DropdownMenuItem>
+            {item.assetType === "VIDEO" && cleanAvailable && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setUse({ item, action: "background" })}>
+                  <Wand2 className="size-4" /> Replace background (AI)
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {item.source === "library" && (
           canManage && item.shared ? (
             <select
@@ -259,18 +325,47 @@ export default function TutorLibraryPage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight">Resource Library</h1>
-        <p className="text-muted-foreground mt-1">
-          {canManage
-            ? "Upload the school's materials once, filed by level. Every teacher can then pick them into a lesson or a class."
-            : "The school's materials, ready to pick when you schedule a class. Files are added by the school, so everyone teaches from the same set."}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">Resource Library</h1>
+          <p className="text-muted-foreground mt-1">
+            {canManage
+              ? "Upload the school's materials once, filed by level. Every teacher can then pick them into a lesson or a class."
+              : "The school's materials, plus your own videos. Pick any file into a class — or record a new video here and use it in a lesson, a test or a class."}
+          </p>
+        </div>
+        {data && !recording && (
+          <Button type="button" onClick={() => setRecording(true)} className="gap-2 shrink-0">
+            <Camera className="size-4" /> Record a video
+          </Button>
+        )}
       </div>
 
-      {/* Upload — admins only */}
-      {canManage && (
+      {recording && (
+        <RecordToLibraryCard
+          canManage={canManage}
+          selectClass={selectClass}
+          onAdded={() => void refetch()}
+          onClose={() => setRecording(false)}
+        />
+      )}
+
+      <UseInCourseDialog
+        file={use?.action === "lesson" || use?.action === "test" ? use.item : null}
+        kind={use?.action === "test" ? "QUIZ" : "VIDEO"}
+        onClose={() => setUse(null)}
+      />
+      <UseInClassDialog file={use?.action === "class" ? use.item : null} onClose={() => setUse(null)} />
+      <ReplaceBackgroundDialog
+        file={use?.action === "background" ? use.item : null}
+        onClose={() => setUse(null)}
+        onStarted={() => void refetch()}
+      />
+
+      {/* Upload — everything for admins; teachers add their own videos */}
+      {data && (
         <div className="flex flex-col gap-2">
+          {canManage && (
           <label className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">File new uploads under</span>
             <select
@@ -283,6 +378,7 @@ export default function TutorLibraryPage() {
               {COURSE_LEVELS.map((l) => <option key={l} value={l}>{levelLabel[l]}</option>)}
             </select>
           </label>
+          )}
           <button
             type="button"
             disabled={busy}
@@ -298,9 +394,11 @@ export default function TutorLibraryPage() {
           >
             {busy ? <Loader2 className="size-8 animate-spin text-primary" /> : <Upload className="size-8 text-muted-foreground" />}
             <div>
-              <p className="text-sm font-semibold">{busy ? "Uploading…" : "Upload files"}</p>
+              <p className="text-sm font-semibold">{busy ? "Uploading…" : canManage ? "Upload files" : "Upload a video"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Drag & drop or click — you can choose several at once. Videos, PDFs, Word, PowerPoint, images, audio.
+                {canManage
+                  ? "Drag & drop or click — you can choose several at once. Videos, PDFs, Word, PowerPoint, images, audio."
+                  : "Drag & drop or click. A clip someone filmed for you, for example — only you see it, and you can give it a new background."}
               </p>
             </div>
           </button>
@@ -308,7 +406,7 @@ export default function TutorLibraryPage() {
             ref={inputRef}
             type="file"
             multiple
-            accept={ACCEPT}
+            accept={canManage ? ACCEPT : VIDEO_ACCEPT}
             className="hidden"
             onChange={(e) => {
               if (e.target.files) void handleFiles(e.target.files)
@@ -363,8 +461,8 @@ export default function TutorLibraryPage() {
           {query || levelFilter
             ? "No files match your search."
             : canManage
-            ? "The library is empty. Upload files above to get started."
-            : "The library is empty. The school adds files here for you to use."}
+            ? "The library is empty. Upload files or record a video above to get started."
+            : "The library is empty. Record or upload a video above; the school adds its files here too."}
         </div>
       ) : (
         <>
@@ -379,10 +477,10 @@ export default function TutorLibraryPage() {
           {ownItems.length > 0 && (
             <section className="flex flex-col gap-2">
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Files you added earlier ({ownItems.length})
+                Your videos ({ownItems.length})
               </p>
               <p className="text-xs text-muted-foreground -mt-1">
-                Only you can see these. You can still pick them, or remove the ones you no longer need.
+                Only you can see these. Use them in a lesson, a test or a class, or remove the ones you no longer need.
               </p>
               {ownItems.map(renderRow)}
             </section>

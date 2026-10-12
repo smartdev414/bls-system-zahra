@@ -4,11 +4,16 @@
  * and the server, which finds the finished file from it.
  */
 
-const RAW_SUFFIX = /\.raw\.(webm|mp4)$/
+const RAW_SUFFIX = /\.raw\.(webm|mp4|mov|m4v)$/
 
-/** File name to upload a raw recording under, e.g. `take.webm` → `take.raw.webm`. */
+/**
+ * File name to upload a raw recording under, e.g. `take.webm` → `take.raw.webm`.
+ * A name with no video extension (or one the worker's output can't be named
+ * after) is stored as `.raw.mp4`; the worker reads any container ffmpeg can.
+ */
 export function rawRecordingName(fileName: string): string {
-  return fileName.replace(/\.(webm|mp4)$/, ".raw.$1")
+  const m = fileName.match(/^(.*)\.(webm|mp4|mov|m4v)$/i)
+  return m ? `${m[1]}.raw.${m[2].toLowerCase()}` : `${fileName.replace(/\.[^.]*$/, "")}.raw.mp4`
 }
 
 export function isRawRecordingKey(key: string): boolean {

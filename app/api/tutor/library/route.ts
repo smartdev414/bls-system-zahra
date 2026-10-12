@@ -158,13 +158,12 @@ async function handlePOST(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    // Only admins add to the library, so there is one set of material and the
-    // office knows exactly what is in it.
-    if (session.role !== "ADMIN") {
-      return NextResponse.json(
-        { message: "The library is managed by the school. Ask an admin to add this file." },
-        { status: 403 },
-      )
+    // Admins fill the school's library, so there is one set of material and
+    // the office knows exactly what is in it. A tutor may add videos — their
+    // own recordings, or a clip someone filmed for them — to a library only
+    // they see, ready to go into a class.
+    if (session.role !== "ADMIN" && session.role !== "TUTOR") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const body = await req.json() as { files?: IncomingFile[]; level?: string | null }
@@ -179,6 +178,12 @@ async function handlePOST(req: NextRequest) {
       }
       if (!LIBRARY_ASSET_TYPES.includes(f.assetType as LibraryAssetType)) {
         return NextResponse.json({ message: `Unknown file type "${f.assetType}"` }, { status: 400 })
+      }
+      if (session.role !== "ADMIN" && f.assetType !== "VIDEO") {
+        return NextResponse.json(
+          { message: "Teachers can add videos to their library. Other files are added by the school — ask an admin." },
+          { status: 403 },
+        )
       }
     }
 
