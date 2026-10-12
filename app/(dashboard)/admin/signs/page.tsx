@@ -421,7 +421,7 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
 
       {sign.videoUrl && (
         <Dialog open={playOpen} onOpenChange={setPlayOpen}>
-          <DialogContent className="max-w-md max-h-[90vh]">
+          <DialogContent className="sm:max-w-xl max-h-[90vh]">
             <DialogHeader>
               <DialogTitle className="pr-8">{sign.word}</DialogTitle>
             </DialogHeader>
@@ -430,7 +430,7 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
               controls
               autoPlay
               allowDownload
-              className="w-full rounded-xl max-h-[60vh] object-contain bg-black"
+              className="w-full rounded-xl max-h-[65vh] object-contain bg-black"
               poster={sign.imageUrl ?? undefined}
             />
           </DialogContent>

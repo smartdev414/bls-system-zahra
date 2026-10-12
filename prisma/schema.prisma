@@ -351,9 +351,10 @@ model Lesson {
   description String?
   order       Int
   isFree      Boolean    @default(false)
-  // When set, students do not see the lesson (or test) until this moment, so
-  // a whole term can be prepared in advance and released week by week. Null =
-  // available straight away. Staff and teachers always see it.
+  // When set, students see the lesson (or test) as locked, with this date,
+  // and cannot open it until then — so a whole term can be prepared in advance
+  // and released week by week. Null = available straight away. Staff and
+  // teachers always see it.
   releaseAt   DateTime?
   // Tests only (type QUIZ): the score, out of 100, a student needs to pass, and
   // how many times they may sit it. Null attempts = as often as they like.

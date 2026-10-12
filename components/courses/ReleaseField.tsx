@@ -1,6 +1,7 @@
 "use client"
 
-import { CalendarClock } from "lucide-react"
+import { Lock } from "lucide-react"
+import { releaseLabel } from "@/lib/lesson-release"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -67,23 +68,22 @@ export function ReleaseField({ value, onChange }: { value: string; onChange: (va
       </div>
       <p className="text-xs text-muted-foreground">
         {scheduled
-          ? "Students won't see this lesson until then. Teachers can see it now."
+          ? "Students see this lesson as locked, with that date, until then. Teachers can open it now."
           : "Students see this lesson as soon as it is saved."}
       </p>
     </div>
   )
 }
 
-/** Shown to staff and teachers on a lesson that students cannot see yet. */
+/** Shown to staff and teachers on a section or lesson that students cannot open yet. */
 export function ReleaseBadge({ releaseAt, className }: { releaseAt: string | null | undefined; className?: string }) {
   if (!releaseAt) return null
   const when = new Date(releaseAt)
   if (Number.isNaN(when.getTime()) || when <= new Date()) return null
   return (
     <Badge variant="outline" className={`gap-1 bg-amber-100 text-amber-700 border-amber-200 ${className ?? ""}`}>
-      <CalendarClock className="size-3" />
-      Releases {when.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })},{" "}
-      {when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+      <Lock className="size-3" />
+      Unlocks {releaseLabel(when)}
     </Badge>
   )
 }

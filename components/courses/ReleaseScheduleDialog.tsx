@@ -18,6 +18,9 @@ const selectClass =
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+/** How many sections open together on each release date. */
+const PER_STEP_OPTIONS = [1, 2, 3, 4, 5, 6]
+
 function shortDate(d: Date) {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
 }
@@ -37,8 +40,9 @@ function nextMonday(): Date {
 }
 
 /**
- * When students get each section of a course: all at once, or one section at a
- * time from a start date. One date here replaces a date on every lesson.
+ * When students get each section of a course: all at once, or a few sections
+ * at a time from a start date — "Day 1–3 this week, Day 4–6 next week". One
+ * date here replaces a date on every lesson.
  */
 export function ReleaseScheduleDialog({
   courseId,
@@ -51,22 +55,27 @@ export function ReleaseScheduleDialog({
   onClose: () => void
   onSaved: () => void
 }) {
-  // Start from the schedule the course already has, if any.
+  // Start from the schedule the course already has, if any: the first date,
+  // how many sections share it, and how far the next batch is from it.
   const firstDate = sections.length > 0 ? sectionDate(sections[0]) : null
-  const secondDate = sections.length > 1 ? sectionDate(sections[1]) : null
-  const existingGap = firstDate && secondDate ? Math.round((secondDate.getTime() - firstDate.getTime()) / DAY_MS) : null
+  const firstBatch = firstDate
+    ? Math.max(1, sections.findIndex((s) => sectionDate(s)?.getTime() !== firstDate.getTime()))
+    : 1
+  const nextDate = firstDate && firstBatch < sections.length ? sectionDate(sections[firstBatch]) : null
+  const existingGap = firstDate && nextDate ? Math.round((nextDate.getTime() - firstDate.getTime()) / DAY_MS) : null
 
   // Opening this is nearly always to set a schedule, so that is the starting choice.
   const [staged, setStaged] = useState(true)
   const [date, setDate] = useState<Date | undefined>(firstDate ?? nextMonday())
   const [time, setTime] = useState(firstDate ? timeOf(firstDate) : "09:00")
   const [everyDays, setEveryDays] = useState(existingGap && [1, 7, 14].includes(existingGap) ? existingGap : 7)
+  const [perStep, setPerStep] = useState(firstDate && firstBatch <= PER_STEP_OPTIONS.length ? firstBatch : 1)
   const [saving, setSaving] = useState(false)
 
   function opensOn(index: number): Date | null {
     if (!date) return null
     const [h, m] = time.split(":").map(Number)
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + index * everyDays, h, m)
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + Math.floor(index / perStep) * everyDays, h, m)
   }
 
   async function save() {
@@ -79,7 +88,12 @@ export function ReleaseScheduleDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           staged
-            ? { startAt: start!.toISOString(), everyDays, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
+            ? {
+                startAt: start!.toISOString(),
+                everyDays,
+                sectionsPerStep: perStep,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              }
             : { startAt: null },
         ),
       })
@@ -100,8 +114,10 @@ export function ReleaseScheduleDialog({
     }
   }
 
-  const preview = sections.slice(0, 4)
-  const last = sections.length > 4 ? opensOn(sections.length - 1) : null
+  // Enough rows to show the first two batches, so the pattern is visible.
+  const previewCount = Math.min(sections.length, Math.max(4, perStep * 2))
+  const preview = sections.slice(0, previewCount)
+  const last = sections.length > previewCount ? opensOn(sections.length - 1) : null
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose() }}>
@@ -111,7 +127,7 @@ export function ReleaseScheduleDialog({
             <CalendarClock className="size-4 text-primary" /> Release schedule
           </DialogTitle>
           <DialogDescription>
-            When students get each section. Teachers can always see everything.
+            When students get each section. Until then they see it as locked, with the date. Teachers can always see everything.
           </DialogDescription>
         </DialogHeader>
 
@@ -147,18 +163,33 @@ export function ReleaseScheduleDialog({
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="rs-every">Then a new section</Label>
-                <select
-                  id="rs-every"
-                  value={everyDays}
-                  onChange={(e) => setEveryDays(parseInt(e.target.value))}
-                  className={selectClass}
-                >
-                  <option value={7}>Every week</option>
-                  <option value={14}>Every 2 weeks</option>
-                  <option value={1}>Every day</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="rs-per">Open at a time</Label>
+                  <select
+                    id="rs-per"
+                    value={perStep}
+                    onChange={(e) => setPerStep(parseInt(e.target.value))}
+                    className={selectClass}
+                  >
+                    {PER_STEP_OPTIONS.map((n) => (
+                      <option key={n} value={n}>{n === 1 ? "1 section" : `${n} sections`}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="rs-every">Then the next</Label>
+                  <select
+                    id="rs-every"
+                    value={everyDays}
+                    onChange={(e) => setEveryDays(parseInt(e.target.value))}
+                    className={selectClass}
+                  >
+                    <option value={7}>Every week</option>
+                    <option value={14}>Every 2 weeks</option>
+                    <option value={1}>Every day</option>
+                  </select>
+                </div>
               </div>
 
               {date && sections.length > 0 && (
@@ -171,7 +202,7 @@ export function ReleaseScheduleDialog({
                   ))}
                   {last && (
                     <li className="flex justify-between gap-3 text-muted-foreground">
-                      <span>… {sections.length - 4} more, the last on</span>
+                      <span>… {sections.length - previewCount} more, the last on</span>
                       <span className="shrink-0">{shortDate(last)}</span>
                     </li>
                   )}

@@ -6,8 +6,11 @@ import type { Prisma } from "@/app/generated/prisma/client"
  * A lesson with `releaseAt` in the future exists — staff and teachers can see
  * and prepare it — but students do not get it until that moment. That lets the
  * school build a whole term in advance and have each week's lessons and tests
- * appear on their own. Every student-facing read goes through these two helpers
- * so a lesson cannot be hidden from the list yet still be opened by its link.
+ * appear on their own. Students see the lesson in their course outline as
+ * locked, with the date it unlocks, so they know what is coming; opening it,
+ * its files, its test or its progress is refused until then. Every
+ * student-facing read goes through these helpers so a lesson cannot be
+ * shown as locked yet still be opened by its link.
  */
 
 /** Prisma `where` fragment: only lessons students may see right now. */
@@ -17,6 +20,16 @@ export function releasedLessons(now: Date = new Date()): Prisma.LessonWhereInput
 
 export function isReleased(lesson: { releaseAt: Date | null }, now: Date = new Date()): boolean {
   return !lesson.releaseAt || lesson.releaseAt <= now
+}
+
+/**
+ * "Mon 20 Oct, 09:00" — how a release moment is written wherever a student or
+ * teacher sees one, so the lesson list, the lesson page and the app agree.
+ */
+export function releaseLabel(when: Date | string): string {
+  const d = typeof when === "string" ? new Date(when) : when
+  if (Number.isNaN(d.getTime())) return ""
+  return `${d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}, ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
 }
 
 // ─── Moving release dates (copying a course for another group) ───────────────

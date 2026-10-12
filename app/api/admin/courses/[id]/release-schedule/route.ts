@@ -11,8 +11,10 @@ import { isValidTimeZone, shiftReleaseAt } from "@/lib/lesson-release"
  * Setting a release date on every lesson of a term is a lot of typing for one
  * decision: "start on the 6th, one section a week". This takes that decision
  * and writes the dates — section 1 on the start date, section 2 one step later,
- * and so on, every lesson in a section sharing its date. A single lesson can
- * still be given its own date afterwards from its edit page.
+ * and so on, every lesson in a section sharing its date. A course taught as
+ * "Day 1, Day 2, Day 3" with three days a week opens three sections at a time
+ * (`sectionsPerStep`). A single lesson can still be given its own date
+ * afterwards from its edit page.
  */
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -20,8 +22,8 @@ type RouteContext = { params: Promise<{ id: string }> }
 const DEFAULT_TIME_ZONE = "Europe/London"
 
 // PUT /api/admin/courses/[id]/release-schedule
-//   { startAt: ISO, everyDays?: number, timeZone?: string } — staged release
-//   { startAt: null }                                       — everything straight away
+//   { startAt: ISO, everyDays?: number, sectionsPerStep?: number, timeZone?: string } — staged release
+//   { startAt: null }                                                               — everything straight away
 async function handlePUT(req: NextRequest, { params }: RouteContext) {
   try {
     const session = await getSession()
@@ -31,7 +33,12 @@ async function handlePUT(req: NextRequest, { params }: RouteContext) {
     }
 
     const { id } = await params
-    const body = await req.json() as { startAt?: string | null; everyDays?: number; timeZone?: string }
+    const body = await req.json() as {
+      startAt?: string | null
+      everyDays?: number
+      sectionsPerStep?: number
+      timeZone?: string
+    }
 
     const course = await prisma.course.findUnique({
       where: { id },
@@ -55,11 +62,18 @@ async function handlePUT(req: NextRequest, { params }: RouteContext) {
     if (!Number.isInteger(everyDays) || everyDays < 1 || everyDays > 60) {
       return NextResponse.json({ message: "The gap between sections is not valid" }, { status: 400 })
     }
+    const sectionsPerStep = body.sectionsPerStep ?? 1
+    if (!Number.isInteger(sectionsPerStep) || sectionsPerStep < 1 || sectionsPerStep > 20) {
+      return NextResponse.json({ message: "The number of sections to open at a time is not valid" }, { status: 400 })
+    }
     const timeZone = isValidTimeZone(body.timeZone) ? body.timeZone : DEFAULT_TIME_ZONE
 
     // Same time of day for every section, as the clock on the wall reads it —
     // so a weekly 09:00 stays 09:00 after the clocks change.
-    const dates = course.sections.map((_, i) => (i === 0 ? start : shiftReleaseAt(start, i * everyDays, timeZone)))
+    const dates = course.sections.map((_, i) => {
+      const step = Math.floor(i / sectionsPerStep)
+      return step === 0 ? start : shiftReleaseAt(start, step * everyDays, timeZone)
+    })
 
     const results = await prisma.$transaction(
       course.sections.map((section, i) =>

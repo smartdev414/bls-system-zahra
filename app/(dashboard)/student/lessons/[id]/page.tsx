@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   CheckCircle2, ChevronLeft, ChevronRight, PlayCircle,
   FileText, FlaskConical, Download, BookOpen,
-  Loader2, CheckCheck, List, X, User,
+  Loader2, CheckCheck, List, X, User, Lock, CalendarClock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +13,9 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
+import { releaseLabel } from "@/lib/lesson-release"
 import { QuizTaker } from "@/components/quiz/QuizTaker"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
@@ -33,7 +35,10 @@ type Asset = {
   order: number
 }
 
-type LessonNav = { id: string; title: string; sectionId: string } | null
+type LessonNav = { id: string; title: string; sectionId: string; locked: boolean; releaseAt: string | null } | null
+
+/** What the API answers for a lesson that has not been released yet. */
+type LockedLesson = { locked: true; releaseAt: string; courseId: string }
 
 type SectionLesson = {
   id: string
@@ -43,6 +48,8 @@ type SectionLesson = {
   isFree: boolean
   isCompleted: boolean
   isCurrent: boolean
+  locked: boolean
+  releaseAt: string | null
 }
 
 type SectionItem = {
@@ -105,8 +112,12 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   const completedRef = useRef(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { data, loading, refetch } = useFetch<LessonData>(`/api/student/lessons/${id}`, {
-    errorMessage: "Could not load lesson",
+  const { data, loading, error, refetch } = useFetch<LessonData>(`/api/student/lessons/${id}`, {
+    // A locked lesson is a page of its own below, not a failure to report.
+    errorMessage: false,
+    onError: (e) => {
+      if (!(e.details as Partial<LockedLesson> | null)?.locked) toast.error("Could not load lesson")
+    },
     onSuccess: (d) => {
       setIsCompleted(d.lesson.isCompleted)
       completedRef.current = d.lesson.isCompleted
@@ -160,6 +171,30 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
     )
   }
 
+  const locked = (error?.details as Partial<LockedLesson> | null)?.locked
+    ? (error!.details as LockedLesson)
+    : null
+  if (locked) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-6">
+        <div className="rounded-full bg-amber-100 p-6">
+          <Lock className="size-10 text-amber-700" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold">This lesson is locked</h2>
+          <p className="text-muted-foreground mt-1 flex items-center justify-center gap-1.5">
+            <CalendarClock className="size-4" /> It unlocks {releaseLabel(locked.releaseAt)}.
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/student/lessons?courseId=${locked.courseId}`}>
+            <ChevronLeft className="size-4 mr-1" /> Back to the course
+          </Link>
+        </Button>
+      </div>
+    )
+  }
+
   if (!data) return null
 
   const { lesson, course, section, navigation, progress, sections } = data
@@ -207,6 +242,25 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
               </div>
               {sec.lessons.map((l) => {
                 const Icon = typeIcon[l.type as keyof typeof typeIcon] ?? PlayCircle
+                if (l.locked) {
+                  return (
+                    <div
+                      key={l.id}
+                      aria-disabled="true"
+                      title={l.releaseAt ? `Unlocks ${releaseLabel(l.releaseAt)}` : "Not released yet"}
+                      className="flex items-center gap-3 px-4 py-2.5 border-b text-sm text-muted-foreground bg-muted/10"
+                    >
+                      <div className="shrink-0 size-4 rounded-full border-2 border-dashed border-muted-foreground/30" />
+                      <Lock className="size-3.5 shrink-0" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block leading-snug truncate">{l.order}. {l.title}</span>
+                        {l.releaseAt && (
+                          <span className="block text-[10px] leading-tight">Unlocks {releaseLabel(l.releaseAt)}</span>
+                        )}
+                      </span>
+                    </div>
+                  )
+                }
                 return (
                   <Link
                     key={l.id}
@@ -531,7 +585,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
 
         {/* ── Bottom nav ───────────────────────────────────────────────────── */}
         <div className="border-t bg-background px-6 py-3 flex items-center justify-between shrink-0">
-          {navigation.prev ? (
+          {navigation.prev && !navigation.prev.locked ? (
             <Button asChild variant="outline" size="sm">
               <Link href={`/student/lessons/${navigation.prev.id}`}>
                 <ChevronLeft className="size-4 mr-1" />
@@ -544,7 +598,13 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
             <div />
           )}
 
-          {navigation.next ? (
+          {navigation.next?.locked ? (
+            // The next lesson exists but has not been released: say when.
+            <Button size="sm" variant="outline" disabled className="disabled:opacity-100 text-muted-foreground">
+              <Lock className="size-3.5 mr-1.5" />
+              Next unlocks {navigation.next.releaseAt ? releaseLabel(navigation.next.releaseAt) : "later"}
+            </Button>
+          ) : navigation.next ? (
             <Button asChild size="sm">
               <Link href={`/student/lessons/${navigation.next.id}`}>
                 <div className="text-right">

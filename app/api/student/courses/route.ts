@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { releasedLessons } from "@/lib/lesson-release"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -41,8 +40,9 @@ async function handleGET(req: NextRequest) {
       category: { select: { id: true, name: true } },
       reviews: { select: { rating: true } },
       _count: { select: { enrollments: true, sections: true } },
-      // Lesson counts are what a student can open today, not what is scheduled.
-      sections: { include: { _count: { select: { lessons: { where: releasedLessons() } } } } },
+      // Every lesson counts, released or still locked: a course is not finished
+      // until the whole term has been.
+      sections: { include: { _count: { select: { lessons: true } } } },
     }
 
     const [total, courses, enrollments, rawRecommended] = await Promise.all([

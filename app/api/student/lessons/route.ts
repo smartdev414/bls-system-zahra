@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { releasedLessons } from "@/lib/lesson-release"
+import { isReleased } from "@/lib/lesson-release"
 
 async function handleGET(req: Request) {
   try {
@@ -23,8 +23,6 @@ async function handleGET(req: Request) {
               orderBy: { order: "asc" },
               include: {
                 lessons: {
-                  // Lessons held back for a later release are not shown yet.
-                  where: releasedLessons(),
                   orderBy: { order: "asc" },
                   include: { assets: { orderBy: { order: "asc" } } },
                 },
@@ -37,8 +35,13 @@ async function handleGET(req: Request) {
       orderBy: { enrolledAt: "asc" },
     })
 
+    const now = new Date()
+
     const courses = enrollments.map((enrollment) => {
+      // Every lesson is listed — a lesson held back for a later release shows
+      // as locked, with its date — but only released ones can be opened.
       const allLessons = enrollment.course.sections.flatMap((s) => s.lessons)
+      const openLessons = allLessons.filter((l) => isReleased(l, now))
       const totalLessons = allLessons.length
       const completedLessons = enrollment.progress.filter((p) => p.isCompleted).length
 
@@ -46,7 +49,12 @@ async function handleGET(req: Request) {
       const lastProgress = enrollment.progress
         .filter((p) => p.updatedAt)
         .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
-      const lastLessonId = lastProgress?.lessonId ?? allLessons[0]?.id ?? null
+      const lastLessonId = lastProgress?.lessonId ?? openLessons[0]?.id ?? null
+
+      // When the next locked lesson opens, if any are still to come.
+      const nextReleaseAt = allLessons
+        .filter((l) => !isReleased(l, now))
+        .reduce<Date | null>((min, l) => (!min || l.releaseAt! < min ? l.releaseAt! : min), null)
 
       return {
         enrollmentId: enrollment.id,
@@ -63,7 +71,9 @@ async function handleGET(req: Request) {
           totalLessons,
           completedLessons,
           completion: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0,
+          lockedLessons: totalLessons - openLessons.length,
         },
+        nextReleaseAt: nextReleaseAt?.toISOString() ?? null,
         lastLessonId,
         sections: enrollment.course.sections.map((section) => ({
           id: section.id,
@@ -71,6 +81,7 @@ async function handleGET(req: Request) {
           order: section.order,
           lessons: section.lessons.map((lesson) => {
             const prog = enrollment.progress.find((p) => p.lessonId === lesson.id)
+            const locked = !isReleased(lesson, now)
             return {
               id: lesson.id,
               title: lesson.title,
@@ -80,6 +91,9 @@ async function handleGET(req: Request) {
               duration: lesson.assets.find((a) => a.type === "VIDEO")?.duration ?? null,
               isCompleted: prog?.isCompleted ?? false,
               watchedSecs: prog?.watchedSecs ?? 0,
+              // Locked until `releaseAt`; the page shows the date instead of a link.
+              locked,
+              releaseAt: locked ? lesson.releaseAt!.toISOString() : null,
             }
           }),
         })),

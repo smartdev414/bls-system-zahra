@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { isReleased, releasedLessons } from "@/lib/lesson-release"
+import { isReleased, releaseLabel } from "@/lib/lesson-release"
 import { urlsHiddenFromStudents } from "@/lib/background-clean"
 
 async function handleGET(
@@ -35,7 +35,7 @@ async function handleGET(
                 sections: {
                   orderBy: { order: "asc" },
                   include: {
-                    lessons: { where: releasedLessons(), orderBy: { order: "asc" } },
+                    lessons: { orderBy: { order: "asc" } },
                   },
                 },
               },
@@ -45,9 +45,7 @@ async function handleGET(
       },
     })
 
-    // A lesson held back for a later release does not exist yet as far as a
-    // student is concerned — same answer as an unknown id.
-    if (!lesson || !isReleased(lesson)) {
+    if (!lesson) {
       return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
     }
 
@@ -61,9 +59,29 @@ async function handleGET(
       return NextResponse.json({ message: "Not enrolled in this course" }, { status: 403 })
     }
 
-    // Build ordered flat list of all lessons for prev/next navigation
+    // A lesson held back for a later release is locked: the student sees it in
+    // the outline with its date, but cannot open it until then. Checked after
+    // enrolment so someone not on the course learns nothing about it.
+    const now = new Date()
+    if (!isReleased(lesson, now)) {
+      return NextResponse.json(
+        {
+          message: `This lesson unlocks on ${releaseLabel(lesson.releaseAt!)}`,
+          locked: true,
+          releaseAt: lesson.releaseAt!.toISOString(),
+          courseId: lesson.section.course.id,
+        },
+        { status: 403 },
+      )
+    }
+
+    // Build ordered flat list of all lessons for prev/next navigation. A locked
+    // neighbour is still listed, so the page can say when it opens.
     const allLessons = lesson.section.course.sections.flatMap((s) =>
-      s.lessons.map((l) => ({ id: l.id, sectionId: s.id, title: l.title }))
+      s.lessons.map((l) => {
+        const locked = !isReleased(l, now)
+        return { id: l.id, sectionId: s.id, title: l.title, locked, releaseAt: locked ? l.releaseAt!.toISOString() : null }
+      })
     )
     const currentIndex = allLessons.findIndex((l) => l.id === id)
     const prevLesson = currentIndex > 0 ? allLessons[currentIndex - 1] : null
@@ -78,6 +96,7 @@ async function handleGET(
       order: section.order,
       lessons: section.lessons.map((l) => {
         const prog = enrollment?.progress.find((p) => p.lessonId === l.id)
+        const locked = !isReleased(l, now)
         return {
           id: l.id,
           title: l.title,
@@ -86,6 +105,8 @@ async function handleGET(
           isFree: l.isFree,
           isCompleted: prog?.isCompleted ?? false,
           isCurrent: l.id === id,
+          locked,
+          releaseAt: locked ? l.releaseAt!.toISOString() : null,
         }
       }),
     }))

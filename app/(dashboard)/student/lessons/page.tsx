@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import {
   BookOpen, PlayCircle, FileText, FlaskConical,
-  Clock, CheckCircle2, Loader2, Lock, ChevronRight,
+  Clock, CheckCircle2, Loader2, Lock, ChevronRight, CalendarClock,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import { useState } from "react"
 import { useFetch } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
 import { levelColor, type CourseLevel } from "@/lib/levels"
+import { releaseLabel } from "@/lib/lesson-release"
 
 type LessonItem = {
   id: string
@@ -24,6 +25,9 @@ type LessonItem = {
   duration: number | null
   isCompleted: boolean
   watchedSecs: number
+  /** Held back until `releaseAt`: listed, but cannot be opened yet. */
+  locked: boolean
+  releaseAt: string | null
 }
 
 type SectionItem = {
@@ -44,7 +48,9 @@ type CourseEnrollment = {
     level: CourseLevel
     tutor: { name: string; avatarUrl: string | null }
   }
-  stats: { totalLessons: number; completedLessons: number; completion: number }
+  stats: { totalLessons: number; completedLessons: number; completion: number; lockedLessons: number }
+  /** When the next locked lesson opens, if any are still to come. */
+  nextReleaseAt: string | null
   lastLessonId: string | null
   sections: SectionItem[]
 }
@@ -147,6 +153,13 @@ export default function LessonsPage() {
                 <span className="font-semibold text-foreground">{enrollment.stats.completion}%</span>
               </div>
               <Progress value={enrollment.stats.completion} className="h-2" />
+              {enrollment.nextReleaseAt && (
+                <p className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+                  <CalendarClock className="size-3.5 text-amber-600" />
+                  {enrollment.stats.lockedLessons === 1 ? "1 lesson is" : `${enrollment.stats.lockedLessons} lessons are`} still locked.
+                  The next opens {releaseLabel(enrollment.nextReleaseAt)}.
+                </p>
+              )}
             </div>
           </CardHeader>
 
@@ -164,6 +177,36 @@ export default function LessonsPage() {
                 {/* Lesson rows */}
                 {section.lessons.map((lesson) => {
                   const Icon = typeIcon[lesson.type]
+                  if (lesson.locked) {
+                    // Not a link: the student can see what is coming and when,
+                    // but nothing opens until the release date.
+                    return (
+                      <div
+                        key={lesson.id}
+                        aria-disabled="true"
+                        className="flex items-center gap-4 px-6 py-3.5 border-t first:border-t-0 bg-muted/10 text-muted-foreground"
+                      >
+                        <div className="shrink-0">
+                          <div className="size-5 rounded-full border-2 border-dashed border-muted-foreground/30" />
+                        </div>
+                        <div className="shrink-0 rounded-lg p-2 bg-muted">
+                          <Lock className="size-4 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium leading-snug">
+                            {lesson.order}. {lesson.title}
+                          </p>
+                          <div className="flex items-center gap-1 mt-0.5 text-xs">
+                            <CalendarClock className="size-3" />
+                            Unlocks {lesson.releaseAt ? releaseLabel(lesson.releaseAt) : "later"}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 bg-amber-50 text-amber-700 border-amber-200 shrink-0">
+                          <Lock className="size-2.5" /> Locked
+                        </Badge>
+                      </div>
+                    )
+                  }
                   return (
                     <Link
                       key={lesson.id}
@@ -201,9 +244,6 @@ export default function LessonsPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         {lesson.isFree && (
                           <Badge variant="outline" className="text-[10px] h-5 px-1.5">Free</Badge>
-                        )}
-                        {!lesson.isFree && !lesson.isCompleted && (
-                          <Lock className="size-3.5 text-muted-foreground/50" />
                         )}
                         <ChevronRight className="size-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>

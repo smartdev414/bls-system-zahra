@@ -32,6 +32,7 @@ import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 import { lessonKind } from "@/lib/lesson-kind"
 import { ReleaseScheduleDialog } from "@/components/courses/ReleaseScheduleDialog"
+import { SectionLock } from "@/components/courses/SectionLock"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -94,9 +95,9 @@ function releaseSummary(sections: SectionItem[]): string {
     .flatMap((s) => s.lessons.flatMap((l) => (l.releaseAt ? [{ title: s.title, at: new Date(l.releaseAt) }] : [])))
     .filter((x) => x.at > new Date())
     .sort((a, b) => a.at.getTime() - b.at.getTime())
-  if (upcoming.length === 0) return "Everything is available to students now."
+  if (upcoming.length === 0) return "Everything is open to students. Use the padlock on a section to lock it until a date."
   const next = upcoming[0]
-  return `Released in stages — next: ${next.title} on ${next.at.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}.`
+  return `Some sections are locked — next to open: ${next.title}, ${next.at.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}.`
 }
 
 // ─── Thumbnail editor ─────────────────────────────────────────────────────────
@@ -689,6 +690,13 @@ function SectionBlock({
               {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground shrink-0 ml-auto" /> : <ChevronUp className="size-4 text-muted-foreground shrink-0 ml-auto" />}
             </button>
             {canEdit && <div className="flex items-center gap-0.5 pr-1 sm:pr-2 shrink-0">
+              <SectionLock
+                courseId={courseId}
+                sectionId={section.id}
+                releaseAt={sharedRelease(section)}
+                hasLessons={section.lessons.length > 0}
+                onSaved={onMutated}
+              />
               <Button
                 variant="ghost" size="icon" className="size-7"
                 onClick={() => { setRenameValue(section.title); setRenaming(true) }}

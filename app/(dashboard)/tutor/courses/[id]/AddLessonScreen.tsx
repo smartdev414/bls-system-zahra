@@ -18,7 +18,6 @@ import {
 } from "@/components/quiz/QuizBuilder"
 import { LibraryPicker, itemIcon, formatBytes } from "@/components/library/LibraryPicker"
 import type { LibraryAssetType } from "@/lib/library"
-import { ReleaseField, releaseToIso } from "@/components/courses/ReleaseField"
 import { DEFAULT_TEST_SETTINGS, TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
 
 export type LessonType = "VIDEO" | "TEXT" | "QUIZ"
@@ -52,7 +51,6 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
   const [type, setType] = useState<LessonType>(initialType ?? "VIDEO")
   const [desc, setDesc] = useState("")
   const [isFree, setIsFree] = useState(false)
-  const [releaseAt, setReleaseAt] = useState("")
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   // Files picked from the resource library, added alongside any fresh upload.
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>(initialFiles ?? [])
@@ -111,7 +109,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sectionId, title, type, description: desc, isFree, releaseAt: releaseToIso(releaseAt), assets,
+          sectionId, title, type, description: desc, isFree, assets,
           ...(type === "QUIZ" && testSettingsBody(testSettings)),
         }),
       })
@@ -205,7 +203,6 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
         </div>
       </div>
 
-      <ReleaseField value={releaseAt} onChange={setReleaseAt} />
 
       {isTest && (
         <TestSettingsFields

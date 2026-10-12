@@ -61,10 +61,21 @@ async function handlePOST(
       return NextResponse.json({ message: testSettings }, { status: 400 })
     }
 
-    const section = await prisma.section.findFirst({ where: { id: sectionId, courseId } })
+    const section = await prisma.section.findFirst({
+      where: { id: sectionId, courseId },
+      include: { lessons: { select: { releaseAt: true } } },
+    })
     if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })
 
-    const lessonCount = await prisma.lesson.count({ where: { sectionId } })
+    const lessonCount = section.lessons.length
+
+    // A lesson added to a locked section is locked with it: the teacher locked
+    // "Day 4", and a lesson added to Day 4 afterwards should not slip out early.
+    const sectionLock = section.lessons[0]?.releaseAt ?? null
+    const sectionLocked =
+      sectionLock !== null && sectionLock > new Date() &&
+      section.lessons.every((l) => l.releaseAt?.getTime() === sectionLock.getTime())
+    const effectiveRelease = releaseAt ?? (sectionLocked ? sectionLock : null)
 
     const lesson = await prisma.lesson.create({
       data: {
@@ -73,7 +84,7 @@ async function handlePOST(
         type,
         description: description?.trim() ?? null,
         isFree,
-        releaseAt,
+        releaseAt: effectiveRelease,
         ...testSettings,
         order: lessonCount + 1,
         assets: {

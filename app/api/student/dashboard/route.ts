@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { studentVisibleSessions } from "@/lib/session-access"
-import { releasedLessons } from "@/lib/lesson-release"
+import { isReleased } from "@/lib/lesson-release"
 
 async function handleGET() {
   try {
@@ -25,7 +25,9 @@ async function handleGET() {
                 tutor: { select: { name: true } },
                 sections: {
                   orderBy: { order: "asc" },
-                  include: { lessons: { where: releasedLessons(), orderBy: { order: "asc" } } },
+                  // Every lesson counts towards the total; a locked one just
+                  // cannot be the next to open.
+                  include: { lessons: { orderBy: { order: "asc" } } },
                 },
               },
             },
@@ -91,7 +93,7 @@ async function handleGET() {
       const enrollTotal = allLessons.length
       const enrollCompleted = active.progress.filter((p) => p.isCompleted).length
       const completedIds = new Set(active.progress.filter((p) => p.isCompleted).map((p) => p.lessonId))
-      const nextLesson = allLessons.find((l) => !completedIds.has(l.id)) ?? null
+      const nextLesson = allLessons.find((l) => !completedIds.has(l.id) && isReleased(l)) ?? null
 
       currentCourse = {
         courseId: active.course.id,
