@@ -108,11 +108,11 @@ function CurrentCourseCard({ course, loading }: { course: CurrentCourse | null; 
       <div className="flex gap-0">
         {/* Thumbnail */}
         {course.thumbnailUrl ? (
-          <div className="w-32 shrink-0 hidden sm:block">
+          <div className="w-32 shrink-0 hidden sm:flex items-center bg-muted">
             <img
               src={course.thumbnailUrl}
               alt={course.courseTitle}
-              className="w-full h-full object-cover"
+              className="w-full object-contain"
             />
           </div>
         ) : (

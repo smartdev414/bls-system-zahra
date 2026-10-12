@@ -382,7 +382,7 @@ function ProfileCourseCard({
         <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden rounded-xl">
           {course.thumbnailUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
+            <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-contain" />
           ) : (
             <BookOpen className="size-10 text-muted-foreground/30" />
           )}

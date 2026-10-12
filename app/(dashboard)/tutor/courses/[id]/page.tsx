@@ -146,7 +146,7 @@ function ThumbnailEditor({
   return (
     <div className="relative w-full sm:w-44 aspect-video rounded-xl overflow-hidden border bg-muted sm:shrink-0 group">
       {preview ? (
-        <img src={preview} alt="thumbnail" className="w-full h-full object-cover" />
+        <img src={preview} alt="thumbnail" className="w-full h-full object-contain" />
       ) : (
         <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground">
           <Camera className="size-6" />
@@ -511,9 +511,10 @@ return (
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Thumbnail (optional)</Label>
+              <p className="text-xs text-muted-foreground">Best size: 1280 × 720 px (16:9). Other shapes are shown whole, never cropped.</p>
               {editThumbnail ? (
                 <div className="relative rounded-xl overflow-hidden aspect-video bg-muted">
-                  <img src={editThumbnail} alt="thumbnail" className="w-full h-full object-cover" />
+                  <img src={editThumbnail} alt="thumbnail" className="w-full h-full object-contain" />
                   <Button
                     type="button" size="icon" variant="destructive"
                     className="absolute top-2 right-2 size-7"

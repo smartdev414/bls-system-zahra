@@ -282,7 +282,7 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
         <div className="px-2 shrink-0">
           <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden rounded-xl">
             {course.thumbnailUrl ? (
-              <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+              <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" />
             ) : (
               <BookOpen className="size-10 text-muted-foreground/30" />
             )}

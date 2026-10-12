@@ -79,7 +79,7 @@ export default function TutorCoursesPage() {
                   <div className="p-3 pb-0">
                     <div className="aspect-video bg-primary/10 flex items-center justify-center relative overflow-hidden rounded-lg">
                       {course.thumbnailUrl ? (
-                        <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
+                        <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-contain" />
                       ) : (
                         <BookOpen className="size-10 text-primary/40" />
                       )}
