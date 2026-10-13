@@ -77,7 +77,7 @@ function CheckRow({ result }: { result: CheckResult }) {
             size="xs"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="shrink-0"
+            className="shrink-0 max-sm:h-9"
           >
             Details
             <ChevronDown className={cn("transition-transform", open && "rotate-180")} />
@@ -231,7 +231,7 @@ export function ConnectionCheckPanel() {
           run && verdictTone === "fail" && "border-destructive/40 bg-destructive/5",
         )}
       >
-        <div className="flex items-start gap-4">
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
           <span className="mt-0.5 shrink-0">
             {running
               ? <Loader2 className="size-6 animate-spin text-primary" />
@@ -260,7 +260,7 @@ export function ConnectionCheckPanel() {
               </Button>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={start} disabled={running} className="shrink-0">
+          <Button variant="outline" size="sm" onClick={start} disabled={running} className="shrink-0 max-sm:basis-full max-sm:h-9">
             <RefreshCw className={cn(running && "animate-spin")} />
             {run ? "Test again" : "Test now"}
           </Button>

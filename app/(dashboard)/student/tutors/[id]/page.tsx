@@ -98,7 +98,7 @@ export default function TutorProfilePage() {
       {/* Back link */}
       <Link
         href="/student/tutors"
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground w-fit transition-colors"
+        className="flex items-center gap-1.5 text-sm max-sm:py-1.5 text-muted-foreground hover:text-foreground w-fit transition-colors"
       >
         <ArrowLeft className="size-3.5" /> All Tutors
       </Link>

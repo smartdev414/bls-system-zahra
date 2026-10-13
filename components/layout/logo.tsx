@@ -31,7 +31,8 @@ export function Logo({ className }: { className?: string }) {
         className="h-10 w-auto shrink-0"
         priority
       />
-      <div className="hidden sm:flex flex-col leading-none">
+      {/* lg–xl: the inline nav needs the room, so the wordmark steps aside. */}
+      <div className="hidden sm:flex lg:hidden xl:flex flex-col leading-none">
         <span className="font-bold text-[15px] tracking-tight text-foreground">{LOGO_BRAND}</span>
         <span className="text-[10px] text-muted-foreground font-medium">BSL Learning</span>
       </div>

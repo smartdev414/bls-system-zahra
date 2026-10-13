@@ -167,12 +167,12 @@ export function Header({ role, user }: HeaderProps) {
       <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-6">
 
         {/* Left: hamburger (mobile) + Logo + Nav */}
-        <div className="flex items-center gap-2 sm:gap-4 md:gap-8 min-w-0">
-          {/* Mobile menu toggle — md:hidden so it disappears once the inline nav fits. */}
+        <div className="flex items-center gap-2 sm:gap-4 lg:gap-4 xl:gap-8 min-w-0">
+          {/* Mobile menu toggle — lg:hidden so it disappears once the inline nav fits. */}
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden shrink-0 -ml-1"
+            className="lg:hidden shrink-0 -ml-1"
             onClick={() => setMobileNavOpen((v) => !v)}
             aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileNavOpen}
@@ -182,7 +182,7 @@ export function Header({ role, user }: HeaderProps) {
 
           <Logo />
 
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-1">
             {navItems.map(({ label, href, icon: Icon }) => {
               // Only use startsWith for paths deeper than the role root (e.g. /student/courses)
               // otherwise /student would always match /student/courses, /student/classroom, etc.
@@ -230,7 +230,7 @@ export function Header({ role, user }: HeaderProps) {
                     {initials}
                   </AvatarFallback>
                 </Avatar>
-                <div className="hidden sm:flex flex-col items-start">
+                <div className="hidden sm:flex lg:hidden xl:flex flex-col items-start">
                   <span className="text-sm font-medium max-w-30 truncate leading-tight">
                     {user.name}
                   </span>
@@ -312,10 +312,10 @@ export function Header({ role, user }: HeaderProps) {
       </div>
 
       {/* Mobile nav panel — overlays page content (absolute, not in flow) so
-          opening it doesn't shift the layout below. md:hidden hides it once the
+          opening it doesn't shift the layout below. lg:hidden hides it once the
           inline desktop nav fits. */}
       {mobileNavOpen && (
-        <div className="md:hidden absolute top-16 inset-x-0 border-b border-t bg-background/95 backdrop-blur-md shadow-lg">
+        <div className="lg:hidden absolute top-16 inset-x-0 max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-t bg-background/95 backdrop-blur-md shadow-lg">
           <nav className="max-w-7xl mx-auto px-3 py-2 flex flex-col">
             {[...navItems, ...dropdownNavItems].map(({ label, href, icon: Icon }) => {
               const hasSubPaths = href.split("/").filter(Boolean).length > 1

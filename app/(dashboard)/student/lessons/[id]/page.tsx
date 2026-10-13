@@ -305,7 +305,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
             </button>
           )}
           <nav className="flex items-center gap-1.5 text-xs text-muted-foreground flex-1 min-w-0">
-            <Link href="/student/lessons" className="hover:text-foreground shrink-0">Lessons</Link>
+            <Link href="/student/lessons" className="hover:text-foreground shrink-0 max-sm:py-2">Lessons</Link>
             <ChevronRight className="size-3 shrink-0" />
             <span className="truncate">{course.title}</span>
             <ChevronRight className="size-3 shrink-0" />

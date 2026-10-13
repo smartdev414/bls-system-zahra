@@ -314,7 +314,8 @@ export function FeedbackButton() {
   // On a phone the floating button sat on top of the classroom lobby's
   // "Join Session" — the one thing the page is for. Keep it off those pages
   // below `sm`; it is still there on every other page and on larger screens.
-  const inClassroom = /^\/(student|tutor)\/classroom\/[^/]+/.test(usePathname() ?? "")
+  // Same on Messages, where it would cover the Send button.
+  const inClassroom = /^\/(student|tutor)\/(classroom\/[^/]+|messages)/.test(usePathname() ?? "")
 
   return (
     <>
@@ -342,7 +343,7 @@ export function FeedbackButton() {
 
       {/* Panel */}
       {open && (
-        <div className="fixed bottom-20 right-6 z-50 w-full max-w-sm rounded-2xl border bg-background shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200">
+        <div className="fixed bottom-20 right-3 sm:right-6 z-50 w-[calc(100vw-1.5rem)] max-w-sm max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-2xl border bg-background shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200">
           <FeedbackModal onClose={() => setOpen(false)} />
         </div>
       )}

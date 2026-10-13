@@ -225,7 +225,7 @@ export default function StudentDashboardPage() {
           <CurrentCourseCard course={data?.currentCourse ?? null} loading={loading} />
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
             {[
               { label: "Current Day", value: `Day ${stats.currentDay}`, pct: Math.min((stats.currentDay / 30) * 100, 100) },
               { label: "Completion", value: `${stats.completion}%`, pct: stats.completion },
@@ -236,14 +236,15 @@ export default function StudentDashboardPage() {
               },
             ].map(({ label, value, pct }) => (
               <Card key={label} className="shadow-sm">
-                <CardContent className="p-5 flex flex-col gap-2">
+                {/* Phones: one compact row per stat (label left, value right, bar under). */}
+                <CardContent className="px-4 py-3 sm:p-5 grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 sm:flex sm:flex-col sm:items-stretch">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
                   {loading ? (
                     <div className="h-8 w-16 rounded bg-muted animate-pulse" />
                   ) : (
-                    <p className="text-3xl font-black">{value}</p>
+                    <p className="text-xl sm:text-3xl font-black">{value}</p>
                   )}
-                  <Progress value={loading ? 0 : pct} className="h-1.5" />
+                  <Progress value={loading ? 0 : pct} className="h-1.5 max-sm:col-span-2" />
                 </CardContent>
               </Card>
             ))}
@@ -257,12 +258,12 @@ export default function StudentDashboardPage() {
                 Your Modules
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-3 gap-3 pt-0">
+            <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-0">
               {modules.map(({ label, desc, href, icon: Icon }) => (
                 <Link
                   key={label}
                   href={href}
-                  className="flex flex-col items-center gap-2 rounded-xl border p-5 text-center transition-all hover:border-primary hover:bg-primary/5"
+                  className="flex flex-col items-center gap-2 rounded-xl border p-3 sm:p-5 text-center transition-all hover:border-primary hover:bg-primary/5"
                 >
                   <div className="rounded-full bg-primary/10 p-3">
                     <Icon className="size-5 text-primary" />
@@ -312,7 +313,7 @@ export default function StudentDashboardPage() {
                 <Calendar className="size-4 text-primary" />
                 Upcoming Sessions
               </CardTitle>
-              <Button asChild variant="ghost" size="sm" className="text-primary h-7 px-2">
+              <Button asChild variant="ghost" size="sm" className="text-primary h-7 max-sm:h-9 px-2">
                 <Link href="/student/classroom">View all</Link>
               </Button>
             </CardHeader>

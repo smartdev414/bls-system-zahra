@@ -11,18 +11,18 @@ export function Footer() {
 
   return (
     <footer className="bg-background border-t">
-      <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Hand className="size-4 text-primary" />
+      <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col xl:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-2 text-muted-foreground text-sm max-xl:text-center">
+          <Hand className="size-4 text-primary shrink-0" />
           <span>© 2025 BSL Learning Platform. All rights reserved.</span>
         </div>
-        <div className="flex items-center gap-5 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
           <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
-          <Separator orientation="vertical" className="h-3" />
+          <Separator orientation="vertical" className="h-3 max-sm:hidden" />
           <Link href="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
-          <Separator orientation="vertical" className="h-3" />
+          <Separator orientation="vertical" className="h-3 max-sm:hidden" />
           <Link href="/support" className="hover:text-foreground transition-colors">Contact Support</Link>
-          <Separator orientation="vertical" className="h-3" />
+          <Separator orientation="vertical" className="h-3 max-sm:hidden" />
           {/* Public and login-free: the IT team who has to approve a firewall
               exception has no account here, so the student must be able to send
               them a working link. */}

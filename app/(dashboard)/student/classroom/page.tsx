@@ -457,7 +457,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutat
                         </div>
                       ))}
                       {daySessions.length > 3 && (
-                        <span className="text-[9px] text-muted-foreground pl-1 font-medium">
+                        <span className="text-[10px] text-muted-foreground pl-1 font-medium">
                           +{daySessions.length - 3} more
                         </span>
                       )}
@@ -599,7 +599,7 @@ function SessionsSidebar({ sessions }: { sessions: LiveSession[] }) {
                   <p className="text-xs font-semibold truncate">{s.title}</p>
                   <p className="text-[10px] text-muted-foreground">{s.tutor.name} · {formatTime(s.scheduledAt)}</p>
                 </div>
-                <Badge variant="outline" className={cn("text-[9px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
+                <Badge variant="outline" className={cn("text-[10px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
                   {STATUS[s.status].label}
                 </Badge>
               </div>
@@ -731,7 +731,7 @@ function ListView({ sessions, onMutated }: { sessions: LiveSession[]; onMutated:
               key={id}
               onClick={() => setTab(id)}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all flex-1 justify-center",
+                "flex items-center gap-1 sm:gap-1.5 rounded-lg px-1.5 sm:px-3 py-2 sm:py-1.5 text-xs font-medium transition-all flex-1 min-w-0 justify-center",
                 tab === id
                   ? "bg-background shadow-sm text-foreground"
                   : "text-muted-foreground hover:text-foreground"

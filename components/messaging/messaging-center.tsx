@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import {
   Search, Send, Plus, MessageSquare, Loader2,
-  CheckCheck, Check, Users, Wifi, WifiOff, AlertCircle, RotateCcw, X,
+  CheckCheck, Check, Users, Wifi, WifiOff, AlertCircle, RotateCcw, X, ArrowLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -308,11 +308,15 @@ export default function MessagingCenter({
     ? role === "STUDENT" ? activeConv.tutor : activeConv.student
     : null
 
+  // Phones show one pane at a time; the last conversation stays cached after
+  // "back", so the open state follows activeId rather than the loaded data.
+  const chatOpen = !!activeId && !!activeConv && !!otherUser
+
   return (
-    <div className="-mx-6 -my-8 flex h-[calc(100vh-4rem)]">
+    <div className="-mx-6 -my-8 flex h-[calc(100dvh-4rem)]">
 
       {/* ── LEFT: conversation list ─────────────────────────────────────────── */}
-      <aside className="w-80 shrink-0 border-r flex flex-col bg-background">
+      <aside className={cn("w-full md:w-80 shrink-0 md:border-r flex-col bg-background", chatOpen ? "hidden md:flex" : "flex")}>
 
         {/* Header */}
         <div className="px-4 py-4 border-b shrink-0">
@@ -342,13 +346,15 @@ export default function MessagingCenter({
               placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-8 text-sm"
+              className="pl-9 h-9 md:h-8 text-base md:text-sm"
             />
           </div>
         </div>
 
         {/* List */}
-        <ScrollArea className="flex-1">
+        {/* Radix wraps content in a display:table div that grows with long text;
+            forcing it to block keeps rows inside the pane so truncate works. */}
+        <ScrollArea className="flex-1 min-h-0 [&>[data-slot=scroll-area-viewport]>div]:block!">
           {convsLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="size-6 animate-spin text-primary" />
@@ -379,11 +385,18 @@ export default function MessagingCenter({
       </aside>
 
       {/* ── RIGHT: chat window ──────────────────────────────────────────────── */}
-      {activeConv && otherUser ? (
+      {chatOpen && activeConv && otherUser ? (
         <div className="flex-1 flex flex-col min-w-0">
 
           {/* Chat header */}
-          <div className="flex items-center gap-3 px-5 py-3.5 border-b bg-background shrink-0">
+          <div className="flex items-center gap-3 px-3 md:px-5 py-3.5 border-b bg-background shrink-0">
+            <Button
+              size="icon" variant="ghost" className="md:hidden shrink-0"
+              onClick={() => setActiveId(null)}
+              aria-label="Back to conversations"
+            >
+              <ArrowLeft className="size-5" />
+            </Button>
             <Avatar className="size-9">
               <AvatarImage src={otherUser.avatarUrl ?? undefined} />
               <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
@@ -399,7 +412,7 @@ export default function MessagingCenter({
           </div>
 
           {/* Messages */}
-          <ScrollArea className="flex-1 px-5 py-4">
+          <ScrollArea className="flex-1 min-h-0 px-3 md:px-5 py-4 [&>[data-slot=scroll-area-viewport]>div]:block!">
             {convLoading && messages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="size-6 animate-spin text-primary" />
@@ -432,7 +445,7 @@ export default function MessagingCenter({
           </ScrollArea>
 
           {/* Input */}
-          <div className="px-5 py-3 border-t bg-background shrink-0">
+          <div className="px-3 md:px-5 py-3 border-t bg-background shrink-0">
             <form
               className="flex items-center gap-2"
               onSubmit={(e) => { e.preventDefault(); handleSend() }}
@@ -453,7 +466,7 @@ export default function MessagingCenter({
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
+        <div className="hidden md:flex flex-1 flex-col items-center justify-center gap-4 text-center px-8">
           <div className="rounded-full bg-primary/10 p-6">
             <MessageSquare className="size-10 text-primary" />
           </div>
@@ -578,9 +591,9 @@ function MessageBubble({
         )}
       </div>
 
-      <div className={cn("flex flex-col gap-0.5 max-w-[70%]", isMine ? "items-end" : "items-start")}>
+      <div className={cn("flex flex-col gap-0.5 min-w-0 max-w-[85%] md:max-w-[70%]", isMine ? "items-end" : "items-start")}>
         <div className={cn(
-          "px-4 py-2.5 rounded-2xl text-sm leading-relaxed",
+          "px-4 py-2.5 rounded-2xl text-sm leading-relaxed max-w-full [overflow-wrap:anywhere]",
           isMine
             ? failed
               ? "bg-rose-500 text-white rounded-br-sm"

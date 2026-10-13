@@ -10,7 +10,7 @@ export default function StudentConnectionCheckPage() {
       <div>
         <Link
           href="/student/classroom"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1 text-xs max-sm:text-sm max-sm:py-2 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="size-3.5" /> Back to Classroom
         </Link>

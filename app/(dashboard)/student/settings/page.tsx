@@ -90,7 +90,8 @@ function AvatarUploader({ name, currentUrl, onUploaded }: {
       </Avatar>
       <label className={cn(
         "absolute inset-0 rounded-full flex items-center justify-center bg-black/50 cursor-pointer transition-opacity",
-        uploading ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        // Touch screens have no hover, so the camera overlay stays visible there.
+        uploading ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-60"
       )}>
         {uploading ? <Loader2 className="size-5 text-white animate-spin" /> : <Camera className="size-5 text-white" />}
         <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
@@ -156,10 +157,10 @@ export default function StudentSettingsPage() {
         <p className="text-muted-foreground mt-1">Manage your profile, BSL level and account security.</p>
       </div>
 
-      <div className="flex gap-8 items-start">
+      <div className="flex flex-col md:flex-row gap-5 md:gap-8 md:items-start">
 
         {/* ── Sidebar ── */}
-        <nav className="w-52 shrink-0 flex flex-col gap-1 sticky top-24">
+        <nav className="grid grid-cols-2 gap-1 md:w-52 md:shrink-0 md:flex md:flex-col md:sticky md:top-24">
           {NAV.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setSection(id)}
               className={cn(
@@ -172,7 +173,7 @@ export default function StudentSettingsPage() {
         </nav>
 
         {/* ── Content ── */}
-        <div className="flex-1 min-w-0 flex flex-col gap-6">
+        <div className="md:flex-1 min-w-0 flex flex-col gap-6">
 
           {/* ════ PROFILE ════ */}
           {section === "profile" && (
@@ -191,13 +192,13 @@ export default function StudentSettingsPage() {
                         void saveProfile({ name, bslLevel: bslLevel === "none" ? null : bslLevel, avatarUrl: url })
                       }}
                     />
-                    <p className="text-xs text-muted-foreground pb-1">Hover photo to change</p>
+                    <p className="text-xs text-muted-foreground pb-1"><span className="[@media(hover:none)]:hidden">Hover</span><span className="hidden [@media(hover:none)]:inline">Tap</span> photo to change</p>
                   </div>
 
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="text-xl font-bold">{user?.name}</h2>
-                      <p className="text-sm text-muted-foreground mt-0.5">{user?.email}</p>
+                  <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                    <div className="min-w-0">
+                      <h2 className="text-xl font-bold break-words">{user?.name}</h2>
+                      <p className="text-sm text-muted-foreground mt-0.5 break-all">{user?.email}</p>
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         <Badge variant="secondary" className="text-xs capitalize">{user?.role.toLowerCase()}</Badge>
                         {user?.bslLevel && (
@@ -267,9 +268,9 @@ export default function StudentSettingsPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1 border-t">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
                     <p className="text-xs text-muted-foreground">Changes appear on your profile immediately.</p>
-                    <Button type="submit" disabled={saving || !name.trim()} size="sm">
+                    <Button type="submit" disabled={saving || !name.trim()} size="sm" className="max-sm:h-9">
                       {saving ? <><Loader2 className="size-3.5 mr-1.5 animate-spin" />Saving…</> : <><Check className="size-3.5 mr-1.5" />Save Changes</>}
                     </Button>
                   </div>
@@ -408,11 +409,11 @@ export default function StudentSettingsPage() {
               <div className="divide-y rounded-xl border overflow-hidden">
                 {[
                   { icon: User,         label: "Account Type",   value: <Badge variant="secondary" className="capitalize">{user?.role.toLowerCase()}</Badge> },
-                  { icon: Mail,         label: "Email Address",  value: <span className="flex items-center gap-2 text-sm">{user?.email}<Badge variant="outline" className="gap-1 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
+                  { icon: Mail,         label: "Email Address",  value: <span className="flex flex-wrap items-center gap-2 text-sm"><span className="break-all">{user?.email}</span><Badge variant="outline" className="gap-1 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
                   { icon: Calendar,     label: "Member Since",   value: <span className="text-sm">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—"}</span> },
                   ...(user?.bslLevel ? [{ icon: GraduationCap, label: "BSL Level", value: <Badge variant="outline" className={cn("text-xs", levelColor[user.bslLevel])}>{user.bslLevel}</Badge> }] : []),
                 ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="flex items-center justify-between px-4 py-3.5 bg-card">
+                  <div key={label} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-3.5 bg-card">
                     <div className="flex items-center gap-3 text-sm text-muted-foreground">
                       <Icon className="size-4 shrink-0" />{label}
                     </div>
