@@ -109,6 +109,11 @@ enum NotificationType {
   HOMEWORK_REMINDER
   // A tutor was put on a course as one of its teachers
   COURSE_TEACHER_ADDED
+  // Sign-up approval: staff hear about a new account to review, and the
+  // student hears how it went
+  ACCOUNT_PENDING_APPROVAL
+  ACCOUNT_APPROVED
+  ACCOUNT_REJECTED
   // A recording's background replacement finished or failed (for whoever recorded it)
   VIDEO_BACKGROUND_READY
   VIDEO_BACKGROUND_FAILED
@@ -152,6 +157,13 @@ model User {
   // Students may be signed in on one device at a time: the newest login's id
   // lives here and any older token carrying a different id is rejected.
   activeSessionId String?
+  // Students who sign up on their own wait here until staff approve them (see
+  // lib/account-approval.ts). Everyone else, and every account that existed
+  // before approval, is ACTIVE.
+  status       AccountStatus @default(ACTIVE)
+  // What the student told us at sign-up ("which course or teacher?") so staff
+  // can tell a real student from a stranger.
+  signupNote   String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -189,6 +201,19 @@ model User {
   libraryFiles         LibraryFile[]           @relation("TutorLibraryFiles")
   preparedCaptions     PreparedCaption[]       @relation("TutorPreparedCaptions")
   videoCleanJobs       VideoCleanJob[]
+}
+
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+/// Platform-wide switches an admin changes from Settings. One row, id "default".
+model PlatformSettings {
+  id                      String   @id @default("default")
+  studentApprovalRequired Boolean  @default(true)
+  updatedAt               DateTime @updatedAt
 }
 
 model PasswordResetToken {

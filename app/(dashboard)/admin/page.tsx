@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
+import { AwaitingApprovalBanner } from "@/components/admin/awaiting-approval-banner"
 
 type StatsData = {
   stats: {
@@ -22,6 +23,7 @@ type StatsData = {
     recentEnrollments: number
     totalSessions: number
     liveSessions: number
+    awaitingApproval: number
   }
   recentUsers: Array<{
     id: string
@@ -77,6 +79,8 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      <AwaitingApprovalBanner count={s?.awaitingApproval} href="/admin/users?status=pending" />
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

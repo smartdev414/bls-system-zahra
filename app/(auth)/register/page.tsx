@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Mail, Lock, Eye, EyeOff, User, GraduationCap, BookOpen } from "lucide-react"
+import { Mail, Lock, Eye, EyeOff, User, GraduationCap, BookOpen, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -44,8 +44,9 @@ type RegisterBody = {
   email: string
   password: string
   role: Role
+  signupNote?: string
 }
-type RegisterResponse = { redirectTo: string }
+type RegisterResponse = { redirectTo: string; pending?: boolean }
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -57,11 +58,14 @@ export default function RegisterPage() {
   const [passwordError, setPasswordError] = useState("")
 
   const [form, setForm] = useState({ name: "", email: "", password: "" })
+  // Helps the team recognise a real student when approving new sign-ups
+  const [signupNote, setSignupNote] = useState("")
 
   const { execute, loading } = usePostCallback<RegisterResponse, RegisterBody>(
     "/api/auth/register",
     {
-      successMessage: "Account created! Welcome to BSL Learning.",
+      successMessage: (data) =>
+        data.pending ? "Account created! We'll email you once it's approved." : "Account created! Welcome to BSL Learning.",
       onSuccess: (data) => router.push(data.redirectTo),
     }
   )
@@ -78,7 +82,7 @@ export default function RegisterPage() {
       return
     }
     if (!agreed) return
-    await execute({ ...form, role })
+    await execute({ ...form, role, ...(role === "STUDENT" && { signupNote }) })
   }
 
   return (
@@ -161,6 +165,28 @@ export default function RegisterPage() {
                   />
                 </div>
               </div>
+
+              {/* Who they are joining — only asked of students */}
+              {role === "STUDENT" && (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="signupNote">
+                    Which course or teacher are you joining?{" "}
+                    <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <div className="relative">
+                    <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                    <Input
+                      id="signupNote"
+                      type="text"
+                      placeholder="e.g. Level 1 evening class with Sarah"
+                      maxLength={300}
+                      className="pl-9"
+                      value={signupNote}
+                      onChange={(e) => setSignupNote(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Password */}
               <div className="flex flex-col gap-2">

@@ -57,6 +57,9 @@ type NotificationType =
   | "COURSE_TEACHER_ADDED"
   | "VIDEO_BACKGROUND_READY"
   | "VIDEO_BACKGROUND_FAILED"
+  | "ACCOUNT_PENDING_APPROVAL"
+  | "ACCOUNT_APPROVED"
+  | "ACCOUNT_REJECTED"
 
 type Notification = {
   id: string
@@ -93,6 +96,9 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   COURSE_TEACHER_ADDED: BookOpen,
   VIDEO_BACKGROUND_READY: Video,
   VIDEO_BACKGROUND_FAILED: Video,
+  ACCOUNT_PENDING_APPROVAL: UserPlus,
+  ACCOUNT_APPROVED: UserPlus,
+  ACCOUNT_REJECTED: XCircle,
 }
 
 const typeColor: Record<NotificationType, string> = {
@@ -120,6 +126,9 @@ const typeColor: Record<NotificationType, string> = {
   COURSE_TEACHER_ADDED: "text-primary",
   VIDEO_BACKGROUND_READY: "text-emerald-500",
   VIDEO_BACKGROUND_FAILED: "text-destructive",
+  ACCOUNT_PENDING_APPROVAL: "text-yellow-500",
+  ACCOUNT_APPROVED: "text-green-500",
+  ACCOUNT_REJECTED: "text-destructive",
 }
 
 const POLL_INTERVAL = 30_000 // 30 seconds

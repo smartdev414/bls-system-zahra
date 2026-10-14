@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from "jose"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
-import { isSessionCurrent, startStudentSession } from "@/lib/single-session"
+import { sessionState, startStudentSession, type SessionState } from "@/lib/single-session"
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET ?? "bsl-dev-secret-change-in-production"
@@ -37,14 +37,34 @@ export async function verifyToken(token: string): Promise<SessionPayload | null>
   }
 }
 
-/** Read the session from the cookie — works in Server Components and Route Handlers */
+/**
+ * Read the session from the cookie — works in Server Components and Route Handlers.
+ *
+ * A student still waiting for approval (or turned down) gets null here, the same
+ * as a signed-out visitor, so every route that calls this is closed to them
+ * without having to know approval exists.
+ */
 export async function getSession(): Promise<SessionPayload | null> {
+  const found = await getAccountSession()
+  return found?.state === "ok" ? found.session : null
+}
+
+/**
+ * The signed-in account even when it is not approved yet — only for the few
+ * places a pending student must reach: the waiting page and their own profile
+ * (which the mobile app reads to learn it should show its waiting screen).
+ */
+export async function getAccountSession(): Promise<
+  { session: SessionPayload; state: Exclude<SessionState, "replaced"> } | null
+> {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE)?.value
   if (!token) return null
   const session = await verifyToken(token)
-  if (!session || !(await isSessionCurrent(session))) return null
-  return session
+  if (!session) return null
+  const state = await sessionState(session)
+  if (state === "replaced") return null
+  return { session, state }
 }
 
 export function setSessionCookie(res: NextResponse, token: string): void {
@@ -60,6 +80,9 @@ export function setSessionCookie(res: NextResponse, token: string): void {
 export function clearSessionCookie(res: NextResponse): void {
   res.cookies.delete(COOKIE)
 }
+
+/** Where a student waiting for approval is kept. */
+export const PENDING_PATH = "/pending"
 
 /** Role → default redirect path after login */
 export function dashboardPath(role: SessionPayload["role"]): string {

@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { AWAITING_APPROVAL } from "@/lib/account-approval"
 
 async function handleGET() {
   try {
@@ -20,6 +21,7 @@ async function handleGET() {
       totalSessions,
       liveSessions,
       recentUsers,
+      awaitingApproval,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { role: "STUDENT" } }),
@@ -34,6 +36,7 @@ async function handleGET() {
         take: 5,
         select: { id: true, name: true, email: true, role: true, createdAt: true },
       }),
+      prisma.user.count({ where: AWAITING_APPROVAL }),
     ])
 
     // Enrollments last 30 days
@@ -53,6 +56,7 @@ async function handleGET() {
         recentEnrollments,
         totalSessions,
         liveSessions,
+        awaitingApproval,
       },
       recentUsers: recentUsers.map((u) => ({
         ...u,

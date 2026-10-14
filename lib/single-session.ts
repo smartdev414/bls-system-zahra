@@ -28,17 +28,29 @@ async function notifyReplaced(userId: string) {
 }
 
 /**
- * Whether a verified token is still the account's current session.
- * Tokens issued before this rule existed carry no sid; they stay valid until
- * the student next signs in anywhere.
+ * Where a verified token stands. For a student this is one lookup that answers
+ * two questions: is this still the account's current device, and has staff
+ * approved the account yet (see lib/account-approval.ts)?
+ *
+ *   ok       — carry on
+ *   replaced — signed in on another device since; treat as signed out
+ *   pending  — signed up, waiting for staff to approve
+ *   rejected — staff turned the sign-up down
+ *
+ * Tokens issued before the single-device rule carry no sid; they stay valid
+ * until the student next signs in anywhere.
  */
-export async function isSessionCurrent(payload: { sub: string; role: string; sid?: string }): Promise<boolean> {
-  if (payload.role !== "STUDENT") return true
+export type SessionState = "ok" | "replaced" | "pending" | "rejected"
+
+export async function sessionState(payload: { sub: string; role: string; sid?: string }): Promise<SessionState> {
+  if (payload.role !== "STUDENT") return "ok"
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },
-    select: { activeSessionId: true },
+    select: { activeSessionId: true, status: true },
   })
-  if (!user) return false
-  if (!user.activeSessionId) return true
-  return user.activeSessionId === payload.sid
+  if (!user) return "replaced"
+  if (user.activeSessionId && user.activeSessionId !== payload.sid) return "replaced"
+  if (user.status === "PENDING") return "pending"
+  if (user.status === "REJECTED") return "rejected"
+  return "ok"
 }

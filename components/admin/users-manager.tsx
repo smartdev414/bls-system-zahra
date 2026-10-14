@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Users, Search, Filter, Loader2, ShieldCheck,
-  UserCheck, Trash2, ChevronDown,
+  UserCheck, Trash2, ChevronDown, Clock, Check, X,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,9 @@ type UserItem = {
   name: string
   email: string
   role: AppRole
+  status: "PENDING" | "ACTIVE" | "REJECTED"
+  /** What a student told us at sign-up, to help decide whether to approve. */
+  signupNote: string | null
   bslLevel: string | null
   createdAt: string
   isVerified: boolean | null
@@ -35,7 +39,12 @@ type UserItem = {
   courseCount: number
 }
 
-type UsersData = { users: UserItem[]; total: number; page: number; totalPages: number }
+type UsersData = { users: UserItem[]; total: number; awaitingCount: number; page: number; totalPages: number }
+
+/** Someone staff still have to decide on: a new student, or a tutor not yet verified. */
+function isAwaiting(user: UserItem): boolean {
+  return (user.role === "STUDENT" && user.status === "PENDING") || (user.role === "TUTOR" && user.isVerified === false)
+}
 
 const roleColor: Record<string, string> = {
   STUDENT: "bg-blue-100 text-blue-700 border-blue-200",
@@ -60,11 +69,22 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
   const [roleFilter, setRoleFilter] = useState("all")
   const [page, setPage] = useState(1)
 
+  // The waiting list lives in the URL so the "waiting for approval"
+  // notification can link straight to it.
+  const router = useRouter()
+  const pathname = usePathname()
+  const showAwaiting = useSearchParams().get("status") === "pending"
+  function toggleAwaiting() {
+    router.replace(showAwaiting ? pathname : `${pathname}?status=pending`)
+    setPage(1)
+  }
+
   const debouncedQuery = useDebounce(query)
 
   const params = new URLSearchParams()
   if (debouncedQuery) params.set("q", debouncedQuery)
   if (roleFilter !== "all") params.set("role", roleFilter)
+  if (showAwaiting) params.set("status", "pending")
   params.set("page", String(page))
 
   const { data, loading, refetch } = useFetch<UsersData>(`/api/admin/users?${params.toString()}`, {
@@ -85,7 +105,11 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
             <Users className="size-6 text-primary" /> Users
           </h1>
           <p className="text-muted-foreground mt-1">
-            {loading ? "\u00A0" : `${data?.total ?? 0} user${data?.total !== 1 ? "s" : ""} registered`}
+            {loading
+              ? "\u00A0"
+              : showAwaiting
+                ? `${data?.total ?? 0} waiting for approval`
+                : `${data?.total ?? 0} user${data?.total !== 1 ? "s" : ""} registered`}
           </p>
         </div>
       </div>
@@ -114,6 +138,16 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
             {viewerRole === "ADMIN" && <SelectItem value="ADMIN">Admins</SelectItem>}
           </SelectContent>
         </Select>
+        {(showAwaiting || (data?.awaitingCount ?? 0) > 0) && (
+          <Button
+            variant={showAwaiting ? "default" : "outline"}
+            onClick={toggleAwaiting}
+            className={showAwaiting ? "" : "text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"}
+          >
+            <Clock className="size-3.5 mr-1.5" />
+            Waiting for approval{data ? ` (${data.awaitingCount})` : ""}
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -136,7 +170,7 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
         <Card className="shadow-sm">
           <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
             <Users className="size-10 text-muted-foreground" />
-            <p className="font-semibold">No users found</p>
+            <p className="font-semibold">{showAwaiting ? "Nobody is waiting for approval" : "No users found"}</p>
           </CardContent>
         </Card>
       )}
@@ -181,6 +215,15 @@ function UserRow({
     onSuccess: () => onMutated(),
   })
 
+  const { execute: setStatus, loading: deciding } = usePatchCallback<
+    { user: UserItem },
+    { status: "ACTIVE" | "REJECTED" }
+  >(`/api/admin/users/${user.id}`, {
+    successMessage: (d) => (d.user.status === "ACTIVE" ? `${user.name} approved` : `${user.name} not approved`),
+    errorMessage: "Could not update the account",
+    onSuccess: () => onMutated(),
+  })
+
   const { execute: deleteUser, loading: deleting } = useDeleteCallback(
     `/api/admin/users/${user.id}`,
     {
@@ -211,8 +254,21 @@ function UserRow({
                   <UserCheck className="size-2.5 mr-1" /> Verified
                 </Badge>
               )}
+              {isAwaiting(user) && (
+                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                  <Clock className="size-2.5 mr-1" /> Waiting for approval
+                </Badge>
+              )}
+              {user.role === "STUDENT" && user.status === "REJECTED" && (
+                <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                  Not approved
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">{user.email}</p>
+            {user.signupNote && (
+              <p className="text-xs mt-1 italic text-foreground/80 break-words">&ldquo;{user.signupNote}&rdquo;</p>
+            )}
             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
               {user.role === "STUDENT" && <span>{user.enrollmentCount} enrolled</span>}
               {user.role === "TUTOR" && <span>{user.courseCount} courses</span>}
@@ -222,6 +278,31 @@ function UserRow({
 
           {/* Actions */}
           <div className="flex items-center gap-2 shrink-0">
+            {user.role === "STUDENT" && user.status !== "ACTIVE" && (
+              <Button
+                size="sm"
+                disabled={deciding}
+                onClick={() => setStatus({ status: "ACTIVE" })}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <Check className="size-3.5 mr-1" /> Approve
+              </Button>
+            )}
+            {user.role === "STUDENT" && user.status === "PENDING" && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={deciding}
+                className="text-destructive border-destructive/30"
+                onClick={() => {
+                  if (window.confirm(`Turn down ${user.name}? They won't be able to use the platform, and we'll email them to say so.`)) {
+                    setStatus({ status: "REJECTED" })
+                  }
+                }}
+              >
+                <X className="size-3.5 mr-1" /> Reject
+              </Button>
+            )}
             {user.role === "TUTOR" && (
               <Button
                 variant="outline"
@@ -230,7 +311,7 @@ function UserRow({
                 className={user.isVerified ? "text-amber-600 border-amber-200" : "text-emerald-600 border-emerald-200"}
               >
                 <ShieldCheck className="size-3.5 mr-1" />
-                {user.isVerified ? "Unverify" : "Verify"}
+                {user.isVerified ? "Unverify" : "Approve"}
               </Button>
             )}
 

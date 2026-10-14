@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import prisma from "@/lib/prisma"
-import { signToken, setSessionCookie, dashboardPath } from "@/lib/auth"
+import { signToken, setSessionCookie, dashboardPath, PENDING_PATH } from "@/lib/auth"
 import { Role } from "@/app/generated/prisma/enums"
 import { withAudit } from "@/lib/audit"
+import { cleanSignupNote, notifyStaffOfSignup, studentApprovalRequired } from "@/lib/account-approval"
 
 async function handlePOST(req: NextRequest) {
   try {
-    const { name, email, password, role, inviteToken } = await req.json() as {
+    const { name, email, password, role, inviteToken, signupNote } = await req.json() as {
       name: string
       email: string
       password: string
       role: string
       inviteToken?: string
+      signupNote?: string
     }
 
     if (!name || !email || !password || !role) {
@@ -50,12 +52,17 @@ async function handlePOST(req: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 12)
 
+    // A student a tutor invited is already known; anyone else waits for staff.
+    const pending = role === "STUDENT" && !invite && (await studentApprovalRequired())
+
     const user = await prisma.user.create({
       data: {
         name,
         email,
         passwordHash,
         role: role as Role,
+        status: pending ? "PENDING" : "ACTIVE",
+        signupNote: role === "STUDENT" ? cleanSignupNote(signupNote) : null,
         ...(invite && { invitedById: invite.tutorId }),
         // Create tutor profile automatically for tutors
         ...(role === "TUTOR" && {
@@ -72,6 +79,8 @@ async function handlePOST(req: NextRequest) {
       })
     }
 
+    if (pending || role === "TUTOR") void notifyStaffOfSignup(user)
+
     const token = await signToken({
       sub: user.id,
       name: user.name,
@@ -81,7 +90,7 @@ async function handlePOST(req: NextRequest) {
 
 
     const res = NextResponse.json(
-      { redirectTo: dashboardPath(user.role) },
+      { redirectTo: pending ? PENDING_PATH : dashboardPath(user.role), pending },
       { status: 201 }
     )
     setSessionCookie(res, token)

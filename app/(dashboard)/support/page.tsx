@@ -8,6 +8,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useFetch } from "@/hooks/use-fetch"
+import { AwaitingApprovalBanner } from "@/components/admin/awaiting-approval-banner"
 
 type StatsData = {
   stats: {
@@ -20,6 +21,7 @@ type StatsData = {
     recentEnrollments: number
     totalSessions: number
     liveSessions: number
+    awaitingApproval: number
   }
 }
 
@@ -70,6 +72,8 @@ export default function SupportDashboard() {
           </div>
         </div>
       </div>
+
+      <AwaitingApprovalBanner count={s?.awaitingApproval} href="/support/users?status=pending" />
 
       {/* Stats */}
       {loading ? (

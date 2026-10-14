@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
-import { getSession } from "@/lib/auth"
+import { getAccountSession, getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 
 async function handleGET() {
   try {
-    const session = await getSession()
+    // A student waiting for approval can still read their own profile: the
+    // mobile app loads it to learn it should show its waiting screen.
+    const session = (await getAccountSession())?.session
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
 
     const user = await prisma.user.findUnique({
@@ -15,6 +17,7 @@ async function handleGET() {
         name: true,
         email: true,
         role: true,
+        status: true,
         avatarUrl: true,
         bslLevel: true,
         createdAt: true,

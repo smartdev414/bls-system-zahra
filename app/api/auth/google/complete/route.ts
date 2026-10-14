@@ -4,11 +4,13 @@ import {
   signToken,
   setSessionCookie,
   dashboardPath,
+  PENDING_PATH,
   verifyPendingGoogleToken,
   clearPendingGoogleCookie,
   getPendingGoogleToken,
 } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { notifyStaffOfSignup, studentApprovalRequired } from "@/lib/account-approval"
 
 type Role = "STUDENT" | "TUTOR"
 
@@ -59,6 +61,9 @@ async function handlePOST(req: NextRequest) {
       return res
     }
 
+    // Anyone signing up on their own as a student waits for staff approval.
+    const awaiting = role === "STUDENT" && (await studentApprovalRequired())
+
     const user = await prisma.user.create({
       data: {
         name: pending.name,
@@ -67,11 +72,14 @@ async function handlePOST(req: NextRequest) {
         googleId: pending.googleId,
         avatarUrl: pending.avatarUrl ?? null,
         role,
+        status: awaiting ? "PENDING" : "ACTIVE",
         ...(role === "TUTOR" && {
           tutorProfile: { create: {} },
         }),
       },
     })
+
+    if (awaiting || role === "TUTOR") void notifyStaffOfSignup(user)
 
     const token = await signToken({
       sub: user.id,
@@ -82,7 +90,7 @@ async function handlePOST(req: NextRequest) {
 
 
     const res = NextResponse.json(
-      { redirectTo: dashboardPath(user.role) },
+      { redirectTo: awaiting ? PENDING_PATH : dashboardPath(user.role), pending: awaiting },
       { status: 201 }
     )
     setSessionCookie(res, token)

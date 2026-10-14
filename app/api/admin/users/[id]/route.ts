@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, roleLabel, type AppRole } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { createNotification } from "@/lib/notifications"
 
 async function handlePATCH(
   req: NextRequest,
@@ -21,6 +22,8 @@ async function handlePATCH(
     const body = await req.json() as {
       role?: AppRole
       isVerified?: boolean
+      /** Approve or turn down a student who signed up on their own. */
+      status?: "ACTIVE" | "REJECTED"
     }
 
     const user = await prisma.user.findUnique({ where: { id } })
@@ -58,10 +61,35 @@ async function handlePATCH(
       })
     }
 
+    if ((body.status === "ACTIVE" || body.status === "REJECTED") && body.status !== user.status) {
+      if (user.role !== "STUDENT") {
+        return NextResponse.json({ message: "Only student sign-ups are approved here" }, { status: 400 })
+      }
+      await prisma.user.update({ where: { id }, data: { status: body.status } })
+      // The student is sitting on the waiting page (or will be next time they
+      // sign in); the email is how they find out.
+      if (body.status === "ACTIVE") {
+        void createNotification(
+          id,
+          "ACCOUNT_APPROVED",
+          "Your account is approved",
+          "Welcome to Teach Me Sign! Your account has been approved — sign in to start learning.",
+          "/student",
+        )
+      } else {
+        void createNotification(
+          id,
+          "ACCOUNT_REJECTED",
+          "Your account request was not approved",
+          "We couldn't approve your account this time. If you think this is a mistake, please get in touch with us.",
+        )
+      }
+    }
+
     const updated = await prisma.user.findUnique({
       where: { id },
       select: {
-        id: true, name: true, email: true, role: true,
+        id: true, name: true, email: true, role: true, status: true,
         tutorProfile: { select: { isVerified: true } },
       },
     })

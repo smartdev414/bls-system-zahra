@@ -423,7 +423,19 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.COURSE_TEACHER_ADDED,
   NotificationType.VIDEO_BACKGROUND_READY,
   NotificationType.VIDEO_BACKGROUND_FAILED,
+  NotificationType.ACCOUNT_PENDING_APPROVAL,
+  NotificationType.ACCOUNT_APPROVED,
+  NotificationType.ACCOUNT_REJECTED,
 ])
+
+/** For text a stranger typed (a sign-up name or note) before it goes into HTML. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
 
 export function renderEmailTemplate(
   type: NotificationType,
@@ -460,6 +472,9 @@ export function renderEmailTemplate(
     [NotificationType.COURSE_TEACHER_ADDED]: `🎓 ${title}`,
     [NotificationType.VIDEO_BACKGROUND_READY]:  `🎬 ${title}`,
     [NotificationType.VIDEO_BACKGROUND_FAILED]: `⚠️ ${title}`,
+    [NotificationType.ACCOUNT_PENDING_APPROVAL]: `🙋 ${title}`,
+    [NotificationType.ACCOUNT_APPROVED]:         `✅ ${title}`,
+    [NotificationType.ACCOUNT_REJECTED]:         title,
   }
 
   const subject = subjects[type] ?? `BSL Platform — ${title}`
@@ -490,6 +505,11 @@ export function renderEmailTemplate(
     case NotificationType.TICKET_RESOLVED:   html = generic(recipientName, title, body, link);   break
     case NotificationType.HOMEWORK_REMINDER:    html = generic(recipientName, title, body, link); break
     case NotificationType.COURSE_TEACHER_ADDED: html = generic(recipientName, title, body, link); break
+    // Sign-up approval: the name and note were typed by whoever signed up
+    case NotificationType.ACCOUNT_PENDING_APPROVAL:
+    case NotificationType.ACCOUNT_APPROVED:
+    case NotificationType.ACCOUNT_REJECTED:
+      html = generic(escapeHtml(recipientName), escapeHtml(title), escapeHtml(body), link); break
     // body = ticket title, title = comment preview (passed as title for subject reuse)
     case NotificationType.TICKET_COMMENT:    html = ticketComment(recipientName, `Re: "${title}"`, body, link); break
     default:                                 html = generic(recipientName, title, body, link);   break

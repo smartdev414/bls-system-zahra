@@ -1,13 +1,14 @@
 "use client"
 
-import { Settings, Lock, Eye, EyeOff } from "lucide-react"
+import { Settings, Lock, Eye, EyeOff, UserCheck } from "lucide-react"
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { usePutCallback } from "@/hooks/use-fetch"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useFetch, usePutCallback } from "@/hooks/use-fetch"
 
 export default function AdminSettingsPage() {
   const [currentPassword, setCurrentPassword] = useState("")
@@ -33,6 +34,8 @@ export default function AdminSettingsPage() {
         </h1>
         <p className="text-muted-foreground mt-1">Platform and account configuration.</p>
       </div>
+
+      <SignupApprovalCard />
 
       <Card className="shadow-sm">
         <CardHeader>
@@ -103,5 +106,51 @@ export default function AdminSettingsPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+type PlatformSettings = { studentApprovalRequired: boolean }
+
+/** One switch: do students who sign up on their own wait for approval? */
+function SignupApprovalCard() {
+  const { data, loading, mutate } = useFetch<PlatformSettings>("/api/admin/platform-settings", {
+    errorMessage: "Could not load sign-up settings",
+  })
+  const { execute: save, loading: saving } = usePutCallback<PlatformSettings, PlatformSettings>(
+    "/api/admin/platform-settings",
+    {
+      successMessage: (d) => (d.studentApprovalRequired ? "New students now need approval" : "New students get in straight away"),
+      errorMessage: "Could not save",
+      onSuccess: (d) => mutate(d),
+    },
+  )
+  const required = data?.studentApprovalRequired ?? true
+
+  return (
+    <Card className="shadow-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <UserCheck className="size-4 text-primary" /> New Student Sign-ups
+        </CardTitle>
+        <CardDescription>
+          Keep strangers out: you get a notification for each new student and approve them before they can use the platform.
+          Students a tutor invites always get in straight away.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="student-approval"
+            checked={required}
+            disabled={loading || saving || !data}
+            onCheckedChange={(v) => save({ studentApprovalRequired: v === true })}
+            className="mt-0.5"
+          />
+          <Label htmlFor="student-approval" className="font-normal leading-snug cursor-pointer">
+            New students need my approval before they can use the platform
+          </Label>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

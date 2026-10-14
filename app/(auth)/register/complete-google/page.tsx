@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 
 type Role = "STUDENT" | "TUTOR"
 type CompleteBody = { role: Role; agreed: boolean }
-type CompleteResponse = { redirectTo: string }
+type CompleteResponse = { redirectTo: string; pending?: boolean }
 
 function CompleteGoogleForm() {
   const router = useRouter()
@@ -29,7 +29,8 @@ function CompleteGoogleForm() {
   const { execute, loading } = usePostCallback<CompleteResponse, CompleteBody>(
     "/api/auth/google/complete",
     {
-      successMessage: "Account created! Welcome to BSL Learning.",
+      successMessage: (data) =>
+        data.pending ? "Account created! We'll email you once it's approved." : "Account created! Welcome to BSL Learning.",
       onSuccess: (data) => router.push(data.redirectTo),
     }
   )

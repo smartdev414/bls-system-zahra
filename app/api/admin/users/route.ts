@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, type AppRole } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { AWAITING_APPROVAL } from "@/lib/account-approval"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -12,6 +13,8 @@ async function handleGET(req: NextRequest) {
 
     const role = req.nextUrl.searchParams.get("role")?.toUpperCase()
     const q = req.nextUrl.searchParams.get("q")?.trim()
+    // ?status=pending — only the people staff still have to approve
+    const onlyAwaiting = req.nextUrl.searchParams.get("status") === "pending"
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
     const limit = 20
     const skip = (page - 1) * limit
@@ -35,10 +38,12 @@ async function handleGET(req: NextRequest) {
             ],
           }
         : {}),
+      ...(onlyAwaiting ? { AND: [AWAITING_APPROVAL] } : {}),
     }
 
-    const [total, users] = await Promise.all([
+    const [total, awaitingCount, users] = await Promise.all([
       prisma.user.count({ where }),
+      prisma.user.count({ where: AWAITING_APPROVAL }),
       prisma.user.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -49,6 +54,8 @@ async function handleGET(req: NextRequest) {
           name: true,
           email: true,
           role: true,
+          status: true,
+          signupNote: true,
           bslLevel: true,
           createdAt: true,
           tutorProfile: { select: { isVerified: true } },
@@ -63,6 +70,8 @@ async function handleGET(req: NextRequest) {
         name: u.name,
         email: u.email,
         role: u.role,
+        status: u.status,
+        signupNote: u.signupNote,
         bslLevel: u.bslLevel,
         createdAt: u.createdAt.toISOString(),
         isVerified: u.tutorProfile?.isVerified ?? null,
@@ -70,6 +79,7 @@ async function handleGET(req: NextRequest) {
         courseCount: u._count.courses,
       })),
       total,
+      awaitingCount,
       page,
       totalPages: Math.ceil(total / limit),
     })
