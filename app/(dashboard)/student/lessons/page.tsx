@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import {
   BookOpen, PlayCircle, FileText, FlaskConical,
-  Clock, CheckCircle2, Loader2, Lock, ChevronRight, CalendarClock,
+  Clock, CheckCircle2, Loader2, Lock, ChevronRight, CalendarClock, ArrowLeft, ArrowRight,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -63,6 +63,25 @@ const typeIcon = {
   QUIZ: FlaskConical,
 }
 
+const typeLabel = {
+  VIDEO: "Video",
+  TEXT: "Reading",
+  QUIZ: "Test",
+}
+
+/**
+ * The lesson "Continue" should open: the one last worked on if it isn't
+ * finished, otherwise the next unfinished lesson after it, otherwise the first
+ * unfinished lesson anywhere. Locked lessons can't be opened, so they're skipped.
+ */
+function upNextLessonId(enrollment: CourseEnrollment): string | null {
+  const open = enrollment.sections.flatMap((s) => s.lessons).filter((l) => !l.locked)
+  const lastIdx = open.findIndex((l) => l.id === enrollment.lastLessonId)
+  if (lastIdx >= 0 && !open[lastIdx].isCompleted) return open[lastIdx].id
+  const after = open.slice(lastIdx + 1).find((l) => !l.isCompleted)
+  return after?.id ?? open.find((l) => !l.isCompleted)?.id ?? null
+}
+
 
 function formatDuration(secs: number) {
   const m = Math.floor(secs / 60)
@@ -110,20 +129,28 @@ export default function LessonsPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-black tracking-tight">
-          {courseId && pagedCourses[0] ? pagedCourses[0].course.title : "My Lessons"}
-        </h1>
-        <p className="text-muted-foreground mt-1">Continue your BSL learning journey.</p>
-      </div>
+      {/* Page header. A single course is titled by its own card, so the page
+          only needs a way back to the course list. */}
+      {courseId ? (
+        <Link href="/student/courses" className="-mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary w-fit">
+          <ArrowLeft className="size-4" /> My courses
+        </Link>
+      ) : (
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">My Lessons</h1>
+          <p className="text-muted-foreground mt-1">Continue your BSL learning journey.</p>
+        </div>
+      )}
 
-      {pagedCourses.map((enrollment) => (
+      {pagedCourses.map((enrollment) => {
+        const upNextId = upNextLessonId(enrollment)
+        const started = enrollment.stats.completedLessons > 0
+        return (
         <Card key={enrollment.enrollmentId} className="shadow-sm overflow-hidden">
           <CardHeader className="bg-muted/30 border-b">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <Badge className={`text-xs ${levelColor[enrollment.course.level] ?? ""}`} variant="outline">
                     {enrollment.course.level}
                   </Badge>
@@ -131,19 +158,13 @@ export default function LessonsPage() {
                     by {enrollment.course.tutor.name}
                   </span>
                 </div>
-                <CardTitle className="text-lg">{enrollment.course.title}</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                  {enrollment.course.description}
-                </p>
+                <CardTitle className={courseId ? "text-xl font-black" : "text-lg"}>{enrollment.course.title}</CardTitle>
+                {enrollment.course.description && (
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                    {enrollment.course.description}
+                  </p>
+                )}
               </div>
-
-              {enrollment.lastLessonId && (
-                <Button asChild size="sm" className="shrink-0">
-                  <Link href={`/student/lessons/${enrollment.lastLessonId}`}>
-                    Continue <ChevronRight className="size-4 ml-1" />
-                  </Link>
-                </Button>
-              )}
             </div>
 
             {/* Course progress */}
@@ -161,6 +182,14 @@ export default function LessonsPage() {
                 </p>
               )}
             </div>
+
+            {upNextId && (
+              <Button asChild className="mt-4 w-full sm:w-auto sm:self-start">
+                <Link href={`/student/lessons/${upNextId}`}>
+                  {started ? "Continue" : "Start course"} <ArrowRight className="size-4 ml-1" />
+                </Link>
+              </Button>
+            )}
           </CardHeader>
 
           {/* Sections and lessons */}
@@ -169,10 +198,13 @@ export default function LessonsPage() {
               <div key={section.id}>
                 {si > 0 && <div className="border-t" />}
                 {/* Section header */}
-                <div className="px-6 py-3 bg-muted/10">
+                <div className="px-4 sm:px-6 py-3 bg-muted/10 flex items-center justify-between gap-3">
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Section {section.order}: {section.title}
                   </p>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {section.lessons.filter((l) => l.isCompleted).length}/{section.lessons.length}
+                  </span>
                 </div>
                 {/* Lesson rows */}
                 {section.lessons.map((lesson) => {
@@ -184,7 +216,7 @@ export default function LessonsPage() {
                       <div
                         key={lesson.id}
                         aria-disabled="true"
-                        className="flex items-center gap-4 px-6 py-3.5 border-t first:border-t-0 bg-muted/10 text-muted-foreground"
+                        className="flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3.5 border-t first:border-t-0 bg-muted/10 text-muted-foreground"
                       >
                         <div className="shrink-0">
                           <div className="size-5 rounded-full border-2 border-dashed border-muted-foreground/30" />
@@ -207,11 +239,14 @@ export default function LessonsPage() {
                       </div>
                     )
                   }
+                  const isUpNext = lesson.id === upNextId
                   return (
                     <Link
                       key={lesson.id}
                       href={`/student/lessons/${lesson.id}`}
-                      className="flex items-center gap-4 px-6 py-3.5 border-t first:border-t-0 hover:bg-muted/30 transition-colors group"
+                      className={`flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3.5 border-t first:border-t-0 transition-colors group ${
+                        isUpNext ? "bg-primary/5 hover:bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]" : "hover:bg-muted/30"
+                      }`}
                     >
                       {/* Completion indicator */}
                       <div className="shrink-0">
@@ -232,16 +267,23 @@ export default function LessonsPage() {
                         <p className={`text-sm font-medium leading-snug ${lesson.isCompleted ? "text-muted-foreground" : ""}`}>
                           {lesson.order}. {lesson.title}
                         </p>
-                        {lesson.type === "VIDEO" && lesson.duration && (
-                          <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
-                            <Clock className="size-3" />
-                            {formatDuration(lesson.duration)}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+                          {typeLabel[lesson.type]}
+                          {lesson.type === "VIDEO" && lesson.duration ? (
+                            <>
+                              <span aria-hidden>·</span>
+                              <Clock className="size-3" />
+                              {formatDuration(lesson.duration)}
+                            </>
+                          ) : null}
+                        </div>
                       </div>
 
                       {/* Badges */}
                       <div className="flex items-center gap-2 shrink-0">
+                        {isUpNext && (
+                          <Badge className="text-[10px] h-5 px-1.5">Up next</Badge>
+                        )}
                         {lesson.isFree && (
                           <Badge variant="outline" className="text-[10px] h-5 px-1.5">Free</Badge>
                         )}
@@ -254,7 +296,8 @@ export default function LessonsPage() {
             ))}
           </CardContent>
         </Card>
-      ))}
+        )
+      })}
 
       {totalPages > 1 && (
         <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />

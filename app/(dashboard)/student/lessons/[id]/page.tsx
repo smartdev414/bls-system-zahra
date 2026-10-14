@@ -385,13 +385,42 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                   return (
                     <div key={asset.id} className="flex flex-col gap-2">
                       <p className="text-sm font-semibold">{asset.title}</p>
-                      <div className="rounded-xl border overflow-hidden" style={{ height: "700px" }}>
+                      {/* Phone browsers don't render a PDF inside an iframe (Android
+                          shows a blank box, iOS only the first page), so on small
+                          screens the file opens in the browser's own viewer instead. */}
+                      <div className="hidden md:block rounded-xl border overflow-hidden" style={{ height: "700px" }}>
                         <iframe
                           src={asset.fileUrl}
                           className="w-full h-full"
                           title={asset.title}
                         />
                       </div>
+                      <a
+                        href={asset.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={asset.fileName}
+                        className="md:hidden flex items-center gap-3 rounded-xl border p-4 hover:border-primary hover:bg-primary/5 transition-colors"
+                      >
+                        <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+                          <FileText className="size-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate">{asset.fileName || asset.title}</p>
+                          <p className="text-xs text-muted-foreground">Tap to open or download</p>
+                        </div>
+                        <Download className="size-4 text-primary shrink-0" />
+                      </a>
+                      <a
+                        href={asset.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={asset.fileName}
+                        className="hidden md:inline-flex self-start items-center gap-1.5 text-xs text-primary underline underline-offset-2"
+                      >
+                        <Download className="size-3.5" />
+                        Open / download PDF
+                      </a>
                     </div>
                   )
                 }
