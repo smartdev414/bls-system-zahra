@@ -75,10 +75,12 @@ const template = {
 const endpoint = {
   name: NAME,
   computeType: "GPU",
-  // 24 GB cards, fastest first. The 4090 costs more per hour but gets through
-  // a video about that much faster, so the cost per video is about the same
-  // and the tutor waits less. The others are fallbacks when it's taken.
-  gpuTypeIds: ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A5000"],
+  // Named cards only. The generic 24 GB choices (3090, A5000) share a pool
+  // with quarter-slices of Blackwell cards ("RTX PRO 6000 … MIG 1g.24gb"),
+  // and RunPod hands those out too: on a 30 s 1080p clip a slice took 167 s,
+  // a 4090 67 s and a 5090 55 s (2026-10-14). The 4090 is the cheapest per
+  // video; the 5090 is the fallback when no 4090 is free.
+  gpuTypeIds: ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 5090"],
   gpuCount: 1,
   // Cost controls: nothing runs (or bills) while idle, never more than one
   // worker, and a stuck job is stopped rather than left running.
