@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -38,6 +39,9 @@ type Sign = {
   description: string
   handshape: string
   usage: string
+  showLevel: boolean
+  showHandshape: boolean
+  showUsage: boolean
   videoUrl: string | null
   imageUrl: string | null
 }
@@ -47,6 +51,7 @@ type SignsData = { signs: Sign[]; total: number; totalPages: number; page: numbe
 const blank = (): Omit<Sign, "id"> => ({
   word: "", category: "", level: "L1", description: "",
   handshape: "", usage: "", videoUrl: null, imageUrl: null,
+  showLevel: true, showHandshape: true, showUsage: true,
 })
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -463,7 +468,7 @@ function SignDialog({
   onSubmit: () => void
   loading: boolean
 }) {
-  const set = (key: keyof Omit<Sign, "id">, value: string | null) =>
+  const set = (key: keyof Omit<Sign, "id">, value: string | boolean | null) =>
     setForm({ ...form, [key]: value })
 
   const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
@@ -496,7 +501,11 @@ function SignDialog({
               <Input value={form.category} onChange={(e) => set("category", e.target.value)} placeholder="e.g. Greetings" />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Level *</Label>
+              <FieldLabel
+                label="Level *"
+                shown={form.showLevel}
+                onShownChange={(v) => set("showLevel", v)}
+              />
               <Select value={form.level} onValueChange={(v) => set("level", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -507,7 +516,11 @@ function SignDialog({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Handshape</Label>
+              <FieldLabel
+                label="Handshape"
+                shown={form.showHandshape}
+                onShownChange={(v) => set("showHandshape", v)}
+              />
               <Input value={form.handshape} onChange={(e) => set("handshape", e.target.value)} placeholder="e.g. Open hand" />
             </div>
           </div>
@@ -523,7 +536,11 @@ function SignDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Usage</Label>
+            <FieldLabel
+              label="Usage"
+              shown={form.showUsage}
+              onShownChange={(v) => set("showUsage", v)}
+            />
             <Input value={form.usage} onChange={(e) => set("usage", e.target.value)} placeholder="e.g. Used as a general greeting" />
           </div>
 
@@ -597,5 +614,28 @@ function SignDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// A field label with a "Students" tick box: unticked keeps the detail off the
+// student dictionary while admins and tutors still see it.
+function FieldLabel({
+  label, shown, onShownChange,
+}: {
+  label: string
+  shown: boolean
+  onShownChange: (shown: boolean) => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+      <Label>{label}</Label>
+      <label
+        className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none"
+        title={shown ? "Students can see this" : "Hidden from students"}
+      >
+        <Checkbox checked={shown} onCheckedChange={(v) => onShownChange(v === true)} />
+        Show to students
+      </label>
+    </div>
   )
 }

@@ -277,6 +277,10 @@ model Sign {
   imageUrl    String?
   handshape   String
   usage       String
+  // Untick to keep a detail off the student dictionary (admins and tutors still see it).
+  showLevel     Boolean   @default(true)
+  showHandshape Boolean   @default(true)
+  showUsage     Boolean   @default(true)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 

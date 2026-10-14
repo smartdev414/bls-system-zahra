@@ -36,6 +36,7 @@ type Sign = {
   imageUrl: string | null
   handshape: string
   usage: string
+  showLevel?: boolean
 }
 
 type DictionaryData = {
@@ -197,12 +198,14 @@ export default function DictionaryPage() {
                 <p className="font-bold text-sm leading-snug">{sign.word}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{sign.category}</p>
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] h-4 px-1.5 ${levelColor[sign.level]}`}
-                  >
-                    {sign.level}
-                  </Badge>
+                  {sign.showLevel !== false && (
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] h-4 px-1.5 ${levelColor[sign.level]}`}
+                    >
+                      {sign.level}
+                    </Badge>
+                  )}
                   {sign.videoUrl && (
                     <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-1 bg-violet-50 text-violet-700 border-violet-200">
                       <PlayCircle className="size-2.5" /> Video
@@ -288,9 +291,11 @@ export default function DictionaryPage() {
               {/* Metadata */}
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline">{selectedSign.category}</Badge>
-                <Badge variant="outline" className={levelColor[selectedSign.level]}>
-                  {selectedSign.level}
-                </Badge>
+                {selectedSign.showLevel !== false && (
+                  <Badge variant="outline" className={levelColor[selectedSign.level]}>
+                    {selectedSign.level}
+                  </Badge>
+                )}
               </div>
 
               {/* Description */}

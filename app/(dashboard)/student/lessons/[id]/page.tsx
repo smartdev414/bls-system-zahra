@@ -437,15 +437,6 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                   </div>
                 )
               })}
-
-              {lesson.description && (
-                <div className="rounded-xl border bg-muted/20 p-6">
-                  <div
-                    className="prose prose-sm max-w-none text-foreground"
-                    dangerouslySetInnerHTML={{ __html: lesson.description }}
-                  />
-                </div>
-              )}
             </div>
           ) : lesson.type === "QUIZ" ? (
             <div className="mx-6 mt-6 rounded-xl border bg-background p-6">

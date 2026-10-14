@@ -21,6 +21,8 @@ async function handleGET(req: NextRequest) {
     const limit = 24
     const skip = (page - 1) * limit
 
+    const isStudent = session.role === "STUDENT"
+
     const where = {
       ...(q ? {
         OR: [
@@ -30,7 +32,8 @@ async function handleGET(req: NextRequest) {
         ],
       } : {}),
       ...(category ? { category: { equals: category, mode: "insensitive" as const } } : {}),
-      ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel } : {}),
+      // A sign whose level is hidden from students doesn't turn up under a level filter either.
+      ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel, ...(isStudent && { showLevel: true }) } : {}),
     }
 
     const [total, signs, allCategories] = await Promise.all([
@@ -50,12 +53,20 @@ async function handleGET(req: NextRequest) {
 
     // Students don't get a sign's video while its background is still being
     // replaced (lib/background-clean.ts); the sign itself still shows.
-    const hiddenUrls = session.role === "STUDENT"
+    const hiddenUrls = isStudent
       ? await urlsHiddenFromStudents(signs.map((sign) => sign.videoUrl))
       : new Set<string>()
 
+    // Details the admin unticked are blanked for students. The level stays (it is
+    // required), so showLevel says whether this viewer's page should display it.
     return NextResponse.json({
-      signs: signs.map((sign) => (sign.videoUrl && hiddenUrls.has(sign.videoUrl) ? { ...sign, videoUrl: null } : sign)),
+      signs: signs.map((sign) => ({
+        ...sign,
+        showLevel: !isStudent || sign.showLevel,
+        ...(sign.videoUrl && hiddenUrls.has(sign.videoUrl) && { videoUrl: null }),
+        ...(isStudent && !sign.showHandshape && { handshape: "" }),
+        ...(isStudent && !sign.showUsage && { usage: "" }),
+      })),
       total,
       page,
       totalPages: Math.ceil(total / limit),

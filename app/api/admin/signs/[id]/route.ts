@@ -20,6 +20,9 @@ async function handlePATCH(
       description?: string
       handshape?: string
       usage?: string
+      showLevel?: boolean
+      showHandshape?: boolean
+      showUsage?: boolean
       videoUrl?: string | null
       imageUrl?: string | null
     }
@@ -33,6 +36,9 @@ async function handlePATCH(
         ...(body.description !== undefined && { description: body.description.trim() }),
         ...(body.handshape !== undefined && { handshape: body.handshape.trim() }),
         ...(body.usage !== undefined && { usage: body.usage.trim() }),
+        ...(typeof body.showLevel === "boolean" && { showLevel: body.showLevel }),
+        ...(typeof body.showHandshape === "boolean" && { showHandshape: body.showHandshape }),
+        ...(typeof body.showUsage === "boolean" && { showUsage: body.showUsage }),
         ...(body.videoUrl !== undefined && { videoUrl: body.videoUrl?.trim() || null }),
         ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl?.trim() || null }),
       },

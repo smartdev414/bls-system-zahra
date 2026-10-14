@@ -68,6 +68,9 @@ async function handlePOST(req: NextRequest) {
       description?: string
       handshape?: string
       usage?: string
+      showLevel?: boolean
+      showHandshape?: boolean
+      showUsage?: boolean
       videoUrl?: string | null
       imageUrl?: string | null
     }
@@ -84,6 +87,9 @@ async function handlePOST(req: NextRequest) {
         description: body.description?.trim() ?? "",
         handshape: body.handshape?.trim() ?? "",
         usage: body.usage?.trim() ?? "",
+        showLevel: body.showLevel ?? true,
+        showHandshape: body.showHandshape ?? true,
+        showUsage: body.showUsage ?? true,
         videoUrl: body.videoUrl?.trim() || null,
         imageUrl: body.imageUrl?.trim() || null,
       },
