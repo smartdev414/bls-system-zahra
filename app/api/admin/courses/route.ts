@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { isCourseVisibility, type CourseVisibility } from "@/lib/course-visibility"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -46,6 +47,7 @@ async function handleGET(req: NextRequest) {
         id: c.id,
         title: c.title,
         status: c.status,
+        visibility: c.visibility,
         level: c.level,
         tutor: c.tutor,
         teachers: c.teachers.map((t) => t.tutor),
@@ -74,14 +76,18 @@ async function handlePATCH(req: NextRequest) {
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (!can(session.role, "courses.edit")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
-    const { id, status } = await req.json() as {
+    const { id, status, visibility } = await req.json() as {
       id: string
-      status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+      status?: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+      visibility?: CourseVisibility
+    }
+    if (visibility !== undefined && !isCourseVisibility(visibility)) {
+      return NextResponse.json({ message: "visibility must be PRIVATE or PUBLIC" }, { status: 400 })
     }
 
     const course = await prisma.course.update({
       where: { id },
-      data: { status },
+      data: { ...(status && { status }), ...(visibility && { visibility }) },
     })
 
     return NextResponse.json({ course })

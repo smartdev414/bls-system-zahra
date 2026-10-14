@@ -6,7 +6,7 @@ import Link from "next/link"
 import {
   ChevronLeft, Plus, Layers,
   Loader2, ChevronDown, ChevronUp,
-  Globe, Lock, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap, Copy, CalendarClock,
+  Globe, Lock, CheckCircle2, FilePen, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap, Copy, CalendarClock,
   ArrowUp, ArrowDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,8 @@ import { ReleaseBadge } from "@/components/courses/ReleaseField"
 import { lessonKind } from "@/lib/lesson-kind"
 import { ReleaseScheduleDialog } from "@/components/courses/ReleaseScheduleDialog"
 import { SectionLock } from "@/components/courses/SectionLock"
+import { CourseVisibilityButton } from "@/components/admin/course-visibility-button"
+import type { CourseVisibility } from "@/lib/course-visibility"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -71,6 +73,7 @@ type CourseDetail = {
   title: string
   description: string
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+  visibility: CourseVisibility
   level: CourseLevel
   thumbnailUrl: string | null
   sections: SectionItem[]
@@ -260,6 +263,17 @@ const { execute: updateCourseStatus, loading: updating } = usePutCallback<
     }
   )
 
+  const { execute: updateVisibility, loading: changingVisibility } = usePutCallback<
+    { course: CourseDetail },
+    { visibility: CourseVisibility }
+  >(`/api/tutor/courses/${id}`, {
+    successMessage: (d) => d.course.visibility === "PUBLIC"
+      ? "Course is public — any student can find it"
+      : "Course is private — only enrolled students see it",
+    errorMessage: "Could not update course",
+    onSuccess: () => refetch(),
+  })
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-100">
@@ -315,8 +329,13 @@ return (
                   ? "bg-emerald-100 text-emerald-700 border-emerald-200"
                   : "bg-amber-100 text-amber-700 border-amber-200"}
               >
-                {isPublished ? <Globe className="size-3 mr-1" /> : <Lock className="size-3 mr-1" />}
+                {isPublished ? <CheckCircle2 className="size-3 mr-1" /> : <FilePen className="size-3 mr-1" />}
                 {course.status.charAt(0) + course.status.slice(1).toLowerCase()}
+              </Badge>
+              <Badge variant="outline" className="text-muted-foreground">
+                {course.visibility === "PUBLIC"
+                  ? <><Globe className="size-3 mr-1" /> Public</>
+                  : <><Lock className="size-3 mr-1" /> Private</>}
               </Badge>
             </div>
             <h1 className="text-xl sm:text-2xl font-black break-words">{course.title}</h1>
@@ -349,11 +368,16 @@ return (
             {updating ? (
               <Loader2 className="size-4 animate-spin" />
             ) : isPublished ? (
-              <><Lock className="size-4 mr-1.5" /> Unpublish</>
+              <><FilePen className="size-4 mr-1.5" /> Unpublish</>
             ) : (
-              <><Globe className="size-4 mr-1.5" /> Publish</>
+              <><CheckCircle2 className="size-4 mr-1.5" /> Publish</>
             )}
           </Button>
+          <CourseVisibilityButton
+            visibility={course.visibility}
+            disabled={changingVisibility}
+            onChange={(visibility) => updateVisibility({ visibility })}
+          />
         </div>}
         </div>
       </div>

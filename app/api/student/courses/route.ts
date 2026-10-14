@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { studentVisibleCourses } from "@/lib/course-visibility"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -16,14 +17,18 @@ async function handleGET(req: NextRequest) {
     const limit = 12
     const skip = (page - 1) * limit
 
+    // Public courses, and private ones the student is on — never other classes
+    const visible = studentVisibleCourses(session.sub)
     const where = {
-      status: "PUBLISHED" as const,
-      ...(q ? {
-        OR: [
-          { title: { contains: q, mode: "insensitive" as const } },
-          { tutor: { name: { contains: q, mode: "insensitive" as const } } },
-        ],
-      } : {}),
+      AND: [
+        visible,
+        ...(q ? [{
+          OR: [
+            { title: { contains: q, mode: "insensitive" as const } },
+            { tutor: { name: { contains: q, mode: "insensitive" as const } } },
+          ],
+        }] : []),
+      ],
       ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel } : {}),
       ...(tutorId ? { tutorId } : {}),
     }
@@ -69,7 +74,7 @@ async function handleGET(req: NextRequest) {
       // Fetch inviting tutor's courses (recommended) — only when applicable
       invitingTutorId
         ? prisma.course.findMany({
-            where: { tutorId: invitingTutorId, status: "PUBLISHED" },
+            where: { AND: [visible, { tutorId: invitingTutorId }] },
             orderBy: { createdAt: "desc" },
             include: courseInclude,
           })

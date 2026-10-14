@@ -173,9 +173,11 @@ export default function StudentCoursesPage() {
               <BookOpen className="size-10 text-muted-foreground" />
             </div>
             <div>
-              <p className="font-semibold text-lg">No courses found</p>
+              <p className="font-semibold text-lg">{filtering ? "No courses found" : "No courses yet"}</p>
               <p className="text-sm text-muted-foreground mt-1">
-                {filtering ? "Try adjusting your filters." : "No published courses yet."}
+                {filtering
+                  ? "Try adjusting your filters."
+                  : "Your class will appear here as soon as your teacher adds you to it."}
               </p>
             </div>
           </CardContent>

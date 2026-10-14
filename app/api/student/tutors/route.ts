@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { studentVisibleCourses } from "@/lib/course-visibility"
 
 async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (session.role !== "STUDENT") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    // Only count courses this student can see, so private classes stay hidden
+    const visible = studentVisibleCourses(session.sub)
 
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
 
@@ -30,7 +33,7 @@ async function handleGET(req: NextRequest) {
         createdAt: true,
         tutorProfile: { select: { bio: true, qualifications: true, isVerified: true } },
         courses: {
-          where: { status: "PUBLISHED" },
+          where: visible,
           select: {
             id: true,
             _count: { select: { enrollments: true } },
@@ -39,7 +42,7 @@ async function handleGET(req: NextRequest) {
         },
         _count: {
           select: {
-            courses: { where: { status: "PUBLISHED" } },
+            courses: { where: visible },
             hostedSessions: true,
           },
         },

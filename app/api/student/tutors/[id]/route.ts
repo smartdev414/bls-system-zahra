@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { studentVisibleCourses } from "@/lib/course-visibility"
 
 async function handleGET(
   _req: Request,
@@ -30,7 +31,12 @@ async function handleGET(
     // Published courses with stats
     const courses = await prisma.course.findMany({
       // The courses this tutor leads, and the ones the school has put them on.
-      where: { status: "PUBLISHED", OR: [{ tutorId: id }, { teachers: { some: { tutorId: id } } }] },
+      where: {
+        AND: [
+          studentVisibleCourses(session.sub),
+          { OR: [{ tutorId: id }, { teachers: { some: { tutorId: id } } }] },
+        ],
+      },
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { id: true, name: true } },

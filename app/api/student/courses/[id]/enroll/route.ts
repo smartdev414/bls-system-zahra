@@ -15,8 +15,10 @@ async function handlePOST(
 
     const { id: courseId } = await params
 
+    // Only public courses take self-enrolment; a private course is a class
+    // that staff or its tutor put students on.
     const course = await prisma.course.findFirst({
-      where: { id: courseId, status: "PUBLISHED" },
+      where: { id: courseId, status: "PUBLISHED", visibility: "PUBLIC" },
       include: { tutor: { select: { id: true } } },
     })
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })

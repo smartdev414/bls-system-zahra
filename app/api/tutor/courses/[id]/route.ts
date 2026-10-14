@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { isCourseVisibility, type CourseVisibility } from "@/lib/course-visibility"
 import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
 
 async function handleGET(
@@ -71,8 +72,13 @@ async function handlePUT(
       description?: string
       level?: import("@/app/generated/prisma/client").CourseLevel
       status?: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+      visibility?: CourseVisibility
       categoryId?: string | null
       thumbnailUrl?: string | null
+    }
+
+    if (body.visibility !== undefined && !isCourseVisibility(body.visibility)) {
+      return NextResponse.json({ message: "visibility must be PRIVATE or PUBLIC" }, { status: 400 })
     }
 
     // Verify ownership
@@ -86,6 +92,7 @@ async function handlePUT(
         ...(body.description && { description: body.description.trim() }),
         ...(body.level && { level: body.level }),
         ...(body.status && { status: body.status }),
+        ...(body.visibility && { visibility: body.visibility }),
         ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
         ...(body.thumbnailUrl !== undefined && { thumbnailUrl: body.thumbnailUrl }),
       },

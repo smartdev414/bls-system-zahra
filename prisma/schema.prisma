@@ -20,6 +20,14 @@ enum CourseStatus {
   ARCHIVED
 }
 
+/// Who can find a published course. PRIVATE: only students staff or a tutor
+/// put on it (directly or through a group). PUBLIC: any approved student can
+/// find it in the catalogue and enrol themselves.
+enum CourseVisibility {
+  PRIVATE
+  PUBLIC
+}
+
 enum CourseLevel {
   L1
   L2
@@ -322,6 +330,7 @@ model Course {
   description  String
   thumbnailUrl String?
   status       CourseStatus @default(DRAFT)
+  visibility   CourseVisibility @default(PRIVATE)
   level        CourseLevel  @default(L1)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

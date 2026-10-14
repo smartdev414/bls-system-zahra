@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import {
   BookOpen, Users, Layers, FileText,
-  Loader2, ChevronRight, Globe, Lock, Archive,
+  Loader2, ChevronRight, CheckCircle2, FilePen, Archive,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -35,7 +35,7 @@ type CoursesData = { courses: CourseItem[] }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const statusIcon = { PUBLISHED: Globe, DRAFT: Lock, ARCHIVED: Archive }
+const statusIcon = { PUBLISHED: CheckCircle2, DRAFT: FilePen, ARCHIVED: Archive }
 const statusColor: Record<string, string> = {
   PUBLISHED: "bg-emerald-100 text-emerald-700 border-emerald-200",
   DRAFT: "bg-amber-100 text-amber-700 border-amber-200",

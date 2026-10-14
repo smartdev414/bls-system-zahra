@@ -4,10 +4,12 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
-  BookOpen, Search, Loader2, Globe, Lock, Archive,
+  BookOpen, Search, Loader2, Archive, CheckCircle2, FilePen,
   Star, Users, Filter, Plus, Pencil, GraduationCap, Copy, MoreHorizontal,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { CourseVisibilityButton } from "@/components/admin/course-visibility-button"
+import type { CourseVisibility } from "@/lib/course-visibility"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -36,6 +38,7 @@ type CourseItem = {
   id: string
   title: string
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+  visibility: CourseVisibility
   level: CourseLevel
   tutor: { id: string; name: string }
   // Teachers the school has put on the course, besides its lead.
@@ -51,8 +54,8 @@ type CourseItem = {
 type CoursesData = { courses: CourseItem[]; total: number; page: number; totalPages: number }
 
 const statusConfig = {
-  PUBLISHED: { label: "Published", icon: Globe, className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  DRAFT:     { label: "Draft",     icon: Lock,  className: "bg-amber-100 text-amber-700 border-amber-200" },
+  PUBLISHED: { label: "Published", icon: CheckCircle2, className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  DRAFT:     { label: "Draft",     icon: FilePen,  className: "bg-amber-100 text-amber-700 border-amber-200" },
   ARCHIVED:  { label: "Archived",  icon: Archive, className: "bg-muted text-muted-foreground" },
 }
 
@@ -205,6 +208,17 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, builderBase }: {
     onSuccess: () => onMutated(),
   })
 
+  const { execute: updateVisibility, loading: changingVisibility } = usePatchCallback<
+    { course: CourseItem },
+    { id: string; visibility: CourseVisibility }
+  >("/api/admin/courses", {
+    successMessage: (d) => d.course.visibility === "PUBLIC"
+      ? "Course is public — any student can find it"
+      : "Course is private — only enrolled students see it",
+    errorMessage: "Could not update course",
+    onSuccess: () => onMutated(),
+  })
+
   const nextStatus = course.status === "PUBLISHED" ? "DRAFT"
     : course.status === "DRAFT" ? "PUBLISHED"
     : "PUBLISHED"
@@ -266,9 +280,14 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, builderBase }: {
               onClick={() => updateStatus({ id: course.id, status: nextStatus })}
             >
               {nextStatus === "PUBLISHED"
-                ? <><Globe className="size-3.5 mr-1.5" /> Publish</>
-                : <><Lock className="size-3.5 mr-1.5" /> Unpublish</>}
+                ? <><CheckCircle2 className="size-3.5 mr-1.5" /> Publish</>
+                : <><FilePen className="size-3.5 mr-1.5" /> Unpublish</>}
             </Button>
+            <CourseVisibilityButton
+              visibility={course.visibility}
+              disabled={changingVisibility}
+              onChange={(visibility) => updateVisibility({ id: course.id, visibility })}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="size-8" aria-label={`More actions for ${course.title}`}>

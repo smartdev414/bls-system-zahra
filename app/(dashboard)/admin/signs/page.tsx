@@ -798,7 +798,9 @@ function SignDialog({
 }
 
 // A field label with a "Students" tick box: unticked keeps the detail off the
-// student dictionary while admins and tutors still see it.
+// student dictionary while admins and tutors still see it. The tick box sits
+// right beside its own label and names the field, so in two-column rows it
+// can't be mistaken for the neighbouring field's.
 function FieldLabel({
   label, shown, onShownChange,
 }: {
@@ -806,15 +808,16 @@ function FieldLabel({
   shown: boolean
   onShownChange: (shown: boolean) => void
 }) {
+  const field = label.replace(/\s*\*$/, "").toLowerCase()
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <Label>{label}</Label>
       <label
         className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none"
-        title={shown ? "Students can see this" : "Hidden from students"}
+        title={shown ? `Students can see the ${field}` : `The ${field} is hidden from students`}
       >
         <Checkbox checked={shown} onCheckedChange={(v) => onShownChange(v === true)} />
-        Show to students
+        Show {field} to students
       </label>
     </div>
   )
