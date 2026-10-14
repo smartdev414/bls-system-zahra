@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import {
   Library, Plus, Pencil, Trash2, Loader2, ListPlus, Camera, Upload,
-  Search, Filter, Video, Check, X, Database, Image as ImageIcon, PlayCircle,
+  Search, Filter, Video, Check, X, Database, Image as ImageIcon, PlayCircle, Tags,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -63,6 +63,7 @@ export default function AdminSignsPage() {
   const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [form, setForm] = useState(blank())
 
   const debouncedQuery = useDebounce(query)
@@ -123,6 +124,9 @@ export default function AdminSignsPage() {
               {seeding ? "Seeding..." : "Seed defaults"}
             </Button>
           )}
+          <Button variant="outline" onClick={() => setCategoriesOpen(true)}>
+            <Tags className="size-4 mr-1.5" /> Categories
+          </Button>
           <Button variant="outline" asChild>
             <Link href="/admin/signs/record">
               <Video className="size-4 mr-1.5" /> Record videos
@@ -218,6 +222,180 @@ export default function AdminSignsPage() {
         categories={data?.categories ?? []}
         onAdded={refetch}
       />
+
+      {/* Mounted only while open so the counts are fresh each time. */}
+      {categoriesOpen && (
+        <CategoriesDialog
+          onClose={() => setCategoriesOpen(false)}
+          onChanged={(from) => {
+            // The filtered category may no longer exist.
+            if (categoryFilter === from) handleCategoryChange("all")
+            else refetch()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Categories dialog ────────────────────────────────────────────────────────
+
+type CategoryCount = { name: string; count: number }
+
+function CategoriesDialog({
+  onClose, onChanged,
+}: {
+  onClose: () => void
+  onChanged: (from: string) => void
+}) {
+  const { data, loading, refetch } = useFetch<{ categories: CategoryCount[] }>(
+    "/api/admin/signs/categories",
+    { errorMessage: "Could not load categories" }
+  )
+  const categories = data?.categories ?? []
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Categories</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Rename a category, or give it the name of another one to merge them.
+          Deleting a category moves its signs into another one.
+        </p>
+        {loading && !data ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="size-6 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="flex flex-col divide-y border rounded-lg">
+            {categories.map((c) => (
+              <CategoryRow
+                key={c.name}
+                category={c}
+                others={categories.filter((o) => o.name !== c.name).map((o) => o.name)}
+                onChanged={() => { refetch(); onChanged(c.name) }}
+              />
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CategoryRow({
+  category, others, onChanged,
+}: {
+  category: CategoryCount
+  others: string[]
+  onChanged: () => void
+}) {
+  const [mode, setMode] = useState<"view" | "rename" | "delete">("view")
+  const [name, setName] = useState(category.name)
+  const [target, setTarget] = useState("")
+
+  const { execute: move, loading } = usePatchCallback<
+    { updated: number; to: string; merged: boolean },
+    { from: string; to: string }
+  >("/api/admin/signs/categories", {
+    successMessage: (d) =>
+      mode === "delete"
+        ? `"${category.name}" deleted · ${d.updated} sign${d.updated !== 1 ? "s" : ""} moved to "${d.to}"`
+        : d.merged
+          ? `Merged into "${d.to}"`
+          : `Renamed to "${d.to}"`,
+    errorMessage: "Could not update the category",
+    onSuccess: () => { setMode("view"); onChanged() },
+  })
+
+  const signs = `${category.count} sign${category.count !== 1 ? "s" : ""}`
+
+  if (mode === "rename") {
+    const trimmed = name.trim()
+    const mergeInto = others.find((o) => o.toLowerCase() === trimmed.toLowerCase())
+    const submit = () => { if (trimmed && trimmed !== category.name) move({ from: category.name, to: trimmed }) }
+    return (
+      <div className="flex flex-col gap-1.5 px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="h-8 text-sm flex-1"
+            autoFocus
+            list="sign-category-names"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit()
+              if (e.key === "Escape") { setMode("view"); setName(category.name) }
+            }}
+          />
+          <datalist id="sign-category-names">
+            {others.map((o) => <option key={o} value={o} />)}
+          </datalist>
+          <Button size="icon" className="size-8" disabled={loading || !trimmed || trimmed === category.name} onClick={submit}>
+            {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+          </Button>
+          <Button size="icon" variant="ghost" className="size-8" onClick={() => { setMode("view"); setName(category.name) }}>
+            <X className="size-3.5" />
+          </Button>
+        </div>
+        {mergeInto && (
+          <p className="text-xs text-muted-foreground">
+            {signs} will be merged into <span className="font-medium text-foreground">{mergeInto}</span>.
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  if (mode === "delete") {
+    return (
+      <div className="flex flex-col gap-2 px-3 py-2.5 bg-destructive/5">
+        <p className="text-sm">
+          Delete <span className="font-medium">{category.name}</span> and move its {signs} to:
+        </p>
+        <div className="flex items-center gap-2">
+          <Select value={target} onValueChange={setTarget}>
+            <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Choose a category" /></SelectTrigger>
+            <SelectContent>
+              {others.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-8"
+            disabled={!target || loading}
+            onClick={() => move({ from: category.name, to: target })}
+          >
+            {loading ? <Loader2 className="size-3.5 animate-spin" /> : "Delete"}
+          </Button>
+          <Button size="icon" variant="ghost" className="size-8" onClick={() => { setMode("view"); setTarget("") }}>
+            <X className="size-3.5" />
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2">
+      <span className="text-sm font-medium flex-1 min-w-0 truncate">{category.name}</span>
+      <span className="text-xs text-muted-foreground shrink-0">{signs}</span>
+      <Button size="icon" variant="ghost" className="size-8" title="Rename or merge" onClick={() => setMode("rename")}>
+        <Pencil className="size-3.5" />
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="size-8 text-destructive hover:text-destructive"
+        title="Delete"
+        disabled={!others.length}
+        onClick={() => setMode("delete")}
+      >
+        <Trash2 className="size-3.5" />
+      </Button>
     </div>
   )
 }

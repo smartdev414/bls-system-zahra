@@ -95,7 +95,7 @@ function releaseSummary(sections: SectionItem[]): string {
     .flatMap((s) => s.lessons.flatMap((l) => (l.releaseAt ? [{ title: s.title, at: new Date(l.releaseAt) }] : [])))
     .filter((x) => x.at > new Date())
     .sort((a, b) => a.at.getTime() - b.at.getTime())
-  if (upcoming.length === 0) return "Everything is open to students. Use the padlock on a section to lock it until a date."
+  if (upcoming.length === 0) return "Everything is open to students. Use Release Schedule, or the padlock on a section, to set when sections open."
   const next = upcoming[0]
   return `Some sections are locked — next to open: ${next.title}, ${next.at.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}.`
 }
@@ -454,6 +454,7 @@ return (
                   })
                 }
                 onMutated={refetch}
+                onOpenSchedule={() => setReleaseOpen(true)}
               />
             ))}
           </div>
@@ -595,6 +596,7 @@ function SectionBlock({
   onAddLesson,
   onReorder,
   onMutated,
+  onOpenSchedule,
 }: {
   courseId: string
   section: SectionItem
@@ -605,6 +607,7 @@ function SectionBlock({
   /** The section's lessons in their new order, shown before the save lands. */
   onReorder: (lessons: LessonItem[]) => void
   onMutated: () => void
+  onOpenSchedule: () => void
 }) {
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(section.title)
@@ -697,6 +700,7 @@ function SectionBlock({
                 releaseAt={sharedRelease(section)}
                 hasLessons={section.lessons.length > 0}
                 onSaved={onMutated}
+                onOpenSchedule={onOpenSchedule}
               />
               <Button
                 variant="ghost" size="icon" className="size-7"
