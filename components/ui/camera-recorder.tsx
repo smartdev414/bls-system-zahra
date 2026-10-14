@@ -86,9 +86,11 @@ type Props = {
   disabled?: boolean
   /** Film at 1080p instead of 720p. For short clips only: the file is twice the size. */
   highDefinition?: boolean
+  /** Film without sound — the microphone is never opened. For signs. */
+  silent?: boolean
 }
 
-export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highDefinition = false }: Props) {
+export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highDefinition = false, silent = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -169,7 +171,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
           height: { ideal: highDefinition ? 1080 : 720 },
           frameRate: { ideal: 30 },
         },
-        audio: true,
+        audio: !silent,
       })
       .then((stream) => {
         if (cancelled) return stream.getTracks().forEach((t) => t.stop())
@@ -181,7 +183,9 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
         setReady(true)
       })
       .catch(() => {
-        if (!cancelled) setCameraError("Could not access camera. Please allow camera and microphone permissions.")
+        if (!cancelled) setCameraError(silent
+          ? "Could not access camera. Please allow camera permission."
+          : "Could not access camera. Please allow camera and microphone permissions.")
       })
 
     return () => {
@@ -190,7 +194,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
       streamRef.current = null
       setReady(false)
     }
-  }, [uploaded, reviewing, highDefinition])
+  }, [uploaded, reviewing, highDefinition, silent])
 
   useEffect(() => () => {
     if (takeUrlRef.current) URL.revokeObjectURL(takeUrlRef.current)

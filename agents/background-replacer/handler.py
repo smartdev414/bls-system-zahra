@@ -16,9 +16,11 @@ Deployed by scripts/deploy-background-replacer.mjs.
 """
 
 import os
+import queue
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from io import BytesIO
 
@@ -182,11 +184,22 @@ def process(source, output, color, logo_url, on_progress):
     background = torch.tensor(color, device=DEVICE).float().view(1, 3, 1, 1)
     logo = build_logo(logo_url, width, height) if logo_url else None
 
-    def flush(batch):
-        frames = torch.from_numpy(np.stack(batch)).to(DEVICE)
+    timings = {"matte": 0.0, "edges": 0.0}
+
+    def lap(name, started):
+        if DEVICE == "cuda":
+            torch.cuda.synchronize()
+        timings[name] += time.time() - started
+        return time.time()
+
+    def composite(frames):
+        t = time.time()
+        frames = torch.from_numpy(frames).to(DEVICE)
         alpha = matte(frames)
+        t = lap("matte", t)
         image = frames.permute(0, 3, 1, 2).float()
         out = person_colour(image, alpha) * alpha + background * (1 - alpha)
+        lap("edges", t)
         if logo:
             rgb, logo_alpha = logo
             h, w = rgb.shape[2:]
@@ -195,31 +208,95 @@ def process(source, output, color, logo_url, on_progress):
             y = min(height - h, round(height * WATERMARK_CENTER_Y - h / 2))
             region = out[:, :, y:y + h, x:x + w]
             out[:, :, y:y + h, x:x + w] = rgb * logo_alpha + region * (1 - logo_alpha)
-        encoder.stdin.write(out.round().clamp(0, 255).byte().permute(0, 2, 3, 1).cpu().numpy().tobytes())
+        return out.round().clamp(0, 255).byte().permute(0, 2, 3, 1).cpu().numpy().tobytes()
+
+    # Reading frames, running the model and writing the video each wait on
+    # something different (decoder, GPU, encoder), so they run side by side:
+    # one thread reads batches, this one runs the model, one thread writes.
+    # The small queues keep memory bounded.
+    batches = queue.Queue(maxsize=3)
+    results = queue.Queue(maxsize=3)
+    stop = threading.Event()
+    errors = []
+
+    def put(q, item):
+        while not stop.is_set():
+            try:
+                q.put(item, timeout=0.5)
+                return True
+            except queue.Full:
+                pass
+        return False
+
+    def read():
+        try:
+            batch = []
+            while not stop.is_set():
+                buf = decoder.stdout.read(frame_bytes)
+                if len(buf) < frame_bytes:
+                    break
+                batch.append(np.frombuffer(buf, np.uint8).reshape(height, width, 3))
+                if len(batch) == BATCH_SIZE:
+                    if not put(batches, np.stack(batch)):
+                        return
+                    batch = []
+            if batch:
+                put(batches, np.stack(batch))
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            put(batches, None)
+
+    def write():
+        try:
+            while not stop.is_set():
+                try:
+                    data = results.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                if data is None:
+                    return
+                encoder.stdin.write(data)
+        except BaseException as error:
+            errors.append(error)
+            stop.set()
+
+    reader = threading.Thread(target=read, daemon=True)
+    writer = threading.Thread(target=write, daemon=True)
+    reader.start()
+    writer.start()
 
     count = 0
-    batch = []
     try:
         while True:
-            buf = decoder.stdout.read(frame_bytes)
-            if len(buf) < frame_bytes:
+            try:
+                frames = batches.get(timeout=0.5)
+            except queue.Empty:
+                if stop.is_set():
+                    break
+                continue
+            if frames is None:
                 break
-            batch.append(np.frombuffer(buf, np.uint8).reshape(height, width, 3))
-            count += 1
+            previous = count
+            count += len(frames)
             if count > MAX_SECONDS * FPS:
                 raise ValueError(f"video is longer than {MAX_SECONDS // 60} minutes")
-            if len(batch) == BATCH_SIZE:
-                flush(batch)
-                batch = []
-                if count % (FPS * 10) < BATCH_SIZE:
-                    on_progress(count)
-        if batch:
-            flush(batch)
+            if not put(results, composite(frames)):
+                break
+            if count // (FPS * 10) > previous // (FPS * 10):
+                on_progress(count)
+        put(results, None)
+        writer.join()
+        if errors:
+            raise errors[0]
     except BaseException:
+        stop.set()
         decoder.kill()
         encoder.kill()
         raise
     finally:
+        stop.set()
+        reader.join(timeout=5)
         decoder.stdout.close()
 
     encoder.stdin.close()
@@ -229,7 +306,8 @@ def process(source, output, color, logo_url, on_progress):
         raise RuntimeError("could not write the finished video")
     if count == 0:
         raise RuntimeError("the source video has no frames")
-    return {"frames": count, "width": width, "height": height}
+    return {"frames": count, "width": width, "height": height,
+            "timings": {k: round(v, 1) for k, v in timings.items()}}
 
 
 def handler(job):
@@ -257,7 +335,7 @@ def handler(job):
         result["bytes"] = os.path.getsize(output)
 
     result["seconds"] = round(time.time() - started, 1)
-    result["device"] = DEVICE
+    result["device"] = torch.cuda.get_device_name() if DEVICE == "cuda" else DEVICE
     return result
 
 

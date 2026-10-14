@@ -75,9 +75,10 @@ const template = {
 const endpoint = {
   name: NAME,
   computeType: "GPU",
-  // 24 GB cards, cheapest first. The 4090 costs more per hour but is about as
-  // much faster, so it is a fair fallback when the others are taken.
-  gpuTypeIds: ["NVIDIA GeForce RTX 3090", "NVIDIA RTX A5000", "NVIDIA GeForce RTX 4090"],
+  // 24 GB cards, fastest first. The 4090 costs more per hour but gets through
+  // a video about that much faster, so the cost per video is about the same
+  // and the tutor waits less. The others are fallbacks when it's taken.
+  gpuTypeIds: ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A5000"],
   gpuCount: 1,
   // Cost controls: nothing runs (or bills) while idle, never more than one
   // worker, and a stuck job is stopped rather than left running.

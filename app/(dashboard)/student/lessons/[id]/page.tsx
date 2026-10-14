@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useRef, useState } from "react"
+import { use, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   CheckCircle2, ChevronLeft, ChevronRight, PlayCircle,
@@ -147,23 +147,32 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   }
 
   // Debounced video progress auto-save (every 10 s of playback)
+  const enrollmentId = data?.enrollmentId
   const handleTimeUpdate = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
-      if (!data?.enrollmentId) return
+      if (!enrollmentId) return
       const video = e.currentTarget
       if (saveTimerRef.current) return // already scheduled
       saveTimerRef.current = setTimeout(() => {
         saveTimerRef.current = null
-        saveProgress({
-          enrollmentId: data.enrollmentId!,
-          watchedSecs: Math.floor(video.currentTime),
-        })
+        // Silent: no toast and no reload while the student is watching. A
+        // missed save is caught up by the next one 10 s later.
+        fetch(`/api/student/lessons/${id}/progress`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enrollmentId, watchedSecs: Math.floor(video.currentTime) }),
+          keepalive: true,
+        }).catch(() => {})
       }, 10_000)
     },
-    [data?.enrollmentId, saveProgress]
+    [enrollmentId, id]
   )
 
-  if (loading) {
+  // Clear a pending auto-save when leaving the lesson.
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }, [])
+
+  // Only the first load replaces the page; a refetch keeps the lesson (and its video) on screen.
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="size-8 animate-spin text-primary" />

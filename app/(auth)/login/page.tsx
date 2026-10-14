@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Mail, Lock, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,11 +39,12 @@ function GoogleIcon() {
   )
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const signedInElsewhere = useSearchParams().get("reason") === "signed-in-elsewhere"
 
   const { execute, loading } = usePostCallback<LoginResponse, LoginBody>(
     "/api/auth/login",
@@ -70,6 +71,12 @@ export default function LoginPage() {
           </CardHeader>
 
           <CardContent>
+            {signedInElsewhere && (
+              <p className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                You were signed out because your account was signed in on another device.
+                Each student account can only be used on one device at a time.
+              </p>
+            )}
             <form onSubmit={handleSubmit} className="flex flex-col gap-5 pt-2">
 
               {/* Email */}
@@ -168,5 +175,13 @@ export default function LoginPage() {
 
       <Footer />
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }

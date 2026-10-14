@@ -19,12 +19,28 @@ export const WHOLE_COURSE = "all"
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
 
-const DURATIONS = [30, 45, 60, 90, 120]
+const pad = (n: number) => String(n).padStart(2, "0")
 
 function durationLabel(mins: number) {
-  if (mins < 60) return `${mins} minutes`
-  if (mins % 60 === 0) return mins === 60 ? "1 hour" : `${mins / 60} hours`
-  return `${Math.floor(mins / 60)} h ${mins % 60} min`
+  if (mins < 60) return `${mins} min`
+  return mins % 60 === 0 ? `${mins / 60} h` : `${Math.floor(mins / 60)} h ${mins % 60} min`
+}
+
+/**
+ * The end-time choices for a start time: quarter hours from 15 minutes after
+ * it up to six hours later (not past midnight), each with the class length it
+ * gives — "20:45 · 3 h". The value is the length in minutes.
+ */
+function endOptions(start: string, current: number): Array<{ mins: number; label: string }> {
+  const [h, m] = start.split(":").map(Number)
+  const startMins = h * 60 + m
+  const lengths = new Set<number>()
+  for (let mins = 15; mins <= 360 && startMins + mins < 24 * 60; mins += 15) lengths.add(mins)
+  if (current > 0 && startMins + current < 24 * 60) lengths.add(current)
+  return [...lengths].sort((a, b) => a - b).map((mins) => {
+    const end = startMins + mins
+    return { mins, label: `${pad(Math.floor(end / 60))}:${pad(end % 60)} · ${durationLabel(mins)}` }
+  })
 }
 
 /** What the form starts with — taken from the classes already on the course. */
@@ -84,7 +100,7 @@ export function ScheduleClassDialog({
   const occurrences = repeatWeekly ? Math.min(Math.max(weeks || 2, 2), 52) : 1
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const ready = !!date && !!time && (!mustAssignTutor || !!tutorId)
-  const durations = DURATIONS.includes(durationMins) ? DURATIONS : [...DURATIONS, durationMins].sort((a, b) => a - b)
+  const ends = time ? endOptions(time, durationMins) : []
 
   function startsAt(): Date | null {
     if (!date || !time) return null
@@ -168,27 +184,44 @@ export function ScheduleClassDialog({
             </div>
           )}
 
-          <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_8rem] gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_8.5rem] gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>{repeatWeekly ? "First class" : "Date"}</Label>
               <DatePicker value={date} onChange={setDate} placeholder="Pick a date" disabled={(d) => d < today} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sc-time">Starts</Label>
-              <select id="sc-time" value={time} onChange={(e) => setTime(e.target.value)} className={selectClass} required>
+              <select
+                id="sc-time"
+                value={time}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setTime(next)
+                  // Keep the length when it still fits before midnight; otherwise the longest that does.
+                  const [h, m] = next.split(":").map(Number)
+                  if (h * 60 + m + durationMins >= 24 * 60) {
+                    const fits = endOptions(next, 0)
+                    setDurationMins(fits[fits.length - 1]?.mins ?? 60)
+                  }
+                }}
+                className={selectClass}
+                required
+              >
                 <option value="" disabled>Time</option>
                 {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sc-duration">Length</Label>
+              <Label htmlFor="sc-ends">Ends</Label>
               <select
-                id="sc-duration"
-                value={durationMins}
+                id="sc-ends"
+                value={time ? durationMins : ""}
                 onChange={(e) => setDurationMins(parseInt(e.target.value))}
                 className={selectClass}
+                disabled={!time}
               >
-                {durations.map((d) => <option key={d} value={d}>{durationLabel(d)}</option>)}
+                {!time && <option value="">Time</option>}
+                {ends.map((o) => <option key={o.mins} value={o.mins}>{o.label}</option>)}
               </select>
             </div>
           </div>

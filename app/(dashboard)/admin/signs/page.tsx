@@ -558,6 +558,7 @@ function SignDialog({
                 onUploaded={(f) => set("videoUrl", f.fileUrl)}
                 disabled={loading}
                 highDefinition
+                silent
               />
             ) : (
               <FileUpload

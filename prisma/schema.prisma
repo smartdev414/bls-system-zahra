@@ -149,6 +149,9 @@ model User {
   role         Role         @default(STUDENT)
   avatarUrl    String?
   bslLevel     CourseLevel? // relevant for STUDENT role
+  // Students may be signed in on one device at a time: the newest login's id
+  // lives here and any older token carrying a different id is rejected.
+  activeSessionId String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 

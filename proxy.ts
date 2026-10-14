@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { jwtVerify } from "jose"
+import { isSessionCurrent, SIGNED_IN_ELSEWHERE } from "@/lib/single-session"
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET ?? "bsl-dev-secret-change-in-production"
@@ -28,7 +29,11 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   const token = request.cookies.get(COOKIE)?.value
-  const session = token ? await verifyToken(token) : null
+  const verified = token ? await verifyToken(token) : null
+  // A student whose account was signed in on another device keeps a valid JWT;
+  // treat them as signed out and drop the stale cookie.
+  const replaced = verified ? !(await isSessionCurrent(verified)) : false
+  const session = replaced ? null : verified
 
   const isPublic = PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"))
   const tree = Object.keys(TREE_ROLES).find(
@@ -41,7 +46,10 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
     url.searchParams.set("from", pathname)
-    return NextResponse.redirect(url)
+    if (replaced) url.searchParams.set("reason", SIGNED_IN_ELSEWHERE)
+    const res = NextResponse.redirect(url)
+    if (replaced) res.cookies.delete(COOKIE)
+    return res
   }
 
   // Authenticated user hitting /login or /register → send to their dashboard
@@ -59,13 +67,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  return NextResponse.next()
+  const res = NextResponse.next()
+  if (replaced) res.cookies.delete(COOKIE)
+  return res
 }
 
 async function verifyToken(token: string) {
   try {
     const { payload } = await jwtVerify(token, SECRET)
-    return payload as { role: string }
+    return payload as { sub: string; role: string; sid?: string }
   } catch {
     return null
   }

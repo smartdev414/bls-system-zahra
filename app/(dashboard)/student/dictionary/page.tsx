@@ -263,6 +263,8 @@ export default function DictionaryPage() {
                   <ProtectedVideo
                     src={selectedSign.videoUrl}
                     controls
+                    // Signs have no sound; this also silences any older upload that has some.
+                    muted
                     className="w-full rounded-xl max-h-[45vh] object-contain bg-black"
                     poster={selectedSign.imageUrl ?? undefined}
                   />

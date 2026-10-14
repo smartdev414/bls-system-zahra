@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+import { isSessionCurrent, startStudentSession } from "@/lib/single-session"
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET ?? "bsl-dev-secret-change-in-production"
@@ -14,10 +15,13 @@ export type SessionPayload = {
   name: string
   email: string
   role: "STUDENT" | "TUTOR" | "SUPPORT" | "ADMIN"
+  sid?: string  // students only — see lib/single-session.ts
 }
 
-export async function signToken(payload: SessionPayload): Promise<string> {
-  return new SignJWT({ ...payload })
+/** Issues a login token. For a student this also signs out their other devices. */
+export async function signToken(payload: Omit<SessionPayload, "sid">): Promise<string> {
+  const sid = payload.role === "STUDENT" ? await startStudentSession(payload.sub) : undefined
+  return new SignJWT({ ...payload, ...(sid ? { sid } : {}) })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(EXPIRY)
@@ -38,7 +42,9 @@ export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE)?.value
   if (!token) return null
-  return verifyToken(token)
+  const session = await verifyToken(token)
+  if (!session || !(await isSessionCurrent(session))) return null
+  return session
 }
 
 export function setSessionCookie(res: NextResponse, token: string): void {

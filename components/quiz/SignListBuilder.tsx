@@ -149,6 +149,7 @@ export function SignListBuilder({ kind, lessonId, signs, onChange }: Props) {
         <CameraRecorder
           key={recorded}
           uploaded={null}
+          silent
           onUploaded={(file) => {
             onChange((current) => [...current, newSign("", file.fileUrl)])
             setRecorded((n) => n + 1)
