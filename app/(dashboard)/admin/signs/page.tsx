@@ -356,16 +356,16 @@ function CategoryRow({
           Delete <span className="font-medium">{category.name}</span> and move its {signs} to:
         </p>
         <div className="flex items-center gap-2">
-          <Select value={target} onValueChange={setTarget}>
-            <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Choose a category" /></SelectTrigger>
-            <SelectContent>
+          {/* Opens straight away: the bin alone looked like it did nothing until a category was picked. */}
+          <Select value={target} onValueChange={setTarget} defaultOpen>
+            <SelectTrigger className="h-8 text-sm flex-1 bg-background"><SelectValue placeholder="Choose a category" /></SelectTrigger>
+            <SelectContent position="popper">
               {others.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
             </SelectContent>
           </Select>
           <Button
             size="sm"
-            variant="destructive"
-            className="h-8"
+            className="h-8 bg-destructive text-white hover:bg-destructive/90"
             disabled={!target || loading}
             onClick={() => move({ from: category.name, to: target })}
           >
@@ -413,18 +413,20 @@ function BulkAddDialog({
   const [text, setText] = useState("")
   const [category, setCategory] = useState("")
   const [level, setLevel] = useState<CourseLevel>("L1")
+  // Most dictionary words fit any level, so the level is hidden from students unless ticked.
+  const [showLevel, setShowLevel] = useState(false)
 
   const words = text.split("\n").map((w) => w.trim()).filter(Boolean)
 
   const { execute: add, loading } = usePostCallback<
     { created: number; skipped: number },
-    { words: string[]; category: string; level: CourseLevel }
+    { words: string[]; category: string; level: CourseLevel; showLevel: boolean }
   >("/api/admin/signs/bulk", {
     successMessage: (d) =>
       `${d.created} sign${d.created !== 1 ? "s" : ""} added` +
       (d.skipped ? `, ${d.skipped} already in the dictionary` : ""),
     errorMessage: "Could not add the signs",
-    // Category and level are kept: the next list is usually another batch of the same.
+    // Category, level and its tick box are kept: the next list is usually another batch of the same.
     onSuccess: () => { setText(""); onClose(); onAdded() },
   })
 
@@ -453,7 +455,7 @@ function BulkAddDialog({
               </datalist>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Level *</Label>
+              <FieldLabel label="Level *" shown={showLevel} onShownChange={setShowLevel} />
               <Select value={level} onValueChange={(v) => setLevel(v as CourseLevel)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -485,7 +487,7 @@ function BulkAddDialog({
           </Button>
           <Button
             disabled={!words.length || !category.trim() || loading}
-            onClick={() => add({ words, category: category.trim(), level })}
+            onClick={() => add({ words, category: category.trim(), level, showLevel })}
           >
             {loading ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Check className="size-4 mr-1.5" />}
             {loading ? "Adding..." : `Add ${words.length || ""} sign${words.length !== 1 ? "s" : ""}`}

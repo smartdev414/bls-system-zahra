@@ -15,12 +15,13 @@ async function handlePOST(req: NextRequest) {
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
-    const body = await req.json() as { words?: unknown; category?: string; level?: CourseLevel }
+    const body = await req.json() as { words?: unknown; category?: string; level?: CourseLevel; showLevel?: boolean }
 
     const category = body.category?.trim()
     if (!category) return NextResponse.json({ message: "Category is required" }, { status: 400 })
     const level = body.level ?? "L1"
     if (!COURSE_LEVELS.includes(level)) return NextResponse.json({ message: "Invalid level" }, { status: 400 })
+    const showLevel = body.showLevel === true
     if (!Array.isArray(body.words)) return NextResponse.json({ message: "Words are required" }, { status: 400 })
 
     // Word is unique in the database, but only for an exact match — compare
@@ -50,7 +51,7 @@ async function handlePOST(req: NextRequest) {
     const fresh = words.filter((w) => !taken.has(w.toLowerCase()))
 
     const { count } = await prisma.sign.createMany({
-      data: fresh.map((word) => ({ word, category, level, description: "", handshape: "", usage: "" })),
+      data: fresh.map((word) => ({ word, category, level, showLevel, description: "", handshape: "", usage: "" })),
       skipDuplicates: true,
     })
 
