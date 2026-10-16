@@ -269,3 +269,10 @@ export type ScreenAction =
   | { action: "privacy"; private: boolean }
   | { action: "sync_request" }
   | { action: "sync_response"; private: boolean }
+
+/** What the tutor's tab tells the class recorder when recording (re)starts. See RECORDER_TOPIC. */
+export type RecorderStateAction = {
+  action: "state"
+  whiteboard: { active: boolean; snapshot: WhiteboardSnapshot | null }
+  breakouts: boolean
+}

@@ -545,6 +545,9 @@ model LiveSession {
   egressId     String?
   recordingKey String?
   recordingUrl String?
+  // Kept from students (staff can still watch). Set on recordings made before
+  // recordings left students out, which show students' faces and names.
+  recordingHidden Boolean @default(false)
   createdAt    DateTime              @default(now())
 
   tutor        User                    @relation("TutorLiveSessions", fields: [tutorId], references: [id])

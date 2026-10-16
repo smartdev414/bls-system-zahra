@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { assertCanAccessSession } from "@/lib/session-access"
+import { recorderSessionId } from "@/lib/recorder-pass"
 
 // ─── /api/sessions/[id]/live-state ───────────────────────────────────────────
 // The classroom stage (slides / video) as last published by the tutor.
@@ -58,12 +59,15 @@ async function handleGET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await getSession()
-    if (!auth) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-
     const { id: sessionId } = await params
-    const access = await assertCanAccessSession(auth, sessionId)
-    if (access.error) return access.error
+    const auth = await getSession()
+    if (auth) {
+      const access = await assertCanAccessSession(auth, sessionId)
+      if (access.error) return access.error
+    } else if ((await recorderSessionId()) !== sessionId) {
+      // The class recorder may read what is on this class's stage, nothing else.
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    }
 
     const row = await prisma.liveSessionPresentation.findUnique({ where: { sessionId } })
 

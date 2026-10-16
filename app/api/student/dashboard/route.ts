@@ -161,6 +161,7 @@ async function handleGET() {
       prisma.liveSession.findFirst({
         where: {
           status: "COMPLETED",
+          recordingHidden: false,
           scheduledAt: { gte: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000) },
           OR: [{ recordingUrl: { not: null } }, { recordingKey: { not: null } }],
           ...studentOwnSessions(session.sub),

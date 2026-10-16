@@ -1,5 +1,6 @@
 "use client"
 
+import { PdfPages, useDeviceKind } from "@/components/ui/pdf-pages"
 import { useRouter } from "next/navigation"
 import { SafeHtml } from "@/components/ui/safe-html"
 import { use, useCallback, useEffect, useRef, useState } from "react"
@@ -119,6 +120,8 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   // Seconds left before moving on to the next lesson after a video ends.
   const [upNextIn, setUpNextIn] = useState<number | null>(null)
   const router = useRouter()
+  // Tablets can't show an embedded PDF past page one; see the PDF block below.
+  const device = useDeviceKind()
 
   const { data, loading, error, refetch } = useFetch<LessonData>(`/api/student/lessons/${id}`, {
     // A locked lesson is a page of its own below, not a failure to report.
@@ -488,14 +491,22 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                       <p className="text-sm font-semibold">{asset.title}</p>
                       {/* Phone browsers don't render a PDF inside an iframe (Android
                           shows a blank box, iOS only the first page), so on small
-                          screens the file opens in the browser's own viewer instead. */}
-                      <div className="hidden md:block rounded-xl border overflow-hidden" style={{ height: "700px" }}>
-                        <iframe
-                          src={asset.fileUrl}
-                          className="w-full h-full"
-                          title={asset.title}
-                        />
-                      </div>
+                          screens the file opens in the browser's own viewer instead.
+                          Tablets get the wide layout but have the same iframe
+                          problem (an iPad shows page one only), so they get every
+                          page drawn in the page; computers keep the browser's
+                          viewer, with its zoom and search. */}
+                      {device === "tablet" ? (
+                        <PdfPages url={asset.fileUrl} title={asset.title} />
+                      ) : device === "desktop" ? (
+                        <div className="hidden md:block rounded-xl border overflow-hidden" style={{ height: "700px" }}>
+                          <iframe
+                            src={asset.fileUrl}
+                            className="w-full h-full"
+                            title={asset.title}
+                          />
+                        </div>
+                      ) : null}
                       <a
                         href={asset.fileUrl}
                         target="_blank"

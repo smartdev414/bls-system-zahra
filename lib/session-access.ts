@@ -80,10 +80,16 @@ export function studentOwnSessions(studentId: string): Prisma.LiveSessionWhereIn
 /**
  * Prisma `where` fragment for who may watch a class's recording: the tutor who
  * ran it, and the students it was for — including those who missed it, since
- * catching up is what a recording is for. Admins are let through by the caller.
+ * catching up is what a recording is for — unless the recording is hidden from
+ * students. Admins are let through by the caller.
  */
 export function recordingViewers(userId: string): Prisma.LiveSessionWhereInput {
-  return { OR: [{ tutorId: userId }, studentOwnSessions(userId)] }
+  return {
+    OR: [
+      { tutorId: userId },
+      { AND: [{ recordingHidden: false }, studentOwnSessions(userId)] },
+    ],
+  }
 }
 
 /**

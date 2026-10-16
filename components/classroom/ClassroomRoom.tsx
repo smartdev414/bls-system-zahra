@@ -26,7 +26,7 @@ import { SlidePicker } from "./SlidePicker"
 
 import {
   CHAT_TOPIC, HAND_TOPIC, PPT_TOPIC, POINTER_TOPIC, SPOTLIGHT_TOPIC, MUTE_TOPIC, CONTROL_TOPIC, WHITEBOARD_TOPIC,
-  BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC, ORDER_TOPIC, VIEW_TOPIC,
+  BREAKOUT_TOPIC, NUDGE_TOPIC, SCREEN_TOPIC, ORDER_TOPIC, VIEW_TOPIC, RECORDER_TOPIC,
   BREAKOUT_WRAP_UP_SEC, CHAT_HISTORY_LIMIT,
   POINTER_SEND_INTERVAL_MS, POINTER_STALE_MS, POINTER_KEEPALIVE_MS, POINTER_SMOOTHING_MS,
   enc, dec,
@@ -37,7 +37,7 @@ import type {
   UploadedSlides, WhiteboardAction, WhiteboardSnapshot, WhiteboardDiff,
   WhiteboardPresence,
   BreakoutAction, BreakoutGroup, NudgeAction, ScreenAction, OrderAction,
-  ViewAction,
+  ViewAction, RecorderStateAction,
 } from "./room/types"
 import { AudioRenderer }        from "./room/AudioRenderer"
 import { ConnectionBanner }     from "./room/ConnectionBanner"
@@ -2748,6 +2748,27 @@ export function ClassroomRoom({
     if (recordingActive || breakoutsActive) toast.dismiss("recording-reminder")
   }, [recordingActive, breakoutsActive])
 
+  // ── The class recorder (app/egress/recorder-view.tsx) ───────────────────
+  // It films only the tutors and what they present, and it can listen but not
+  // ask — so when recording starts or resumes, this tab tells it what is open
+  // (the whiteboard, breakouts). Sent a few times: the recorder joins the room
+  // some seconds after the recording is started.
+  const { send: sendRecorder } = useDataChannel(RECORDER_TOPIC)
+  const recorderSyncTimers = useRef<ReturnType<typeof setTimeout>[]>([])
+  const syncRecorder = useCallback(() => {
+    recorderSyncTimers.current.forEach(clearTimeout)
+    recorderSyncTimers.current = [5_000, 12_000, 25_000].map((ms) => setTimeout(() => {
+      const wb = whiteboardStateRef.current
+      const state: RecorderStateAction = {
+        action: "state",
+        whiteboard: { active: wb.active, snapshot: wb.active ? (wbApiRef.current?.getSnapshot() ?? null) : null },
+        breakouts: breakoutStateRef.current.active,
+      }
+      try { sendRecorder(enc.encode(JSON.stringify(state)), { reliable: true }) } catch { /* next one */ }
+    }, ms))
+  }, [sendRecorder])
+  useEffect(() => () => recorderSyncTimers.current.forEach(clearTimeout), [])
+
   // Tutor starts, pauses, or resumes recording. Each pause/resume creates a
   // separate MP4 segment in S3.
   const handleToggleRecording = useCallback(async () => {
@@ -2777,10 +2798,13 @@ export function ClassroomRoom({
         throw new Error(body?.message || "Recording control failed")
       }
       if (!prevStarted) {
-        toast.success("Recording started")
+        toast.success("Recording started", {
+          description: "Only you, any co-teacher and what you share are recorded — never the students.",
+        })
       } else {
         toast.success(prevPaused ? "Recording resumed" : "Recording paused")
       }
+      if (!prevStarted || prevPaused) syncRecorder()
     } catch (err) {
       console.error("[recording] toggle failed", err)
       setRecordingStarted(prevStarted)
@@ -2789,7 +2813,49 @@ export function ClassroomRoom({
     } finally {
       setRecordingBusy(false)
     }
-  }, [isTutor, recordingBusy, recordingActive, recordingPaused, sessionId])
+  }, [isTutor, recordingBusy, recordingActive, recordingPaused, sessionId, syncRecorder])
+
+  // Breakout rooms are never recorded: opening them pauses a running
+  // recording, and closing them carries on — but only if it was this that
+  // paused it, so a recording the tutor paused by hand stays paused.
+  const pausedForBreakoutsRef = useRef(false)
+  const pauseForBreakouts = useCallback(async () => {
+    if (!isTutor || !recordingActive || recordingPaused) return
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/recording/pause`, { method: "POST" })
+      if (!res.ok) return // a co-teacher can't pause; the recorder blanks breakouts anyway
+      pausedForBreakoutsRef.current = true
+      setRecordingStarted(true)
+      setRecordingPaused(true)
+      toast.info("Recording paused for breakout rooms", { description: "It carries on when everyone is back." })
+    } catch { /* the recorder blanks breakouts anyway */ }
+  }, [isTutor, recordingActive, recordingPaused, sessionId])
+
+  const resumeAfterBreakouts = useCallback(async () => {
+    if (!pausedForBreakoutsRef.current) return
+    pausedForBreakoutsRef.current = false
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/recording/resume`, { method: "POST" })
+      if (!res.ok) throw new Error()
+      setRecordingPaused(false)
+      toast.success("Recording resumed")
+      syncRecorder()
+    } catch {
+      toast.error("Couldn't resume the recording — press Resume to carry on")
+    }
+  }, [sessionId, syncRecorder])
+
+  // Students hear once, as recording starts, that they are not in it.
+  const toldStudentAboutRecording = useRef(false)
+  useEffect(() => {
+    if (isTutor || !roomIsRecording || toldStudentAboutRecording.current) return
+    toldStudentAboutRecording.current = true
+    toast.info("This class is being recorded", {
+      description: "Only the teacher and what they share are recorded — not you, your camera, voice or name.",
+      duration: 10_000,
+      closeButton: true,
+    })
+  }, [isTutor, roomIsRecording])
 
   // Attach the processor to the local camera track. One effect handles three
   // cases: (a) first publish after joining when the lobby pref is on, (b)
@@ -3447,6 +3513,7 @@ export function ClassroomRoom({
 
   const handleStartBreakouts = useCallback((groups: BreakoutGroup[], durationMin: number | null) => {
     if (!isTutor) return
+    void pauseForBreakouts()
     const startedAt = Date.now()
     setBreakoutsActive(true)
     setBreakoutGroups(groups)
@@ -3474,7 +3541,7 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [isTutor, safeSendBreakout])
+  }, [isTutor, safeSendBreakout, pauseForBreakouts])
 
   const handleUpdateBreakouts = useCallback((groups: BreakoutGroup[]) => {
     if (!isTutor) return
@@ -3613,6 +3680,7 @@ export function ClassroomRoom({
 
   const finalizeStopBreakouts = useCallback(() => {
     if (!isTutor) return
+    void resumeAfterBreakouts()
     setBreakoutsActive(false)
     setBreakoutGroups([])
     setVisitingGroupId(null)
@@ -3632,7 +3700,7 @@ export function ClassroomRoom({
         type: "system",
       },
     ])
-  }, [isTutor, safeSendBreakout])
+  }, [isTutor, safeSendBreakout, resumeAfterBreakouts])
 
   /** Tutor clicked End — start a visible wrap-up countdown, then return to main room. */
   const handleRequestEndBreakouts = useCallback(() => {
@@ -4269,7 +4337,7 @@ export function ClassroomRoom({
           {!isTutor && roomIsRecording && (
             <span
               className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/55 border border-white/15 text-[10px] font-semibold text-white shrink-0"
-              title="This lesson is being recorded"
+              title="This lesson is being recorded — only the teacher and what they share, not you"
               aria-live="polite"
             >
               <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />

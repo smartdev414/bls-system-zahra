@@ -1,6 +1,6 @@
-// Minimal root layout for the egress template route — bypasses the dashboard
-// chrome so LiveKit's headless Chrome captures just the composite video grid
-// with the brand watermark on top. Public; no auth.
+// Minimal layout for the class recorder's page — no dashboard chrome, so
+// LiveKit's headless Chrome captures only the recording (see recorder-view.tsx).
+// Public; no auth.
 export default function EgressLayout({ children }: { children: React.ReactNode }) {
   return children
 }

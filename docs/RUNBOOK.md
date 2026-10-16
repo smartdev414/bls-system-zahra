@@ -314,6 +314,24 @@ Check `DATABASE_URL` and that Postgres is reachable. After any change to
 - Never appears → check LiveKit Egress is enabled for the project and S3
   credentials/bucket are valid. Each pause/resume creates a separate segment.
 
+### 4.10 What a class recording contains (UK GDPR)
+Recording is started by the tutor (never automatically). LiveKit's recorder
+opens `/egress/<recorder pass>` (`app/egress/recorder-view.tsx`), and that page
+decides what is in the file:
+- **In:** the tutor's and co-teachers' cameras and voices (participants whose
+  join token carries `tutor` metadata — set server-side), plus what they
+  present: screen share, slides, a shared video, the whiteboard.
+- **Out:** every student's camera, microphone and name (the recorder never
+  subscribes to their tracks), whiteboard author badges, captions, and
+  breakout rooms — opening breakouts pauses the recording and closing them
+  resumes it; if anything is still recording, the page shows a silent
+  "Breakout rooms — not recorded" card.
+- The recorder pass (`lib/recorder-pass.ts`) lets that page read only this
+  class's stage, board and presented media, for 8 hours — no recordings, no
+  chat files, no downloads.
+- `LiveSession.recordingHidden` keeps a recording from students (staff still
+  see it). Recordings made before this change show students and are hidden.
+
 ---
 
 ## 5. Deploys & schema changes

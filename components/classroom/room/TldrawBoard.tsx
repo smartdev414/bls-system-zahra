@@ -169,6 +169,11 @@ type TldrawBoardProps = {
   send: (action: WhiteboardAction) => void
   /** Register/unregister the imperative store bridge with the parent. */
   registerApi: (api: WhiteboardApi | null) => void
+  /**
+   * The class recorder's copy: just the drawing — no header, no tools, and no
+   * author badges, which would put students' names into the recording.
+   */
+  recording?: boolean
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -368,6 +373,7 @@ export default function TldrawBoard({
   onShareToChat,
   send,
   registerApi,
+  recording = false,
 }: TldrawBoardProps) {
   const editorRef = useRef<Editor | null>(null)
   // When true, store mutations are coming from the network/seed and must not be
@@ -742,7 +748,7 @@ export default function TldrawBoard({
   return (
     <div className="relative w-full h-full flex flex-col bg-zinc-100">
       {/* Classroom header strip above tldraw's own UI */}
-      <div className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-zinc-800 border-b border-zinc-700">
+      <div className={cn("shrink-0 flex items-center gap-1.5 px-3 py-2 bg-zinc-800 border-b border-zinc-700", recording && "hidden")}>
         <div className="flex items-center gap-1 mr-1">
           <PencilLine className="size-3.5 text-amber-400" />
           <span className="text-xs font-bold text-white">Whiteboard</span>
@@ -820,8 +826,9 @@ export default function TldrawBoard({
           onMount={handleMount}
           licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
           assets={assetStore}
+          hideUi={recording}
           components={{
-            InFrontOfTheCanvas: AuthorBadges,
+            InFrontOfTheCanvas: recording ? null : AuthorBadges,
             StylePanel: DraggableStylePanel,
             // Following is automatic for students, not a user-initiated "watch
             // this person" action — a coloured border around the board would

@@ -6,6 +6,7 @@ import { cleanKeyFor, isRawRecordingKey } from "@/lib/background-clean-keys"
 import { assertCanAccessSession, recordingViewers } from "@/lib/session-access"
 import { isProtectedMediaKey } from "@/lib/protected-media"
 import { withAudit } from "@/lib/audit"
+import { recorderSessionId } from "@/lib/recorder-pass"
 
 /**
  * The only way to a private video (see lib/protected-media.ts).
@@ -59,12 +60,23 @@ async function handleGET(
   { params }: { params: Promise<{ key: string[] }> }
 ) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-
     const { key: segments } = await params
     const key = segments.join("/")
     if (!isProtectedMediaKey(key)) return notFound()
+
+    const session = await getSession()
+    if (!session) {
+      // The class recorder (lib/recorder-pass.ts) is nobody's login, but must
+      // play a video the tutor presents. It gets presented material only —
+      // never a recording or a chat file — to watch, not to download.
+      const presented = key.startsWith("slides/") || key.startsWith("videos/")
+      if (!presented || !(await recorderSessionId()) || req.nextUrl.searchParams.has("download")) {
+        return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      }
+      const res = NextResponse.redirect(await getPresignedDownloadUrl(key, MEDIA_URL_TTL_SECS), 302)
+      res.headers.set("Cache-Control", "private, no-store")
+      return res
+    }
 
     const denied = await denyReason(session, key)
     if (denied) return denied

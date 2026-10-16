@@ -3,6 +3,7 @@ import { EgressStatus } from "@livekit/protocol"
 import prisma from "@/lib/prisma"
 import { listObjectKeys, objectExists } from "@/lib/s3"
 import { egressTemplateUrl } from "@/lib/publicUrl"
+import { createRecorderPass } from "@/lib/recorder-pass"
 
 /** How long the UI shows "Recording processing…" after a session ends. */
 export const RECORDING_PROCESSING_MS = 10 * 60 * 1000
@@ -59,12 +60,14 @@ export async function startRecordingSegment(
   })
 
   // `customBaseUrl` points LiveKit's headless-Chrome egress worker at our
-  // /egress template page, which composites the video grid + Deaf Signs
-  // logo watermark before capture. See app/egress/page.tsx.
+  // /egress template page, which films the tutor and what they present — never
+  // the students. The pass in the path lets that page load the class's slides,
+  // video and whiteboard. See app/egress/recorder-view.tsx.
+  const pass = await createRecorderPass(sessionId)
   const info = await egressClient().startRoomCompositeEgress(
     roomName,
     { file: fileOutput },
-    { customBaseUrl: egressTemplateUrl() },
+    { customBaseUrl: `${egressTemplateUrl()}/${pass}` },
   )
 
   await prisma.liveSession.update({

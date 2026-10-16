@@ -53,7 +53,10 @@ async function handleGET() {
         tutor: s.tutor,
         course: s.course,
         attendeeCount: s._count.attendances,
-        recordingUrl: recordingById.get(s.id) ?? s.recordingUrl ?? null,
+        // A recording hidden from students is not offered to them at all.
+        recordingUrl: session.role === "STUDENT" && s.recordingHidden
+          ? null
+          : recordingById.get(s.id) ?? s.recordingUrl ?? null,
         isInvited: s.invites.length > 0,
         joinRequest: s.joinRequests[0] ?? null,
       })),

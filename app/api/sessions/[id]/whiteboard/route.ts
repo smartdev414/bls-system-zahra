@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { recorderSessionId } from "@/lib/recorder-pass"
 import type { Prisma } from "@/app/generated/prisma/client"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
@@ -35,14 +36,16 @@ async function handleGET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await getSession()
-    if (!auth) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-
     const { id: sessionId } = await params
+    const auth = await getSession()
+    // The class recorder may read this class's board (read-only), nothing else.
+    const isRecorder = !auth && (await recorderSessionId()) === sessionId
+    if (!auth && !isRecorder) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+
     const liveSession = await loadSession(sessionId)
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
-    if (!canWrite(auth, liveSession)) {
+    if (auth && !canWrite(auth, liveSession)) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -63,14 +66,16 @@ async function handlePUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await getSession()
-    if (!auth) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-
     const { id: sessionId } = await params
+    const auth = await getSession()
+    // The class recorder may read this class's board (read-only), nothing else.
+    const isRecorder = !auth && (await recorderSessionId()) === sessionId
+    if (!auth && !isRecorder) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+
     const liveSession = await loadSession(sessionId)
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
-    if (!canWrite(auth, liveSession)) {
+    if (auth && !canWrite(auth, liveSession)) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 

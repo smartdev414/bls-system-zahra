@@ -1,5 +1,6 @@
 "use client"
 
+import { PdfPages, useDeviceKind } from "@/components/ui/pdf-pages"
 import { SafeHtml } from "@/components/ui/safe-html"
 import { use } from "react"
 import Link from "next/link"
@@ -231,6 +232,8 @@ export default function ViewLessonPage({
 // ─── One lesson file, shown the way students see it ──────────────────────────
 
 function AssetView({ asset }: { asset: Asset }) {
+  // A tablet shows an embedded PDF's first page only, so it gets every page drawn instead.
+  const device = useDeviceKind()
   const download = (
     <a
       href={mediaDownloadHref(asset.fileUrl)}
@@ -282,9 +285,13 @@ function AssetView({ asset }: { asset: Asset }) {
     return (
       <div className="flex flex-col gap-2">
         <p className="text-sm font-semibold">{asset.title}</p>
-        <div className="rounded-xl border overflow-hidden" style={{ height: "700px" }}>
-          <iframe src={src} className="w-full h-full" title={asset.title} />
-        </div>
+        {asset.type === "PDF" && device !== null && device !== "desktop" ? (
+          <PdfPages url={asset.fileUrl} title={asset.title} />
+        ) : (
+          <div className="rounded-xl border overflow-hidden" style={{ height: "700px" }}>
+            <iframe src={src} className="w-full h-full" title={asset.title} />
+          </div>
+        )}
         {download}
       </div>
     )

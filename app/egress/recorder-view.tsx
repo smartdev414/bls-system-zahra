@@ -1,0 +1,383 @@
+"use client"
+
+// The class recording
+// ───────────────────
+// This page is loaded by LiveKit's headless-Chrome egress worker, NOT by a
+// regular user. The worker navigates to:
+//
+//   {customBaseUrl}?url={liveKitWsUrl}&token={egressJoinToken}&layout={name}
+//
+// where customBaseUrl is /egress/<recorder pass> (lib/recording.ts). Whatever
+// this page shows and plays is what ends up in the MP4. It must log the literal
+// `START_RECORDING` once ready (and `END_RECORDING` on teardown) — the worker
+// watches the console for exactly those strings. See
+// https://docs.livekit.io/home/egress/custom-template/
+//
+// What is recorded — and what is not (UK GDPR, agreed with the school):
+//   • The tutor and any co-teacher: their cameras and their voices.
+//   • What they present: screen share, slides, a shared video, the whiteboard.
+//   • NOT the students: their cameras and microphones are never even
+//     subscribed to here, so they cannot end up in the file; no names are
+//     drawn anywhere; captions (which can carry what a student said) are off.
+//   • NOT breakout rooms: the tutor's tab pauses the recording while they run,
+//     and should anything still be recording, this page shows a plain card
+//     with no sound instead.
+//
+// "Tutor" is the `tutor` metadata the token route stamps on a tutor's or a
+// co-teacher's join token — set by the server, not changeable by a student.
+//
+// IMPORTANT: this route is PUBLIC. Joining the room needs the egress JWT in the
+// URL; reading the class's slides and board needs the recorder pass.
+
+import dynamic from "next/dynamic"
+import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  LiveKitRoom,
+  AudioTrack,
+  VideoTrack,
+  useConnectionState,
+  useDataChannel,
+  useRemoteParticipants,
+  useTracks,
+  type TrackReference,
+} from "@livekit/components-react"
+import { ConnectionState, RemoteTrackPublication, Track, type RemoteParticipant } from "livekit-client"
+import { LogoWatermark } from "@/components/layout/logo"
+import { PptSlideViewer } from "@/components/classroom/PptSlideViewer"
+import { VideoPlayer } from "@/components/classroom/room/VideoPlayer"
+import { BREAKOUT_TOPIC, PPT_TOPIC, RECORDER_TOPIC, WHITEBOARD_TOPIC } from "@/components/classroom/room/constants"
+import type {
+  BreakoutAction, PptAction, RecorderStateAction, WhiteboardAction, WhiteboardSnapshot,
+} from "@/components/classroom/room/types"
+import type { WhiteboardApi } from "@/components/classroom/room/TldrawBoard"
+
+const TldrawBoard = dynamic(() => import("@/components/classroom/room/TldrawBoard"), { ssr: false })
+
+const dec = new TextDecoder()
+const isTutor = (p: { metadata?: string } | undefined | null) => p?.metadata === "tutor"
+
+/** Sources the recording takes from a tutor; a student's are never subscribed. */
+const TUTOR_SOURCES = new Set([
+  Track.Source.Camera,
+  Track.Source.Microphone,
+  Track.Source.ScreenShare,
+  Track.Source.ScreenShareAudio,
+])
+
+type Stage = {
+  kind: "slides" | "video" | null
+  url: string | null
+  page: number
+  playing: boolean
+  currentTime: number
+  asOf: number
+}
+const EMPTY_STAGE: Stage = { kind: null, url: null, page: 1, playing: false, currentTime: 0, asOf: 0 }
+
+function readQueryParams() {
+  const params = new URLSearchParams(window.location.search)
+  return { url: params.get("url"), token: params.get("token") }
+}
+
+export function RecorderView({ pass }: { pass: string | null }) {
+  const [ready, setReady] = useState(false)
+  const [conn, setConn] = useState<{ url: string | null; token: string | null }>({ url: null, token: null })
+  const [sessionId, setSessionId] = useState<string | null>(null)
+
+  // Swap the pass for the cookie before joining, so the first slide can load.
+  useEffect(() => {
+    const id = setTimeout(async () => {
+      setConn(readQueryParams())
+      if (pass) {
+        try {
+          const res = await fetch("/api/egress/pass", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pass }),
+          })
+          if (res.ok) setSessionId(((await res.json()) as { sessionId: string }).sessionId)
+        } catch { /* record cameras and screen share without the stage */ }
+      }
+      setReady(true)
+    }, 0)
+    return () => clearTimeout(id)
+  }, [pass])
+
+  if (!ready) return null
+
+  // Opened directly (no token): a benign placeholder.
+  if (!conn.url || !conn.token) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center text-white/40 text-sm font-mono">
+        egress template — no session
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black overflow-hidden">
+      <LiveKitRoom
+        serverUrl={conn.url}
+        token={conn.token}
+        connect
+        // A viewer only — and one that subscribes to nothing by itself, so a
+        // student's camera or microphone never reaches this page.
+        video={false}
+        audio={false}
+        options={{ adaptiveStream: false }}
+        connectOptions={{ autoSubscribe: false }}
+      >
+        <TutorOnlySubscriptions />
+        <RecordingStage sessionId={sessionId} />
+        <LogoWatermark className="top-4 left-4" size={72} />
+        <RoomReadyBridge />
+      </LiveKitRoom>
+    </div>
+  )
+}
+
+/** Subscribes to the tutors' camera, voice and screen — and to nothing of anyone else's. */
+function TutorOnlySubscriptions() {
+  const participants = useRemoteParticipants()
+  useEffect(() => {
+    for (const p of participants as RemoteParticipant[]) {
+      for (const pub of p.trackPublications.values()) {
+        if (!(pub instanceof RemoteTrackPublication)) continue
+        const wanted = isTutor(p) && TUTOR_SOURCES.has(pub.source)
+        if (pub.isSubscribed !== wanted) pub.setSubscribed(wanted)
+      }
+    }
+  })
+  return null
+}
+
+function RecordingStage({ sessionId }: { sessionId: string | null }) {
+  const [stage, setStage] = useState<Stage>(EMPTY_STAGE)
+  const [whiteboardActive, setWhiteboardActive] = useState(false)
+  const [breakouts, setBreakouts] = useState(false)
+  const lastLiveStage = useRef(0)
+  const wbApi = useRef<WhiteboardApi | null>(null)
+  const wbPending = useRef<{ snapshot: WhiteboardSnapshot | null; changes: unknown[]; presence: unknown }>({
+    snapshot: null, changes: [], presence: null,
+  })
+
+  // Only tracks we subscribed to are listed, and we subscribe to tutors only —
+  // the filter repeats the rule so a mistake upstream still can't leak a student.
+  const cameras = useTracks([Track.Source.Camera], { onlySubscribed: true })
+    .filter((t) => isTutor(t.participant)) as TrackReference[]
+  const screens = useTracks([Track.Source.ScreenShare], { onlySubscribed: true })
+    .filter((t) => isTutor(t.participant)) as TrackReference[]
+  const voices = useTracks([Track.Source.Microphone, Track.Source.ScreenShareAudio], { onlySubscribed: true })
+    .filter((t) => isTutor(t.participant)) as TrackReference[]
+  const tutorIdentity = cameras[0]?.participant.identity ?? null
+
+  // ── What's on the stage, from the server, for a recording that starts (or
+  // resumes) mid-presentation. Live messages below take over once they flow.
+  useEffect(() => {
+    if (!sessionId) return
+    const load = async () => {
+      if (Date.now() - lastLiveStage.current < 20_000) return
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/live-state`, { cache: "no-store" })
+        if (!res.ok) return
+        const { state } = (await res.json()) as {
+          state: { active: boolean; kind: "slides" | "video" | null; url: string | null; page: number; videoPlaying: boolean; videoTime: number; updatedAt: number } | null
+        }
+        if (Date.now() - lastLiveStage.current < 20_000) return
+        setStage(state?.active && state.url
+          ? { kind: state.kind, url: state.url, page: state.page, playing: state.videoPlaying, currentTime: state.videoTime, asOf: state.updatedAt }
+          : EMPTY_STAGE)
+      } catch { /* try again on the next tick */ }
+    }
+    void load()
+    const id = setInterval(load, 10_000)
+    return () => clearInterval(id)
+  }, [sessionId])
+
+  // The board's last saved state, so it doesn't start blank.
+  useEffect(() => {
+    if (!sessionId) return
+    void (async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/whiteboard`, { cache: "no-store" })
+        if (!res.ok) return
+        const { snapshot } = (await res.json()) as { snapshot: WhiteboardSnapshot | null }
+        if (!snapshot) return
+        if (wbApi.current) wbApi.current.applySnapshot(snapshot)
+        else wbPending.current.snapshot = snapshot
+      } catch { /* the board fills in from the tutor's next change */ }
+    })()
+  }, [sessionId])
+
+  // ── Live updates from the tutor (anything a student sends is ignored) ─────
+  useDataChannel(PPT_TOPIC, (msg) => {
+    if (!isTutor(msg.from)) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as PptAction
+      lastLiveStage.current = Date.now()
+      switch (data.action) {
+        case "start":
+        case "sync_response":
+          setStage({ ...EMPTY_STAGE, kind: "slides", url: data.url, page: data.page }); break
+        case "navigate":
+          setStage((s) => ({ ...s, page: data.page })); break
+        case "video_start":
+          setStage({ ...EMPTY_STAGE, kind: "video", url: data.url, asOf: Date.now() }); break
+        case "video_state":
+          setStage((s) => ({ ...s, playing: data.playing, currentTime: data.currentTime, asOf: data.ts })); break
+        case "video_sync_response":
+          setStage({ ...EMPTY_STAGE, kind: "video", url: data.url, playing: data.playing, currentTime: data.currentTime, asOf: data.ts }); break
+        case "stop":
+        case "video_stop":
+        case "sync_idle":
+          setStage(EMPTY_STAGE); break
+      }
+    } catch { /* ignore malformed */ }
+  })
+
+  const applyWhiteboard = useCallback((snapshot: WhiteboardSnapshot | null) => {
+    if (!snapshot) return
+    if (wbApi.current) wbApi.current.applySnapshot(snapshot)
+    else wbPending.current.snapshot = snapshot
+  }, [])
+
+  useDataChannel(WHITEBOARD_TOPIC, (msg) => {
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as WhiteboardAction
+      const fromTutor = isTutor(msg.from)
+      if (data.action === "start" && fromTutor) setWhiteboardActive(true)
+      else if (data.action === "stop" && fromTutor) setWhiteboardActive(false)
+      else if (data.action === "sync_response" && fromTutor) {
+        setWhiteboardActive(data.active)
+        applyWhiteboard(data.snapshot)
+      } else if (data.action === "doc") {
+        // Students may be allowed to draw; their strokes are part of the board,
+        // but carry no name or face.
+        if (wbApi.current) wbApi.current.applyChanges(data.changes)
+        else wbPending.current.changes.push(data.changes)
+      } else if (data.action === "presence" && fromTutor) {
+        // The tutor's view only, so the board follows where they look. Other
+        // cursors would carry students' names.
+        if (wbApi.current) wbApi.current.applyPresence(data.presence)
+        else wbPending.current.presence = data.presence
+      }
+    } catch { /* ignore malformed */ }
+  })
+
+  useDataChannel(BREAKOUT_TOPIC, (msg) => {
+    if (!isTutor(msg.from)) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as BreakoutAction
+      if (data.action === "start" || data.action === "update") setBreakouts(true)
+      else if (data.action === "stop") setBreakouts(false)
+    } catch { /* ignore malformed */ }
+  })
+
+  useDataChannel(RECORDER_TOPIC, (msg) => {
+    if (!isTutor(msg.from)) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as RecorderStateAction
+      if (data.action !== "state") return
+      setBreakouts(data.breakouts)
+      setWhiteboardActive(data.whiteboard.active)
+      applyWhiteboard(data.whiteboard.snapshot)
+    } catch { /* ignore malformed */ }
+  })
+
+  const registerWhiteboardApi = useCallback((api: WhiteboardApi | null) => {
+    wbApi.current = api
+    if (!api) return
+    const pending = wbPending.current
+    if (pending.snapshot) api.applySnapshot(pending.snapshot)
+    for (const changes of pending.changes) api.applyChanges(changes as Parameters<WhiteboardApi["applyChanges"]>[0])
+    if (pending.presence) api.applyPresence(pending.presence as Parameters<WhiteboardApi["applyPresence"]>[0])
+    wbPending.current = { snapshot: null, changes: [], presence: null }
+  }, [])
+
+  if (breakouts) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-zinc-950 text-white">
+        <p className="text-3xl font-bold">Breakout rooms</p>
+        <p className="text-lg text-white/60">Not recorded — the class continues shortly.</p>
+      </div>
+    )
+  }
+
+  const noop = () => {}
+  let content: React.ReactNode = null
+  if (screens[0]) {
+    content = <VideoTrack trackRef={screens[0]} className="w-full h-full object-contain" />
+  } else if (whiteboardActive && sessionId) {
+    content = (
+      <div className="w-full h-full bg-white">
+        <TldrawBoard
+          isTutor={false}
+          canWrite={false}
+          studentsCanWrite={false}
+          onToggleStudentWrite={noop}
+          onStop={noop}
+          onMinimize={noop}
+          sessionId={sessionId}
+          localIdentity="class-recorder"
+          localName=""
+          followIdentity={tutorIdentity}
+          onShareToChat={noop}
+          send={noop}
+          registerApi={registerWhiteboardApi}
+          recording
+        />
+      </div>
+    )
+  } else if (stage.kind === "slides" && stage.url) {
+    content = <PptSlideViewer fileUrl={stage.url} currentPage={stage.page} onTotalPages={noop} />
+  } else if (stage.kind === "video" && stage.url) {
+    content = (
+      <VideoPlayer
+        isTutor={false}
+        url={stage.url}
+        playing={stage.playing}
+        currentTime={stage.currentTime}
+        asOf={stage.asOf}
+        onPlayPause={noop}
+        onSeek={noop}
+      />
+    )
+  }
+
+  return (
+    <>
+      <div className="absolute inset-0 flex gap-3 p-3">
+        {content && <div className="relative flex-[7] min-w-0 rounded-lg overflow-hidden bg-zinc-950">{content}</div>}
+        {cameras.length > 0 && (
+          <div className={content ? "flex-[3] min-w-0 flex flex-col justify-center gap-3" : "flex-1 min-w-0 flex gap-3"}>
+            {cameras.map((t) => (
+              <div key={t.publication.trackSid} className="relative flex-1 min-h-0 rounded-lg overflow-hidden bg-zinc-900">
+                {/* Contained, not cropped: signing needs the hands in frame. */}
+                <VideoTrack trackRef={t} className="absolute inset-0 w-full h-full object-contain" />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {voices.map((t) => <AudioTrack key={t.publication.trackSid} trackRef={t} />)}
+    </>
+  )
+}
+
+// Marks the page ready once the room has joined; the worker waits for this.
+function ReadySignal() {
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => console.log("START_RECORDING"))
+    return () => {
+      window.cancelAnimationFrame(id)
+      console.log("END_RECORDING")
+    }
+  }, [])
+  return null
+}
+
+function RoomReadyBridge() {
+  const state = useConnectionState()
+  if (state !== ConnectionState.Connected) return null
+  return <ReadySignal />
+}
