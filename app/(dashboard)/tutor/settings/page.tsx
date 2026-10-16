@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import {
-  User, Lock, Info, Camera, Eye, EyeOff, Check, X,
+  User, Lock, Info, Bell, Camera, Eye, EyeOff, Check, X,
   Shield, Calendar, Mail, Loader2, CheckCircle2, Plus,
   GraduationCap, BadgeCheck, BookOpen, Video, Users, ArrowRight,
 } from "lucide-react"
@@ -16,6 +16,7 @@ import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { useFetch, usePutCallback } from "@/hooks/use-fetch"
+import { PhoneNotificationsCard } from "@/components/pwa/phone-notifications"
 
 type UserData = {
   user: {
@@ -55,10 +56,11 @@ function pwStrength(p: string): PwStrength {
   }
 }
 
-type Section = "profile" | "security" | "account"
+type Section = "profile" | "security" | "notifications" | "account"
 const NAV: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: "profile", label: "Tutor Profile", icon: User },
   { id: "security", label: "Security", icon: Lock },
+  { id: "notifications", label: "Notifications", icon: Bell },
   { id: "account", label: "Account", icon: Info },
 ]
 
@@ -451,6 +453,8 @@ export default function TutorSettingsPage() {
               </form>
             </div>
           )}
+
+          {section === "notifications" && <PhoneNotificationsCard />}
 
           {section === "account" && (
             <div className="rounded-2xl border bg-card p-6">

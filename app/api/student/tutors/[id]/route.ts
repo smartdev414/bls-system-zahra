@@ -106,6 +106,7 @@ async function handleGET(
         avgRating: courseAvg,
         reviewCount: c.reviews.length,
         isEnrolled: enrollmentMap.has(c.id),
+        canLeave: c.visibility === "PUBLIC",
         progress: enrollment
           ? { completedLessons, totalLessons: lessonCount, completion, isCompleted: enrollment.completedAt !== null || completion >= 100 }
           : null,

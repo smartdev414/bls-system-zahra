@@ -60,6 +60,7 @@ type Course = {
   avgRating: number | null
   reviewCount: number
   isEnrolled: boolean
+  canLeave?: boolean
   progress: {
     completedLessons: number
     totalLessons: number
@@ -438,16 +439,20 @@ function ProfileCourseCard({
                   {isCompleted ? "Review" : "Continue"} <ArrowRight className="size-3 ml-1" />
                 </Link>
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="px-2 h-8 text-muted-foreground hover:text-destructive"
-                disabled={unenrolling}
-                onClick={() => unenroll()}
-                title="Unenrol"
-              >
-                {unenrolling ? <Loader2 className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
-              </Button>
+              {course.canLeave && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="px-2 h-8 text-muted-foreground hover:text-destructive"
+                  disabled={unenrolling}
+                  onClick={() => {
+                    if (window.confirm(`Leave "${course.title}"? Your progress on it will be cleared.`)) unenroll()
+                  }}
+                  title="Leave course"
+                >
+                  {unenrolling ? <Loader2 className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
+                </Button>
+              )}
             </div>
           ) : (
             <Button size="sm" className="w-full h-8 text-xs" onClick={() => enroll({})} disabled={enrolling}>

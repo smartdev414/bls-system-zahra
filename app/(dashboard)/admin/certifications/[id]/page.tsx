@@ -157,7 +157,6 @@ export default function AdminCertDetailPage({ params }: { params: Promise<{ id: 
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{enrollments.length} enrolled</span>
-          {program.price > 0 && <Badge className="bg-primary/10 text-primary text-xs">£{(program.price / 100).toFixed(2)}</Badge>}
         </div>
       </div>
 

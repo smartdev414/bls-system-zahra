@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { freePreviewOpen } from "@/lib/course-visibility"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
@@ -55,7 +56,7 @@ async function handleGET(
       include: { progress: true },
     })
 
-    if (!enrollment && !lesson.isFree) {
+    if (!enrollment && !freePreviewOpen(lesson, lesson.section.course)) {
       return NextResponse.json({ message: "Not enrolled in this course" }, { status: 403 })
     }
 

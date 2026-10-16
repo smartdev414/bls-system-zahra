@@ -1,5 +1,7 @@
 "use client"
 
+import { useRouter } from "next/navigation"
+import { SafeHtml } from "@/components/ui/safe-html"
 import { use, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
@@ -111,6 +113,12 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   const [isCompleted, setIsCompleted] = useState(false)
   const completedRef = useRef(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Where the student had got to last time, once the video has jumped there —
+  // shown as a small note with a way back to the start.
+  const [resumedAt, setResumedAt] = useState<number | null>(null)
+  // Seconds left before moving on to the next lesson after a video ends.
+  const [upNextIn, setUpNextIn] = useState<number | null>(null)
+  const router = useRouter()
 
   const { data, loading, error, refetch } = useFetch<LessonData>(`/api/student/lessons/${id}`, {
     // A locked lesson is a page of its own below, not a failure to report.
@@ -167,6 +175,62 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
     },
     [enrollmentId, id]
   )
+
+  // Pick the video up where the student stopped — unless they had all but
+  // finished it, or had barely started, when the start is the better place.
+  const resumeFrom = data?.lesson.watchedSecs ?? 0
+  const handleLoadedMetadata = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      const video = e.currentTarget
+      if (resumeFrom > 5 && video.duration && resumeFrom < video.duration - 15) {
+        video.currentTime = resumeFrom
+        setResumedAt(resumeFrom)
+      }
+    },
+    [resumeFrom]
+  )
+
+  // A video lesson ticks itself off once 90% of it has been watched.
+  const handleVideoProgress = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      handleTimeUpdate(e)
+      const video = e.currentTarget
+      // The "picked up at" note has done its job once the video is under way.
+      if (resumedAt !== null && video.currentTime > resumedAt + 8) setResumedAt(null)
+      if (completedRef.current || !enrollmentId || !video.duration) return
+      if (video.currentTime / video.duration < 0.9) return
+      completedRef.current = true
+      setIsCompleted(true)
+      fetch(`/api/student/lessons/${id}/progress`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enrollmentId, isCompleted: true, watchedSecs: Math.floor(video.currentTime) }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error()
+          toast.success("Lesson complete")
+          refetch()
+        })
+        .catch(() => {
+          // Leave it for the button (or the next play) to try again.
+          completedRef.current = false
+          setIsCompleted(false)
+        })
+    },
+    [handleTimeUpdate, resumedAt, enrollmentId, id, refetch]
+  )
+
+  // When the video ends, count down to the next lesson; the student can stay.
+  const nextLesson = data?.navigation.next && !data.navigation.next.locked ? data.navigation.next : null
+  useEffect(() => {
+    if (upNextIn === null || !nextLesson) return
+    if (upNextIn <= 0) {
+      router.push(`/student/lessons/${nextLesson.id}`)
+      return
+    }
+    const t = setTimeout(() => setUpNextIn(upNextIn - 1), 1000)
+    return () => clearTimeout(t)
+  }, [upNextIn, nextLesson, router])
 
   // Clear a pending auto-save when leaving the lesson.
   useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }, [])
@@ -333,14 +397,51 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
           )}
           {/* Video player */}
           {lesson.type === "VIDEO" && videoAsset ? (
-            <div className="bg-black aspect-video w-full">
+            <div className="bg-black aspect-video w-full relative">
               <ProtectedVideo
                 key={videoAsset.id}
                 src={videoAsset.fileUrl}
                 controls
                 className="w-full h-full"
-                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
+                onTimeUpdate={handleVideoProgress}
+                onPlay={() => setUpNextIn(null)}
+                onEnded={() => { if (nextLesson) setUpNextIn(5) }}
               />
+              {resumedAt !== null && upNextIn === null && (
+                <div className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-black/70 text-white text-xs pl-3 pr-1 py-1">
+                  Picked up at {formatDuration(resumedAt)}
+                  <button
+                    type="button"
+                    className="rounded-full bg-white/15 hover:bg-white/25 px-2 py-0.5 font-semibold"
+                    onClick={(e) => {
+                      const video = e.currentTarget.closest("div.relative")?.querySelector("video")
+                      if (video) video.currentTime = 0
+                      setResumedAt(null)
+                    }}
+                  >
+                    Start over
+                  </button>
+                </div>
+              )}
+              {upNextIn !== null && nextLesson && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/75 p-4">
+                  <div className="text-center text-white max-w-sm">
+                    <p className="text-xs uppercase tracking-wide opacity-70">Up next in {upNextIn}</p>
+                    <p className="mt-1 text-lg font-bold leading-snug line-clamp-2">{nextLesson.title}</p>
+                    <div className="mt-4 flex justify-center gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => setUpNextIn(null)}>
+                        Stay here
+                      </Button>
+                      <Button asChild size="sm">
+                        <Link href={`/student/lessons/${nextLesson.id}`}>
+                          Play now <ChevronRight className="size-4 ml-1" />
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : lesson.type === "TEXT" || (lesson.type === "VIDEO" && lesson.assets.length > 0) ? (
             // Text lessons, and video lessons that hold files but no video, show the files inline.
@@ -531,10 +632,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
 
               <TabsContent value="overview" className="space-y-4">
                 {lesson.description ? (
-                  <div
-                    className="prose prose-sm max-w-none text-foreground"
-                    dangerouslySetInnerHTML={{ __html: lesson.description }}
-                  />
+                  <SafeHtml className="prose prose-sm max-w-none text-foreground" html={lesson.description} />
                 ) : (
                   <p className="text-sm text-muted-foreground italic">No description provided.</p>
                 )}
@@ -615,11 +713,12 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
         {/* ── Bottom nav ───────────────────────────────────────────────────── */}
         <div className="border-t bg-background px-6 py-3 flex items-center justify-between shrink-0">
           {navigation.prev && !navigation.prev.locked ? (
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm" className="h-auto py-1.5">
               <Link href={`/student/lessons/${navigation.prev.id}`}>
-                <ChevronLeft className="size-4 mr-1" />
-                <div className="text-left">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Previous</p>
+                <ChevronLeft className="size-4 mr-1 shrink-0" />
+                <div className="text-left min-w-0">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Previous</p>
+                  <p className="text-xs font-medium truncate max-w-28 sm:max-w-56 leading-tight mt-0.5">{navigation.prev.title}</p>
                 </div>
               </Link>
             </Button>
@@ -634,12 +733,13 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
               Next unlocks {navigation.next.releaseAt ? releaseLabel(navigation.next.releaseAt) : "later"}
             </Button>
           ) : navigation.next ? (
-            <Button asChild size="sm">
+            <Button asChild size="sm" className="h-auto py-1.5">
               <Link href={`/student/lessons/${navigation.next.id}`}>
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-wide opacity-70">Next</p>
+                <div className="text-right min-w-0">
+                  <p className="text-[10px] uppercase tracking-wide opacity-70 leading-none">Next</p>
+                  <p className="text-xs font-semibold truncate max-w-28 sm:max-w-56 leading-tight mt-0.5">{navigation.next.title}</p>
                 </div>
-                <ChevronRight className="size-4 ml-1" />
+                <ChevronRight className="size-4 ml-1 shrink-0" />
               </Link>
             </Button>
           ) : (

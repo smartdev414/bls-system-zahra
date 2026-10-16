@@ -420,6 +420,8 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.TICKET_RESOLVED,
   NotificationType.TICKET_COMMENT,
   NotificationType.HOMEWORK_REMINDER,
+  NotificationType.SESSION_REMINDER,
+  NotificationType.LESSONS_UNLOCKED,
   NotificationType.COURSE_TEACHER_ADDED,
   NotificationType.VIDEO_BACKGROUND_READY,
   NotificationType.VIDEO_BACKGROUND_FAILED,
@@ -469,6 +471,8 @@ export function renderEmailTemplate(
     [NotificationType.TICKET_RESOLVED]:    `✅ Your ticket has been resolved — ${title}`,
     [NotificationType.TICKET_COMMENT]:     `💬 Support replied to your ticket — ${title}`,
     [NotificationType.HOMEWORK_REMINDER]:  `⏰ ${title}`,
+    [NotificationType.SESSION_REMINDER]:   `📅 ${title}`,
+    [NotificationType.LESSONS_UNLOCKED]:   `📖 ${title}`,
     [NotificationType.COURSE_TEACHER_ADDED]: `🎓 ${title}`,
     [NotificationType.VIDEO_BACKGROUND_READY]:  `🎬 ${title}`,
     [NotificationType.VIDEO_BACKGROUND_FAILED]: `⚠️ ${title}`,
@@ -504,6 +508,8 @@ export function renderEmailTemplate(
     case NotificationType.RECORDING_READY:   html = recordingReady(recipientName, body, link);   break
     case NotificationType.TICKET_RESOLVED:   html = generic(recipientName, title, body, link);   break
     case NotificationType.HOMEWORK_REMINDER:    html = generic(recipientName, title, body, link); break
+    case NotificationType.SESSION_REMINDER:     html = generic(recipientName, title, body, link); break
+    case NotificationType.LESSONS_UNLOCKED:     html = generic(recipientName, title, body, link); break
     case NotificationType.COURSE_TEACHER_ADDED: html = generic(recipientName, title, body, link); break
     // Sign-up approval: the name and note were typed by whoever signed up
     case NotificationType.ACCOUNT_PENDING_APPROVAL:

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { mediaGatewayPath } from "@/lib/protected-media"
 import { reconcileSessionRecording } from "@/lib/recording"
 import { withAudit } from "@/lib/audit"
+import { recordingViewers } from "@/lib/session-access"
 
 async function handleGET(
   _req: Request,
@@ -15,14 +16,10 @@ async function handleGET(
 
     const { id } = await params
 
+    // The tutor who ran the class, the students it was for, and admins (who
+    // oversee every class, though they don't teach them).
     const liveSession = await prisma.liveSession.findFirst({
-      where: {
-        id,
-        OR: [
-          { tutorId: session.sub },
-          { attendances: { some: { studentId: session.sub } } },
-        ],
-      },
+      where: { id, ...(session.role === "ADMIN" ? {} : recordingViewers(session.sub)) },
     })
 
     if (!liveSession) return NextResponse.json({ message: "Not found" }, { status: 404 })

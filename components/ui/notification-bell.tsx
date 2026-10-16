@@ -54,6 +54,8 @@ type NotificationType =
   | "QUIZ_PASSED"
   | "QUIZ_FAILED"
   | "HOMEWORK_REMINDER"
+  | "SESSION_REMINDER"
+  | "LESSONS_UNLOCKED"
   | "COURSE_TEACHER_ADDED"
   | "VIDEO_BACKGROUND_READY"
   | "VIDEO_BACKGROUND_FAILED"
@@ -93,6 +95,8 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   QUIZ_PASSED: Award,
   QUIZ_FAILED: Award,
   HOMEWORK_REMINDER: CalendarPlus,
+  SESSION_REMINDER: CalendarPlus,
+  LESSONS_UNLOCKED: BookOpen,
   COURSE_TEACHER_ADDED: BookOpen,
   VIDEO_BACKGROUND_READY: Video,
   VIDEO_BACKGROUND_FAILED: Video,
@@ -123,6 +127,8 @@ const typeColor: Record<NotificationType, string> = {
   QUIZ_PASSED: "text-green-500",
   QUIZ_FAILED: "text-destructive",
   HOMEWORK_REMINDER: "text-yellow-500",
+  SESSION_REMINDER: "text-blue-500",
+  LESSONS_UNLOCKED: "text-primary",
   COURSE_TEACHER_ADDED: "text-primary",
   VIDEO_BACKGROUND_READY: "text-emerald-500",
   VIDEO_BACKGROUND_FAILED: "text-destructive",

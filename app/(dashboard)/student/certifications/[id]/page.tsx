@@ -162,7 +162,7 @@ export default function StudentCertDetailPage() {
       {!isEnrolled && (
         <Button className="w-full" size="lg" onClick={() => enroll({})} disabled={enrolling}>
           {enrolling ? <Loader2 className="size-4 animate-spin mr-2" /> : <Award className="size-4 mr-2" />}
-          {enrolling ? "Enrolling..." : program.price > 0 ? `Enrol — £${(program.price / 100).toFixed(2)}` : "Enrol Free"}
+          {enrolling ? "Enrolling..." : "Enrol"}
         </Button>
       )}
 

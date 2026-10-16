@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { freePreviewOpen } from "@/lib/course-visibility"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
@@ -22,7 +23,7 @@ async function handlePOST(
     const lesson = await prisma.lesson.findUnique({
       where: { id },
       include: {
-        section: { select: { courseId: true } },
+        section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } },
         questions: {
           include: { options: { select: { id: true, isCorrect: true } } },
         },
@@ -36,7 +37,7 @@ async function handlePOST(
     const enrollment = await prisma.enrollment.findFirst({
       where: { studentId: session.sub, courseId: lesson.section.courseId },
     })
-    if (!enrollment && !lesson.isFree) {
+    if (!enrollment && !freePreviewOpen(lesson, lesson.section.course)) {
       return NextResponse.json({ message: "Not enrolled" }, { status: 403 })
     }
 

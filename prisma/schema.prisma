@@ -113,8 +113,13 @@ enum NotificationType {
   CERT_SUBMISSION_RECEIVED
   // Tutor review
   NEW_TUTOR_REVIEW
-  // Staff / teacher nudging a student who is behind on lessons or tests
+  // Staff / teacher nudging a student who is behind on lessons or tests (also
+  // sent automatically once a week while a student stays behind)
   HOMEWORK_REMINDER
+  // Automatic: a class the student is in is tomorrow / starts within the hour
+  SESSION_REMINDER
+  // Automatic: lessons held back for a release date have just opened
+  LESSONS_UNLOCKED
   // A tutor was put on a course as one of its teachers
   COURSE_TEACHER_ADDED
   // Sign-up approval: staff hear about a new account to review, and the
@@ -190,6 +195,7 @@ model User {
   tutorConversations   Conversation[]          @relation("TutorConversations")
   sentMessages         Message[]               @relation("SentMessages")
   notifications        Notification[]
+  pushSubscriptions    PushSubscription[]
   studentGroups        StudentGroup[]          @relation("TutorStudentGroups")
   groupMemberships     StudentGroupMember[]
   sentInvites          TutorInvite[]           @relation("TutorInvites")
@@ -209,12 +215,23 @@ model User {
   libraryFiles         LibraryFile[]           @relation("TutorLibraryFiles")
   preparedCaptions     PreparedCaption[]       @relation("TutorPreparedCaptions")
   videoCleanJobs       VideoCleanJob[]
+  savedSigns           SavedSign[]
 }
 
 enum AccountStatus {
   PENDING
   ACTIVE
   REJECTED
+}
+
+/// One row per automatic reminder already sent (see lib/reminders.ts), keyed by
+/// what it was about — e.g. "class-day:<sessionId>:<studentId>" — so a reminder
+/// run that overlaps or repeats never sends the same reminder twice.
+model ReminderSent {
+  key       String   @id
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 /// Platform-wide switches an admin changes from Settings. One row, id "default".
@@ -237,6 +254,22 @@ model PasswordResetToken {
   @@index([userId])
   @@index([token])
   @@index([expiresAt])
+}
+
+// A browser/phone that agreed to receive web push for this user. One row per
+// device; rows the push service reports as gone (404/410) are deleted on send.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Notification {
@@ -317,8 +350,23 @@ model Sign {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
+  savedBy     SavedSign[]
+
   @@index([category])
   @@index([level])
+}
+
+// A sign a student starred in the dictionary — their own list to practise from.
+model SavedSign {
+  userId    String
+  signId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sign Sign @relation(fields: [signId], references: [id], onDelete: Cascade)
+
+  @@id([userId, signId])
+  @@index([signId])
 }
 
 model Course {

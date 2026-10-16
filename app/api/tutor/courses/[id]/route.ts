@@ -136,7 +136,15 @@ async function handleDELETE(
     const existing = await prisma.course.findFirst({ where: { id, ...courseContentScope(session) } })
     if (!existing) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
-    await prisma.course.delete({ where: { id } })
+    // Classes that were held for the course stay in the timetable history
+    // (with their attendance and recordings) — they just stop pointing at it.
+    // Enrolments (with their lesson progress) and reviews go with the course.
+    await prisma.$transaction([
+      prisma.liveSession.updateMany({ where: { courseId: id }, data: { courseId: null } }),
+      prisma.review.deleteMany({ where: { courseId: id } }),
+      prisma.enrollment.deleteMany({ where: { courseId: id } }),
+      prisma.course.delete({ where: { id } }),
+    ])
     return NextResponse.json({ message: "Course deleted" })
   } catch (err) {
     console.error("[DELETE /api/tutor/courses/[id]]", err)

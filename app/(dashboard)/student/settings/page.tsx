@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import {
-  User, Lock, Info, Camera, Eye, EyeOff, Check, X,
+  User, Lock, Info, Bell, Camera, Eye, EyeOff, Check, X,
   Shield, Calendar, Mail, Loader2, CheckCircle2, BookOpen,
   GraduationCap, Video, ArrowRight, Award, Copy, Share2,
 } from "lucide-react"
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useFetch, usePutCallback } from "@/hooks/use-fetch"
+import { PhoneNotificationsCard } from "@/components/pwa/phone-notifications"
 import { COURSE_LEVELS, levelColor, levelDot, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -53,11 +54,12 @@ function pwStrength(p: string): PwStrength {
   ][c] }
 }
 
-type Section = "profile" | "security" | "account" | "certifications"
+type Section = "profile" | "security" | "notifications" | "account" | "certifications"
 const NAV: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: "profile",         label: "Profile",        icon: User  },
   { id: "certifications",  label: "Certifications", icon: Award },
   { id: "security",        label: "Security",       icon: Lock  },
+  { id: "notifications",   label: "Notifications",  icon: Bell  },
   { id: "account",         label: "Account",        icon: Info  },
 ]
 
@@ -400,6 +402,9 @@ export default function StudentSettingsPage() {
           {section === "certifications" && (
             <CertificationsSection />
           )}
+
+          {/* ════ NOTIFICATIONS ════ */}
+          {section === "notifications" && <PhoneNotificationsCard />}
 
           {/* ════ ACCOUNT ════ */}
           {section === "account" && (

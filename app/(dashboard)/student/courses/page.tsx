@@ -50,6 +50,7 @@ type Course = {
   avgRating: number | null
   reviewCount: number
   isEnrolled: boolean
+  canLeave?: boolean
   progress: CourseProgress | null
 }
 
@@ -331,10 +332,14 @@ function MyCourseCard({ course, onMutated }: { course: Course; onMutated: () => 
                 <DropdownMenuItem onSelect={() => setReviewOpen(true)}>
                   <Star className="size-4" /> Rate this course
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onSelect={() => setLeaveOpen(true)}>
-                  <LogOut className="size-4" /> Leave course
-                </DropdownMenuItem>
+                {course.canLeave && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onSelect={() => setLeaveOpen(true)}>
+                      <LogOut className="size-4" /> Leave course
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -376,7 +381,7 @@ function MyCourseCard({ course, onMutated }: { course: Course; onMutated: () => 
           <DialogHeader>
             <DialogTitle>Leave this course?</DialogTitle>
             <DialogDescription>
-              {course.title} will be removed from your courses. You can enrol again later.
+              {course.title} will be removed from your courses and your progress on it will be cleared. You can enrol again later and start afresh.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

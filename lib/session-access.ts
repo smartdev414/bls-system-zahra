@@ -61,6 +61,32 @@ export function studentVisibleSessions(studentId: string): Prisma.LiveSessionWhe
 }
 
 /**
+ * Prisma `where` fragment for a student's own classes — the ones run for them
+ * (invited, let in on request, or a whole-course class on a course they are
+ * on) or that they sat in. Unlike `studentVisibleSessions` it leaves out open
+ * sessions anyone may browse, so "your next class" is really theirs.
+ */
+export function studentOwnSessions(studentId: string): Prisma.LiveSessionWhereInput {
+  return {
+    OR: [
+      { invites: { some: { studentId } } },
+      { joinRequests: { some: { studentId, status: "APPROVED" } } },
+      { visibility: "PUBLIC", course: { enrollments: { some: { studentId } } } },
+      { attendances: { some: { studentId } } },
+    ],
+  }
+}
+
+/**
+ * Prisma `where` fragment for who may watch a class's recording: the tutor who
+ * ran it, and the students it was for — including those who missed it, since
+ * catching up is what a recording is for. Admins are let through by the caller.
+ */
+export function recordingViewers(userId: string): Prisma.LiveSessionWhereInput {
+  return { OR: [{ tutorId: userId }, studentOwnSessions(userId)] }
+}
+
+/**
  * Prisma `where` fragment for the students who have been in one of a tutor's
  * classrooms. Joining a class — public or invite-only, on a course or not —
  * makes a student that tutor's student, the same as enrolling on their course

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { freePreviewOpen } from "@/lib/course-visibility"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
@@ -21,7 +22,7 @@ async function handleGET(
 
     const lesson = await prisma.lesson.findUnique({
       where: { id },
-      include: { section: { select: { courseId: true } } },
+      include: { section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } } },
     })
     // A test that has not been released yet cannot be read or taken.
     if (!lesson || !isReleased(lesson)) {
@@ -32,7 +33,7 @@ async function handleGET(
     const enrollment = await prisma.enrollment.findFirst({
       where: { studentId: session.sub, courseId: lesson.section.courseId },
     })
-    if (!enrollment && !lesson.isFree) {
+    if (!enrollment && !freePreviewOpen(lesson, lesson.section.course)) {
       return NextResponse.json({ message: "Not enrolled" }, { status: 403 })
     }
 

@@ -55,7 +55,6 @@ export default function AdminCertificationsPage() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [level, setLevel] = useState<CourseLevel>("L1")
-  const [price, setPrice] = useState("0")
 
   const { execute: createProgram, loading: creating } = usePostCallback<
     { program: Program },
@@ -161,9 +160,6 @@ export default function AdminCertificationsPage() {
                   <span className="flex items-center gap-1"><CheckCircle2 className="size-3" /> {p.completedCount} completed</span>
                 </div>
 
-                {p.price > 0 && (
-                  <p className="text-xs font-bold text-primary">£{(p.price / 100).toFixed(2)}</p>
-                )}
               </CardContent>
             </Card>
           ))}
@@ -190,7 +186,7 @@ export default function AdminCertificationsPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault()
-              createProgram({ title, description, level, price: Math.round(parseFloat(price) * 100) || 0 })
+              createProgram({ title, description, level })
             }}
             className="flex flex-col gap-4"
           >
@@ -202,7 +198,9 @@ export default function AdminCertificationsPage() {
               <Label>Description</Label>
               <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Prove your ability to communicate using BSL in a professional environment." rows={3} className="resize-none" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            {/* No price yet: there is no payment step, so a price would only
+                promise a charge that never happens. */}
+            <div className="flex flex-col gap-1.5">
               <div className="flex flex-col gap-1.5">
                 <Label>Level</Label>
                 <Select value={level} onValueChange={(v) => setLevel(v as CourseLevel)}>
@@ -213,10 +211,6 @@ export default function AdminCertificationsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Price (£)</Label>
-                <Input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" />
               </div>
             </div>
             <Button type="submit" disabled={creating || !title.trim()}>

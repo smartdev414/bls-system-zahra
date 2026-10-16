@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
+import { ThisWeekCard, type ThisWeek } from "@/components/student/this-week-card"
 
 type CurrentCourse = {
   courseId: string
@@ -26,12 +27,15 @@ type CurrentCourse = {
 type DashboardData = {
   student: { name: string; bslLevel: string | null }
   stats: {
-    currentDay: number
+    completedLessons: number
+    totalLessons: number
+    classesAttended: number
     completion: number
     testsPassed: number
     totalTests: number
   }
   currentCourse: CurrentCourse | null
+  thisWeek: ThisWeek
   upcomingSessions: Array<{
     id: string
     title: string
@@ -65,113 +69,13 @@ function formatSessionDate(iso: string) {
   }
 }
 
-function CurrentCourseCard({ course, loading }: { course: CurrentCourse | null; loading: boolean }) {
-  if (loading) {
-    return (
-      <Card className="shadow-sm">
-        <CardContent className="p-5 flex flex-col gap-3">
-          <div className="h-4 w-32 bg-muted rounded animate-pulse" />
-          <div className="h-6 w-56 bg-muted rounded animate-pulse" />
-          <div className="h-2 w-full bg-muted rounded animate-pulse" />
-          <div className="h-8 w-36 bg-muted rounded animate-pulse" />
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (!course) {
-    return (
-      <Card className="shadow-sm border-dashed">
-        <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
-          <div className="rounded-full bg-primary/10 p-4">
-            <BookOpen className="size-6 text-primary" />
-          </div>
-          <div>
-            <p className="font-semibold">No course enrolled yet</p>
-            <p className="text-sm text-muted-foreground mt-1">Browse available courses to get started.</p>
-          </div>
-          <Button asChild size="sm">
-            <Link href="/student/courses">Browse Courses <ArrowRight className="size-3.5 ml-1" /></Link>
-          </Button>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const isComplete = course.completion === 100
-  const LessonIcon = course.nextLesson
-    ? (lessonTypeIcon[course.nextLesson.type as keyof typeof lessonTypeIcon] ?? PlayCircle)
-    : CheckCircle2
-
-  return (
-    <Card className="shadow-sm overflow-hidden">
-      <div className="flex gap-0">
-        {/* Thumbnail */}
-        {course.thumbnailUrl ? (
-          <div className="w-32 shrink-0 hidden sm:flex items-center bg-muted">
-            <img
-              src={course.thumbnailUrl}
-              alt={course.courseTitle}
-              className="w-full object-contain"
-            />
-          </div>
-        ) : (
-          <div className="w-32 shrink-0 hidden sm:flex items-center justify-center bg-primary/10">
-            <BookOpen className="size-8 text-primary/40" />
-          </div>
-        )}
-
-        {/* Content */}
-        <div className="flex-1 p-5 flex flex-col gap-3 min-w-0">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
-              Continue Learning
-            </p>
-            <h3 className="font-bold text-base leading-snug truncate">{course.courseTitle}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">with {course.tutorName}</p>
-          </div>
-
-          {/* Progress */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">{course.completedLessons}/{course.totalLessons} lessons</span>
-              <span className="font-semibold">{course.completion}%</span>
-            </div>
-            <Progress value={course.completion} className="h-1.5" />
-          </div>
-
-          {/* Next lesson / action */}
-          {isComplete ? (
-            <div className="flex items-center gap-2 text-sm text-emerald-600 font-semibold">
-              <CheckCircle2 className="size-4" />
-              Course complete!
-            </div>
-          ) : course.nextLesson ? (
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 flex-1">
-                <LessonIcon className="size-3.5 shrink-0" />
-                <span className="truncate">Next: {course.nextLesson.title}</span>
-              </div>
-              <Button asChild size="sm" className="shrink-0 h-8">
-                <Link href={`/student/lessons/${course.nextLesson.id}`}>
-                  Start Lesson <ArrowRight className="size-3.5 ml-1" />
-                </Link>
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </Card>
-  )
-}
-
 export default function StudentDashboardPage() {
   const { data, loading } = useFetch<DashboardData>("/api/student/dashboard", {
     errorMessage: "Could not load dashboard data",
   })
 
   const name = data?.student.name?.split(" ")[0] ?? "there"
-  const stats = data?.stats ?? { currentDay: 1, completion: 0, testsPassed: 0, totalTests: 0 }
+  const stats = data?.stats ?? { completedLessons: 0, totalLessons: 0, completion: 0, testsPassed: 0, totalTests: 0, classesAttended: 0 }
   const liveSessions = data?.upcomingSessions.filter((s) => s.status === "LIVE") ?? []
   const scheduledSessions = data?.upcomingSessions.filter((s) => s.status !== "LIVE") ?? []
 
@@ -191,8 +95,8 @@ export default function StudentDashboardPage() {
                 Welcome back, {name}!
               </h1>
               <p className="text-primary-foreground/80 mb-5">
-                {stats.completion > 0
-                  ? `You're making great progress — Day ${stats.currentDay} and ${stats.completion}% complete!`
+                {stats.completedLessons > 0
+                  ? `You've completed ${stats.completedLessons} of ${stats.totalLessons} lessons — keep it up!`
                   : "You're just getting started. Pick a lesson below to begin your BSL journey!"}
               </p>
               <div className="flex items-center gap-3 flex-wrap">
@@ -221,34 +125,12 @@ export default function StudentDashboardPage() {
         {/* Left — current course + stats + modules */}
         <div className="lg:col-span-2 flex flex-col gap-5">
 
-          {/* Current course */}
-          <CurrentCourseCard course={data?.currentCourse ?? null} loading={loading} />
-
-          {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
-            {[
-              { label: "Current Day", value: `Day ${stats.currentDay}`, pct: Math.min((stats.currentDay / 30) * 100, 100) },
-              { label: "Completion", value: `${stats.completion}%`, pct: stats.completion },
-              {
-                label: "Tests Passed",
-                value: stats.totalTests > 0 ? `${stats.testsPassed}/${stats.totalTests}` : "—",
-                pct: stats.totalTests > 0 ? (stats.testsPassed / stats.totalTests) * 100 : 0,
-              },
-            ].map(({ label, value, pct }) => (
-              <Card key={label} className="shadow-sm">
-                {/* Phones: one compact row per stat (label left, value right, bar under). */}
-                <CardContent className="px-4 py-3 sm:p-5 grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 sm:flex sm:flex-col sm:items-stretch">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-                  {loading ? (
-                    <div className="h-8 w-16 rounded bg-muted animate-pulse" />
-                  ) : (
-                    <p className="text-xl sm:text-3xl font-black">{value}</p>
-                  )}
-                  <Progress value={loading ? 0 : pct} className="h-1.5 max-sm:col-span-2" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {/* This week: next class, homework, last class's recording */}
+          <ThisWeekCard
+            data={data?.thisWeek ?? null}
+            loading={loading}
+            hasCourse={!!data?.currentCourse}
+          />
 
           {/* Module grid */}
           <Card className="shadow-sm">
@@ -280,31 +162,6 @@ export default function StudentDashboardPage() {
 
         {/* Right — sessions */}
         <div className="flex flex-col gap-4">
-
-          {/* Live now — shown only when active */}
-          {liveSessions.length > 0 && (
-            <Card className="shadow-sm border-emerald-200 bg-emerald-50">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2 text-emerald-700">
-                  <Radio className="size-4 animate-pulse" />
-                  Live Now
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 flex flex-col gap-3">
-                {liveSessions.map((session) => (
-                  <div key={session.id} className="flex flex-col gap-2">
-                    <p className="text-sm font-semibold leading-snug">{session.title}</p>
-                    <p className="text-xs text-emerald-700/80">{session.tutorName}</p>
-                    <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white w-full gap-1.5">
-                      <Link href={`/student/classroom/${session.id}`}>
-                        <Video className="size-3.5" /> Join Now
-                      </Link>
-                    </Button>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
 
           {/* Upcoming Sessions */}
           <Card className="shadow-sm">

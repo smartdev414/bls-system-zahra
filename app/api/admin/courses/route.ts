@@ -35,7 +35,7 @@ async function handleGET(req: NextRequest) {
             orderBy: { assignedAt: "asc" },
             select: { tutor: { select: { id: true, name: true } } },
           },
-          category: { select: { name: true } },
+          category: { select: { id: true, name: true } },
           _count: { select: { enrollments: true, sections: true } },
           reviews: { select: { rating: true } },
         },
@@ -76,19 +76,41 @@ async function handlePATCH(req: NextRequest) {
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (!can(session.role, "courses.edit")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
-    const { id, status, visibility } = await req.json() as {
+    const { id, status, visibility, tutorId, categoryId } = await req.json() as {
       id: string
       status?: "DRAFT" | "PUBLISHED" | "ARCHIVED"
       visibility?: CourseVisibility
+      /** New lead teacher. */
+      tutorId?: string
+      /** null takes the course out of its category. */
+      categoryId?: string | null
+    }
+    if (status !== undefined && !["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
+      return NextResponse.json({ message: "status must be DRAFT, PUBLISHED or ARCHIVED" }, { status: 400 })
     }
     if (visibility !== undefined && !isCourseVisibility(visibility)) {
       return NextResponse.json({ message: "visibility must be PRIVATE or PUBLIC" }, { status: 400 })
     }
+    if (tutorId !== undefined) {
+      const tutor = await prisma.user.findFirst({ where: { id: tutorId, role: "TUTOR" }, select: { id: true } })
+      if (!tutor) return NextResponse.json({ message: "Tutor not found" }, { status: 400 })
+    }
+    if (categoryId) {
+      const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { id: true } })
+      if (!category) return NextResponse.json({ message: "Category not found" }, { status: 400 })
+    }
 
     const course = await prisma.course.update({
       where: { id },
-      data: { ...(status && { status }), ...(visibility && { visibility }) },
+      data: {
+        ...(status && { status }),
+        ...(visibility && { visibility }),
+        ...(tutorId && { tutorId }),
+        ...(categoryId !== undefined && { categoryId: categoryId || null }),
+      },
     })
+    // The lead is not also one of the course's extra teachers.
+    if (tutorId) await prisma.courseTutor.deleteMany({ where: { courseId: id, tutorId } })
 
     return NextResponse.json({ course })
   } catch (err) {

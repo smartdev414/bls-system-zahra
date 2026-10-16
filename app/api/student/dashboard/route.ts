@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { studentVisibleSessions } from "@/lib/session-access"
+import { studentOwnSessions, studentVisibleSessions } from "@/lib/session-access"
 import { isReleased } from "@/lib/lesson-release"
 
 async function handleGET() {
@@ -18,7 +18,10 @@ async function handleGET() {
     const user = await prisma.user.findUnique({
       where: { id: session.sub },
       include: {
+        // Only courses that are running count: an archived or unpublished
+        // course drops out of the student's stats and "continue" card.
         enrollments: {
+          where: { course: { status: "PUBLISHED" } },
           include: {
             course: {
               include: {
@@ -41,32 +44,40 @@ async function handleGET() {
       return NextResponse.json({ message: "User not found" }, { status: 404 })
     }
 
-    // Compute stats across all enrollments
+    // Lessons: every lesson on the student's running courses counts towards
+    // the total, ticked off by completing it.
     let totalLessons = 0
     let completedLessons = 0
-    let totalQuizzes = 0
-    let passedQuizzes = 0
+    const releasedTestIds: string[] = []
+    const now = new Date()
 
     for (const enrollment of user.enrollments) {
+      const done = new Set(enrollment.progress.filter((p) => p.isCompleted).map((p) => p.lessonId))
       for (const section of enrollment.course.sections) {
         for (const lesson of section.lessons) {
           totalLessons++
-          if (lesson.type === "QUIZ") totalQuizzes++
-          const prog = enrollment.progress.find((p) => p.lessonId === lesson.id)
-          if (prog?.isCompleted) {
-            completedLessons++
-            if (lesson.type === "QUIZ") passedQuizzes++
-          }
+          if (done.has(lesson.id)) completedLessons++
+          if (lesson.type === "QUIZ" && isReleased(lesson, now)) releasedTestIds.push(lesson.id)
         }
       }
     }
 
-    const firstEnrollment = user.enrollments.sort(
-      (a, b) => a.enrolledAt.getTime() - b.enrolledAt.getTime()
-    )[0]
-    const currentDay = firstEnrollment
-      ? Math.floor((Date.now() - firstEnrollment.enrolledAt.getTime()) / (1000 * 60 * 60 * 24)) + 1
-      : 1
+    // Tests: counted the same way as the Tests page — released tests only, and
+    // a test is passed by passing an attempt.
+    const [passedTests, classesAttended] = await Promise.all([
+      releasedTestIds.length > 0
+        ? prisma.quizAttempt
+            .findMany({
+              where: { userId: session.sub, passed: true, lessonId: { in: releasedTestIds } },
+              distinct: ["lessonId"],
+              select: { lessonId: true },
+            })
+            .then((rows) => rows.length)
+        : Promise.resolve(0),
+      prisma.liveSessionAttendance.count({
+        where: { studentId: session.sub, joinedAt: { not: null } },
+      }),
+    ])
 
     // ── Current course: enrollment with the most recent progress activity ──
     let currentCourse: {
@@ -127,13 +138,91 @@ async function handleGET() {
       include: { tutor: { select: { name: true } } },
     })
 
+    // ── This week: the student's next class, the lessons to do, and the
+    // recording of their last class — what a weekly-class student needs.
+    const [nextClass, lastRecorded] = await Promise.all([
+      prisma.liveSession.findFirst({
+        where: {
+          AND: [
+            {
+              OR: [
+                { status: "LIVE" },
+                // A class running late to start still counts as "next" for an hour.
+                { status: "SCHEDULED", scheduledAt: { gte: new Date(now.getTime() - 60 * 60 * 1000) } },
+              ],
+            },
+            studentOwnSessions(session.sub),
+          ],
+        },
+        // LIVE sorts before SCHEDULED in the enum's descending order.
+        orderBy: [{ status: "desc" }, { scheduledAt: "asc" }],
+        include: { tutor: { select: { name: true } } },
+      }),
+      prisma.liveSession.findFirst({
+        where: {
+          status: "COMPLETED",
+          scheduledAt: { gte: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000) },
+          OR: [{ recordingUrl: { not: null } }, { recordingKey: { not: null } }],
+          ...studentOwnSessions(session.sub),
+        },
+        orderBy: { scheduledAt: "desc" },
+        select: { id: true, title: true, scheduledAt: true },
+      }),
+    ])
+
+    // Homework: the next lessons that are open and not yet done, in course
+    // order — on the course the student is working through first.
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+    const homework: Array<{ id: string; title: string; type: string; courseTitle: string; isNew: boolean }> = []
+    let homeworkLeft = 0
+    const byActivity = user.enrollments.slice().sort((a, b) => {
+      const aLatest = a.progress.reduce((max, p) => Math.max(max, p.updatedAt.getTime()), a.enrolledAt.getTime())
+      const bLatest = b.progress.reduce((max, p) => Math.max(max, p.updatedAt.getTime()), b.enrolledAt.getTime())
+      return bLatest - aLatest
+    })
+    for (const enrollment of byActivity) {
+      const done = new Set(enrollment.progress.filter((p) => p.isCompleted).map((p) => p.lessonId))
+      for (const lesson of enrollment.course.sections.flatMap((s) => s.lessons)) {
+        if (done.has(lesson.id) || !isReleased(lesson, now)) continue
+        homeworkLeft++
+        if (homework.length < 3) {
+          homework.push({
+            id: lesson.id,
+            title: lesson.title,
+            type: lesson.type,
+            courseTitle: enrollment.course.title,
+            isNew: !!lesson.releaseAt && now.getTime() - lesson.releaseAt.getTime() < WEEK_MS,
+          })
+        }
+      }
+    }
+
     return NextResponse.json({
       student: { name: user.name, bslLevel: user.bslLevel },
+      thisWeek: {
+        nextClass: nextClass
+          ? {
+              id: nextClass.id,
+              title: nextClass.title,
+              scheduledAt: nextClass.scheduledAt.toISOString(),
+              durationMins: nextClass.durationMins,
+              tutorName: nextClass.tutor.name,
+              status: nextClass.status,
+            }
+          : null,
+        homework,
+        homeworkLeft,
+        lastRecording: lastRecorded
+          ? { id: lastRecorded.id, title: lastRecorded.title, scheduledAt: lastRecorded.scheduledAt.toISOString() }
+          : null,
+      },
       stats: {
-        currentDay,
+        completedLessons,
+        totalLessons,
         completion: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0,
-        testsPassed: passedQuizzes,
-        totalTests: totalQuizzes,
+        testsPassed: passedTests,
+        totalTests: releasedTestIds.length,
+        classesAttended,
       },
       currentCourse,
       upcomingSessions: upcomingSessions.map((s) => ({

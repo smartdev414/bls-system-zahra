@@ -107,6 +107,9 @@ async function handleGET(req: NextRequest) {
         avgRating,
         reviewCount: c.reviews.length,
         isEnrolled: enrollmentMap.has(c.id),
+        // A private course is the student's class: staff put them on it and
+        // take them off it, so only a public course can be left.
+        canLeave: c.visibility === "PUBLIC",
         progress: enrollment ? {
           completedLessons,
           totalLessons: lessonCount,

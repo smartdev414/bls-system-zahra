@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   BookOpen, Search, Loader2, Archive, CheckCircle2, FilePen,
-  Star, Users, Filter, Plus, Pencil, GraduationCap, Copy, MoreHorizontal,
+  Star, Users, Filter, Plus, Pencil, GraduationCap, Copy, MoreHorizontal, Settings2, Trash2,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { CourseVisibilityButton } from "@/components/admin/course-visibility-button"
@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { useFetch, usePatchCallback, usePutCallback } from "@/hooks/use-fetch"
+import { useDeleteCallback, useFetch, usePatchCallback, usePutCallback } from "@/hooks/use-fetch"
 import { TutorPickerModal } from "@/components/classroom/TutorPickerModal"
 import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
 import {
@@ -43,7 +43,7 @@ type CourseItem = {
   tutor: { id: string; name: string }
   // Teachers the school has put on the course, besides its lead.
   teachers: Array<{ id: string; name: string }>
-  category: { name: string } | null
+  category: { id: string; name: string } | null
   enrollmentCount: number
   sectionCount: number
   avgRating: number | null
@@ -69,13 +69,16 @@ const statusConfig = {
 export function CoursesManager({
   canCreate = true,
   builderBase,
-}: { canCreate?: boolean; builderBase?: string } = {}) {
+  canDelete = false,
+}: { canCreate?: boolean; builderBase?: string; canDelete?: boolean } = {}) {
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [page, setPage] = useState(1)
   const [teachersFor, setTeachersFor] = useState<CourseItem | null>(null)
   // Copying brings the lessons with it, so it is offered where the builder is (admins).
   const [copyOf, setCopyOf] = useState<CourseItem | null>(null)
+  const [detailsFor, setDetailsFor] = useState<CourseItem | null>(null)
+  const [deleting, setDeleting] = useState<CourseItem | null>(null)
   const router = useRouter()
 
   const debouncedQuery = useDebounce(query)
@@ -148,6 +151,8 @@ export function CoursesManager({
               onMutated={refetch}
               onEditTeachers={() => setTeachersFor(course)}
               onCopy={builderBase ? () => setCopyOf(course) : undefined}
+              onEditDetails={() => setDetailsFor(course)}
+              onDelete={canDelete ? () => setDeleting(course) : undefined}
               builderBase={builderBase}
             />
           ))}
@@ -174,6 +179,24 @@ export function CoursesManager({
         />
       )}
 
+      {detailsFor && (
+        <CourseDetailsDialog
+          key={detailsFor.id}
+          course={detailsFor}
+          onClose={() => setDetailsFor(null)}
+          onSaved={() => { setDetailsFor(null); refetch() }}
+        />
+      )}
+
+      {deleting && (
+        <DeleteCourseDialog
+          key={deleting.id}
+          course={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => { setDeleting(null); refetch() }}
+        />
+      )}
+
       {teachersFor && (
         <CourseTeachersModal
           key={teachersFor.id}
@@ -188,10 +211,14 @@ export function CoursesManager({
 
 // ─── Course row ───────────────────────────────────────────────────────────────
 
-function CourseRow({ course, onMutated, onEditTeachers, onCopy, builderBase }: {
+function CourseRow({ course, onMutated, onEditTeachers, onCopy, onEditDetails, onDelete, builderBase }: {
   course: CourseItem
   onMutated: () => void
   onEditTeachers: () => void
+  /** Lead teacher and category. */
+  onEditDetails: () => void
+  /** Offered to admins only. */
+  onDelete?: () => void
   /** Offered to admins only: makes the course again for another group. */
   onCopy?: () => void
   builderBase?: string
@@ -295,6 +322,9 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, builderBase }: {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={onEditDetails}>
+                  <Settings2 className="size-3.5 mr-2" /> Edit details
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={onEditTeachers}>
                   <GraduationCap className="size-3.5 mr-2" /> Teachers
                 </DropdownMenuItem>
@@ -311,12 +341,143 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, builderBase }: {
                     <Archive className="size-3.5 mr-2" /> Archive
                   </DropdownMenuItem>
                 )}
+                {course.status === "ARCHIVED" && (
+                  <DropdownMenuItem
+                    disabled={updating}
+                    onSelect={() => updateStatus({ id: course.id, status: "DRAFT" })}
+                  >
+                    <FilePen className="size-3.5 mr-2" /> Restore to draft
+                  </DropdownMenuItem>
+                )}
+                {onDelete && (
+                  <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+                    <Trash2 className="size-3.5 mr-2" /> Delete course
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+// ─── Lead teacher and category ────────────────────────────────────────────────
+
+function CourseDetailsDialog({ course, onClose, onSaved }: {
+  course: CourseItem
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [tutorId, setTutorId] = useState(course.tutor.id)
+  const [categoryId, setCategoryId] = useState(course.category?.id ?? "")
+
+  const { data: tutorData } = useFetch<{ tutors: TutorOption[] }>("/api/tutor/colleagues", {
+    errorMessage: false,
+  })
+  const { data: categoryData } = useFetch<{ categories: CategoryOption[] }>("/api/admin/categories", {
+    errorMessage: false,
+  })
+
+  // The current lead may be a staff account (not in the tutor list) — keep it
+  // selectable so opening and saving the dialog never changes it by accident.
+  const tutors = tutorData?.tutors ?? []
+  const leadListed = tutors.some((t) => t.id === course.tutor.id)
+
+  const { execute: save, loading: saving } = usePatchCallback<
+    { course: unknown },
+    { id: string; tutorId?: string; categoryId: string | null }
+  >("/api/admin/courses", {
+    successMessage: "Course updated",
+    errorMessage: "Could not update course",
+    onSuccess: onSaved,
+  })
+
+  const selectClass =
+    "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{course.title}</DialogTitle>
+          <DialogDescription>Who leads this course, and where it is filed.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="d-tutor">Lead teacher</Label>
+            <select id="d-tutor" value={tutorId} onChange={(e) => setTutorId(e.target.value)} className={selectClass}>
+              {!leadListed && <option value={course.tutor.id}>{course.tutor.name}</option>}
+              {tutors.map((t) => (
+                <option key={t.id} value={t.id}>{t.name} — {t.email}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="d-category">Category</Label>
+            <select id="d-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={selectClass}>
+              <option value="">No category</option>
+              {(categoryData?.categories ?? []).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={saving}
+            onClick={() => save({
+              id: course.id,
+              ...(tutorId !== course.tutor.id && { tutorId }),
+              categoryId: categoryId || null,
+            })}
+          >
+            {saving && <Loader2 className="size-4 animate-spin mr-1.5" />}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Delete a course ──────────────────────────────────────────────────────────
+
+function DeleteCourseDialog({ course, onClose, onDeleted }: {
+  course: CourseItem
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const { execute: remove, loading } = useDeleteCallback(`/api/tutor/courses/${course.id}`, {
+    successMessage: "Course deleted",
+    errorMessage: "Could not delete course",
+    onSuccess: onDeleted,
+  })
+  const n = course.enrollmentCount
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete “{course.title}”?</DialogTitle>
+          <DialogDescription>
+            Its sections and lessons are deleted for good
+            {n > 0 ? `, and the ${n} student${n === 1 ? "" : "s"} on it lose their progress` : ""}.
+            Past classes and their recordings stay in the timetable.
+            {n > 0 && course.status !== "ARCHIVED" && " To keep it for the record instead, archive it."}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Keep course</Button>
+          <Button variant="destructive" disabled={loading} onClick={() => remove()}>
+            {loading && <Loader2 className="size-4 animate-spin mr-1.5" />}
+            Delete course
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

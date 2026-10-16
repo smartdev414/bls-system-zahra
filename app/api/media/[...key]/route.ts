@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession, type SessionPayload } from "@/lib/auth"
 import { getPresignedDownloadUrl, objectExists } from "@/lib/s3"
 import { cleanKeyFor, isRawRecordingKey } from "@/lib/background-clean-keys"
-import { assertCanAccessSession } from "@/lib/session-access"
+import { assertCanAccessSession, recordingViewers } from "@/lib/session-access"
 import { isProtectedMediaKey } from "@/lib/protected-media"
 import { withAudit } from "@/lib/audit"
 
@@ -27,20 +27,15 @@ const notFound = () => NextResponse.json({ message: "Not found" }, { status: 404
 /** Returns an error response when the caller may not have this file, else null. */
 async function denyReason(session: SessionPayload, key: string): Promise<NextResponse | null> {
   // Class recordings: same rule as GET /api/sessions/[id]/recording — the
-  // tutor who ran the class and the students who attended it.
+  // tutor who ran the class, the students it was for, and admins.
   if (key.startsWith("recordings/")) {
+    if (session.role === "ADMIN") return null
     const m = key.match(/^recordings\/([^/]+)\.mp4$/)
     if (!m) return notFound()
     // `{id}.mp4` is the first segment, `{id}-2.mp4` onwards the later ones.
     const sessionIds = [m[1], m[1].replace(/-\d+$/, "")]
     const liveSession = await prisma.liveSession.findFirst({
-      where: {
-        id: { in: sessionIds },
-        OR: [
-          { tutorId: session.sub },
-          { attendances: { some: { studentId: session.sub } } },
-        ],
-      },
+      where: { id: { in: sessionIds }, ...recordingViewers(session.sub) },
       select: { id: true },
     })
     return liveSession ? null : notFound()

@@ -11,6 +11,8 @@ export default function AdminSessionsPage() {
         // Admins run the timetable from their own login; the class itself is
         // taken by the tutor they assign, who also handles its teaching files.
         canTeach: false,
+        // ...but they can look back at any class's recording.
+        canWatchRecordings: true,
         canManageResources: false,
         basePath: "/admin",
         mustAssignTutor: true,

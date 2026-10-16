@@ -24,6 +24,7 @@ didn't build it.
 | File uploads & recordings | AWS S3 | `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID/SECRET`, `AWS_REGION` |
 | Session recording | LiveKit Egress → S3 | LiveKit + S3 |
 | Email (invites, notifications) | Mailgun | `MAILGUN_API_KEY`, `MAILGUN_DOMAIN` |
+| Phone/desktop push notifications (installable app) | Web Push (VAPID) via `web-push` | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` |
 | Ops alerts | Webhook (Slack/Discord) | `ALERT_WEBHOOK_URL` |
 | Locked-down student networks (NHS, police, schools) | Network modes + connection check | (no extra config) — see `docs/SECURE-NETWORKS.md` |
 
@@ -233,6 +234,35 @@ Email is **silently skipped** when Mailgun isn't configured (`/api/health` →
 set `MAILGUN_API_KEY` + `MAILGUN_DOMAIN`. Also confirm the recipient's address
 and Mailgun's sending domain/allowed-recipients in the Mailgun dashboard.
 
+**Phone notifications (web push).** Every in-app notification is also pushed to
+the devices the user turned on under *Settings → Notifications*
+(`lib/notifications.ts` → `lib/push.ts`). Push is **silently off** when any of
+the three `VAPID_*` vars is missing, and the settings button then says
+"Phone notifications aren't available yet". Devices the push service reports as
+gone (404/410) are deleted automatically; other failures are logged as
+`[push] send failed`. On iPhone/iPad push only works after the site is added to
+the Home Screen and opened from there (iOS 16.4+). If someone blocked
+notifications, only their browser's site settings can undo it.
+
+**Installable app (PWA).** `app/manifest.ts` + icons in `public/icons` +
+`public/sw.js`. The service worker caches **nothing** (no pages, no API) — it
+only shows pushes and a small "You're offline" page when a page load fails. To
+roll out a change to it just deploy; browsers pick up a new `sw.js` on the next
+visit. Never add page/API caching there: a stale page breaks the classroom.
+
+**Automatic reminders.** `GET /api/cron/reminders` (`lib/reminders.ts`) sends:
+a class reminder the day before and again within the hour before (to the
+students the class is for — invited, approved, or on the class's course), a
+"new lessons" message when held-back lessons unlock, and a weekly "catch up"
+nudge to students with work outstanding and nothing done for 7 days (never
+within a week of any other homework reminder, including a tutor's manual one).
+Each goes to the bell, email and phone push. It needs `CRON_SECRET` set and a
+scheduler calling it **every 10 minutes** with `Authorization: Bearer
+$CRON_SECRET`. Without `CRON_SECRET` the route answers 503 and nothing is sent.
+Each reminder is recorded in `ReminderSent`, so a repeated or overlapping run
+never sends one twice. Run it by hand:
+`curl -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/reminders`.
+
 ### 4.6 Co-teacher invite didn't arrive
 - The invitee **must already have a TUTOR account** (only tutors can enter
   `/tutor/*`). A student account can't be a co-teacher.
@@ -309,6 +339,9 @@ AWS_S3_BUCKET  AWS_ACCESS_KEY_ID  AWS_SECRET_ACCESS_KEY  AWS_REGION
 MAILGUN_API_KEY  MAILGUN_DOMAIN  (optional: MAILGUN_FROM, MAILGUN_API_BASE)
 NEXT_PUBLIC_APP_URL          # used in email links
 ALERT_WEBHOOK_URL            # optional: ops alerts
+CRON_SECRET                  # automatic reminders: shared secret for GET /api/cron/reminders (call every 10 min)
+VAPID_PUBLIC_KEY  VAPID_PRIVATE_KEY   # optional: phone push notifications — generate once with `npx web-push generate-vapid-keys`; never rotate casually (every device would have to turn notifications on again)
+VAPID_SUBJECT                # with the above: mailto: contact for the push services, e.g. mailto:support@<domain>
 OPENAI_API_KEY               # optional: grammar suggestions on typed captions and "Improve English" on descriptions (CAPTION_GRAMMAR_MODEL / DESCRIPTION_GRAMMAR_MODEL, default gpt-5.6-luna)
 ```
 

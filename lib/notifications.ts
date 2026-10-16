@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma"
 import { NotificationType } from "@/app/generated/prisma/enums"
 import { sendNotificationEmail } from "@/lib/email"
+import { inBackground, pushConfigured, sendPushToUser } from "@/lib/push"
 
 /**
  * Notifications are fire-and-forget: a failure here must never take down the
@@ -26,6 +27,8 @@ export async function createNotification(
     await prisma.notification.create({ data: { userId, type, title, body, link: link ?? null } })
     // Fire email — never awaited so it never blocks the primary action
     void sendNotificationEmail(userId, type, title, body, link)
+    // And to their phone, if they turned on phone notifications
+    if (pushConfigured()) inBackground(() => sendPushToUser(userId, { title, body, url: link }))
     return true
   } catch (err) {
     console.error(`[notifications] createNotification failed (type=${type}, user=${userId})`, err)
@@ -53,6 +56,11 @@ export async function createNotifications(
         userIds.slice(i, i + EMAIL_BATCH).map((uid) =>
           sendNotificationEmail(uid, type, title, body, link),
         ),
+      )
+    }
+    if (pushConfigured()) {
+      inBackground(() =>
+        Promise.all(userIds.map((uid) => sendPushToUser(uid, { title, body, url: link }))),
       )
     }
     return true

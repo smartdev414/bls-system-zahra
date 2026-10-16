@@ -17,7 +17,7 @@ import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./Attempt
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SignAnswer = { questionId: string; answerText: string | null; isCorrect: boolean }
+export type SignAnswer = { questionId: string; answerText: string | null; isCorrect: boolean }
 
 export type SignTestData = {
   questions: SignQuestion[]
@@ -103,7 +103,7 @@ function HighScores({ scores, className }: { scores: HighScore[]; className?: st
 
 // ─── One sign, against the clock ──────────────────────────────────────────────
 
-function SignRound({ sign, kind, answerSeconds, number, total, onAnswer, aside }: {
+export function SignRound({ sign, kind, answerSeconds, number, total, onAnswer, aside }: {
   sign: SignQuestion
   kind: SignTestData["settings"]["kind"]
   answerSeconds: number
@@ -173,7 +173,19 @@ function SignRound({ sign, kind, answerSeconds, number, total, onAnswer, aside }
     </div>
   )
 
-  const video = sign.imageUrl && (
+  // Practice from the dictionary can bring a sign that only has a picture.
+  const video = sign.imageUrl && sign.mediaType === "image" ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={sign.imageUrl}
+      alt="The sign"
+      onLoad={() => setReady(true)}
+      onError={() => setReady(true)}
+      className="w-full aspect-video rounded-xl border bg-black object-contain select-none pointer-events-none"
+      draggable={false}
+      onContextMenu={(e) => e.preventDefault()}
+    />
+  ) : sign.imageUrl && (
     <ProtectedVideo
       src={sign.imageUrl}
       autoPlay muted loop playsInline
@@ -255,7 +267,7 @@ function SignRound({ sign, kind, answerSeconds, number, total, onAnswer, aside }
 
 // ─── 3, 2, 1 — so the first sign does not catch anyone out ────────────────────
 
-function GetReady({ onDone }: { onDone: () => void }) {
+export function GetReady({ onDone }: { onDone: () => void }) {
   const [count, setCount] = useState(3)
   useEffect(() => {
     const tick = setTimeout(() => (count > 1 ? setCount(count - 1) : onDone()), 800)
@@ -272,7 +284,7 @@ function GetReady({ onDone }: { onDone: () => void }) {
 
 // ─── Review — what was answered for each sign ─────────────────────────────────
 
-function Review({ questions, answers, answersRevealed, onBack }: {
+export function Review({ questions, answers, answersRevealed, onBack }: {
   questions: SignQuestion[]
   answers: SignAnswer[]
   /** False while the test can still be retaken: the words that were missed stay hidden. */
@@ -311,7 +323,10 @@ function Review({ questions, answers, answersRevealed, onBack }: {
                 answer.isCorrect ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/50"
               )}
             >
-              {q.imageUrl && (
+              {q.imageUrl && q.mediaType === "image" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={q.imageUrl} alt="" className="w-full aspect-video rounded-lg bg-black object-contain" draggable={false} />
+              ) : q.imageUrl && (
                 <ProtectedVideo src={q.imageUrl} muted loop playsInline controls className="w-full aspect-video rounded-lg bg-black object-contain" />
               )}
               <div className="flex items-start gap-2 text-sm">

@@ -52,6 +52,8 @@ const S3_UPLOAD_GRACE_MS = 3 * 60 * 1000
 export type SessionsScope = {
   /** Enter the room, start/end it, and watch or download its recording. */
   canTeach: boolean
+  /** Watch (and download) class recordings without teaching — admins. */
+  canWatchRecordings?: boolean
   /** Attach and remove teaching-material files used in the classroom. */
   canManageResources: boolean
   /** Dashboard root the classroom links hang off (e.g. "/tutor"). */
@@ -947,6 +949,7 @@ function SessionCard({
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [attendeesOpen, setAttendeesOpen] = useState(false)
   const scope = useSessionsScope()
+  const canWatch = scope.canTeach || !!scope.canWatchRecordings
   const [recordingOpen, setRecordingOpen] = useState(false)
   const [recordingSegments, setRecordingSegments] = useState<string[]>([])
   const [recordingLoading, setRecordingLoading] = useState(false)
@@ -1113,7 +1116,7 @@ function SessionCard({
               </Button>
             </>
           )}
-          {scope.canTeach && session.status === "COMPLETED" && session.recordingUrl && (
+          {canWatch && session.status === "COMPLETED" && session.recordingUrl && (
             <>
               <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5"
                 disabled={recordingLoading} onClick={openRecording}>
@@ -1124,12 +1127,12 @@ function SessionCard({
               </Button>
             </>
           )}
-          {scope.canTeach && recordingProcessing && (
+          {canWatch && recordingProcessing && (
             <span className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Loader2 className="size-3 animate-spin" /> Recording processing…
             </span>
           )}
-          {scope.canTeach && session.status === "COMPLETED" && !session.recordingUrl && !recordingProcessing && (
+          {canWatch && session.status === "COMPLETED" && !session.recordingUrl && !recordingProcessing && (
             <span className="text-xs text-muted-foreground">No recording available</span>
           )}
           {session.status === "CANCELLED" && (
@@ -1186,7 +1189,7 @@ function SessionCard({
             />
           )}
           {/* Only teaching staff reach this dialog; students get no download. */}
-          {scope.canTeach && recordingSegments.length > 0 && (
+          {canWatch && recordingSegments.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {recordingSegments.map((segment, i) => (
                 <Button key={segment} asChild variant="outline" size="sm">

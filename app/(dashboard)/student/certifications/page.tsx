@@ -172,11 +172,7 @@ function CertCard({ program: p }: { program: CertProgram }) {
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t">
-          {p.price > 0 ? (
-            <span className="text-xs font-bold text-primary">£{(p.price / 100).toFixed(2)}</span>
-          ) : (
-            <span className="text-xs text-muted-foreground">Free</span>
-          )}
+          <span />
           <span className="text-xs font-semibold text-primary flex items-center gap-1">
             {isCompleted ? "View Certificate" : p.isEnrolled ? "Continue" : "Learn More"}
             <ArrowRight className="size-3" />

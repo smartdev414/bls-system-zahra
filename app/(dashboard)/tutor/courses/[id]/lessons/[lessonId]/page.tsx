@@ -1,5 +1,6 @@
 "use client"
 
+import { SafeHtml } from "@/components/ui/safe-html"
 import { use } from "react"
 import Link from "next/link"
 import {
@@ -135,10 +136,7 @@ export default function ViewLessonPage({
 
       {lesson.description && (
         <div className="rounded-xl border bg-muted/20 p-6">
-          <div
-            className="prose prose-sm max-w-none text-foreground"
-            dangerouslySetInnerHTML={{ __html: lesson.description }}
-          />
+          <SafeHtml className="prose prose-sm max-w-none text-foreground" html={lesson.description} />
         </div>
       )}
 

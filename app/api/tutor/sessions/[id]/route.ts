@@ -136,7 +136,14 @@ async function handlePATCH(
       data.status = body.status
       console.log("[session] status transition:", existing.status, "→", body.status, "startedAt:", existing.startedAt, "endedAt:", existing.endedAt)
       if (body.status === "LIVE" && !existing.startedAt) {
-        data.startedAt = new Date()
+        const now = new Date()
+        data.startedAt = now
+        // A class started ahead of its slot (e.g. a quick test run) happened
+        // now, not on the planned date — otherwise it later shows as a
+        // "completed" class sitting in the future.
+        if (now < (data.scheduledAt instanceof Date ? data.scheduledAt : existing.scheduledAt)) {
+          data.scheduledAt = now
+        }
         // Note: egress (recording) is started from /api/sessions/[id]/recording/start
         // after the tutor has joined the room, because the room must exist first
       }

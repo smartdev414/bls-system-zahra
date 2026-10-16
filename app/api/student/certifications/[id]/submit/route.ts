@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { createNotification } from "@/lib/notifications"
+import { issueCertificateIfComplete } from "@/lib/certification-complete"
 
 // POST — submit a step (video upload, quiz result, or live assessment request)
 async function handlePOST(
@@ -145,8 +146,13 @@ async function handlePOST(
       },
     })
 
-    // Notify admins about video/live submissions that need review
-    if (step.type !== "QUIZ") {
+    // A quiz or course-completion step can pass on its own; if it was the
+    // last one, the certificate is issued now rather than waiting on a review.
+    if (submission.status === "PASSED") await issueCertificateIfComplete(enrollment.id)
+
+    // Notify admins only about submissions a person has to review (video,
+    // live assessment) — the automatic steps need nobody.
+    if (step.type === "VIDEO_SUBMISSION" || step.type === "LIVE_ASSESSMENT") {
       const admins = await prisma.user.findMany({
         where: { role: "ADMIN" },
         select: { id: true },

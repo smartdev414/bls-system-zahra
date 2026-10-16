@@ -22,6 +22,8 @@ async function handleGET(req: NextRequest) {
     const skip = (page - 1) * limit
 
     const isStudent = session.role === "STUDENT"
+    // "My signs": only the ones this student starred.
+    const savedOnly = isStudent && req.nextUrl.searchParams.get("saved") === "1"
 
     const where = {
       ...(q ? {
@@ -34,9 +36,10 @@ async function handleGET(req: NextRequest) {
       ...(category ? { category: { equals: category, mode: "insensitive" as const } } : {}),
       // A sign whose level is hidden from students doesn't turn up under a level filter either.
       ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel, ...(isStudent && { showLevel: true }) } : {}),
+      ...(savedOnly && { savedBy: { some: { userId: session.sub } } }),
     }
 
-    const [total, signs, allCategories] = await Promise.all([
+    const [total, signs, allCategories, saved] = await Promise.all([
       prisma.sign.count({ where }),
       prisma.sign.findMany({
         where,
@@ -49,7 +52,13 @@ async function handleGET(req: NextRequest) {
         distinct: ["category"],
         orderBy: { category: "asc" },
       }),
+      // Every sign this student starred — few enough to send whole, so each
+      // card knows its star and the "My signs" tab its count.
+      isStudent
+        ? prisma.savedSign.findMany({ where: { userId: session.sub }, select: { signId: true } })
+        : Promise.resolve([]),
     ])
+    const savedIds = new Set(saved.map((s) => s.signId))
 
     // Students don't get a sign's video while its background is still being
     // replaced (lib/background-clean.ts); the sign itself still shows.
@@ -66,11 +75,13 @@ async function handleGET(req: NextRequest) {
         ...(sign.videoUrl && hiddenUrls.has(sign.videoUrl) && { videoUrl: null }),
         ...(isStudent && !sign.showHandshape && { handshape: "" }),
         ...(isStudent && !sign.showUsage && { usage: "" }),
+        ...(isStudent && { saved: savedIds.has(sign.id) }),
       })),
       total,
       page,
       totalPages: Math.ceil(total / limit),
       categories: allCategories.map((c) => c.category),
+      ...(isStudent && { savedCount: savedIds.size }),
     })
   } catch (err) {
     console.error("[GET /api/dictionary]", err)

@@ -17,7 +17,8 @@ async function handleGET() {
         // Tests appear on their release date, not before.
         where: {
           type: "QUIZ",
-          section: { course: { enrollments: { some: { studentId: session.sub } } } },
+          // Tests on archived or unpublished courses drop out, as on the dashboard.
+          section: { course: { status: "PUBLISHED", enrollments: { some: { studentId: session.sub } } } },
           ...releasedLessons(),
         },
         orderBy: [{ section: { courseId: "asc" } }, { section: { order: "asc" } }, { order: "asc" }],
