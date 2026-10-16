@@ -5,7 +5,7 @@ import { getPusherClient } from "@/lib/pusher-client"
 
 // While the tab is on screen it re-checks this often, in case the realtime
 // message below never arrived (a locked-down network that blocks it, say).
-const CHECK_EVERY_MS = 60_000
+const CHECK_EVERY_MS = 20_000
 
 // When the same student account signs in on another device, the server pings
 // every open tab. Each tab asks whether it is still the current login; the old
@@ -15,7 +15,7 @@ const CHECK_EVERY_MS = 60_000
 // the background, has its connection paused and misses it — then sits showing
 // the dashboard as if still signed in until the next click. So the tab also
 // checks the moment it comes back on screen, whenever its connection comes
-// back, and every minute while it is being looked at.
+// back, and every 20 seconds while it is being looked at.
 export function SessionReplacedListener({ userId }: { userId: string }) {
   useEffect(() => {
     if (!userId) return

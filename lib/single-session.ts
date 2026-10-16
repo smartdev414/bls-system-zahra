@@ -15,13 +15,23 @@ export async function startStudentSession(userId: string): Promise<string> {
   await prisma.user.update({ where: { id: userId }, data: { activeSessionId: sid } })
   // Open tabs on the old device check themselves and leave right away; if this
   // misses, their next page load or API call is rejected anyway.
-  void notifyReplaced(userId)
+  //
+  // Awaited, not fired and forgotten: on Vercel the function is frozen the
+  // moment the login response is sent, and an un-awaited send was often never
+  // delivered — the old phone sat on the dashboard until its next click.
+  await notifyReplaced(userId)
   return sid
 }
 
+// Pusher normally answers in well under a second; never hold a login longer.
+const NOTIFY_TIMEOUT_MS = 2_000
+
 async function notifyReplaced(userId: string) {
   try {
-    await getPusher().trigger(`private-user-${userId}`, "session-replaced", {})
+    await Promise.race([
+      getPusher().trigger(`private-user-${userId}`, "session-replaced", {}),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timed out")), NOTIFY_TIMEOUT_MS)),
+    ])
   } catch (err) {
     console.error("[single-session] pusher trigger failed", err)
   }
