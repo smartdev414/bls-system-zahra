@@ -5,11 +5,13 @@ import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
-import { attemptsLeft, isSignTest, revealsAnswers, sameWord, signQuestionsForStudent } from "@/lib/quiz"
+import { attemptsLeft, hasMultipleAnswers, isSignTest, revealsAnswers, sameWord, signQuestionsForStudent } from "@/lib/quiz"
 
 // POST /api/student/lessons/[id]/quiz/attempt
-// body: { answers: { questionId: string; optionId?: string; text?: string }[]; durationMs?: number }
-// `text` is the word typed or picked in a fingerspelling or vocabulary test.
+// body: { answers: { questionId: string; optionId?: string; optionIds?: string[]; text?: string }[]; durationMs?: number }
+// `optionIds` are the options ticked on a question with more than one correct
+// answer (`optionId` alone is one choice). `text` is the word typed or picked
+// in a fingerspelling or vocabulary test.
 async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -45,7 +47,7 @@ async function handlePOST(
     }
 
     const body = await req.json() as {
-      answers: Array<{ questionId: string; optionId?: string; text?: string }>
+      answers: Array<{ questionId: string; optionId?: string; optionIds?: unknown; text?: string }>
       durationMs?: number
     }
 
@@ -78,11 +80,22 @@ async function handlePOST(
         if (isCorrect) correct++
         return { questionId: q.id, optionId: null, answerText: answerText || null, isCorrect }
       }
-      const selectedOption = q.options.find((o) => o.id === given?.optionId)
-      const isCorrect = selectedOption?.isCorrect ?? false
+      // Only options of this question count; anything else is ignored, and
+      // nothing left means unanswered.
+      const ids = Array.isArray(given?.optionIds) ? given.optionIds : given?.optionId ? [given.optionId] : []
+      const chosen = q.options.filter((o) => ids.includes(o.id))
+      if (!hasMultipleAnswers(q.options)) {
+        // One answer: the first option sent is the one chosen.
+        const selectedOption = q.options.find((o) => o.id === ids[0])
+        const isCorrect = selectedOption?.isCorrect ?? false
+        if (isCorrect) correct++
+        return { questionId: q.id, optionId: selectedOption?.id ?? null, isCorrect }
+      }
+      // Several answers: right only when every correct one is ticked and nothing else.
+      const isCorrect = chosen.length > 0 && chosen.every((o) => o.isCorrect)
+        && chosen.length === q.options.filter((o) => o.isCorrect).length
       if (isCorrect) correct++
-      // Only an option of this question is stored; anything else counts as unanswered.
-      return { questionId: q.id, optionId: selectedOption?.id ?? null, isCorrect }
+      return { questionId: q.id, optionId: chosen[0]?.id ?? null, optionIds: chosen.map((o) => o.id), isCorrect }
     })
 
     const durationMs = Number.isFinite(body.durationMs) && Number(body.durationMs) > 0
@@ -103,7 +116,7 @@ async function handlePOST(
         answers: { create: gradedAnswers },
       },
       include: {
-        answers: { select: { questionId: true, optionId: true, answerText: true, isCorrect: true } },
+        answers: { select: { questionId: true, optionId: true, optionIds: true, answerText: true, isCorrect: true } },
       },
     })
 
@@ -144,6 +157,7 @@ async function handlePOST(
       ? signQuestionsForStudent(kind, fullQuestions, reveal)
       : fullQuestions.map((q) => ({
           ...q,
+          multiple: hasMultipleAnswers(q.options),
           options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
         }))
 

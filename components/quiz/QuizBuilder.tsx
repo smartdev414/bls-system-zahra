@@ -4,14 +4,17 @@ import { useState } from "react"
 import {
   Plus, Trash2, CheckCircle2, Circle, ArrowUp, ArrowDown,
   ChevronDown, ChevronUp, Loader2, Save, FlaskConical,
-  ImageIcon, X, VideoIcon, Copy, Library,
+  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ProtectedVideo } from "@/components/ui/protected-video"
+import { CameraRecorder } from "@/components/ui/camera-recorder"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { isSignTest, isVideoMedia } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
@@ -114,6 +117,7 @@ export function questionProblem(q: QuestionDraft, testKind?: string): string | n
   if (!q.question.trim()) return "Type the question"
   if (q.options.some((o) => !o.text.trim() && !o.imageUrl)) return "Each answer needs text, an image or a video"
   if (!q.options.some((o) => o.isCorrect)) return "Choose which answer is correct"
+  if (q.options.every((o) => o.isCorrect)) return "At least one answer must be wrong"
   if (q.questionImageUploading || q.options.some((o) => o.uploading)) return "Wait for the upload to finish"
   return null
 }
@@ -270,8 +274,77 @@ function QuestionCard({
     edit((cur) => ({ ...cur, options: cur.options.map((o, idx) => (idx === i ? { ...o, ...patch } : o)) }))
   }
 
-  function setCorrect(i: number) {
-    edit((cur) => ({ ...cur, options: cur.options.map((o, idx) => ({ ...o, isCorrect: idx === i })) }))
+  // True / false has one right answer. In multiple choice each answer is
+  // ticked on or off, so more than one can be correct.
+  function toggleCorrect(i: number) {
+    edit((cur) => ({
+      ...cur,
+      options: cur.options.map((o, idx) =>
+        cur.type === "TRUE_FALSE" ? { ...o, isCorrect: idx === i } : idx === i ? { ...o, isCorrect: !o.isCorrect } : o
+      ),
+    }))
+  }
+
+  // ── Fix English ──
+  const [fixing, setFixing] = useState(false)
+  // What the question said before the last correction, for Undo.
+  const [beforeFix, setBeforeFix] = useState<{ question: string; answers: string[] } | null>(null)
+  const hasText = !!q.question.trim() || q.options.some((o) => o.text.trim())
+
+  async function fixEnglish() {
+    const sent = { question: q.question, answers: q.options.map((o) => o.text) }
+    setFixing(true)
+    try {
+      const res = await fetch("/api/tests/questions/correct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sent),
+      })
+      const data = await res.json().catch(() => ({})) as {
+        available?: boolean; failed?: boolean; message?: string
+        corrected?: { question: string; answers: string[] } | null
+      }
+      if (!res.ok) throw new Error(data.message ?? "Could not check the English")
+      if (data.available === false) return void toast.error("English checking is not set up")
+      if (data.failed) return void toast.error("Could not check the English just now. Try again.")
+      if (!data.corrected) return void toast.success("The English looks right")
+      const fixed = data.corrected
+      // Only lines still as they were sent are replaced — anything typed while
+      // the check ran is kept.
+      edit((cur) => ({
+        ...cur,
+        question: cur.question === sent.question ? fixed.question : cur.question,
+        options: cur.options.map((o, i) => (o.text === sent.answers[i] ? { ...o, text: fixed.answers[i] ?? o.text } : o)),
+      }))
+      setBeforeFix(sent)
+    } catch (e) {
+      toast.error(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "Could not check the English")
+    } finally {
+      setFixing(false)
+    }
+  }
+
+  function undoFix() {
+    const before = beforeFix
+    if (!before) return
+    edit((cur) => ({
+      ...cur,
+      question: before.question,
+      options: cur.options.map((o, i) => (i < before.answers.length ? { ...o, text: before.answers[i] } : o)),
+    }))
+    setBeforeFix(null)
+  }
+
+  // ── Film with the camera ── which slot the clip is for: the question (undefined) or an answer.
+  const [filming, setFilming] = useState<{ option?: number } | null>(null)
+
+  function applyFilmed(fileUrl: string) {
+    const target = filming
+    setFilming(null)
+    if (!target) return
+    const media = { imageUrl: fileUrl, mediaType: "video" as const }
+    if (target.option === undefined) edit((cur) => ({ ...cur, ...media }))
+    else setOption(target.option, media)
   }
 
   function addOption() {
@@ -352,8 +425,10 @@ function QuestionCard({
     }
   }
 
-  const correct = q.options.find((o) => o.isCorrect)
-  const correctLabel = correct && (correct.text.trim() || `Answer ${q.options.indexOf(correct) + 1}`)
+  const correctLabel = q.options
+    .flatMap((o, i) => (o.isCorrect ? [o.text.trim() || `Answer ${i + 1}`] : []))
+    .join(", ")
+  const multipleCorrect = q.type === "MULTIPLE_CHOICE" && q.options.filter((o) => o.isCorrect).length > 1
   // On a test that is not created yet everything is saved together, so there is no per-question state to show.
   const status = !testId ? null : q.id && !q.dirty ? "saved" : q.id ? "changed" : "new"
 
@@ -428,7 +503,25 @@ function QuestionCard({
         <div className="px-4 pb-4 flex flex-col gap-4 border-t pt-4">
           {/* Question text */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs" htmlFor={`question-${q.uid}`}>Question</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs" htmlFor={`question-${q.uid}`}>Question</Label>
+              <div className="flex items-center gap-1">
+                {beforeFix && !fixing && (
+                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground" onClick={undoFix}>
+                    <Undo2 className="size-3.5 mr-1" /> Undo
+                  </Button>
+                )}
+                <Button
+                  type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs text-primary"
+                  title="Correct the spelling and grammar of the question and its answers"
+                  disabled={!hasText || fixing}
+                  onClick={fixEnglish}
+                >
+                  {fixing ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Sparkles className="size-3.5 mr-1" />}
+                  Fix English
+                </Button>
+              </div>
+            </div>
             <Textarea
               id={`question-${q.uid}`}
               rows={2}
@@ -437,7 +530,7 @@ function QuestionCard({
               value={q.question}
               // A question just added is ready to type into.
               autoFocus={!q.id && !q.question}
-              onChange={(e) => edit((cur) => ({ ...cur, question: e.target.value }))}
+              onChange={(e) => { setBeforeFix(null); edit((cur) => ({ ...cur, question: e.target.value })) }}
             />
           </div>
 
@@ -455,10 +548,17 @@ function QuestionCard({
               size="question"
               acceptVideo
             />
-            {onChooseSign && !q.imageUrl && !q.questionImageUploading && (
-              <button type="button" className="self-start inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => onChooseSign()}>
-                <Library className="size-3.5" /> Use a sign from the dictionary
-              </button>
+            {!q.imageUrl && !q.questionImageUploading && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => setFilming({})}>
+                  <Camera className="size-3.5" /> Film with your camera
+                </button>
+                {onChooseSign && (
+                  <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => onChooseSign()}>
+                    <Library className="size-3.5" /> Use a sign from the dictionary
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -469,7 +569,7 @@ function QuestionCard({
               <p className="text-xs text-muted-foreground mt-0.5">
                 {q.type === "TRUE_FALSE"
                   ? "Tick the one that is correct."
-                  : "Give each answer text, an image or a video, then tick the one that is correct."}
+                  : "Give each answer text, an image or a video, then tick the correct one — or tick more than one if several are correct."}
               </p>
             </div>
 
@@ -482,9 +582,9 @@ function QuestionCard({
                 <button
                   type="button"
                   aria-pressed={opt.isCorrect}
-                  aria-label={`Answer ${i + 1} is the correct answer`}
-                  title={opt.isCorrect ? "The correct answer" : "Mark as the correct answer"}
-                  onClick={() => setCorrect(i)}
+                  aria-label={`Answer ${i + 1} is correct`}
+                  title={opt.isCorrect ? "A correct answer — click to untick" : "Mark as correct"}
+                  onClick={() => toggleCorrect(i)}
                   className="shrink-0 p-1.5 -m-1 rounded-full"
                 >
                   {opt.isCorrect
@@ -511,6 +611,13 @@ function QuestionCard({
                     <Library className="size-3.5" />
                   </Button>
                 )}
+                {q.type !== "TRUE_FALSE" && !opt.imageUrl && !opt.uploading && (
+                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 text-muted-foreground"
+                    title="Film with your camera" aria-label={`Film answer ${i + 1} with your camera`}
+                    onClick={() => setFilming({ option: i })}>
+                    <Camera className="size-3.5" />
+                  </Button>
+                )}
 
                 {/* Text */}
                 <Input
@@ -519,7 +626,7 @@ function QuestionCard({
                   placeholder={opt.imageUrl ? "Caption (optional)" : `Answer ${i + 1}`}
                   value={opt.text}
                   disabled={q.type === "TRUE_FALSE"}
-                  onChange={(e) => setOption(i, { text: e.target.value })}
+                  onChange={(e) => { setBeforeFix(null); setOption(i, { text: e.target.value }) }}
                 />
 
                 {/* Remove option */}
@@ -540,6 +647,12 @@ function QuestionCard({
             )}
           </div>
 
+          {multipleCorrect && (
+            <p className="text-xs text-muted-foreground">
+              {q.options.filter((o) => o.isCorrect).length} answers are correct. Students tick all of them, and get the question right only if they tick exactly these.
+            </p>
+          )}
+
           {q.error && <p className="text-xs text-destructive">{q.error}</p>}
 
           {testId && (
@@ -551,6 +664,16 @@ function QuestionCard({
           )}
         </div>
       )}
+
+      <Dialog open={filming !== null} onOpenChange={(open) => { if (!open) setFilming(null) }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{filming?.option === undefined ? "Film the question" : `Film answer ${filming.option + 1}`}</DialogTitle>
+            <DialogDescription>Record with your camera. When you save the clip it is added here.</DialogDescription>
+          </DialogHeader>
+          {filming && <CameraRecorder uploaded={null} silent onUploaded={(file) => applyFilmed(file.fileUrl)} />}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

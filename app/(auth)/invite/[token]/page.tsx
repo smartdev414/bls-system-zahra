@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import Link from "next/link"
 import { Lock, Eye, EyeOff, User, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -42,7 +42,6 @@ function StrengthBar({ password }: { password: string }) {
 
 export default function InvitePage() {
   const { token } = useParams<{ token: string }>()
-  const router = useRouter()
 
   const [invite, setInvite] = useState<InviteInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -92,7 +91,7 @@ export default function InvitePage() {
       const data = await res.json()
       if (!res.ok) { toast.error(data.message ?? "Registration failed"); return }
       toast.success("Welcome to BSL Platform!")
-      router.push(data.redirectTo)
+      window.location.assign(data.redirectTo)
     } catch {
       toast.error("Something went wrong. Please try again.")
     } finally {

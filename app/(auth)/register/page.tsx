@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { Mail, Lock, Eye, EyeOff, User, GraduationCap, BookOpen, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,7 +48,6 @@ type RegisterBody = {
 type RegisterResponse = { redirectTo: string; pending?: boolean }
 
 export default function RegisterPage() {
-  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [role, setRole] = useState<Role>("STUDENT")
@@ -66,7 +64,7 @@ export default function RegisterPage() {
     {
       successMessage: (data) =>
         data.pending ? "Account created! We'll email you once it's approved." : "Account created! Welcome to BSL Learning.",
-      onSuccess: (data) => router.push(data.redirectTo),
+      onSuccess: (data) => window.location.assign(data.redirectTo),
     }
   )
 

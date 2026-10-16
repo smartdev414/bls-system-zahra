@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { GraduationCap, BookOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -18,7 +18,6 @@ type CompleteBody = { role: Role; agreed: boolean }
 type CompleteResponse = { redirectTo: string; pending?: boolean }
 
 function CompleteGoogleForm() {
-  const router = useRouter()
   const params = useSearchParams()
   const name = params.get("name") ?? ""
   const email = params.get("email") ?? ""
@@ -31,7 +30,7 @@ function CompleteGoogleForm() {
     {
       successMessage: (data) =>
         data.pending ? "Account created! We'll email you once it's approved." : "Account created! Welcome to BSL Learning.",
-      onSuccess: (data) => router.push(data.redirectTo),
+      onSuccess: (data) => window.location.assign(data.redirectTo),
     }
   )
 

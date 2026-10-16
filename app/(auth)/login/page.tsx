@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Mail, Lock, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,7 +40,6 @@ function GoogleIcon() {
 }
 
 function LoginForm() {
-  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -50,7 +49,7 @@ function LoginForm() {
     "/api/auth/login",
     {
       successMessage: (data) => `Welcome back!`,
-      onSuccess: (data) => router.push(data.redirectTo),
+      onSuccess: (data) => window.location.assign(data.redirectTo),
     }
   )
 

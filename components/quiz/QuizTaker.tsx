@@ -4,14 +4,14 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, XCircle, ChevronLeft,
-  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen,
+  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen, Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
-import { correctNeeded, isSignTest, isVideoMedia, type TestKind } from "@/lib/quiz"
+import { chosenOptionIds, correctNeeded, isSignTest, isVideoMedia, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
 import { cn } from "@/lib/utils"
@@ -25,9 +25,11 @@ type Option = {
 }
 type Question = {
   id: string; question: string; imageUrl?: string | null; mediaType?: string | null; type: string; options: Option[]
+  /** More than one answer is correct: the student ticks every one. */
+  multiple?: boolean
 }
 
-type AttemptAnswer = { questionId: string; optionId: string | null; isCorrect: boolean }
+type AttemptAnswer = { questionId: string; optionId: string | null; optionIds?: string[]; isCorrect: boolean }
 
 type QuizData = {
   questions: Question[]
@@ -71,7 +73,8 @@ type Props = {
 // enrolment as well as test, so two students sharing a computer never see each
 // other's.
 
-type Draft = { selected: Record<string, string>; currentIndex: number }
+/** The options ticked on each question — one, or several where more than one is correct. */
+type Draft = { selected: Record<string, string[]>; currentIndex: number }
 
 function draftKey(lessonId: string, enrollmentId: string | null) {
   return `bls-test-draft:${enrollmentId ?? "preview"}:${lessonId}`
@@ -81,7 +84,13 @@ function readDraft(key: string): Draft | null {
   try {
     const draft = JSON.parse(window.localStorage.getItem(key) ?? "null") as Partial<Draft> | null
     if (!draft || typeof draft.selected !== "object" || draft.selected === null) return null
-    return { selected: draft.selected, currentIndex: Number(draft.currentIndex) || 0 }
+    // A draft kept before questions could have several answers holds one id per question.
+    const selected = Object.fromEntries(
+      Object.entries(draft.selected as Record<string, unknown>).map(([q, ids]) => [
+        q, (Array.isArray(ids) ? ids : [ids]).filter((id): id is string => typeof id === "string"),
+      ])
+    )
+    return { selected, currentIndex: Number(draft.currentIndex) || 0 }
   } catch {
     return null
   }
@@ -168,7 +177,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
               <div className="flex flex-col gap-2 flex-1">
                 <p className="text-sm font-medium">{i + 1}. {q.question}</p>
                 <QuestionMedia question={q} className="max-h-48 self-start" />
-                {!answer?.optionId && <p className="text-xs text-rose-600">Not answered</p>}
+                {chosenOptionIds(answer).length === 0 && <p className="text-xs text-rose-600">Not answered</p>}
               </div>
             </div>
             <div className={cn(
@@ -176,7 +185,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
               optionsLayout(q, "gap-2", "gap-1.5")
             )}>
               {q.options.map((opt) => {
-                const isSelected = answer?.optionId === opt.id
+                const isSelected = chosenOptionIds(answer).includes(opt.id)
                 // Without the answer key, the student's own right answer is the only one known to be correct.
                 const isCorrect = opt.isCorrect ?? (isSelected && !!answer?.isCorrect)
                 const isVideo = isVideoMedia(opt.imageUrl, opt.mediaType)
@@ -246,7 +255,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   const [view, setView] = useState<"start" | "taking" | "result" | "review-result" | "review-best">("start")
   // Starts from whatever was answered last time, if the test was left part-way.
   const [stored] = useState(() => readDraft(storageKey))
-  const [rawSelected, setSelected] = useState<Record<string, string>>(stored?.selected ?? {})
+  const [rawSelected, setSelected] = useState<Record<string, string[]>>(stored?.selected ?? {})
   const [currentIndex, setCurrentIndex] = useState(stored?.currentIndex ?? 0)
   const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -299,10 +308,12 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   // have been changed by the teacher since they were given.
   const selected = Object.fromEntries(
     questions.flatMap((q) => {
-      const optionId = rawSelected[q.id]
-      return optionId && q.options.some((o) => o.id === optionId) ? [[q.id, optionId]] : []
+      const ids = (rawSelected[q.id] ?? []).filter((id) => q.options.some((o) => o.id === id))
+      // A question that has since become single-answer keeps only the first.
+      const kept = q.multiple ? ids : ids.slice(0, 1)
+      return kept.length > 0 ? [[q.id, kept]] : []
     })
-  ) as Record<string, string>
+  ) as Record<string, string[]>
   const answered = Object.keys(selected).length
   const firstUnanswered = questions.findIndex((q) => !selected[q.id])
 
@@ -330,8 +341,17 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
     topRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
   }
 
-  function choose(questionId: string, optionId: string) {
-    setSelected((s) => ({ ...s, [questionId]: optionId }))
+  // One answer replaces the last; on a question with several correct answers
+  // each one is ticked on or off.
+  function choose(question: Question, optionId: string) {
+    setSelected((s) => {
+      if (!question.multiple) return { ...s, [question.id]: [optionId] }
+      const current = s[question.id] ?? []
+      return {
+        ...s,
+        [question.id]: current.includes(optionId) ? current.filter((id) => id !== optionId) : [...current, optionId],
+      }
+    })
   }
 
   async function submit() {
@@ -339,7 +359,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
     setSubmitting(true)
     setError(null)
     try {
-      const answers = questions.map((q) => ({ questionId: q.id, optionId: selected[q.id] ?? "" }))
+      const answers = questions.map((q) => ({ questionId: q.id, optionIds: selected[q.id] ?? [] }))
       const res = await fetch(`/api/student/lessons/${lessonId}/quiz/attempt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -526,15 +546,21 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         {/* Question */}
         {q && (
           <div className="rounded-xl border bg-muted/20 p-4 sm:p-5 flex flex-col gap-4">
-            <p id={`question-${q.id}`} className="font-semibold text-base leading-snug">{currentIndex + 1}. {q.question}</p>
+            <div>
+              <p id={`question-${q.id}`} className="font-semibold text-base leading-snug">{currentIndex + 1}. {q.question}</p>
+              {q.multiple && (
+                <p className="text-sm text-primary font-medium mt-1">More than one answer is correct — tick them all.</p>
+              )}
+            </div>
 
             {/* Optional question image or video */}
             <QuestionMedia question={q} className="max-h-64 mx-auto" />
 
             {/* Options — side by side when they are pictures or videos */}
-            <div role="radiogroup" aria-labelledby={`question-${q.id}`} className={optionsLayout(q, "gap-3", "gap-2")}>
+            <div role={q.multiple ? "group" : "radiogroup"} aria-labelledby={`question-${q.id}`} className={optionsLayout(q, "gap-3", "gap-2")}>
               {q.options.map((opt, n) => {
-                const isSelected = selected[q.id] === opt.id
+                const isSelected = !!selected[q.id]?.includes(opt.id)
+                const role = q.multiple ? "checkbox" : "radio"
                 const isVideo = isVideoMedia(opt.imageUrl, opt.mediaType)
                 const name = opt.text || `Answer ${n + 1}`
 
@@ -566,9 +592,9 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                       </div>
                       <button
                         type="button"
-                        role="radio"
+                        role={role}
                         aria-checked={isSelected}
-                        onClick={() => choose(q.id, opt.id)}
+                        onClick={() => choose(q, opt.id)}
                         className={cn(
                           "px-3 py-3 text-sm font-medium text-center w-full transition-colors",
                           isSelected
@@ -588,10 +614,10 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                     <button
                       key={opt.id}
                       type="button"
-                      role="radio"
+                      role={role}
                       aria-checked={isSelected}
                       aria-label={name}
-                      onClick={() => choose(q.id, opt.id)}
+                      onClick={() => choose(q, opt.id)}
                       className={cn(
                         "rounded-xl border overflow-hidden flex flex-col transition-all",
                         isSelected
@@ -624,9 +650,9 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                   <button
                     key={opt.id}
                     type="button"
-                    role="radio"
+                    role={role}
                     aria-checked={isSelected}
-                    onClick={() => choose(q.id, opt.id)}
+                    onClick={() => choose(q, opt.id)}
                     className={cn(
                       "flex items-center gap-3 rounded-xl border px-4 py-3 text-sm text-left transition-colors",
                       isSelected
@@ -634,11 +660,15 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                         : "bg-background hover:bg-muted border-border"
                     )}
                   >
+                    {/* A round dot for one answer, a tick box where several can be chosen */}
                     <div className={cn(
-                      "size-4 rounded-full border-2 shrink-0 flex items-center justify-center",
+                      "size-4 border-2 shrink-0 flex items-center justify-center",
+                      q.multiple ? "rounded" : "rounded-full",
                       isSelected ? "border-primary-foreground bg-primary-foreground" : "border-muted-foreground"
                     )}>
-                      {isSelected && <div className="size-2 rounded-full bg-primary" />}
+                      {isSelected && (q.multiple
+                        ? <Check className="size-3 text-primary" strokeWidth={3} />
+                        : <div className="size-2 rounded-full bg-primary" />)}
                     </div>
                     {opt.text}
                   </button>

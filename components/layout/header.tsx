@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { useState } from "react"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
@@ -135,7 +135,6 @@ function ThemeToggle() {
 
 export function Header({ role, user }: HeaderProps) {
   const pathname = usePathname()
-  const router = useRouter()
   const isMessagesRole = role === "STUDENT" || role === "TUTOR"
 
   const navItems =
@@ -154,7 +153,7 @@ export function Header({ role, user }: HeaderProps) {
 
   const { execute: signOut, loading: signingOut } = useDeleteCallback("/api/auth/logout", {
     successMessage: "Signed out successfully",
-    onSuccess: () => router.push("/login"),
+    onSuccess: () => window.location.assign("/login"),
   })
 
   const initials = user.name

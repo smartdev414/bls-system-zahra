@@ -194,3 +194,19 @@ export function isVideoMedia(url: string | null | undefined, mediaType?: string 
   if (mediaType === "image" || !url) return false
   return /\.(mp4|webm|mov|ogg|m4v)(\?|$)/i.test(url)
 }
+
+/**
+ * Whether a question has more than one correct answer. The student is then
+ * asked to tick every one of them, and gets the question right only when they
+ * tick exactly those — no fewer, no more.
+ */
+export function hasMultipleAnswers(options: ReadonlyArray<{ isCorrect: boolean }>): boolean {
+  return options.filter((o) => o.isCorrect).length > 1
+}
+
+/** The options a stored answer ticked: optionIds for a several-answer question, else its one optionId. */
+export function chosenOptionIds(answer: { optionId: string | null; optionIds?: string[] | null } | null | undefined): string[] {
+  if (!answer) return []
+  if (answer.optionIds && answer.optionIds.length > 0) return answer.optionIds
+  return answer.optionId ? [answer.optionId] : []
+}

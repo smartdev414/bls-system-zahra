@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
-import { DEFAULT_ANSWER_SECONDS, attemptsLeft, isSignTest, revealsAnswers, signQuestionsForStudent } from "@/lib/quiz"
+import { DEFAULT_ANSWER_SECONDS, attemptsLeft, hasMultipleAnswers, isSignTest, revealsAnswers, signQuestionsForStudent } from "@/lib/quiz"
 import { highScores } from "@/lib/quiz-high-scores"
 
 // GET /api/student/lessons/[id]/quiz — the test as the student sits it, plus
@@ -65,6 +65,8 @@ async function handleGET(
       ? signQuestionsForStudent(kind, fullQuestions, reveal)
       : fullQuestions.map((q) => ({
           ...q,
+          // Whether to tick every correct answer, without saying which they are.
+          multiple: hasMultipleAnswers(q.options),
           options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
         }))
 
@@ -75,7 +77,7 @@ async function handleGET(
           ...best,
           answers: await prisma.quizAttemptAnswer.findMany({
             where: { attemptId: best.id },
-            select: { questionId: true, optionId: true, answerText: true, isCorrect: true },
+            select: { questionId: true, optionId: true, optionIds: true, answerText: true, isCorrect: true },
           }),
         }
       : null

@@ -978,6 +978,9 @@ model QuizAttemptAnswer {
   attemptId  String
   questionId String
   optionId   String?
+  // Every option ticked, for a question with more than one correct answer.
+  // optionId is then the first of them; a single-answer question leaves this empty.
+  optionIds  String[] @default([])
   // Fingerspelling / vocabulary: the word the student typed or picked.
   answerText String?
   isCorrect  Boolean

@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
+import { chosenOptionIds } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ type Attempt = {
   score: number
   passed: boolean
   createdAt: string
-  answers: Array<{ questionId: string; optionId: string | null; answerText?: string | null; isCorrect: boolean }>
+  answers: Array<{ questionId: string; optionId: string | null; optionIds?: string[]; answerText?: string | null; isCorrect: boolean }>
 }
 
 /** The test's questions, as the lesson page already has them — to name what a student chose. */
@@ -173,9 +174,10 @@ function StudentAttempts({ lessonId, student, questions, onReset }: {
                 const answer = attempt.answers.find((a) => a.questionId === q.id)
                 // A question added after this attempt was never put to the student.
                 if (!answer) return null
-                const chosen = q.options.find((o) => o.id === answer.optionId)
+                const ids = chosenOptionIds(answer)
+                const chosen = q.options.filter((o) => ids.includes(o.id))
                 const name = (o: ResultsQuestion["options"][number]) => o.text || `option ${q.options.indexOf(o) + 1}`
-                const right = q.options.find((o) => o.isCorrect)
+                const right = q.options.filter((o) => o.isCorrect)
                 return (
                   <li key={q.id} className="flex items-start gap-2 px-3 py-2 text-xs">
                     {answer.isCorrect
@@ -187,14 +189,16 @@ function StudentAttempts({ lessonId, student, questions, onReset }: {
                         {/* A fingerspelling or vocabulary sign: the question is the word, the answer what was typed or picked. */}
                         {q.options.length === 0
                           ? answer.answerText ? `Answered: ${answer.answerText}` : "Not answered"
-                          : !answer.optionId
+                          : ids.length === 0
                           ? "Not answered"
-                          : chosen
-                            ? `Answered: ${name(chosen)}`
+                          : chosen.length > 0
+                            ? `Answered: ${chosen.map(name).join(", ")}`
                             : "Answered with an option that has since been removed"}
                       </p>
-                      {!answer.isCorrect && right && (
-                        <p className="text-emerald-700">Correct answer: {name(right)}</p>
+                      {!answer.isCorrect && right.length > 0 && (
+                        <p className="text-emerald-700">
+                          {right.length > 1 ? "Correct answers" : "Correct answer"}: {right.map(name).join(", ")}
+                        </p>
                       )}
                     </div>
                   </li>
