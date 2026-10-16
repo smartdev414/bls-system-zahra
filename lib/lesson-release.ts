@@ -23,6 +23,25 @@ export function isReleased(lesson: { releaseAt: Date | null }, now: Date = new D
 }
 
 /**
+ * When a lesson (or test) added to a section is released. One given is kept;
+ * otherwise a lesson added to a locked section is locked with it: the teacher
+ * locked "Day 4", and a lesson added to Day 4 afterwards should not slip out
+ * early.
+ */
+export function releaseInSection(
+  siblings: ReadonlyArray<{ releaseAt: Date | null }>,
+  releaseAt: Date | null,
+  now: Date = new Date(),
+): Date | null {
+  if (releaseAt) return releaseAt
+  const sectionLock = siblings[0]?.releaseAt ?? null
+  const sectionLocked =
+    sectionLock !== null && sectionLock > now &&
+    siblings.every((l) => l.releaseAt?.getTime() === sectionLock.getTime())
+  return sectionLocked ? sectionLock : null
+}
+
+/**
  * "Mon 20 Oct, 09:00" — how a release moment is written wherever a student or
  * teacher sees one, so the lesson list, the lesson page and the app agree.
  */

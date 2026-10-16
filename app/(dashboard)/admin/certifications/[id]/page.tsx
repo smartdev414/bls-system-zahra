@@ -368,7 +368,7 @@ export default function AdminCertDetailPage({ params }: { params: Promise<{ id: 
                   <Input type="number" min="1" max="100" value={passScore} onChange={(e) => setPassScore(e.target.value)} />
                 </div>
                 <Separator />
-                <QuizBuilder lessonId={null} questions={quizQuestions} onChange={setQuizQuestions} />
+                <QuizBuilder testId={null} questions={quizQuestions} onChange={setQuizQuestions} />
               </>
             )}
             {stepType === "VIDEO_SUBMISSION" && (

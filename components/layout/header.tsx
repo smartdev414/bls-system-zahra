@@ -41,6 +41,7 @@ type NavItem = {
 const studentNav: NavItem[] = [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
   { label: "Courses", href: "/student/courses", icon: BookOpen },
+  { label: "Tests", href: "/student/tests", icon: FlaskConical },
   { label: "Certifications", href: "/student/certifications", icon: ShieldCheck },
   { label: "Tutors", href: "/student/tutors", icon: Users },
   { label: "Classroom", href: "/student/classroom", icon: Video },
@@ -48,7 +49,6 @@ const studentNav: NavItem[] = [
 
 const studentDropdownNav: NavItem[] = [
   { label: "Dictionary", href: "/student/dictionary", icon: Library },
-  { label: "Tests", href: "/student/tests", icon: FlaskConical },
   { label: "Resources", href: "/student/resources", icon: FolderOpen },
   { label: "Tickets", href: "/student/tickets", icon: Ticket },
   { label: "Connection check", href: "/student/connection-check", icon: Wifi },
@@ -61,6 +61,7 @@ const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
   { label: "Library", href: "/admin/library", icon: FolderOpen },
+  { label: "Tests", href: "/admin/tests", icon: FlaskConical },
   { label: "Live Sessions", href: "/admin/sessions", icon: Video },
   { label: "Students", href: "/admin/students", icon: GraduationCap },
   { label: "Users", href: "/admin/users", icon: Users },
@@ -95,6 +96,7 @@ const tutorNav: NavItem[] = [
   { label: "Dashboard", href: "/tutor", icon: LayoutDashboard },
   { label: "My Courses", href: "/tutor/courses", icon: BookOpen },
   { label: "Library", href: "/tutor/library", icon: FolderOpen },
+  { label: "Tests", href: "/tutor/tests", icon: FlaskConical },
   { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
   { label: "Students", href: "/tutor/students", icon: Users },
   { label: "Reviews", href: "/tutor/reviews", icon: Star },

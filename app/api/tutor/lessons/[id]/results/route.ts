@@ -33,13 +33,12 @@ async function handleGET(
       select: {
         id: true,
         title: true,
-        passMark: true,
-        maxAttempts: true,
         section: { select: { courseId: true } },
-        _count: { select: { questions: true } },
+        test: { select: { id: true, passMark: true, maxAttempts: true, _count: { select: { questions: true } } } },
       },
     })
-    if (!lesson) return NextResponse.json({ message: "Test not found" }, { status: 404 })
+    if (!lesson?.test) return NextResponse.json({ message: "Test not found" }, { status: 404 })
+    const test = lesson.test
 
     const courseId = lesson.section.courseId
     const seesAnswers = can(session.role, "resources.view")
@@ -84,7 +83,7 @@ async function handleGET(
       const mine = attempts.filter((a) => a.userId === student.id)
       const latest = mine[mine.length - 1]
       const passed = mine.some((a) => a.passed)
-      const left = attemptsLeft(lesson.maxAttempts, mine.length)
+      const left = attemptsLeft(test.maxAttempts, mine.length)
       return {
         ...student,
         attempts: mine.length,
@@ -114,7 +113,7 @@ async function handleGET(
     if (seesAnswers) {
       const [list, tallies] = await Promise.all([
         prisma.quizQuestion.findMany({
-          where: { lessonId: id },
+          where: { testId: test.id },
           orderBy: { order: "asc" },
           select: { id: true, order: true, question: true },
         }),
@@ -140,9 +139,9 @@ async function handleGET(
       test: {
         id: lesson.id,
         title: lesson.title,
-        passMark: lesson.passMark,
-        maxAttempts: lesson.maxAttempts,
-        questionCount: lesson._count.questions,
+        passMark: test.passMark,
+        maxAttempts: test.maxAttempts,
+        questionCount: test._count.questions,
       },
       summary,
       students,

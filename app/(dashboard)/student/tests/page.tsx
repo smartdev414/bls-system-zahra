@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { useFetch } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
+import { TEST_KIND_INFO, isSignTest, type TestKind } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,10 @@ type TestItem = {
   title: string
   description: string | null
   courseTitle: string
+  sectionTitle: string
   tutorName: string
+  kind: TestKind
+  answerSeconds: number | null
   questionCount: number
   passMark: number
   maxAttempts: number | null
@@ -44,10 +48,13 @@ const STATUS: Record<TestItem["status"], { label: string; className: string }> =
   NOT_STARTED: { label: "To do", className: "text-amber-700 bg-amber-50 border-amber-200" },
 }
 
-/** "5 questions · Pass mark 70% · 1 of 3 attempts used" */
+/** "Vocabulary · 12 signs · 10 seconds each · Pass mark 70% · 1 of 3 attempts used" */
 function testFacts(test: TestItem) {
+  const noun = isSignTest(test.kind) ? "sign" : "question"
   return [
-    `${test.questionCount} question${test.questionCount !== 1 ? "s" : ""}`,
+    test.kind !== "STANDARD" ? TEST_KIND_INFO[test.kind].label : null,
+    `${test.questionCount} ${noun}${test.questionCount !== 1 ? "s" : ""}`,
+    isSignTest(test.kind) && test.answerSeconds ? `${test.answerSeconds} seconds each` : null,
     `Pass mark ${test.passMark}%`,
     test.maxAttempts === null
       ? test.attempts > 0 ? `${test.attempts} attempt${test.attempts !== 1 ? "s" : ""}` : null
@@ -181,7 +188,7 @@ export default function TestsPage() {
                           <CardTitle className="text-base leading-snug">{test.title}</CardTitle>
                           <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                             <BookOpen className="size-3" />
-                            <span>{test.courseTitle}</span>
+                            <span>{test.courseTitle} · {test.sectionTitle}</span>
                             <span>·</span>
                             <span>by {test.tutorName}</span>
                           </div>

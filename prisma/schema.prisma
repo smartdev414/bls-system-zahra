@@ -184,6 +184,7 @@ model User {
   courses              Course[]                @relation("TutorCourses")
   teachingCourses      CourseTutor[]           @relation("CourseTeaching")
   quizAttempts         QuizAttempt[]
+  testsCreated         Test[]                  @relation("TestsCreated")
   hostedSessions       LiveSession[]           @relation("TutorLiveSessions")
   coTutorSessions      LiveSessionCoTutor[]    @relation("CoTutorSessions")
   coTutorInvitesSent   LiveSessionCoTutor[]    @relation("CoTutorInvitesSent")
@@ -453,25 +454,19 @@ model Lesson {
   // and released week by week. Null = available straight away. Staff and
   // teachers always see it.
   releaseAt   DateTime?
-  // Tests only (type QUIZ): the score, out of 100, a student needs to pass, and
-  // how many times they may sit it. Null attempts = as often as they like.
-  passMark    Int        @default(70)
-  maxAttempts Int?
-  testKind    TestKind   @default(STANDARD)
-  // STORY: the video the questions are about.
-  storyUrl    String?
-  // FINGERSPELLING / VOCABULARY: seconds a student has for each sign. In these
-  // tests a question is just a video and its word (QuizQuestion.question), with
-  // no options.
-  answerSeconds Int?
+  // Tests only (type QUIZ): the test from the test bank this lesson puts in the
+  // course. The questions and how it is passed live on the test, so one test
+  // can sit in several courses; the attempts are kept here, per course.
+  testId      String?
 
   section   Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  test      Test?            @relation(fields: [testId], references: [id], onDelete: Cascade)
   assets    LessonAsset[]
   progress  LessonProgress[]
-  questions QuizQuestion[]
   attempts  QuizAttempt[]
 
   @@index([sectionId])
+  @@index([testId])
 }
 
 model LessonAsset {
@@ -892,20 +887,53 @@ model LiveSessionResource {
   @@index([sessionId])
 }
 
+// A test in the test bank (the Tests menu). It is made once and put in any
+// number of courses: each placement is a lesson of type QUIZ pointing at it.
+model Test {
+  id            String       @id @default(cuid())
+  title         String
+  description   String?
+  // The level it is for, so tests can be found by level. Null = any level.
+  level         CourseLevel?
+  testKind      TestKind     @default(STANDARD)
+  // STORY: the video the questions are about.
+  storyUrl      String?
+  // FINGERSPELLING / VOCABULARY: seconds a student has for each sign. In these
+  // tests a question is just a video and its word (QuizQuestion.question), with
+  // no options.
+  answerSeconds Int?
+  // The score, out of 100, a student needs to pass, and how many times they may
+  // sit it. Null attempts = as often as they like.
+  passMark      Int          @default(70)
+  maxAttempts   Int?
+  // Who made it: a tutor changes their own tests, an admin any. The test stays
+  // when the account goes, so the courses using it keep it.
+  createdById   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  createdBy User?          @relation("TestsCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  questions QuizQuestion[]
+  lessons   Lesson[]
+
+  @@index([createdById])
+  @@index([level])
+}
+
 model QuizQuestion {
   id       String       @id @default(cuid())
-  lessonId String
+  testId   String
   question String
   imageUrl String? // optional image or video shown with the question
   mediaType String? // "image" | "video"
   type     QuestionType @default(MULTIPLE_CHOICE)
   order    Int
 
-  lesson  Lesson              @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  test    Test                @relation(fields: [testId], references: [id], onDelete: Cascade)
   options QuizOption[]
   answers QuizAttemptAnswer[]
 
-  @@index([lessonId])
+  @@index([testId])
 }
 
 model QuizOption {

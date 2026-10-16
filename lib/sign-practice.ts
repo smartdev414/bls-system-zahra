@@ -73,17 +73,17 @@ async function weekSignIds(studentId: string, allSigns: { id: string; word: stri
     },
     select: {
       title: true,
-      testKind: true,
       type: true,
-      questions: { select: { question: true } },
+      test: { select: { testKind: true, questions: { select: { question: true } } } },
     },
   })
 
   const words: string[] = []
   for (const lesson of lessons) {
     words.push(...lesson.title.split(/[^\p{L}\p{N}'-]+/u))
-    if (lesson.type === "QUIZ" && (lesson.testKind === "VOCABULARY" || lesson.testKind === "FINGERSPELLING")) {
-      words.push(...lesson.questions.map((q) => q.question))
+    const test = lesson.type === "QUIZ" ? lesson.test : null
+    if (test && (test.testKind === "VOCABULARY" || test.testKind === "FINGERSPELLING")) {
+      words.push(...test.questions.map((q) => q.question))
     }
   }
 

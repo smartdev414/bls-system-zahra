@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Camera, FolderOpen, Hand, Loader2, RefreshCw, Trash2, Upload } from "lucide-react"
+import { Camera, FolderOpen, Hand, Library, Loader2, RefreshCw, Trash2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -9,14 +9,18 @@ import { ProtectedVideo } from "@/components/ui/protected-video"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { cn } from "@/lib/utils"
+import { isVideoMedia } from "@/lib/quiz"
 import { uploadMedia, type QuestionDraft } from "./QuizBuilder"
 
 type Props = {
   kind: "FINGERSPELLING" | "VOCABULARY"
-  lessonId: string | null
+  /** The saved test; null while it is being made, when everything is saved together. */
+  testId: string | null
   signs: QuestionDraft[]
   /** Takes the new list or a function of the current one — uploads finish some time after they start. */
   onChange: (next: QuestionDraft[] | ((current: QuestionDraft[]) => QuestionDraft[])) => void
+  /** Opens the dictionary to take signs from it. */
+  onAddFromDictionary?: () => void
 }
 
 /** "good-morning.mp4" → "good morning": a clip named after its word needs no typing. */
@@ -45,7 +49,7 @@ function newSign(word: string, videoUrl?: string): QuestionDraft {
   }
 }
 
-export function SignListBuilder({ kind, lessonId, signs, onChange }: Props) {
+export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictionary }: Props) {
   // The camera stays open between clips, so a run of signs can be filmed one
   // after another; the count gives each clip a fresh recorder.
   const [recording, setRecording] = useState(false)
@@ -71,14 +75,14 @@ export function SignListBuilder({ kind, lessonId, signs, onChange }: Props) {
   }
 
   async function remove(sign: QuestionDraft) {
-    if (!lessonId || !sign.id) {
+    if (!testId || !sign.id) {
       onChange((current) => current.filter((s) => s.uid !== sign.uid))
       return
     }
     if (!window.confirm("Delete this sign? Answers students have already given to it are removed too.")) return
     patch(sign.uid, (s) => ({ ...s, isSaving: true, error: null }))
     try {
-      const res = await fetch(`/api/tutor/lessons/${lessonId}/questions/${sign.id}`, { method: "DELETE" })
+      const res = await fetch(`/api/tests/${testId}/questions/${sign.id}`, { method: "DELETE" })
       if (!res.ok) throw new Error()
       onChange((current) => current.filter((s) => s.uid !== sign.uid))
     } catch {
@@ -99,7 +103,9 @@ export function SignListBuilder({ kind, lessonId, signs, onChange }: Props) {
           <div className="flex items-center gap-3">
             <div className="relative w-28 sm:w-36 aspect-video shrink-0 overflow-hidden rounded-lg border bg-muted flex items-center justify-center">
               {sign.imageUrl
-                ? <ProtectedVideo src={sign.imageUrl} muted controls preload="metadata" className="w-full h-full object-cover" />
+                ? isVideoMedia(sign.imageUrl, sign.mediaType)
+                  ? <ProtectedVideo src={sign.imageUrl} muted controls preload="metadata" className="w-full h-full object-cover" />
+                  : <img src={sign.imageUrl} alt="" className="w-full h-full object-contain" />
                 : !sign.questionImageUploading && <span className="text-[10px] text-muted-foreground">No video</span>}
               {sign.questionImageUploading && (
                 <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-muted/90 text-[10px] text-muted-foreground">
@@ -176,6 +182,11 @@ export function SignListBuilder({ kind, lessonId, signs, onChange }: Props) {
           <Button type="button" variant={recording ? "default" : "outline"} aria-pressed={recording} onClick={() => setRecording((on) => !on)}>
             <Camera className="size-4 mr-1.5" /> {recording ? "Close camera" : "Record"}
           </Button>
+          {onAddFromDictionary && (
+            <Button type="button" variant="outline" onClick={onAddFromDictionary}>
+              <Library className="size-4 mr-1.5" /> From the dictionary
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={() => setPickerOpen(true)}>
             <FolderOpen className="size-4 mr-1.5" /> Choose from library
           </Button>

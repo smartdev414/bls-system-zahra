@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { Save, Upload, Camera, FolderOpen, X } from "lucide-react"
-import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,15 +12,10 @@ import {
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
-import {
-  QuizBuilder, blankMultiple, isBlankQuestion, questionProblem, saveQuestionDraft, type QuestionDraft,
-} from "@/components/quiz/QuizBuilder"
 import { LibraryPicker, itemIcon, formatBytes } from "@/components/library/LibraryPicker"
 import type { LibraryAssetType } from "@/lib/library"
-import { SignListBuilder } from "@/components/quiz/SignListBuilder"
-import { AnswerSecondsField, StoryVideoField, TestKindPicker } from "@/components/quiz/TestKindFields"
-import { DEFAULT_ANSWER_SECONDS, isSignTest, type TestKind } from "@/lib/quiz"
-import { DEFAULT_TEST_SETTINGS, TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
+import { TestBankPicker, type BankTest } from "@/components/tests/TestBankPicker"
+import { useTestsBase } from "@/hooks/use-tests-base"
 
 export type LessonType = "VIDEO" | "TEXT" | "QUIZ"
 
@@ -42,10 +36,7 @@ type Props = {
   onSuccess: () => void
   /** Opened from the library with a file chosen: the kind of lesson to start with. */
   initialType?: LessonType
-  /**
-   * Files chosen in the library before this screen opened. Attached to a video
-   * or text lesson; for a test, a video among them becomes the first question's clip.
-   */
+  /** Files chosen in the library before this screen opened, attached to the lesson. */
   initialFiles?: UploadedFile[]
 }
 
@@ -59,56 +50,24 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>(initialFiles ?? [])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
-  const [questions, setQuestions] = useState<QuestionDraft[]>(() => {
-    const clip = initialType === "QUIZ" ? initialFiles?.find((f) => f.assetType === "VIDEO") : undefined
-    return clip ? [{ ...blankMultiple(), imageUrl: clip.fileUrl, mediaType: "video", dirty: true }] : []
-  })
-  const [testSettings, setTestSettings] = useState<TestSettingsDraft>(DEFAULT_TEST_SETTINGS)
-  const [testKind, setTestKind] = useState<TestKind>("STANDARD")
-  const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS)
-  const [storyUrl, setStoryUrl] = useState<string | null>(null)
-  // The signs of a fingerspelling or vocabulary test — kept apart from the
-  // questions, so trying another kind does not lose either.
-  const [signs, setSigns] = useState<QuestionDraft[]>([])
+  // A test is chosen from the test bank (the Tests menu), not built here.
+  const [test, setTest] = useState<BankTest | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const testsBase = useTestsBase()
 
   const isTest = type === "QUIZ"
-  const signTest = isTest && isSignTest(testKind)
-  const items = signTest ? signs : questions
-  const setItems = signTest ? setSigns : setQuestions
-  const itemName = signTest ? "Sign" : "Question"
+  const ready = isTest ? !!test : !!title.trim()
 
   async function handleSubmit() {
-    if (!title.trim()) return
-
-    // Every question that was started has to be finished — one left half-done
-    // would otherwise be dropped without a word. Untouched blanks are ignored.
-    const drafts = isTest ? items.filter((q) => !isBlankQuestion(q)) : []
-    const unfinished = drafts.filter((q) => questionProblem(q, testKind))
-    if (unfinished.length > 0) {
-      const ids = new Set(unfinished.map((q) => q.uid))
-      setItems((current) => current.map((q) => (
-        ids.has(q.uid) ? { ...q, isOpen: true, error: questionProblem(q, testKind) } : q
-      )))
-      const numbers = items.flatMap((q, i) => (ids.has(q.uid) ? [i + 1] : []))
-      setError(
-        `${itemName}${numbers.length > 1 ? "s" : ""} ${numbers.join(", ")} ${numbers.length > 1 ? "are" : "is"} not finished. Complete or delete ${numbers.length > 1 ? "them" : "it"}, then add the test.`
-      )
-      return
-    }
-    if (isTest && testKind === "STORY" && !storyUrl) {
-      setError("Add the story video, then add the test.")
-      return
-    }
+    if (!ready) return
 
     setLoading(true)
     setError(null)
 
     try {
-      // 1. Create the lesson
-      // A file picked before switching to a quiz is not something a quiz can show.
-      const files = type === "QUIZ" ? [] : [
+      // A file picked before switching to a test is not something a test can show.
+      const files = isTest ? [] : [
         ...(uploadedFile ? [uploadedFile] : []),
         ...libraryFiles,
       ]
@@ -125,35 +84,12 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
       const res = await fetch(`/api/tutor/courses/${courseId}/lessons`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sectionId, title, type, description: desc, isFree, assets,
-          ...(isTest && { ...testSettingsBody(testSettings), testKind }),
-          ...(signTest && { answerSeconds }),
-          ...(isTest && testKind === "STORY" && { storyUrl }),
-        }),
+        body: JSON.stringify(isTest
+          ? { sectionId, type, testId: test!.id, isFree }
+          : { sectionId, title, type, description: desc, isFree, assets }),
       })
       const data = await res.json() as { lesson?: { id: string }; message?: string }
       if (!res.ok) throw new Error(data.message ?? "Could not create lesson")
-
-      const lessonId = data.lesson!.id
-
-      // 2. Save the questions, in order
-      let failed = 0
-      for (const q of drafts) {
-        try {
-          await saveQuestionDraft(lessonId, q)
-        } catch {
-          failed++
-        }
-      }
-      // The test itself exists by now, so this is reported rather than thrown:
-      // pressing the button again would create it a second time.
-      if (failed > 0) {
-        toast.error(
-          `The test was added, but ${failed} ${itemName.toLowerCase()}${failed > 1 ? "s" : ""} could not be saved. Open the test to add ${failed > 1 ? "them" : "it"} again.`,
-          { duration: 10000 },
-        )
-      }
 
       onSuccess()
       onClose()
@@ -171,10 +107,10 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
         <div>
           <h1 className="text-2xl font-black tracking-tight">{isTest ? "Add Test" : "Add Lesson"}</h1>
           <p className="text-muted-foreground mt-1">
-            {isTest ? "Name the test, pick its kind, then add what goes in it." : "Fill in the details for this lesson."}
+            {isTest ? "Choose a test from Tests to put in this section." : "Fill in the details for this lesson."}
           </p>
         </div>
-        <Button onClick={handleSubmit} disabled={!title.trim() || loading}>
+        <Button onClick={handleSubmit} disabled={!ready || loading}>
           <Save className="size-4 mr-1.5" />
           {loading ? "Adding..." : isTest ? "Add Test" : "Add Lesson"}
         </Button>
@@ -186,16 +122,18 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
         </p>
       )}
 
-      {/* Title */}
-      <div className="flex flex-col gap-1.5">
-        <Label>{isTest ? "Test Title" : "Lesson Title"}</Label>
-        <Input
-          className="h-11"
-          placeholder={isTest ? "e.g. Greetings — end of unit test" : "e.g. Greetings — Hello and Goodbye"}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-      </div>
+      {/* Title — a test keeps the name it has in Tests */}
+      {!isTest && (
+        <div className="flex flex-col gap-1.5">
+          <Label>Lesson Title</Label>
+          <Input
+            className="h-11"
+            placeholder="e.g. Greetings — Hello and Goodbye"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+      )}
 
       {/* Type + Visibility */}
       <div className="grid grid-cols-2 gap-4">
@@ -222,29 +160,28 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
         </div>
       </div>
 
-
-      {isTest && <TestKindPicker value={testKind} onChange={(kind) => { setTestKind(kind); setError(null) }} />}
-
       {isTest && (
-        <TestSettingsFields
-          value={testSettings}
-          onChange={setTestSettings}
-          questionCount={items.filter((q) => !isBlankQuestion(q)).length}
-          noun={itemName.toLowerCase()}
-        />
+        <div className="flex flex-col gap-1.5">
+          <Label>Test</Label>
+          <TestBankPicker
+            value={test?.id ?? null}
+            onChange={(t) => { setTest(t); setError(null) }}
+            createHref={`${testsBase}/new?${new URLSearchParams({ courseId, sectionId })}`}
+          />
+        </div>
       )}
 
-      {signTest && <AnswerSecondsField value={answerSeconds} onChange={setAnswerSeconds} />}
-
       {/* Description */}
-      <div className="flex flex-col gap-1.5">
-        <Label>Description</Label>
-        <RichTextEditor
-          value={desc}
-          onChange={setDesc}
-          placeholder="What will students learn in this lesson?"
-        />
-      </div>
+      {!isTest && (
+        <div className="flex flex-col gap-1.5">
+          <Label>Description</Label>
+          <RichTextEditor
+            value={desc}
+            onChange={setDesc}
+            placeholder="What will students learn in this lesson?"
+          />
+        </div>
+      )}
 
       {/* File upload (non-quiz) */}
       {type !== "QUIZ" && (
@@ -348,29 +285,6 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
         </>
       )}
 
-      {/* Quiz builder */}
-      {type === "QUIZ" && (
-        <>
-          <Separator />
-          {testKind === "STORY" && (
-            <StoryVideoField value={storyUrl} onChange={(url) => { setStoryUrl(url); setError(null) }} />
-          )}
-          {isSignTest(testKind) ? (
-            <SignListBuilder
-              kind={testKind}
-              lessonId={null}
-              signs={signs}
-              onChange={(next) => { setSigns(next); setError(null) }}
-            />
-          ) : (
-            <QuizBuilder
-              lessonId={null}
-              questions={questions}
-              onChange={(q) => { setQuestions(q); setError(null) }}
-            />
-          )}
-        </>
-      )}
     </div>
   )
 }

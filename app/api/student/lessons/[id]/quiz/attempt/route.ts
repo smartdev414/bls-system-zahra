@@ -24,15 +24,18 @@ async function handlePOST(
       where: { id },
       include: {
         section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } },
-        questions: {
-          include: { options: { select: { id: true, isCorrect: true } } },
+        test: {
+          include: {
+            questions: { include: { options: { select: { id: true, isCorrect: true } } } },
+          },
         },
       },
     })
     // A test that has not been released yet cannot be read or taken.
-    if (!lesson || lesson.type !== "QUIZ" || !isReleased(lesson)) {
+    if (!lesson?.test || lesson.type !== "QUIZ" || !isReleased(lesson)) {
       return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
     }
+    const test = lesson.test
 
     const enrollment = await prisma.enrollment.findFirst({
       where: { studentId: session.sub, courseId: lesson.section.courseId },
@@ -49,7 +52,7 @@ async function handlePOST(
     if (!Array.isArray(body.answers) || body.answers.length === 0) {
       return NextResponse.json({ message: "answers are required" }, { status: 400 })
     }
-    if (lesson.questions.length === 0) {
+    if (test.questions.length === 0) {
       return NextResponse.json({ message: "This test has no questions yet" }, { status: 400 })
     }
 
@@ -57,16 +60,16 @@ async function handlePOST(
       where: { lessonId: id, userId: session.sub },
       select: { passed: true },
     })
-    if (attemptsLeft(lesson.maxAttempts, previous.length) === 0) {
+    if (attemptsLeft(test.maxAttempts, previous.length) === 0) {
       return NextResponse.json({ message: "You have used all your attempts for this test" }, { status: 409 })
     }
 
     // Grade the attempt
-    const kind = lesson.testKind
+    const kind = test.testKind
     const answerMap = new Map(body.answers.map((a) => [a.questionId, a]))
     let correct = 0
 
-    const gradedAnswers = lesson.questions.map((q) => {
+    const gradedAnswers = test.questions.map((q) => {
       const given = answerMap.get(q.id)
       if (isSignTest(kind)) {
         // The question's text is the word; a sign that ran out of time has none.
@@ -86,9 +89,9 @@ async function handlePOST(
       ? Math.min(Math.round(Number(body.durationMs)), 24 * 60 * 60 * 1000)
       : null
 
-    const total = lesson.questions.length
+    const total = test.questions.length
     const score = Math.round((correct / total) * 100)
-    const passed = score >= lesson.passMark
+    const passed = score >= test.passMark
 
     const attempt = await prisma.quizAttempt.create({
       data: {
@@ -114,7 +117,7 @@ async function handlePOST(
     }
 
     const attempts = [...previous, { passed }]
-    const left = attemptsLeft(lesson.maxAttempts, attempts.length)
+    const left = attemptsLeft(test.maxAttempts, attempts.length)
 
     // Notify the student of their quiz result
     void createNotification(
@@ -131,9 +134,9 @@ async function handlePOST(
 
     // The questions to review against — with the correct answers only when the
     // student may see them.
-    const reveal = revealsAnswers(lesson.maxAttempts, attempts)
+    const reveal = revealsAnswers(test.maxAttempts, attempts)
     const fullQuestions = await prisma.quizQuestion.findMany({
-      where: { lessonId: id },
+      where: { testId: test.id },
       orderBy: { order: "asc" },
       include: { options: { orderBy: { order: "asc" } } },
     })
@@ -146,7 +149,7 @@ async function handlePOST(
 
     return NextResponse.json({
       attempt, score, passed, correct, total,
-      passMark: lesson.passMark,
+      passMark: test.passMark,
       attemptsLeft: left,
       answersRevealed: reveal,
       questions,

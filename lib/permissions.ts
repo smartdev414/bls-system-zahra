@@ -50,6 +50,11 @@ export type Capability =
   /** Enter the room as a host and run it (mic control, recording, slides). */
   | "sessions.teach"
 
+  // ─── Test bank (confidential — support staff excluded) ─────────────────────
+  /** Make tests in the Tests menu and put them in courses. A tutor changes
+   *  only the tests they made (see `testEditScope`); an admin changes any. */
+  | "tests.manage"
+
   // ─── Dictionary (confidential — support staff excluded) ────────────────────
   | "dictionary.view"
   | "dictionary.manage"
@@ -80,7 +85,8 @@ const STUDENT_CAPABILITIES: Capability[] = [
  * The school builds its courses centrally so every teacher works from the same
  * material: tutors see the courses they are put on (see `courseTeachScope`) and
  * run classes for them, but creating a course or changing its lessons is for
- * admins. They still look after their own students, groups and timetable.
+ * admins. They still look after their own students, groups and timetable, and
+ * make tests in the test bank and put them in the courses they teach.
  */
 const TUTOR_CAPABILITIES: Capability[] = [
   "dashboard.view",
@@ -98,6 +104,7 @@ const TUTOR_CAPABILITIES: Capability[] = [
   "sessions.delete",
   "sessions.invite",
   "sessions.teach",
+  "tests.manage",
   "dictionary.view",
   "connectivity.check",
 ]

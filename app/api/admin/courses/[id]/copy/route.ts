@@ -40,7 +40,6 @@ async function loadCourse(id: string) {
             orderBy: { order: "asc" },
             include: {
               assets: { orderBy: { order: "asc" } },
-              questions: { orderBy: { order: "asc" }, include: { options: { orderBy: { order: "asc" } } } },
             },
           },
         },
@@ -151,11 +150,8 @@ async function handlePOST(req: NextRequest, { params }: RouteContext) {
                 order: lesson.order,
                 isFree: lesson.isFree,
                 releaseAt: move(lesson.releaseAt),
-                passMark: lesson.passMark,
-                maxAttempts: lesson.maxAttempts,
-                testKind: lesson.testKind,
-                storyUrl: lesson.storyUrl,
-                answerSeconds: lesson.answerSeconds,
+                // A test is the same bank test in the copy: changing it changes both.
+                testId: lesson.testId,
                 assets: {
                   create: lesson.assets.map((a) => ({
                     type: a.type,
@@ -167,24 +163,6 @@ async function handlePOST(req: NextRequest, { params }: RouteContext) {
                     duration: a.duration,
                     mimeType: a.mimeType,
                     order: a.order,
-                  })),
-                },
-                questions: {
-                  create: lesson.questions.map((q) => ({
-                    question: q.question,
-                    imageUrl: q.imageUrl,
-                    mediaType: q.mediaType,
-                    type: q.type,
-                    order: q.order,
-                    options: {
-                      create: q.options.map((o) => ({
-                        text: o.text,
-                        imageUrl: o.imageUrl,
-                        mediaType: o.mediaType,
-                        isCorrect: o.isCorrect,
-                        order: o.order,
-                      })),
-                    },
                   })),
                 },
               })),

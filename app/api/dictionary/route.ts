@@ -24,6 +24,8 @@ async function handleGET(req: NextRequest) {
     const isStudent = session.role === "STUDENT"
     // "My signs": only the ones this student starred.
     const savedOnly = isStudent && req.nextUrl.searchParams.get("saved") === "1"
+    // Only signs with something to show — what a test can be made from.
+    const withMedia = req.nextUrl.searchParams.get("withMedia") === "1"
 
     const where = {
       ...(q ? {
@@ -37,6 +39,7 @@ async function handleGET(req: NextRequest) {
       // A sign whose level is hidden from students doesn't turn up under a level filter either.
       ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel, ...(isStudent && { showLevel: true }) } : {}),
       ...(savedOnly && { savedBy: { some: { userId: session.sub } } }),
+      ...(withMedia && { AND: [{ OR: [{ videoUrl: { not: null } }, { imageUrl: { not: null } }] }] }),
     }
 
     const [total, signs, allCategories, saved] = await Promise.all([

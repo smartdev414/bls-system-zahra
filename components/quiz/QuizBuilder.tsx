@@ -4,7 +4,7 @@ import { useState } from "react"
 import {
   Plus, Trash2, CheckCircle2, Circle, ArrowUp, ArrowDown,
   ChevronDown, ChevronUp, Loader2, Save, FlaskConical,
-  ImageIcon, X, VideoIcon, Copy,
+  ImageIcon, X, VideoIcon, Copy, Library,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,7 @@ import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
 import { isSignTest, isVideoMedia } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
+import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,8 @@ export type QuestionDraft = {
 }
 
 type Props = {
-  lessonId: string | null
+  /** The saved test; null while it is being made, when everything is saved together. */
+  testId: string | null
   questions: QuestionDraft[]
   /**
    * Takes the new list or, like a state setter, a function of the current one.
@@ -57,6 +59,8 @@ type Props = {
    * admin typed or added in the meantime is thrown away.
    */
   onChange: (next: QuestionDraft[] | ((current: QuestionDraft[]) => QuestionDraft[])) => void
+  /** Opens the dictionary to make questions from its signs. */
+  onAddFromDictionary?: () => void
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -117,10 +121,10 @@ export function questionProblem(q: QuestionDraft, testKind?: string): string | n
 type SavedQuestion = { id: string; options: Array<{ id: string }> }
 
 /** Creates the question on the test, or updates it when it was saved before. */
-export async function saveQuestionDraft(lessonId: string, q: QuestionDraft): Promise<SavedQuestion> {
+export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promise<SavedQuestion> {
   const url = q.id
-    ? `/api/tutor/lessons/${lessonId}/questions/${q.id}`
-    : `/api/tutor/lessons/${lessonId}/questions`
+    ? `/api/tests/${testId}/questions/${q.id}`
+    : `/api/tests/${testId}/questions`
   const res = await fetch(url, {
     method: q.id ? "PUT" : "POST",
     headers: { "Content-Type": "application/json" },
@@ -236,16 +240,17 @@ export function MediaUploadButton({
 function QuestionCard({
   q,
   index,
-  lessonId,
+  testId,
   onPatch,
   onDelete,
   onDuplicate,
   onMoveUp,
   onMoveDown,
+  onChooseSign,
 }: {
   q: QuestionDraft
   index: number
-  lessonId: string | null
+  testId: string | null
   /** Change this question, starting from what it is at that moment. */
   onPatch: (change: (current: QuestionDraft) => QuestionDraft) => void
   onDelete: () => void
@@ -253,6 +258,8 @@ function QuestionCard({
   /** Swap with the question above / below; undefined at the ends. */
   onMoveUp?: () => void
   onMoveDown?: () => void
+  /** Use a dictionary sign as the question's clip (no option) or an answer's. */
+  onChooseSign?: (option?: number) => void
 }) {
   /** A change to what the question says — as opposed to opening it or a save in progress. */
   function edit(change: (current: QuestionDraft) => QuestionDraft) {
@@ -313,14 +320,14 @@ function QuestionCard({
   }
 
   async function saveQuestion() {
-    if (!lessonId) return
+    if (!testId) return
     const fail = (error: string) => onPatch((cur) => ({ ...cur, isSaving: false, error }))
     const problem = questionProblem(q)
     if (problem) return fail(problem)
 
     onPatch((cur) => ({ ...cur, isSaving: true, error: null }))
     try {
-      const saved = await saveQuestionDraft(lessonId, q)
+      const saved = await saveQuestionDraft(testId, q)
       onPatch((cur) => withSaved(cur, saved))
     } catch (e) {
       fail(e instanceof Error ? e.message : "Failed to save")
@@ -328,7 +335,7 @@ function QuestionCard({
   }
 
   async function deleteQuestion() {
-    if (!lessonId || !q.id) {
+    if (!testId || !q.id) {
       if (!isBlankQuestion(q) && !window.confirm("Delete this question?")) return
       onDelete()
       return
@@ -336,7 +343,7 @@ function QuestionCard({
     if (!window.confirm("Delete this question? Answers students have already given to it are removed too.")) return
     onPatch((cur) => ({ ...cur, isSaving: true, error: null }))
     try {
-      const res = await fetch(`/api/tutor/lessons/${lessonId}/questions/${q.id}`, { method: "DELETE" })
+      const res = await fetch(`/api/tests/${testId}/questions/${q.id}`, { method: "DELETE" })
       if (!res.ok) throw new Error("Could not delete this question")
       onDelete()
     } catch (e) {
@@ -348,7 +355,7 @@ function QuestionCard({
   const correct = q.options.find((o) => o.isCorrect)
   const correctLabel = correct && (correct.text.trim() || `Answer ${q.options.indexOf(correct) + 1}`)
   // On a test that is not created yet everything is saved together, so there is no per-question state to show.
-  const status = !lessonId ? null : q.id && !q.dirty ? "saved" : q.id ? "changed" : "new"
+  const status = !testId ? null : q.id && !q.dirty ? "saved" : q.id ? "changed" : "new"
 
   return (
     <div className={cn(
@@ -448,6 +455,11 @@ function QuestionCard({
               size="question"
               acceptVideo
             />
+            {onChooseSign && !q.imageUrl && !q.questionImageUploading && (
+              <button type="button" className="self-start inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => onChooseSign()}>
+                <Library className="size-3.5" /> Use a sign from the dictionary
+              </button>
+            )}
           </div>
 
           {/* Options */}
@@ -492,6 +504,13 @@ function QuestionCard({
                     acceptVideo
                   />
                 )}
+                {q.type !== "TRUE_FALSE" && onChooseSign && !opt.imageUrl && !opt.uploading && (
+                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 text-muted-foreground"
+                    title="Use a sign from the dictionary" aria-label={`Use a sign from the dictionary for answer ${i + 1}`}
+                    onClick={() => onChooseSign(i)}>
+                    <Library className="size-3.5" />
+                  </Button>
+                )}
 
                 {/* Text */}
                 <Input
@@ -523,7 +542,7 @@ function QuestionCard({
 
           {q.error && <p className="text-xs text-destructive">{q.error}</p>}
 
-          {lessonId && (
+          {testId && (
             <Button type="button" size="sm" className="self-start" onClick={saveQuestion} disabled={q.isSaving}>
               {q.isSaving
                 ? <><Loader2 className="size-3.5 mr-1.5 animate-spin" /> Saving…</>
@@ -538,8 +557,25 @@ function QuestionCard({
 
 // ─── QuizBuilder ──────────────────────────────────────────────────────────────
 
-export function QuizBuilder({ lessonId, questions, onChange }: Props) {
+export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }: Props) {
   const [orderError, setOrderError] = useState<string | null>(null)
+  // Where a sign chosen in the dictionary goes: a question's clip, or one of its answers.
+  const [signTarget, setSignTarget] = useState<{ uid: string; option?: number } | null>(null)
+
+  function applySign(sign: DictionarySign) {
+    if (!signTarget) return
+    const media = { imageUrl: (sign.videoUrl ?? sign.imageUrl)!, mediaType: (sign.videoUrl ? "video" : "image") as "video" | "image" }
+    const { uid, option } = signTarget
+    onChange((current) => current.map((q) => {
+      if (q.uid !== uid) return q
+      if (option === undefined) return { ...q, ...media, dirty: true, error: null }
+      // The answer is named after the sign, unless it already has its own words.
+      return {
+        ...q, dirty: true, error: null,
+        options: q.options.map((o, i) => (i === option ? { ...o, ...media, text: o.text.trim() ? o.text : sign.word } : o)),
+      }
+    }))
+  }
 
   function add(type: "MULTIPLE_CHOICE" | "TRUE_FALSE") {
     onChange((current) => [...current, type === "TRUE_FALSE" ? blankTrueFalse() : blankMultiple()])
@@ -560,13 +596,13 @@ export function QuizBuilder({ lessonId, questions, onChange }: Props) {
         isOpen: true, isSaving: false, error: null, dirty: true, questionImageUploading: false,
       }
       // On a saved test a new question is stored after the others, so it is shown there.
-      return lessonId ? [...current, copy] : [...current.slice(0, at + 1), copy, ...current.slice(at + 1)]
+      return testId ? [...current, copy] : [...current.slice(0, at + 1), copy, ...current.slice(at + 1)]
     })
   }
 
   // On a saved test a new question goes to the end when it is saved, so it can
   // only be moved once it has been.
-  const movable = (a: number, b: number) => !lessonId || (!!questions[a].id && !!questions[b].id)
+  const movable = (a: number, b: number) => !testId || (!!questions[a].id && !!questions[b].id)
 
   const swap = (a: string, b: string) => onChange((current) => {
     const from = current.findIndex((q) => q.uid === a)
@@ -587,9 +623,9 @@ export function QuizBuilder({ lessonId, questions, onChange }: Props) {
     const next = [...questions]
     ;[next[from], next[to]] = [next[to], next[from]]
     const orderedIds = next.flatMap((q) => (q.id ? [q.id] : []))
-    if (!lessonId || orderedIds.length < 2) return
+    if (!testId || orderedIds.length < 2) return
     try {
-      const res = await fetch(`/api/tutor/lessons/${lessonId}/questions`, {
+      const res = await fetch(`/api/tests/${testId}/questions`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderedIds }),
@@ -623,14 +659,25 @@ export function QuizBuilder({ lessonId, questions, onChange }: Props) {
           key={q.uid}
           q={q}
           index={i}
-          lessonId={lessonId}
+          testId={testId}
           onPatch={(change) => onChange((current) => current.map((old) => (old.uid === q.uid ? change(old) : old)))}
           onDelete={() => onChange((current) => current.filter((old) => old.uid !== q.uid))}
           onDuplicate={() => duplicate(q.uid)}
           onMoveUp={i > 0 && movable(i, i - 1) ? () => move(i, i - 1) : undefined}
           onMoveDown={i < questions.length - 1 && movable(i, i + 1) ? () => move(i, i + 1) : undefined}
+          onChooseSign={onAddFromDictionary ? (option) => setSignTarget({ uid: q.uid, option }) : undefined}
         />
       ))}
+
+      <DictionaryPicker
+        open={signTarget !== null}
+        onOpenChange={(open) => { if (!open) setSignTarget(null) }}
+        multiple={false}
+        description={signTarget?.option === undefined
+          ? "The sign's video is shown with the question."
+          : "The sign's video becomes this answer."}
+        onPick={([sign]) => { if (sign) applySign(sign) }}
+      />
 
       {orderError && <p className="text-xs text-destructive">{orderError}</p>}
 
@@ -642,9 +689,14 @@ export function QuizBuilder({ lessonId, questions, onChange }: Props) {
         <Button type="button" variant="outline" size="sm" onClick={() => add("TRUE_FALSE")}>
           <Plus className="size-3.5 mr-1.5" /> True / False
         </Button>
+        {onAddFromDictionary && (
+          <Button type="button" variant="outline" size="sm" onClick={onAddFromDictionary}>
+            <Library className="size-3.5 mr-1.5" /> From the dictionary
+          </Button>
+        )}
       </div>
 
-      {!lessonId && questions.length > 0 && (
+      {!testId && questions.length > 0 && (
         <p className="text-xs text-muted-foreground">
           The questions are saved with the test when you press Add Test.
         </p>

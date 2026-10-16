@@ -1,8 +1,9 @@
 "use client"
 
 /**
- * "Add to a lesson" / "Make a test" from the library: choose the course and
- * section, then go to the new-lesson page with the file already attached.
+ * "Add to a lesson" from the library: choose the course and section, then go
+ * to the new-lesson page with the file already attached. (Tests are made in
+ * the Tests menu, whose builder picks from the library too.)
  */
 
 import { useEffect, useState } from "react"
@@ -25,20 +26,18 @@ const selectClass =
 type Props = {
   /** The file to use; the dialog is open while this is set. */
   file: LibraryItem | null
-  /** A video lesson with the file attached, or a test whose first question shows it. */
-  kind: "VIDEO" | "QUIZ"
   onClose: () => void
 }
 
-export function UseInCourseDialog({ file, kind, onClose }: Props) {
+export function UseInCourseDialog({ file, onClose }: Props) {
   return (
     <Dialog open={file !== null} onOpenChange={(open) => { if (!open) onClose() }}>
-      {file && <Body file={file} kind={kind} onClose={onClose} />}
+      {file && <Body file={file} onClose={onClose} />}
     </Dialog>
   )
 }
 
-function Body({ file, kind, onClose }: { file: LibraryItem; kind: "VIDEO" | "QUIZ"; onClose: () => void }) {
+function Body({ file, onClose }: { file: LibraryItem; onClose: () => void }) {
   const router = useRouter()
   const coursesBase = useCoursesBase()
   const [courses, setCourses] = useState<CourseRow[] | null>(null)
@@ -77,7 +76,7 @@ function Body({ file, kind, onClose }: { file: LibraryItem; kind: "VIDEO" | "QUI
   }, [courseId])
 
   function go() {
-    const params = new URLSearchParams({ sectionId, file: file.id, kind })
+    const params = new URLSearchParams({ sectionId, file: file.id, kind: "VIDEO" })
     router.push(`${coursesBase}/${courseId}/lessons/new?${params}`)
     onClose()
   }
@@ -85,11 +84,9 @@ function Body({ file, kind, onClose }: { file: LibraryItem; kind: "VIDEO" | "QUI
   return (
     <DialogContent className="max-w-md">
       <DialogHeader>
-        <DialogTitle>{kind === "QUIZ" ? "Make a test" : "Add to a lesson"}</DialogTitle>
+        <DialogTitle>Add to a lesson</DialogTitle>
         <DialogDescription>
-          {kind === "QUIZ"
-            ? <>A new test whose first question shows <span className="font-medium">{file.title}</span>. Choose where it goes.</>
-            : <>A new lesson with <span className="font-medium">{file.title}</span> attached. Choose where it goes.</>}
+          A new lesson with <span className="font-medium">{file.title}</span> attached. Choose where it goes.
         </DialogDescription>
       </DialogHeader>
 

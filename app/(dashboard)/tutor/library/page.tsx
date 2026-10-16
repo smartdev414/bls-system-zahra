@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Upload, Loader2, Trash2, Search, FolderOpen, CheckCircle2, AlertCircle, Captions, Save, Camera,
-  MoreHorizontal, BookOpen, FlaskConical, Presentation, Wand2,
+  MoreHorizontal, BookOpen, Presentation, Wand2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -44,7 +44,7 @@ const ACCEPT =
   ".ppt,.pptx,image/*,audio/mpeg,audio/wav"
 
 /** What a row's "Use" menu was opened for. */
-type UseAction = { item: LibraryItem; action: "lesson" | "test" | "class" | "background" }
+type UseAction = { item: LibraryItem; action: "lesson" | "class" | "background" }
 
 type UploadRow = { key: string; name: string; status: "uploading" | "done" | "error"; error?: string }
 
@@ -258,16 +258,9 @@ export default function TutorLibraryPage() {
             <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{item.title}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {canManage && (
-              <>
-                <DropdownMenuItem onSelect={() => setUse({ item, action: "lesson" })}>
-                  <BookOpen className="size-4" /> Add to a new lesson
-                </DropdownMenuItem>
-                {item.assetType === "VIDEO" && (
-                  <DropdownMenuItem onSelect={() => setUse({ item, action: "test" })}>
-                    <FlaskConical className="size-4" /> Make a test with it
-                  </DropdownMenuItem>
-                )}
-              </>
+              <DropdownMenuItem onSelect={() => setUse({ item, action: "lesson" })}>
+                <BookOpen className="size-4" /> Add to a new lesson
+              </DropdownMenuItem>
             )}
             <DropdownMenuItem onSelect={() => setUse({ item, action: "class" })}>
               <Presentation className="size-4" /> Add to a class
@@ -351,8 +344,7 @@ export default function TutorLibraryPage() {
       )}
 
       <UseInCourseDialog
-        file={use?.action === "lesson" || use?.action === "test" ? use.item : null}
-        kind={use?.action === "test" ? "QUIZ" : "VIDEO"}
+        file={use?.action === "lesson" ? use.item : null}
         onClose={() => setUse(null)}
       />
       <UseInClassDialog file={use?.action === "class" ? use.item : null} onClose={() => setUse(null)} />

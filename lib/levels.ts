@@ -32,3 +32,9 @@ export const levelDot: Record<CourseLevel, string> = {
   L5: "bg-orange-500",
   L6: "bg-rose-500",
 }
+
+/** Reads a level sent by a form: null when none was chosen, undefined when it is not a level. */
+export function parseLevel(value: unknown): CourseLevel | null | undefined {
+  if (value === null || value === "" || value === undefined) return null
+  return COURSE_LEVELS.includes(value as CourseLevel) ? (value as CourseLevel) : undefined
+}

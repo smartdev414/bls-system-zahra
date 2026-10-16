@@ -4,8 +4,8 @@ import { getSession } from "@/lib/auth"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope } from "@/lib/permissions"
-import { isReleased, parseReleaseAt } from "@/lib/lesson-release"
-import { DEFAULT_ANSWER_SECONDS, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
+import { isReleased, parseReleaseAt, releaseInSection } from "@/lib/lesson-release"
+import { placeTest } from "@/lib/tests"
 
 async function handlePOST(
   req: NextRequest,
@@ -30,13 +30,8 @@ async function handlePOST(
       isFree?: boolean
       /** ISO date-time students get the lesson; null or omitted = straight away. */
       releaseAt?: string | null
-      /** Tests only: score out of 100 needed to pass, and attempts allowed (null = unlimited). */
-      passMark?: number
-      maxAttempts?: number | null
-      /** Tests only: what the test asks (see TestKind), and what goes with that kind. */
-      testKind?: string
-      answerSeconds?: number
-      storyUrl?: string | null
+      /** Tests only: the test from the test bank to put here. Its title is used. */
+      testId?: string
       assets?: Array<{
         type: "VIDEO" | "PDF" | "IMAGE" | "DOCUMENT" | "AUDIO" | "SUBTITLE"
         title: string
@@ -51,7 +46,7 @@ async function handlePOST(
 
     const { sectionId, title, type, description, isFree = false, assets = [] } = body
 
-    if (!sectionId || !title?.trim()) {
+    if (!sectionId || (type !== "QUIZ" && !title?.trim())) {
       return NextResponse.json({ message: "sectionId and title are required" }, { status: 400 })
     }
 
@@ -60,31 +55,21 @@ async function handlePOST(
       return NextResponse.json({ message: "Release date is not a valid date" }, { status: 400 })
     }
 
-    const testSettings = type === "QUIZ" ? parseTestSettings(body) : {}
-    if (typeof testSettings === "string") {
-      return NextResponse.json({ message: testSettings }, { status: 400 })
-    }
-
-    // The kind is chosen when the test is made and stays: its questions are
-    // stored differently from one kind to the next.
-    const testKind = type === "QUIZ" ? parseTestKind(body.testKind ?? "STANDARD") : "STANDARD"
-    if (!testKind) return NextResponse.json({ message: "Unknown kind of test" }, { status: 400 })
-
     const section = await prisma.section.findFirst({
       where: { id: sectionId, courseId },
-      include: { lessons: { select: { releaseAt: true } } },
+      include: { lessons: { orderBy: { order: "asc" }, select: { releaseAt: true } } },
     })
     if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })
 
-    const lessonCount = section.lessons.length
-
-    // A lesson added to a locked section is locked with it: the teacher locked
-    // "Day 4", and a lesson added to Day 4 afterwards should not slip out early.
-    const sectionLock = section.lessons[0]?.releaseAt ?? null
-    const sectionLocked =
-      sectionLock !== null && sectionLock > new Date() &&
-      section.lessons.every((l) => l.releaseAt?.getTime() === sectionLock.getTime())
-    const effectiveRelease = releaseAt ?? (sectionLocked ? sectionLock : null)
+    // A test is made in the test bank and only put here.
+    if (type === "QUIZ") {
+      const test = body.testId
+        ? await prisma.test.findUnique({ where: { id: body.testId }, select: { id: true, title: true, description: true } })
+        : null
+      if (!test) return NextResponse.json({ message: "Choose a test from the test bank" }, { status: 400 })
+      const lesson = await placeTest(test, { id: sectionId, course }, releaseAt)
+      return NextResponse.json({ lesson }, { status: 201 })
+    }
 
     const lesson = await prisma.lesson.create({
       data: {
@@ -93,11 +78,8 @@ async function handlePOST(
         type,
         description: description?.trim() ?? null,
         isFree,
-        releaseAt: effectiveRelease,
-        ...testSettings,
-        testKind,
-        ...(isSignTest(testKind) && { answerSeconds: testSettings.answerSeconds ?? DEFAULT_ANSWER_SECONDS }),
-        order: lessonCount + 1,
+        releaseAt: releaseInSection(section.lessons, releaseAt),
+        order: section.lessons.length + 1,
         assets: {
           create: assets.map((asset, i) => ({
             type: asset.type,

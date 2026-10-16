@@ -22,12 +22,16 @@ async function handleGET(
 
     const lesson = await prisma.lesson.findUnique({
       where: { id },
-      include: { section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } } },
+      include: {
+        section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } },
+        test: true,
+      },
     })
     // A test that has not been released yet cannot be read or taken.
-    if (!lesson || !isReleased(lesson)) {
+    if (!lesson?.test || !isReleased(lesson)) {
       return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
     }
+    const test = lesson.test
 
     // Verify access
     const enrollment = await prisma.enrollment.findFirst({
@@ -39,7 +43,7 @@ async function handleGET(
 
     const [fullQuestions, attempts] = await Promise.all([
       prisma.quizQuestion.findMany({
-        where: { lessonId: id },
+        where: { testId: test.id },
         orderBy: { order: "asc" },
         include: {
           options: {
@@ -55,8 +59,8 @@ async function handleGET(
       }),
     ])
 
-    const reveal = attempts.length > 0 && revealsAnswers(lesson.maxAttempts, attempts)
-    const kind = lesson.testKind
+    const reveal = attempts.length > 0 && revealsAnswers(test.maxAttempts, attempts)
+    const kind = test.testKind
     const questions = isSignTest(kind)
       ? signQuestionsForStudent(kind, fullQuestions, reveal)
       : fullQuestions.map((q) => ({
@@ -79,14 +83,14 @@ async function handleGET(
     return NextResponse.json({
       questions,
       settings: {
-        passMark: lesson.passMark,
-        maxAttempts: lesson.maxAttempts,
+        passMark: test.passMark,
+        maxAttempts: test.maxAttempts,
         kind,
-        answerSeconds: lesson.answerSeconds ?? DEFAULT_ANSWER_SECONDS,
-        storyUrl: kind === "STORY" ? lesson.storyUrl : null,
+        answerSeconds: test.answerSeconds ?? DEFAULT_ANSWER_SECONDS,
+        storyUrl: kind === "STORY" ? test.storyUrl : null,
       },
       attempts,
-      attemptsLeft: attemptsLeft(lesson.maxAttempts, attempts.length),
+      attemptsLeft: attemptsLeft(test.maxAttempts, attempts.length),
       answersRevealed: reveal,
       bestAttempt,
       // Fingerspelling is played for the high score.

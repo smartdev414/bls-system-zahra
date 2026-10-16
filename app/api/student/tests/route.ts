@@ -26,10 +26,13 @@ async function handleGET() {
           id: true,
           title: true,
           description: true,
-          passMark: true,
-          maxAttempts: true,
-          _count: { select: { questions: true } },
-          section: { select: { course: { select: { id: true, title: true, tutor: { select: { name: true } } } } } },
+          test: {
+            select: {
+              testKind: true, passMark: true, maxAttempts: true, answerSeconds: true,
+              _count: { select: { questions: true } },
+            },
+          },
+          section: { select: { title: true, course: { select: { id: true, title: true, tutor: { select: { name: true } } } } } },
         },
       }),
       prisma.quizAttempt.findMany({
@@ -38,20 +41,24 @@ async function handleGET() {
       }),
     ])
 
-    const tests = lessons.map((lesson) => {
+    const tests = lessons.flatMap(({ test, ...lesson }) => {
+      if (!test) return []
       const mine = attempts.filter((a) => a.lessonId === lesson.id)
       const passed = mine.some((a) => a.passed)
-      const left = attemptsLeft(lesson.maxAttempts, mine.length)
-      return {
+      const left = attemptsLeft(test.maxAttempts, mine.length)
+      return [{
         id: lesson.id,
         title: lesson.title,
         description: lesson.description,
         courseId: lesson.section.course.id,
         courseTitle: lesson.section.course.title,
+        sectionTitle: lesson.section.title,
         tutorName: lesson.section.course.tutor.name,
-        questionCount: lesson._count.questions,
-        passMark: lesson.passMark,
-        maxAttempts: lesson.maxAttempts,
+        kind: test.testKind,
+        answerSeconds: test.answerSeconds,
+        questionCount: test._count.questions,
+        passMark: test.passMark,
+        maxAttempts: test.maxAttempts,
         attempts: mine.length,
         attemptsLeft: left,
         bestScore: mine.length > 0 ? Math.max(...mine.map((a) => a.score)) : null,
@@ -61,7 +68,7 @@ async function handleGET() {
         // A test is passed by passing it — not by the lesson being ticked off.
         isCompleted: passed,
         status: passed ? "PASSED" : mine.length === 0 ? "NOT_STARTED" : left === 0 ? "FAILED" : "IN_PROGRESS",
-      }
+      }]
     })
 
     const taken = tests.filter((t) => t.bestScore !== null)

@@ -5,7 +5,7 @@ import { SafeHtml } from "@/components/ui/safe-html"
 import { use } from "react"
 import Link from "next/link"
 import {
-  ChevronLeft, CheckCircle2, Circle, Download, Edit3, Loader2,
+  ChevronLeft, Download, Edit3, FlaskConical, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,12 +13,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
 import { useCoursesBase } from "@/hooks/use-courses-base"
+import { useTestsBase } from "@/hooks/use-tests-base"
 import { mediaDownloadHref } from "@/lib/protected-media"
 import { lessonKind } from "@/lib/lesson-kind"
-import { cn } from "@/lib/utils"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 import { QuizResults } from "@/components/quiz/QuizResults"
-import { isVideoMedia } from "@/lib/quiz"
+import { TestQuestionsView, type ViewQuestion } from "@/components/tests/TestQuestionsView"
+import { TEST_KIND_INFO, type TestKind } from "@/lib/quiz"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -31,14 +32,6 @@ type Asset = {
   fileName: string
 }
 
-type Option = {
-  id: string
-  text: string
-  imageUrl: string | null
-  mediaType: string | null
-  isCorrect: boolean
-}
-
 type LessonFull = {
   id: string
   title: string
@@ -46,18 +39,17 @@ type LessonFull = {
   description: string | null
   isFree: boolean
   releaseAt: string | null
-  passMark: number
-  maxAttempts: number | null
-  /** Story tests: the video the questions are about. */
-  storyUrl: string | null
   assets: Asset[]
-  questions: Array<{
+  /** Tests: the bank test this lesson shows. */
+  test: {
     id: string
-    question: string
-    imageUrl: string | null
-    mediaType: string | null
-    options: Option[]
-  }>
+    testKind: TestKind
+    passMark: number
+    maxAttempts: number | null
+    /** Story tests: the video the questions are about. */
+    storyUrl: string | null
+    questions: ViewQuestion[]
+  } | null
   section: { title: string; course: { title: string } }
 }
 
@@ -67,7 +59,7 @@ type LessonData = { lesson: LessonFull; canEdit: boolean }
 
 // A lesson as the teacher follows it: the material and, for a test, how the
 // students did and the answers. The content cannot be changed here — admins
-// edit lessons from the builder.
+// edit lessons from the builder, and a test is changed in the Tests menu.
 export default function ViewLessonPage({
   params,
 }: {
@@ -75,6 +67,7 @@ export default function ViewLessonPage({
 }) {
   const { id: courseId, lessonId } = use(params)
   const coursesBase = useCoursesBase()
+  const testsBase = useTestsBase()
   const { data, loading } = useFetch<LessonData>(`/api/tutor/lessons/${lessonId}`, {
     errorMessage: "Could not load lesson",
   })
@@ -93,6 +86,7 @@ export default function ViewLessonPage({
 
   const { lesson, canEdit } = data
   const { label, Icon } = lessonKind(lesson.type, lesson.assets)
+  const test = lesson.type === "QUIZ" ? lesson.test : null
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl">
@@ -114,25 +108,35 @@ export default function ViewLessonPage({
             </Badge>
             {lesson.isFree && <Badge variant="outline">Free preview</Badge>}
             <ReleaseBadge releaseAt={lesson.releaseAt} />
-            {lesson.type === "QUIZ" && (
+            {test && (
               <>
-                <Badge variant="outline">Pass mark {lesson.passMark}%</Badge>
+                <Badge variant="outline">{TEST_KIND_INFO[test.testKind].label}</Badge>
+                <Badge variant="outline">Pass mark {test.passMark}%</Badge>
                 <Badge variant="outline">
-                  {lesson.maxAttempts === null
+                  {test.maxAttempts === null
                     ? "Unlimited attempts"
-                    : `${lesson.maxAttempts} attempt${lesson.maxAttempts !== 1 ? "s" : ""}`}
+                    : `${test.maxAttempts} attempt${test.maxAttempts !== 1 ? "s" : ""}`}
                 </Badge>
               </>
             )}
           </div>
         </div>
-        {canEdit && (
-          <Button asChild variant="outline" size="sm" className="shrink-0">
-            <Link href={`${coursesBase}/${courseId}/lessons/${lessonId}/edit`}>
-              <Edit3 className="size-4 mr-1.5" /> {lesson.type === "QUIZ" ? "Edit Test" : "Edit Lesson"}
-            </Link>
-          </Button>
-        )}
+        <div className="flex flex-wrap justify-end gap-2 shrink-0">
+          {test && (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`${testsBase}/${test.id}`}>
+                <FlaskConical className="size-4 mr-1.5" /> Open in Tests
+              </Link>
+            </Button>
+          )}
+          {canEdit && (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`${coursesBase}/${courseId}/lessons/${lessonId}/edit`}>
+                <Edit3 className="size-4 mr-1.5" /> {test ? "Release date" : "Edit Lesson"}
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {lesson.description && (
@@ -155,73 +159,19 @@ export default function ViewLessonPage({
       )}
 
       {/* Test — how the students did, and the questions with the correct answers marked */}
-      {lesson.type === "QUIZ" && (
+      {test && (
         <Tabs defaultValue="results">
           <TabsList className="mb-4">
             <TabsTrigger value="results">Results</TabsTrigger>
-            <TabsTrigger value="questions">Questions ({lesson.questions.length})</TabsTrigger>
+            <TabsTrigger value="questions">Questions ({test.questions.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="results">
-            <QuizResults lessonId={lesson.id} questions={lesson.questions} />
+            <QuizResults lessonId={lesson.id} questions={test.questions} />
           </TabsContent>
 
           <TabsContent value="questions">
-          {lesson.storyUrl && (
-            <div className="flex flex-col gap-2 mb-6">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">The story</p>
-              <ProtectedVideo src={lesson.storyUrl} playsInline controls className="rounded-lg max-h-72 border bg-black self-start" />
-            </div>
-          )}
-          {lesson.questions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No questions have been added to this test yet.</p>
-          ) : (
-            <div className="flex flex-col gap-6">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                {lesson.questions.length} question{lesson.questions.length !== 1 ? "s" : ""} · correct answers shown
-              </p>
-              {lesson.questions.map((q, i) => (
-                <div key={q.id} className="flex flex-col gap-2">
-                  <p className="text-sm font-medium">{i + 1}. {q.question}</p>
-                  {q.imageUrl && (
-                    isVideoMedia(q.imageUrl, q.mediaType)
-                      ? <ProtectedVideo src={q.imageUrl} muted loop playsInline controls className="rounded-lg max-h-48 border bg-black self-start" />
-                      : <img src={q.imageUrl} alt="question" className="rounded-lg max-h-48 object-contain border self-start" />
-                  )}
-                  <div className={cn(
-                    "pl-6",
-                    q.options.some((o) => o.imageUrl) ? "grid grid-cols-2 gap-2" : "flex flex-col gap-1.5"
-                  )}>
-                    {q.options.map((opt) => (
-                      <div
-                        key={opt.id}
-                        className={cn(
-                          "rounded-lg border text-sm overflow-hidden",
-                          opt.imageUrl ? "flex flex-col p-0" : "flex items-center gap-2 px-3 py-2",
-                          opt.isCorrect && "border-emerald-300 bg-emerald-50 text-emerald-800",
-                        )}
-                      >
-                        {opt.imageUrl && (
-                          isVideoMedia(opt.imageUrl, opt.mediaType)
-                            ? <ProtectedVideo src={opt.imageUrl} muted loop playsInline controls className="w-full aspect-video object-cover" />
-                            : <img src={opt.imageUrl} alt={opt.text} className="w-full aspect-square object-cover" />
-                        )}
-                        <div className={cn("flex items-center gap-2 w-full", opt.imageUrl ? "px-2 py-1.5" : "")}>
-                          {opt.isCorrect
-                            ? <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
-                            : <Circle className="size-3.5 shrink-0 text-muted-foreground" />}
-                          {opt.text && <span className="text-xs">{opt.text}</span>}
-                          {opt.isCorrect && (
-                            <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Correct</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+            <TestQuestionsView kind={test.testKind} storyUrl={test.storyUrl} questions={test.questions} />
           </TabsContent>
         </Tabs>
       )}

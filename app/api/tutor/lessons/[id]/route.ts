@@ -4,7 +4,6 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
 import { parseReleaseAt } from "@/lib/lesson-release"
-import { parseTestSettings } from "@/lib/quiz"
 
 async function verifyLessonOwnership(lessonId: string, session: { role: string; sub: string }) {
   const lesson = await prisma.lesson.findFirst({
@@ -37,15 +36,33 @@ async function handleGET(
       where: { id },
       include: {
         assets: { orderBy: { order: "asc" } },
-        questions: {
-          orderBy: { order: "asc" },
-          include: { options: { orderBy: { order: "asc" } } },
+        // A test's questions and how it is passed are on the bank test it shows.
+        test: {
+          include: {
+            questions: {
+              orderBy: { order: "asc" },
+              include: { options: { orderBy: { order: "asc" } } },
+            },
+          },
         },
         section: { select: { courseId: true, title: true, course: { select: { title: true } } } },
       },
     })
 
-    return NextResponse.json({ lesson: full, canEdit: can(session.role, "lessons.manage") })
+    // The test's questions and settings are also given at the top, where they
+    // were before tests moved to the bank — the mobile app still reads them there.
+    const test = full?.test ?? null
+    return NextResponse.json({
+      lesson: full && {
+        ...full,
+        questions: test?.questions ?? [],
+        passMark: test?.passMark ?? null,
+        maxAttempts: test?.maxAttempts ?? null,
+        testKind: test?.testKind ?? null,
+        storyUrl: test?.storyUrl ?? null,
+      },
+      canEdit: can(session.role, "lessons.manage"),
+    })
   } catch (err) {
     console.error("[GET /api/tutor/lessons/[id]]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
@@ -74,12 +91,6 @@ async function handlePUT(
       isFree?: boolean
       /** ISO date-time students get the lesson; null = straight away. */
       releaseAt?: string | null
-      /** Tests only: score out of 100 needed to pass, and attempts allowed (null = unlimited). */
-      passMark?: number
-      maxAttempts?: number | null
-      /** Timed tests: seconds for each sign. Story tests: the story's video. */
-      answerSeconds?: number
-      storyUrl?: string | null
     }
 
     const releaseAt = body.releaseAt === undefined ? undefined : parseReleaseAt(body.releaseAt)
@@ -87,20 +98,18 @@ async function handlePUT(
       return NextResponse.json({ message: "Release date is not a valid date" }, { status: 400 })
     }
 
-    const testSettings = parseTestSettings(body)
-    if (typeof testSettings === "string") {
-      return NextResponse.json({ message: testSettings }, { status: 400 })
-    }
+    // A test is named and changed in the test bank, and is never turned into
+    // another kind of lesson here.
+    const isTest = lesson.type === "QUIZ"
 
     const updated = await prisma.lesson.update({
       where: { id },
       data: {
-        ...(body.title && { title: body.title.trim() }),
-        ...(body.description !== undefined && { description: body.description?.trim() ?? null }),
-        ...(body.type && { type: body.type }),
+        ...(!isTest && body.title?.trim() && { title: body.title.trim() }),
+        ...(!isTest && body.description !== undefined && { description: body.description?.trim() ?? null }),
+        ...(!isTest && body.type && body.type !== "QUIZ" && { type: body.type }),
         ...(typeof body.isFree === "boolean" && { isFree: body.isFree }),
         ...(releaseAt !== undefined && { releaseAt }),
-        ...testSettings,
       },
       include: { assets: { orderBy: { order: "asc" } } },
     })

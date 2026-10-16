@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
-  ChevronLeft, Save, Loader2, Plus, Trash2, FolderOpen,
+  ChevronLeft, Save, Loader2, Trash2, FolderOpen, FlaskConical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,18 +15,13 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
-import {
-  QuizBuilder, isBlankQuestion, questionProblem, saveQuestionDraft, withSaved, type QuestionDraft,
-} from "@/components/quiz/QuizBuilder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { useCoursesBase } from "@/hooks/use-courses-base"
+import { useTestsBase } from "@/hooks/use-tests-base"
 import { lessonKind } from "@/lib/lesson-kind"
 import { LESSON_FILE_ACCEPT, LESSON_FILE_TYPES } from "../../../AddLessonScreen"
 import { ReleaseField, releaseFromIso, releaseToIso } from "@/components/courses/ReleaseField"
-import { SignListBuilder } from "@/components/quiz/SignListBuilder"
-import { AnswerSecondsField, StoryVideoField } from "@/components/quiz/TestKindFields"
-import { DEFAULT_ANSWER_SECONDS, TEST_KIND_INFO, isSignTest, type TestKind } from "@/lib/quiz"
-import { DEFAULT_TEST_SETTINGS, TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
+import { TEST_KIND_INFO, type TestKind } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,27 +42,9 @@ type LessonFull = {
   description: string | null
   isFree: boolean
   releaseAt: string | null
-  passMark: number
-  maxAttempts: number | null
-  testKind: TestKind
-  storyUrl: string | null
-  answerSeconds: number | null
   assets: Asset[]
-  questions: Array<{
-    id: string
-    question: string
-    imageUrl: string | null
-    mediaType: string | null
-    type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
-    options: Array<{
-      id: string
-      text: string
-      imageUrl: string | null
-      mediaType: string | null
-      isCorrect: boolean
-      order: number
-    }>
-  }>
+  /** Tests: the bank test this lesson shows — its questions are changed there. */
+  test: { id: string; testKind: TestKind; questions: unknown[] } | null
   section: { courseId: string }
 }
 
@@ -81,6 +58,7 @@ export default function EditLessonPage({
   const { id: courseId, lessonId } = use(params)
   const router = useRouter()
   const coursesBase = useCoursesBase()
+  const testsBase = useTestsBase()
 
   const [lesson, setLesson] = useState<LessonFull | null>(null)
   const [loading, setLoading] = useState(true)
@@ -98,10 +76,6 @@ export default function EditLessonPage({
   // Files picked from the resource library, attached on save like a new upload.
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [questions, setQuestions] = useState<QuestionDraft[]>([])
-  const [testSettings, setTestSettings] = useState<TestSettingsDraft>(DEFAULT_TEST_SETTINGS)
-  const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS)
-  const [storyUrl, setStoryUrl] = useState<string | null>(null)
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -120,90 +94,29 @@ export default function EditLessonPage({
         setIsFree(l.isFree)
         setReleaseAt(releaseFromIso(l.releaseAt))
         setAssets(l.assets)
-        setTestSettings({ passMark: String(l.passMark), maxAttempts: l.maxAttempts ? String(l.maxAttempts) : null })
-        setAnswerSeconds(l.answerSeconds ?? DEFAULT_ANSWER_SECONDS)
-        setStoryUrl(l.storyUrl)
-        setQuestions(
-          l.questions.map((q) => ({
-            uid: q.id,
-            id: q.id,
-            question: q.question,
-            imageUrl: q.imageUrl ?? undefined,
-            mediaType: (q.mediaType ?? undefined) as "image" | "video" | undefined,
-            type: q.type,
-            options: q.options.map((o) => ({
-              id: o.id,
-              text: o.text,
-              imageUrl: o.imageUrl ?? undefined,
-              mediaType: (o.mediaType ?? undefined) as "image" | "video" | undefined,
-              isCorrect: o.isCorrect,
-            })),
-            isOpen: false,
-            isSaving: false,
-            error: null,
-          }))
-        )
       })
       .catch(() => setError("Could not load lesson"))
       .finally(() => setLoading(false))
   }, [lessonId, courseId, coursesBase, router])
 
   // ── Save ──────────────────────────────────────────────────────────────────
+  // A test's title, questions and settings belong to the bank test; here only
+  // how it sits in this course (visibility, release date) is changed.
   const isTest = lesson?.type === "QUIZ"
-  const testKind: TestKind = lesson?.testKind ?? "STANDARD"
-  const signTest = isTest && isSignTest(testKind)
-  const itemName = signTest ? "Sign" : "Question"
+  const test = isTest ? lesson?.test ?? null : null
 
   async function handleSave() {
     if (!title.trim()) return
 
-    // Questions that were added or changed are saved along with the test, so
-    // there is no need to press "Save question" on each one first.
-    const pending = lesson?.type === "QUIZ"
-      ? questions.filter((q) => !isBlankQuestion(q) && (!q.id || q.dirty))
-      : []
-    const unfinished = pending.filter((q) => questionProblem(q, testKind))
-    if (unfinished.length > 0) {
-      const ids = new Set(unfinished.map((q) => q.uid))
-      setQuestions((current) => current.map((q) => (
-        ids.has(q.uid) ? { ...q, isOpen: true, error: questionProblem(q, testKind) } : q
-      )))
-      const numbers = questions.flatMap((q, i) => (ids.has(q.uid) ? [i + 1] : []))
-      setError(
-        `${itemName}${numbers.length > 1 ? "s" : ""} ${numbers.join(", ")} ${numbers.length > 1 ? "are" : "is"} not finished. Complete or delete ${numbers.length > 1 ? "them" : "it"}, then save.`
-      )
-      return
-    }
-    if (isTest && testKind === "STORY" && !storyUrl) {
-      setError("Add the story video, then save.")
-      return
-    }
-
     setSaving(true)
     setError(null)
     try {
-      for (const q of pending) {
-        try {
-          const saved = await saveQuestionDraft(lessonId, q)
-          setQuestions((current) => current.map((old) => (old.uid === q.uid ? withSaved(old, saved) : old)))
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "Could not save this question"
-          setQuestions((current) => current.map((old) => (
-            old.uid === q.uid ? { ...old, isOpen: true, error: message } : old
-          )))
-          throw new Error(`${itemName} ${questions.indexOf(q) + 1} could not be saved: ${message}`)
-        }
-      }
-
       // 1. Update lesson fields
       const res = await fetch(`/api/tutor/lessons/${lessonId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(), description: desc, isFree, releaseAt: releaseToIso(releaseAt),
-          ...(isTest && testSettingsBody(testSettings)),
-          ...(signTest && { answerSeconds }),
-          ...(isTest && testKind === "STORY" && { storyUrl }),
         }),
       })
       if (!res.ok) {
@@ -269,7 +182,7 @@ export default function EditLessonPage({
         <div>
           <h1 className="text-2xl font-black tracking-tight">{lesson.type === "QUIZ" ? "Edit Test" : "Edit Lesson"}</h1>
           <p className="text-muted-foreground mt-1">
-            {lesson.type === "QUIZ" ? `Update this test, its ${itemName.toLowerCase()}s and how it is passed.` : "Update the details for this lesson."}
+            {lesson.type === "QUIZ" ? "When students on this course get the test." : "Update the details for this lesson."}
           </p>
         </div>
         <Button onClick={handleSave} disabled={!title.trim() || saving}>
@@ -284,24 +197,39 @@ export default function EditLessonPage({
         </p>
       )}
 
-      {/* Title */}
-      <div className="flex flex-col gap-1.5">
-        <Label>{lesson.type === "QUIZ" ? "Test Title" : "Lesson Title"}</Label>
-        <Input
-          className="h-11"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder={lesson.type === "QUIZ" ? "Test title" : "Lesson title"}
-        />
-      </div>
+      {/* Title — a test is named in the Tests menu */}
+      {test ? (
+        <div className="rounded-xl border bg-muted/20 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold truncate">{title}</p>
+            <p className="text-xs text-muted-foreground">
+              {TEST_KIND_INFO[test.testKind].label} · {test.questions.length} {test.testKind === "FINGERSPELLING" || test.testKind === "VOCABULARY" ? "sign" : "question"}{test.questions.length !== 1 ? "s" : ""}.
+              {" "}Its questions and pass mark are changed in Tests, for every course that uses it.
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`${testsBase}/${test.id}`}><FlaskConical className="size-4 mr-1.5" /> Open test</Link>
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <Label>Lesson Title</Label>
+          <Input
+            className="h-11"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Lesson title"
+          />
+        </div>
+      )}
 
       {/* Type (read-only) + Visibility */}
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label>Type</Label>
           <Input
-            value={isTest
-              ? `Test — ${TEST_KIND_INFO[testKind].label}`
+            value={test
+              ? `Test — ${TEST_KIND_INFO[test.testKind].label}`
               : lessonKind(lesson.type, [...assets, ...[...newFiles, ...libraryFiles].map((f) => ({ type: f.assetType }))]).label}
             disabled
           />
@@ -320,26 +248,17 @@ export default function EditLessonPage({
 
       <ReleaseField value={releaseAt} onChange={setReleaseAt} />
 
-      {lesson.type === "QUIZ" && (
-        <TestSettingsFields
-          value={testSettings}
-          onChange={setTestSettings}
-          questionCount={questions.filter((q) => !isBlankQuestion(q)).length}
-          noun={itemName.toLowerCase()}
-        />
-      )}
-
-      {signTest && <AnswerSecondsField value={answerSeconds} onChange={setAnswerSeconds} />}
-
       {/* Description */}
-      <div className="flex flex-col gap-1.5">
-        <Label>Description</Label>
-        <RichTextEditor
-          value={desc}
-          onChange={setDesc}
-          placeholder="What will students learn in this lesson?"
-        />
-      </div>
+      {!isTest && (
+        <div className="flex flex-col gap-1.5">
+          <Label>Description</Label>
+          <RichTextEditor
+            value={desc}
+            onChange={setDesc}
+            placeholder="What will students learn in this lesson?"
+          />
+        </div>
+      )}
 
       {/* File management (non-quiz) */}
       {lesson.type !== "QUIZ" && (
@@ -444,29 +363,6 @@ export default function EditLessonPage({
         </>
       )}
 
-      {/* Quiz builder */}
-      {lesson.type === "QUIZ" && (
-        <>
-          <Separator />
-          {testKind === "STORY" && (
-            <StoryVideoField value={storyUrl} onChange={(url) => { setStoryUrl(url); setError(null) }} />
-          )}
-          {isSignTest(testKind) ? (
-            <SignListBuilder
-              kind={testKind}
-              lessonId={lessonId}
-              signs={questions}
-              onChange={(next) => { setQuestions(next); setError(null) }}
-            />
-          ) : (
-            <QuizBuilder
-              lessonId={lessonId}
-              questions={questions}
-              onChange={(q) => { setQuestions(q); setError(null) }}
-            />
-          )}
-        </>
-      )}
     </div>
   )
 }
