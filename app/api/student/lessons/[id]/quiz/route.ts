@@ -87,6 +87,7 @@ async function handleGET(
         maxAttempts: test.maxAttempts,
         kind,
         answerSeconds: test.answerSeconds ?? DEFAULT_ANSWER_SECONDS,
+        signPlays: test.signPlays,
         storyUrl: kind === "STORY" ? test.storyUrl : null,
       },
       attempts,

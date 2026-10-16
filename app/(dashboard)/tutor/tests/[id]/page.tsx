@@ -21,7 +21,7 @@ import {
   QuizBuilder, isBlankQuestion, questionProblem, saveQuestionDraft, withSaved, type QuestionDraft,
 } from "@/components/quiz/QuizBuilder"
 import { SignListBuilder } from "@/components/quiz/SignListBuilder"
-import { AnswerSecondsField, StoryVideoField, TestKindPicker } from "@/components/quiz/TestKindFields"
+import { AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker } from "@/components/quiz/TestKindFields"
 import { TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
 import { AddToCourseDialog } from "@/components/tests/AddToCourseDialog"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
@@ -60,6 +60,7 @@ type TestFull = {
   testKind: TestKind
   storyUrl: string | null
   answerSeconds: number | null
+  signPlays: number | null
   passMark: number
   maxAttempts: number | null
   createdByName: string | null
@@ -74,6 +75,7 @@ type Details = {
   kind: TestKind
   settings: TestSettingsDraft
   answerSeconds: number
+  signPlays: number | null
   storyUrl: string | null
 }
 
@@ -106,6 +108,7 @@ function detailsOf(test: TestFull): Details {
     kind: test.testKind,
     settings: { passMark: String(test.passMark), maxAttempts: test.maxAttempts ? String(test.maxAttempts) : null },
     answerSeconds: test.answerSeconds ?? DEFAULT_ANSWER_SECONDS,
+    signPlays: test.signPlays ?? null,
     storyUrl: test.storyUrl,
   }
 }
@@ -236,7 +239,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
           level: details.level || null,
           testKind: kind,
           ...testSettingsBody(details.settings),
-          ...(signTest && { answerSeconds: details.answerSeconds }),
+          ...(signTest && { answerSeconds: details.answerSeconds, signPlays: details.signPlays }),
           ...(kind === "STORY" && { storyUrl: details.storyUrl }),
         }),
       })
@@ -526,7 +529,12 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               noun={itemName.toLowerCase()}
             />
 
-            {signTest && <AnswerSecondsField value={details.answerSeconds} onChange={(answerSeconds) => patch({ answerSeconds })} />}
+            {signTest && (
+              <div className="flex flex-col sm:flex-row gap-4">
+                <AnswerSecondsField value={details.answerSeconds} onChange={(answerSeconds) => patch({ answerSeconds })} />
+                <SignPlaysField value={details.signPlays} onChange={(signPlays) => patch({ signPlays })} />
+              </div>
+            )}
 
             {savedCount === 0 ? (
               <TestKindPicker

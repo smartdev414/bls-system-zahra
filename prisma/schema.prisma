@@ -902,6 +902,9 @@ model Test {
   // tests a question is just a video and its word (QuizQuestion.question), with
   // no options.
   answerSeconds Int?
+  // FINGERSPELLING / VOCABULARY: how many times each sign's video plays — 1 or
+  // 2 for a harder test, null to keep it repeating until the time is up.
+  signPlays     Int?
   // The score, out of 100, a student needs to pass, and how many times they may
   // sit it. Null attempts = as often as they like.
   passMark      Int          @default(70)

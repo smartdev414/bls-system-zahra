@@ -68,6 +68,46 @@ export function AnswerSecondsField({ value, onChange }: { value: number; onChang
   )
 }
 
+/**
+ * Fingerspelling and vocabulary: how many times each sign plays. Once or twice
+ * makes the test a real challenge — the student has to catch it — while
+ * "repeat" keeps it looping until the time is up.
+ */
+export function SignPlaysField({ value, onChange }: { value: number | null; onChange: (plays: number | null) => void }) {
+  const choices: Array<{ value: number | null; label: string }> = [
+    { value: null, label: "Repeat" },
+    { value: 2, label: "Twice" },
+    { value: 1, label: "Once only" },
+  ]
+  return (
+    <div className="flex flex-col gap-1.5 sm:max-w-xs">
+      <Label>Each sign plays</Label>
+      <div role="radiogroup" aria-label="Each sign plays" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
+        {choices.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            role="radio"
+            aria-checked={value === c.value}
+            onClick={() => onChange(c.value)}
+            className={cn(
+              "rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+              value === c.value ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {value === null
+          ? "The video repeats until the time is up."
+          : `Students see each sign ${value === 1 ? "once" : "twice"} — a harder challenge.`}
+      </p>
+    </div>
+  )
+}
+
 /** Story tests: the video the questions are about. */
 export function StoryVideoField({ value, onChange }: { value: string | null; onChange: (url: string | null) => void }) {
   const [uploading, setUploading] = useState(false)

@@ -11,8 +11,11 @@ export type TestSettings = {
   passMark: number
   maxAttempts: number | null
   answerSeconds: number
+  /** Sign tests: how often each video plays; null = repeats until the time is up. */
+  signPlays: number | null
   storyUrl: string | null
 }
+
 
 // ─── Kinds of test ────────────────────────────────────────────────────────────
 
@@ -108,7 +111,7 @@ export function signQuestionsForStudent(
  * instead when a value makes no sense, for the caller to answer 400 with.
  */
 export function parseTestSettings(
-  body: { passMark?: unknown; maxAttempts?: unknown; answerSeconds?: unknown; storyUrl?: unknown },
+  body: { passMark?: unknown; maxAttempts?: unknown; answerSeconds?: unknown; signPlays?: unknown; storyUrl?: unknown },
 ): Partial<TestSettings> | string {
   const settings: Partial<TestSettings> = {}
 
@@ -138,6 +141,16 @@ export function parseTestSettings(
       return `Time for each sign must be ${ANSWER_SECONDS.join(" or ")} seconds`
     }
     settings.answerSeconds = answerSeconds
+  }
+
+  if (body.signPlays !== undefined) {
+    if (body.signPlays === null || body.signPlays === "") {
+      settings.signPlays = null
+    } else {
+      const signPlays = Number(body.signPlays)
+      if (signPlays !== 1 && signPlays !== 2) return "Each sign plays once, twice, or on repeat"
+      settings.signPlays = signPlays
+    }
   }
 
   if (body.storyUrl !== undefined) {

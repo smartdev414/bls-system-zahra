@@ -26,6 +26,8 @@ export type SignTestData = {
     maxAttempts: number | null
     kind: "FINGERSPELLING" | "VOCABULARY"
     answerSeconds: number
+    /** How many times each sign plays; null (or absent) = repeats until the time is up. */
+    signPlays?: number | null
   }
   /** Newest first. */
   attempts: AttemptSummary[]
@@ -103,10 +105,12 @@ function HighScores({ scores, className }: { scores: HighScore[]; className?: st
 
 // ─── One sign, against the clock ──────────────────────────────────────────────
 
-export function SignRound({ sign, kind, answerSeconds, number, total, onAnswer, aside }: {
+export function SignRound({ sign, kind, answerSeconds, plays = null, number, total, onAnswer, aside }: {
   sign: SignQuestion
   kind: SignTestData["settings"]["kind"]
   answerSeconds: number
+  /** Plays of the video before it is hidden; null = it loops until the time is up. */
+  plays?: number | null
   number: number
   total: number
   /** Called once: with the word given, or whatever was typed when the time ran out. */
@@ -116,6 +120,10 @@ export function SignRound({ sign, kind, answerSeconds, number, total, onAnswer, 
 }) {
   const totalMs = answerSeconds * 1000
   const [ready, setReady] = useState(false)
+  // A test set to play each sign once or twice: which play this is, and
+  // whether they are used up (the video is then hidden).
+  const [play, setPlay] = useState(1)
+  const [playsUsed, setPlaysUsed] = useState(false)
   const [leftMs, setLeftMs] = useState(totalMs)
   const [typed, setTyped] = useState("")
   const typedRef = useRef("")
@@ -186,13 +194,41 @@ export function SignRound({ sign, kind, answerSeconds, number, total, onAnswer, 
       onContextMenu={(e) => e.preventDefault()}
     />
   ) : sign.imageUrl && (
-    <ProtectedVideo
-      src={sign.imageUrl}
-      autoPlay muted loop playsInline
-      onCanPlay={() => setReady(true)}
-      onError={() => setReady(true)}
-      className="w-full aspect-video rounded-xl border bg-black object-contain"
-    />
+    <div className="relative">
+      <ProtectedVideo
+        src={sign.imageUrl}
+        autoPlay muted playsInline
+        loop={!plays}
+        onCanPlay={() => setReady(true)}
+        onError={() => setReady(true)}
+        onEnded={(e) => {
+          if (!plays) return
+          if (play < plays) {
+            const v = e.currentTarget
+            v.currentTime = 0
+            void v.play().catch(() => { /* muted autoplay is allowed; nothing to do */ })
+            setPlay(play + 1)
+          } else {
+            setPlaysUsed(true)
+          }
+        }}
+        // No scrubbing back when the plays are limited — that would be a replay.
+        controls={false}
+        className="w-full aspect-video rounded-xl border bg-black object-contain"
+      />
+      {plays && !playsUsed && (
+        <span className="absolute top-2 right-2 rounded-full bg-black/70 px-2.5 py-1 text-xs font-semibold text-white">
+          {plays === 1 ? "Once only" : `Play ${play} of ${plays}`}
+        </span>
+      )}
+      {playsUsed && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-zinc-900 text-center text-white">
+          <p className="px-4 text-base font-semibold">
+            {kind === "FINGERSPELLING" ? "Type what you saw" : "Pick the word you saw"}
+          </p>
+        </div>
+      )}
+    </div>
   )
 
   const choices = sign.choices ?? []
@@ -445,6 +481,7 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
         sign={round[index]}
         kind={settings.kind}
         answerSeconds={settings.answerSeconds}
+        plays={settings.signPlays ?? null}
         number={index + 1}
         total={round.length}
         onAnswer={answer}
@@ -568,6 +605,8 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
             ? "Watch each word being fingerspelled and type it."
             : "Watch each sign and pick the right word."}
           {" "}You have {settings.answerSeconds} seconds for each one, then the next comes up.
+          {settings.signPlays === 1 && " Each one is shown once only — watch closely!"}
+          {settings.signPlays === 2 && " Each one is shown twice."}
         </p>
       </div>
 
