@@ -28,6 +28,7 @@ import { useCoursesBase } from "@/hooks/use-courses-base"
 import { Textarea } from "@/components/ui/textarea"
 import { COURSE_LEVELS, type CourseLevel } from "@/lib/levels"
 import { CourseGroups } from "@/components/courses/CourseGroups"
+import { ClassFormatBadge, VenueLink } from "@/components/sessions/face-to-face"
 import { CopyCourseDialog } from "@/components/courses/CopyCourseDialog"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 import { lessonKind } from "@/lib/lesson-kind"
@@ -75,6 +76,8 @@ type CourseDetail = {
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
   visibility: CourseVisibility
   level: CourseLevel
+  format: "ONLINE" | "IN_PERSON"
+  venue: string | null
   thumbnailUrl: string | null
   sections: SectionItem[]
   // The lead, and the teachers the school has put on the course.
@@ -337,6 +340,8 @@ return (
                   ? <><Globe className="size-3 mr-1" /> Public</>
                   : <><Lock className="size-3 mr-1" /> Private</>}
               </Badge>
+              <ClassFormatBadge inPerson={course.format === "IN_PERSON"} className="text-xs" />
+              {course.format === "IN_PERSON" && <VenueLink venue={course.venue} className="text-xs" />}
             </div>
             <h1 className="text-xl sm:text-2xl font-black break-words">{course.title}</h1>
             <p className="text-sm text-muted-foreground mt-1 line-clamp-3 sm:line-clamp-2">{course.description}</p>

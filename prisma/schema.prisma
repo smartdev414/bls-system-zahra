@@ -28,6 +28,14 @@ enum CourseVisibility {
   PUBLIC
 }
 
+/// How a course is taught. ONLINE: classes happen in the platform's online
+/// classroom. IN_PERSON: classes happen face to face at a venue — the course
+/// still has its lessons and tests online, but its classes have no Join button.
+enum CourseFormat {
+  ONLINE
+  IN_PERSON
+}
+
 enum CourseLevel {
   L1
   L2
@@ -381,6 +389,9 @@ model Course {
   status       CourseStatus @default(DRAFT)
   visibility   CourseVisibility @default(PRIVATE)
   level        CourseLevel  @default(L1)
+  format       CourseFormat @default(ONLINE)
+  // Where a face-to-face course meets — the address students are shown.
+  venue        String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -543,6 +554,11 @@ model LiveSession {
   // Kept from students (staff can still watch). Set on recordings made before
   // recordings left students out, which show students' faces and names.
   recordingHidden Boolean @default(false)
+  // A face-to-face class: it happens at `venue`, not in the online classroom,
+  // so nobody gets a classroom token for it. Copied from the course's format
+  // when the class is scheduled, and kept in step when the course changes.
+  inPerson     Boolean               @default(false)
+  venue        String?
   createdAt    DateTime              @default(now())
 
   tutor        User                    @relation("TutorLiveSessions", fields: [tutorId], references: [id])

@@ -1,5 +1,5 @@
 /**
- * BSL Platform — Email Templates
+ * Teach Me Sign Student Space — Email Templates
  *
  * All templates share a consistent professional layout using the platform's
  * primary colour schema:
@@ -10,6 +10,12 @@
  */
 
 import { NotificationType } from "@/app/generated/prisma/enums"
+import { publicAppUrl } from "@/lib/publicUrl"
+
+// ─── Brand ──────────────────────────────────────────────────────────────────
+export const BRAND = "Teach Me Sign Student Space Platform"
+const APP_URL  = publicAppUrl()
+const LOGO_URL = `${APP_URL}/brand/tms-mark.png`
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 const PRIMARY       = "#7C3AED"
@@ -30,7 +36,7 @@ function layout(content: string, previewText = ""): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
-  <title>BSL Platform</title>
+  <title>${BRAND}</title>
   <style>
     body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}
     table,td{mso-table-lspace:0pt;mso-table-rspace:0pt}
@@ -57,9 +63,11 @@ ${previewText ? `<span style="display:none;max-height:0;overflow:hidden;mso-hide
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td style="text-align:center">
-                <!-- Logo mark -->
-                <div style="display:inline-block;width:44px;height:44px;background:rgba(255,255,255,.2);border-radius:10px;line-height:44px;font-size:22px;margin-bottom:12px">🤟</div>
-                <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.3px">BSL Platform</div>
+                <!-- Logo mark (absolute URL — email clients can't resolve relative paths) -->
+                <div style="display:inline-block;background:#fff;border-radius:12px;padding:8px;margin-bottom:12px">
+                  <img src="${LOGO_URL}" width="64" height="62" alt="${BRAND}" style="display:block;border:0;width:64px;height:62px" />
+                </div>
+                <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.3px">${BRAND}</div>
                 <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:0.5px;text-transform:uppercase">British Sign Language Learning</div>
               </td>
             </tr>
@@ -78,9 +86,9 @@ ${previewText ? `<span style="display:none;max-height:0;overflow:hidden;mso-hide
       <tr>
         <td style="border-top:1px solid ${BORDER};padding:20px 40px;background:#FAFAFA;border-radius:0 0 12px 12px">
           <p style="margin:0;font-size:12px;color:${TEXT_MUTED};text-align:center;line-height:1.6">
-            You received this email because you have an account on BSL Platform.<br/>
+            You received this email because you have an account on ${BRAND}.<br/>
             If you have questions, reply to this email or visit
-            <a href="${process.env.NEXT_PUBLIC_APP_URL ?? "#"}" style="color:${PRIMARY}">bslplatform.com</a>.
+            <a href="${APP_URL}" style="color:${PRIMARY}">${APP_URL.replace(/^https?:\/\//, "")}</a>.
           </p>
         </td>
       </tr>
@@ -329,15 +337,15 @@ export function passwordResetEmail(
     ${greeting(recipientName)}
     <div style="margin-bottom:16px">${badge("Password Reset", PRIMARY)}</div>
     <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:${TEXT_MAIN}">Reset your password</h2>
-    ${bodyText("We received a request to reset the password for your BSL Platform account. Click the button below to choose a new password.")}
+    ${bodyText(`We received a request to reset the password for your ${BRAND} account. Click the button below to choose a new password.`)}
     ${ctaButton("Reset Password", resetUrl)}
     ${divider()}
     ${bodyText(`This link will expire in <strong>${expiresInMinutes} minutes</strong> and can only be used once. If you didn't request a password reset, you can safely ignore this email — your password will stay the same.`)}
     ${bodyText(`If the button above doesn't work, copy and paste this URL into your browser:<br/><a href="${resetUrl}" style="color:${PRIMARY};word-break:break-all">${resetUrl}</a>`)}
   `
   return {
-    subject: "Reset your BSL Platform password",
-    html: layout(content, "Reset your BSL Platform password"),
+    subject: `Reset your ${BRAND} password`,
+    html: layout(content, `Reset your ${BRAND} password`),
   }
 }
 
@@ -349,8 +357,8 @@ export function tutorInviteEmail(
 ): { subject: string; html: string } {
   const content = `
     <div style="margin-bottom:16px">${badge("You're Invited!", PRIMARY)}</div>
-    <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:${TEXT_MAIN}">Join BSL Platform</h2>
-    ${bodyText(`<strong>${tutorName}</strong> has invited you to join the BSL Platform as a student. Click the button below to create your free account and get started learning British Sign Language.`)}
+    <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:${TEXT_MAIN}">Join ${BRAND}</h2>
+    ${bodyText(`<strong>${tutorName}</strong> has invited you to join the ${BRAND} as a student. Click the button below to create your free account and get started learning British Sign Language.`)}
     ${ctaButton("Accept Invitation & Sign Up", inviteUrl)}
     ${divider()}
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -362,7 +370,7 @@ export function tutorInviteEmail(
     ${bodyText(`This invitation link is personal to you and will expire in ${expiresInDays} days. If you did not expect this email, you can safely ignore it.`)}
   `
   return {
-    subject: `${tutorName} invited you to join BSL Platform`,
+    subject: `${tutorName} invited you to join ${BRAND}`,
     html: layout(content, `${tutorName} has invited you to learn BSL`),
   }
 }
@@ -481,7 +489,7 @@ export function renderEmailTemplate(
     [NotificationType.ACCOUNT_REJECTED]:         title,
   }
 
-  const subject = subjects[type] ?? `BSL Platform — ${title}`
+  const subject = subjects[type] ?? `${BRAND} — ${title}`
 
   let html: string
   switch (type) {

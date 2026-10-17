@@ -20,6 +20,8 @@ async function findManagedCourse(session: { role: string; sub: string }, id: str
     select: {
       id: true,
       title: true,
+      format: true,
+      venue: true,
       tutorId: true,
       tutor: { select: { id: true, name: true, role: true } },
       teachers: { orderBy: { assignedAt: "asc" }, select: { tutor: { select: { id: true, name: true } } } },
@@ -121,6 +123,9 @@ async function handleGET(_req: NextRequest, { params }: RouteContext) {
       courseSessions: sessions.filter((s) => !s.groupId || !groupIds.has(s.groupId)).map(shape),
       mustAssignTutor: staff,
       tutorOptions,
+      // Where the course's classes happen — online, or face to face at a venue.
+      format: course.format,
+      venue: course.venue,
     })
   } catch (err) {
     console.error("[GET /api/tutor/courses/[id]/groups]", err)

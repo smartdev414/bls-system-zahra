@@ -209,6 +209,8 @@ async function handleGET() {
               durationMins: nextClass.durationMins,
               tutorName: nextClass.tutor.name,
               status: nextClass.status,
+              inPerson: nextClass.inPerson,
+              venue: nextClass.venue,
             }
           : null,
         homework,
@@ -232,6 +234,8 @@ async function handleGET() {
         scheduledAt: s.scheduledAt.toISOString(),
         tutorName: s.tutor.name,
         status: s.status,
+        inPerson: s.inPerson,
+        venue: s.venue,
       })),
     })
   } catch (err) {

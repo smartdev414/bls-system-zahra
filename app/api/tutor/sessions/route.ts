@@ -8,6 +8,7 @@ import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
 import { reconcilePendingRecordings } from "@/lib/recording"
 import { usableGroups } from "@/lib/course-groups"
+import { cleanVenue } from "@/lib/course-format"
 
 /**
  * Resolves the tutor a live session belongs to.
@@ -110,6 +111,8 @@ async function handleGET(req: NextRequest) {
       maxStudents: s.maxStudents,
       status: s.status,
       visibility: s.visibility,
+      inPerson: s.inPerson,
+      venue: s.venue,
       course: s.course,
       // Set when the class is for one group on the course.
       group: s.group,
@@ -165,6 +168,8 @@ async function handlePOST(req: NextRequest) {
       tutorId?: string
       /** The class is for this group: its members are invited, nobody else. */
       groupId?: string
+      /** Where this face-to-face class meets, when not the course's usual venue. */
+      venue?: string
     }
 
     const { title, description, scheduledAt, durationMins, maxStudents, courseId, invitedTutorIds = [], repeatWeeks = 1 } = body
@@ -181,13 +186,18 @@ async function handlePOST(req: NextRequest) {
     if (typeof ownerId !== "string") return ownerId
 
     // The course link decides which students see the class, so a tutor may only
-    // link the courses they teach.
+    // link the courses they teach. It also decides where the class happens: a
+    // face-to-face course's classes are at its venue, not in the online classroom.
+    let inPerson = false
+    let venue: string | null = null
     if (courseId) {
       const course = await prisma.course.findFirst({
         where: { id: courseId, ...courseTeachScope(session) },
-        select: { id: true },
+        select: { id: true, format: true, venue: true },
       })
       if (!course) return NextResponse.json({ message: "Course not found" }, { status: 400 })
+      inPerson = course.format === "IN_PERSON"
+      venue = inPerson ? cleanVenue(body.venue) ?? course.venue : null
     }
 
     // A class for one group is invite-only by definition, and its invitees are
@@ -224,6 +234,8 @@ async function handlePOST(req: NextRequest) {
             maxStudents: maxStudents ?? null,
             courseId: courseId ?? null,
             groupId,
+            inPerson,
+            venue,
             status: "SCHEDULED",
             visibility,
             ...(visibility === "INVITE_ONLY" && invitedStudentIds.length > 0 && {

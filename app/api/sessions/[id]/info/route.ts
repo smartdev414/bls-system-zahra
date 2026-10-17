@@ -21,6 +21,8 @@ async function handleGET(
         description: true,
         status: true,
         visibility: true,
+        inPerson: true,
+        venue: true,
         tutorId: true,
         durationMins: true,
         scheduledAt: true,

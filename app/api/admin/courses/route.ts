@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { isCourseVisibility, type CourseVisibility } from "@/lib/course-visibility"
+import { cleanVenue, isCourseFormat, type CourseFormat } from "@/lib/course-format"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -49,6 +50,8 @@ async function handleGET(req: NextRequest) {
         status: c.status,
         visibility: c.visibility,
         level: c.level,
+        format: c.format,
+        venue: c.venue,
         tutor: c.tutor,
         teachers: c.teachers.map((t) => t.tutor),
         category: c.category,
@@ -76,7 +79,7 @@ async function handlePATCH(req: NextRequest) {
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     if (!can(session.role, "courses.edit")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
-    const { id, status, visibility, tutorId, categoryId } = await req.json() as {
+    const { id, status, visibility, tutorId, categoryId, format, venue } = await req.json() as {
       id: string
       status?: "DRAFT" | "PUBLISHED" | "ARCHIVED"
       visibility?: CourseVisibility
@@ -84,12 +87,18 @@ async function handlePATCH(req: NextRequest) {
       tutorId?: string
       /** null takes the course out of its category. */
       categoryId?: string | null
+      format?: CourseFormat
+      /** Where a face-to-face course meets. */
+      venue?: string | null
     }
     if (status !== undefined && !["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
       return NextResponse.json({ message: "status must be DRAFT, PUBLISHED or ARCHIVED" }, { status: 400 })
     }
     if (visibility !== undefined && !isCourseVisibility(visibility)) {
       return NextResponse.json({ message: "visibility must be PRIVATE or PUBLIC" }, { status: 400 })
+    }
+    if (format !== undefined && !isCourseFormat(format)) {
+      return NextResponse.json({ message: "format must be ONLINE or IN_PERSON" }, { status: 400 })
     }
     if (tutorId !== undefined) {
       const tutor = await prisma.user.findFirst({ where: { id: tutorId, role: "TUTOR" }, select: { id: true } })
@@ -107,8 +116,21 @@ async function handlePATCH(req: NextRequest) {
         ...(visibility && { visibility }),
         ...(tutorId && { tutorId }),
         ...(categoryId !== undefined && { categoryId: categoryId || null }),
+        ...(format && { format }),
+        ...(format === "ONLINE" ? { venue: null } : venue !== undefined ? { venue: cleanVenue(venue) } : {}),
       },
     })
+    // The classes still to come follow the course: moving it online or face to
+    // face (or to a new venue) changes where its upcoming classes happen.
+    if (format !== undefined || venue !== undefined) {
+      await prisma.liveSession.updateMany({
+        where: { courseId: id, status: "SCHEDULED" },
+        data: {
+          inPerson: course.format === "IN_PERSON",
+          venue: course.format === "IN_PERSON" ? course.venue : null,
+        },
+      })
+    }
     // The lead is not also one of the course's extra teachers.
     if (tutorId) await prisma.courseTutor.deleteMany({ where: { courseId: id, tutorId } })
 

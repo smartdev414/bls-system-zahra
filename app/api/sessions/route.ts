@@ -50,6 +50,8 @@ async function handleGET() {
         maxStudents: s.maxStudents,
         status: s.status,
         visibility: s.visibility,
+        inPerson: s.inPerson,
+        venue: s.venue,
         tutor: s.tutor,
         course: s.course,
         attendeeCount: s._count.attendances,

@@ -99,6 +99,8 @@ async function handleGET(req: NextRequest) {
         description: c.description,
         thumbnailUrl: c.thumbnailUrl,
         level: c.level,
+        format: c.format,
+        venue: c.venue,
         tutor: c.tutor,
         category: c.category,
         enrollmentCount: c._count.enrollments,

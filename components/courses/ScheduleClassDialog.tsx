@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { CalendarPlus, Loader2 } from "lucide-react"
+import { CalendarPlus, Loader2, MapPin } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -58,6 +58,8 @@ export type ClassDefaults = {
  * filled in from the group's previous class (same time, same length, same
  * teacher, a week later), and the class is named after the course and group.
  * Files and co-teachers stay on the Live Sessions page for classes that need them.
+ * On a face-to-face course the class is at the course's venue (changeable here
+ * for a one-off room change), and students see the address instead of "Join".
  */
 export function ScheduleClassDialog({
   courseId,
@@ -67,6 +69,8 @@ export function ScheduleClassDialog({
   defaults = {},
   mustAssignTutor,
   tutorOptions,
+  inPerson = false,
+  courseVenue = null,
   onClose,
   onScheduled,
 }: {
@@ -79,6 +83,9 @@ export function ScheduleClassDialog({
   /** Staff do not teach, so they choose the tutor who takes the class. */
   mustAssignTutor: boolean
   tutorOptions: Array<{ id: string; name: string }>
+  /** The course is taught face to face, not in the online classroom. */
+  inPerson?: boolean
+  courseVenue?: string | null
   onClose: () => void
   onScheduled: () => void
 }) {
@@ -93,6 +100,7 @@ export function ScheduleClassDialog({
       ? defaults.tutorId!
       : tutorOptions.length === 1 ? tutorOptions[0].id : "",
   )
+  const [venue, setVenue] = useState(courseVenue ?? "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -143,6 +151,7 @@ export function ScheduleClassDialog({
           ...(group ? { groupId: group.id } : { visibility: "PUBLIC" }),
           repeatWeeks: occurrences,
           ...(mustAssignTutor ? { tutorId } : {}),
+          ...(inPerson ? { venue } : {}),
         }),
       })
       if (!res.ok) {
@@ -168,7 +177,8 @@ export function ScheduleClassDialog({
           <DialogDescription>
             {group
               ? `Only the students in ${group.name} are invited and see this class.`
-              : "Everyone on the course can join this class."}
+              : inPerson ? "This class is for everyone on the course." : "Everyone on the course can join this class."}
+            {inPerson && " It is face to face — students see the address, not an online classroom."}
           </DialogDescription>
         </DialogHeader>
 
@@ -248,6 +258,20 @@ export function ScheduleClassDialog({
               </span>
             )}
           </div>
+
+          {inPerson && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sc-venue" className="flex items-center gap-1.5">
+                <MapPin className="size-3.5 text-orange-700" /> Where
+              </Label>
+              <Input
+                id="sc-venue"
+                value={venue}
+                onChange={(e) => setVenue(e.target.value)}
+                placeholder="Room and address, e.g. Room 2, 10 High Street, Leeds"
+              />
+            </div>
+          )}
 
           {mustAssignTutor && (
             <div className="flex flex-col gap-1.5">

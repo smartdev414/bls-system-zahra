@@ -32,6 +32,7 @@ import {
   getNetworkSnapshot, isLinkFailure, probeNetworkNow, subscribeNetworkRecovery,
 } from "@/lib/network-health"
 import { cn } from "@/lib/utils"
+import { FaceToFaceClassScreen } from "@/components/sessions/face-to-face"
 import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
 import { toast } from "sonner"
 
@@ -48,6 +49,9 @@ type SessionInfo = {
     tutor: { name: string }
     description?: string | null
     durationMins?: number
+    scheduledAt: string
+    inPerson: boolean
+    venue: string | null
   }
   // Present for tutors; true when the viewer is the owning tutor (not a co-tutor).
   isOwner?: boolean
@@ -558,6 +562,17 @@ export default function TutorClassroomPage({
   // Lobby — shown until the tutor explicitly starts the session.
   if (!tokenData) {
     if (!data?.session) return null
+    if (data.session.inPerson) {
+      return (
+        <FaceToFaceClassScreen
+          title={data.session.title}
+          scheduledAt={data.session.scheduledAt}
+          durationMins={data.session.durationMins ?? 60}
+          venue={data.session.venue}
+          backHref="/tutor/sessions"
+        />
+      )
+    }
     if (autoRejoin) {
       return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">

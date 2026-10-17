@@ -31,6 +31,7 @@ import {
   getNetworkSnapshot, subscribeNetworkRecovery, probeNetworkNow,
 } from "@/lib/network-health"
 import { cn } from "@/lib/utils"
+import { FaceToFaceClassScreen } from "@/components/sessions/face-to-face"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,8 @@ type SessionInfo = {
     description: string | null
     status: string
     visibility: "PUBLIC" | "INVITE_ONLY"
+    inPerson: boolean
+    venue: string | null
     durationMins: number
     scheduledAt: string
     tutor: { name: string }
@@ -813,7 +816,7 @@ export default function ClassroomRoomPage({
   const requestPending = !tokenData && data?.session?.joinRequest?.status === "PENDING"
   // Likewise the tutor pressing Start: the lobby holds "Waiting for tutor"
   // until the session flips LIVE, then offers "Join Session" by itself.
-  const awaitingStart = !tokenData && data?.session?.status === "SCHEDULED"
+  const awaitingStart = !tokenData && data?.session?.status === "SCHEDULED" && !data.session.inPerson
   useEffect(() => {
     if (!requestPending && !awaitingStart) return
     const t = setInterval(() => { void refetchInfo() }, 5_000)
@@ -870,7 +873,7 @@ export default function ClassroomRoomPage({
   // Fire the token request as soon as session info is loaded.
   useEffect(() => {
     if (!autoRejoin) return
-    if (!data?.session) return
+    if (!data?.session || data.session.inPerson) return
     if (tokenData) return
     autoGetToken({})
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1063,6 +1066,17 @@ export default function ClassroomRoomPage({
 
   if (!tokenData) {
     if (!data?.session) return null
+    if (data.session.inPerson) {
+      return (
+        <FaceToFaceClassScreen
+          title={data.session.title}
+          scheduledAt={data.session.scheduledAt}
+          durationMins={data.session.durationMins}
+          venue={data.session.venue}
+          backHref="/student/classroom"
+        />
+      )
+    }
     if (autoRejoin || reconnecting) {
       return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">

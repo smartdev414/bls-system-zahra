@@ -10,6 +10,8 @@ export type CalendarEvent = {
   durationMins: number
   url: string
   description?: string
+  /** A face-to-face class's venue. Such a class has no online room to join. */
+  location?: string | null
 }
 
 const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")
@@ -33,7 +35,8 @@ export function buildIcs(event: CalendarEvent): string {
     `DTSTART:${stamp(event.start)}`,
     `DTEND:${stamp(end)}`,
     `SUMMARY:${escape(event.title)}`,
-    `DESCRIPTION:${escape([event.description, `Join: ${event.url}`].filter(Boolean).join("\n"))}`,
+    `DESCRIPTION:${escape([event.description, event.location ? null : `Join: ${event.url}`].filter(Boolean).join("\n"))}`,
+    ...(event.location ? [`LOCATION:${escape(event.location)}`] : []),
     `URL:${event.url}`,
     "BEGIN:VALARM",
     "TRIGGER:-PT15M",

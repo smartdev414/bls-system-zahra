@@ -47,6 +47,8 @@ type GroupsData = {
   courseSessions: ClassSession[]
   mustAssignTutor: boolean
   tutorOptions: Array<{ id: string; name: string }>
+  format: "ONLINE" | "IN_PERSON"
+  venue: string | null
 }
 
 /** Card id for the students who are on the course but in none of its groups. */
@@ -571,6 +573,8 @@ export function CourseGroups({
           defaults={classDefaults(scheduleFor)}
           mustAssignTutor={groupData.mustAssignTutor}
           tutorOptions={groupData.tutorOptions}
+          inPerson={groupData.format === "IN_PERSON"}
+          courseVenue={groupData.venue}
           onClose={() => setScheduleFor(null)}
           onScheduled={() => void refetchGroups()}
         />

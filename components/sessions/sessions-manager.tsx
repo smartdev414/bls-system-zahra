@@ -35,6 +35,7 @@ import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { Pagination } from "@/components/ui/pagination"
 import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
+import { ClassFormatBadge, VenueLink } from "@/components/sessions/face-to-face"
 import { mediaDownloadHref } from "@/lib/protected-media"
 import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
 
@@ -97,6 +98,9 @@ type SessionItem = {
   durationMins: number
   status: "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED"
   visibility: "PUBLIC" | "INVITE_ONLY"
+  // A face-to-face class: taught at `venue`, never in the online classroom.
+  inPerson: boolean
+  venue: string | null
   attendeeCount: number
   maxStudents: number | null
   course: { id: string; title: string } | null
@@ -1013,6 +1017,7 @@ function SessionCard({
                 <StatusIcon className="size-3" />
                 {cfg.label}
               </Badge>
+              {session.inPerson && <ClassFormatBadge inPerson />}
               {session.course && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <BookOpen className="size-3" />
@@ -1030,18 +1035,20 @@ function SessionCard({
             {session.description && (
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{session.description}</p>
             )}
+            {session.inPerson && <VenueLink venue={session.venue} className="text-sm mt-1.5" />}
           </div>
 
           {/* Primary action — top-right for quick access. Co-tutors open/join but
-              never start (flipping status is the owner's action). */}
-          {scope.canTeach && session.status === "LIVE" && (
+              never start (flipping status is the owner's action). A face-to-face
+              class has no online room, so nothing to start or open. */}
+          {scope.canTeach && !session.inPerson && session.status === "LIVE" && (
             <Button asChild size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
               <Link href={`${scope.basePath}/classroom/${session.id}`}>
                 <MonitorPlay className="size-3.5" /> {session.isCoTutor ? "Join Classroom" : "Open Classroom"}
               </Link>
             </Button>
           )}
-          {scope.canTeach && session.status === "SCHEDULED" && (
+          {scope.canTeach && !session.inPerson && session.status === "SCHEDULED" && (
             session.isCoTutor ? (
               <Button asChild size="sm" variant="outline" className="shrink-0 gap-1.5">
                 <Link href={`${scope.basePath}/classroom/${session.id}`}>

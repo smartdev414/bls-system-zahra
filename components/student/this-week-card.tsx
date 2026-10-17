@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
   ArrowRight, CalendarPlus, CheckCircle2, ChevronRight, FileText, FlaskConical,
-  PlayCircle, Radio, Video, BookOpen, Sparkles,
+  PlayCircle, Radio, Video, BookOpen, Sparkles, MapPin,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { RecordingButton } from "@/components/sessions/recording-button"
 import { downloadIcs } from "@/lib/ics"
+import { VenueLink } from "@/components/sessions/face-to-face"
 
 export type ThisWeek = {
   nextClass: {
@@ -21,6 +22,8 @@ export type ThisWeek = {
     durationMins: number
     tutorName: string
     status: string
+    inPerson: boolean
+    venue: string | null
   } | null
   homework: Array<{ id: string; title: string; type: string; courseTitle: string; isNew: boolean }>
   homeworkLeft: number
@@ -79,8 +82,10 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
   }
 
   const { nextClass, homework, homeworkLeft, lastRecording } = data
-  const isLive = nextClass?.status === "LIVE"
-  const canJoin = !!nextClass && (isLive || (now !== null && new Date(nextClass.scheduledAt).getTime() - now < JOIN_EARLY_MS))
+  const inPerson = !!nextClass?.inPerson
+  // A face-to-face class is never "live" here: there is no room to join.
+  const isLive = !inPerson && nextClass?.status === "LIVE"
+  const canJoin = !!nextClass && !inPerson && (isLive || (now !== null && new Date(nextClass.scheduledAt).getTime() - now < JOIN_EARLY_MS))
 
   return (
     <Card className="shadow-sm">
@@ -94,8 +99,8 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Your next class</h3>
           {nextClass ? (
             <div className={`rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3 ${isLive ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30" : "bg-muted/30"}`}>
-              <div className={`rounded-full p-2.5 shrink-0 self-start sm:self-center ${isLive ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"}`}>
-                {isLive ? <Radio className="size-5 animate-pulse" /> : <Video className="size-5" />}
+              <div className={`rounded-full p-2.5 shrink-0 self-start sm:self-center ${isLive ? "bg-emerald-100 text-emerald-700" : inPerson ? "bg-orange-100 text-orange-700" : "bg-primary/10 text-primary"}`}>
+                {isLive ? <Radio className="size-5 animate-pulse" /> : inPerson ? <MapPin className="size-5" /> : <Video className="size-5" />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold leading-snug">{nextClass.title}</p>
@@ -103,6 +108,7 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
                   {isLive ? <span className="font-semibold text-emerald-700">Live now</span> : whenLabel(nextClass.scheduledAt)}
                   {" · "}{nextClass.tutorName}
                 </p>
+                {inPerson && <VenueLink venue={nextClass.venue} className="text-sm mt-1" />}
               </div>
               <div className="flex gap-2 shrink-0">
                 {canJoin ? (
@@ -122,6 +128,7 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
                       durationMins: nextClass.durationMins,
                       url: `${window.location.origin}/student/classroom/${nextClass.id}`,
                       description: `BSL class with ${nextClass.tutorName}`,
+                      location: nextClass.venue,
                     })}
                   >
                     <CalendarPlus className="size-3.5 mr-1.5" /> Add to calendar

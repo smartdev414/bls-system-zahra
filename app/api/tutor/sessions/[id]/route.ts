@@ -120,9 +120,16 @@ async function handlePATCH(
       if (body.courseId && body.courseId !== existing.courseId) {
         const course = await prisma.course.findFirst({
           where: { id: body.courseId, ...courseTeachScope(session) },
-          select: { id: true },
+          select: { id: true, format: true, venue: true },
         })
         if (!course) return NextResponse.json({ message: "Course not found" }, { status: 400 })
+        // The class moves to where its new course is taught.
+        data.inPerson = course.format === "IN_PERSON"
+        data.venue = course.format === "IN_PERSON" ? course.venue : null
+      }
+      if (!body.courseId) {
+        data.inPerson = false
+        data.venue = null
       }
       data.courseId = body.courseId || null
     }
@@ -132,6 +139,10 @@ async function handlePATCH(
     if (body.durationMins) data.durationMins = body.durationMins
     if (body.maxStudents !== undefined) data.maxStudents = body.maxStudents
     if (body.visibility) data.visibility = body.visibility
+    // A face-to-face class has no online room to go live in.
+    if (body.status === "LIVE" && existing.inPerson) {
+      return NextResponse.json({ message: "This class is face to face, so it is not started online." }, { status: 409 })
+    }
     if (body.status) {
       data.status = body.status
       console.log("[session] status transition:", existing.status, "→", body.status, "startedAt:", existing.startedAt, "endedAt:", existing.endedAt)

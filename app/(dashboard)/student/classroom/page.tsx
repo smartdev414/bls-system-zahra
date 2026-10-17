@@ -17,6 +17,7 @@ import {
 import { useFetch, usePostCallback } from "@/hooks/use-fetch"
 import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { toast } from "sonner"
+import { ClassFormatBadge, VenueLink } from "@/components/sessions/face-to-face"
 import { cn } from "@/lib/utils"
 
 type LiveSession = {
@@ -28,6 +29,8 @@ type LiveSession = {
   maxStudents: number | null
   status: "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED"
   visibility: "PUBLIC" | "INVITE_ONLY"
+  inPerson: boolean
+  venue: string | null
   tutor: { id: string; name: string; avatarUrl: string | null }
   course: { id: string; title: string } | null
   attendeeCount: number
@@ -147,8 +150,11 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
     }
   }
 
-  const isPrivate = session.visibility === "INVITE_ONLY"
-  const canJoin = !isPrivate || session.isInvited || session.joinRequest?.status === "APPROVED"
+  // A face-to-face class is not in the online classroom: it shows where to go
+  // instead of a Join button.
+  const inPerson = session.inPerson
+  const isPrivate = !inPerson && session.visibility === "INVITE_ONLY"
+  const canJoin = !inPerson && (!isPrivate || session.isInvited || session.joinRequest?.status === "APPROVED")
   const hasPending = session.joinRequest?.status === "PENDING"
   const wasRejected = session.joinRequest?.status === "REJECTED"
 
@@ -168,7 +174,7 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
       cfg.card
     )}>
       {/* Live banner */}
-      {session.status === "LIVE" && (
+      {session.status === "LIVE" && !inPerson && (
         <div className="bg-emerald-500 text-white px-4 py-1.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Radio className="size-3 animate-pulse" />
@@ -202,6 +208,7 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
                 {session.status === "CANCELLED" && <XCircle className="size-3" />}
                 {cfg.label}
               </Badge>
+              {inPerson && <ClassFormatBadge inPerson />}
               {isPrivate && (
                 <Badge variant="outline" className="text-xs gap-1 border-violet-200 text-violet-600 bg-violet-50">
                   <Lock className="size-2.5" /> Invite Only
@@ -247,6 +254,15 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
           </div>
         </div>
 
+        {inPerson && (
+          <div className="rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-900 px-3 py-2.5 flex flex-col gap-0.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-800/80 dark:text-orange-300/80">
+              Face to face — not online
+            </p>
+            <VenueLink venue={session.venue} className="text-sm" />
+          </div>
+        )}
+
         {/* Footer: tutor + action */}
         <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/50">
           <div className="flex items-center gap-2">
@@ -272,7 +288,7 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
                 Watch Recording
               </Button>
             )}
-            {session.status === "COMPLETED" && !session.recordingUrl && (
+            {session.status === "COMPLETED" && !session.recordingUrl && !inPerson && (
               <span className="text-xs text-muted-foreground">No recording available</span>
             )}
             {session.status === "SCHEDULED" && canJoin && (

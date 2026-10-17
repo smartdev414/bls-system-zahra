@@ -58,7 +58,7 @@ async function classStudents(s: { id: string; visibility: string; courseId: stri
 async function classReminders(now: Date): Promise<number> {
   const upcoming = await prisma.liveSession.findMany({
     where: { status: "SCHEDULED", scheduledAt: { gt: now, lte: new Date(now.getTime() + DAY) } },
-    select: { id: true, title: true, scheduledAt: true, visibility: true, courseId: true, tutor: { select: { name: true } } },
+    select: { id: true, title: true, scheduledAt: true, visibility: true, courseId: true, inPerson: true, venue: true, tutor: { select: { name: true } } },
   })
 
   let sent = 0
@@ -74,9 +74,13 @@ async function classReminders(now: Date): Promise<number> {
     const title = kind === "soon"
       ? `Starting soon: ${s.title}`
       : `${tomorrow ? "Tomorrow" : "Coming up"}: ${s.title}`
+    // A face-to-face class says where to go, not to check a camera.
+    const where = s.inPerson ? ` Face to face${s.venue ? ` at ${s.venue}` : ""}.` : ""
     const body = kind === "soon"
-      ? `Your class with ${s.tutor.name} starts at ${timeLabel(s.scheduledAt)}. Join a few minutes early to check your camera.`
-      : `Your class with ${s.tutor.name} is on ${dayLabel(s.scheduledAt)} at ${timeLabel(s.scheduledAt)}.`
+      ? s.inPerson
+        ? `Your class with ${s.tutor.name} starts at ${timeLabel(s.scheduledAt)}.${where}`
+        : `Your class with ${s.tutor.name} starts at ${timeLabel(s.scheduledAt)}. Join a few minutes early to check your camera.`
+      : `Your class with ${s.tutor.name} is on ${dayLabel(s.scheduledAt)} at ${timeLabel(s.scheduledAt)}.${where}`
 
     for (const studentId of await classStudents(s)) {
       if (!(await claim(`class-${kind}:${s.id}:${studentId}`))) continue

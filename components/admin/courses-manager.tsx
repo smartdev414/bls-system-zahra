@@ -10,6 +10,9 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { CourseVisibilityButton } from "@/components/admin/course-visibility-button"
 import type { CourseVisibility } from "@/lib/course-visibility"
+import type { CourseFormat } from "@/lib/course-format"
+import { CourseFormatPicker } from "@/components/courses/course-format-picker"
+import { ClassFormatBadge } from "@/components/sessions/face-to-face"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -40,6 +43,8 @@ type CourseItem = {
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
   visibility: CourseVisibility
   level: CourseLevel
+  format: CourseFormat
+  venue: string | null
   tutor: { id: string; name: string }
   // Teachers the school has put on the course, besides its lead.
   teachers: Array<{ id: string; name: string }>
@@ -266,12 +271,16 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, onEditDetails, o
                 <Badge variant="outline" className={`text-[10px] ${levelColorSolid[course.level]}`}>
                   {course.level}
                 </Badge>
+                <ClassFormatBadge inPerson={course.format === "IN_PERSON"} />
                 {course.category && (
                   <Badge variant="secondary" className="text-[10px]">{course.category.name}</Badge>
                 )}
               </div>
               <p className="font-semibold leading-snug">{course.title}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">by {course.tutor.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                by {course.tutor.name}
+                {course.format === "IN_PERSON" && ` · ${course.venue ?? "venue not set yet"}`}
+              </p>
               <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                 <GraduationCap className="size-3 shrink-0" />
                 {course.teachers.length > 0
@@ -372,6 +381,8 @@ function CourseDetailsDialog({ course, onClose, onSaved }: {
 }) {
   const [tutorId, setTutorId] = useState(course.tutor.id)
   const [categoryId, setCategoryId] = useState(course.category?.id ?? "")
+  const [format, setFormat] = useState<CourseFormat>(course.format)
+  const [venue, setVenue] = useState(course.venue ?? "")
 
   const { data: tutorData } = useFetch<{ tutors: TutorOption[] }>("/api/tutor/colleagues", {
     errorMessage: false,
@@ -387,7 +398,7 @@ function CourseDetailsDialog({ course, onClose, onSaved }: {
 
   const { execute: save, loading: saving } = usePatchCallback<
     { course: unknown },
-    { id: string; tutorId?: string; categoryId: string | null }
+    { id: string; tutorId?: string; categoryId: string | null; format?: CourseFormat; venue?: string | null }
   >("/api/admin/courses", {
     successMessage: "Course updated",
     errorMessage: "Could not update course",
@@ -396,13 +407,14 @@ function CourseDetailsDialog({ course, onClose, onSaved }: {
 
   const selectClass =
     "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
+  const formatChanged = format !== course.format || (format === "IN_PERSON" && venue.trim() !== (course.venue ?? ""))
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{course.title}</DialogTitle>
-          <DialogDescription>Who leads this course, and where it is filed.</DialogDescription>
+          <DialogDescription>Who leads this course, how it is taught, and where it is filed.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
@@ -423,6 +435,12 @@ function CourseDetailsDialog({ course, onClose, onSaved }: {
               ))}
             </select>
           </div>
+          <CourseFormatPicker format={format} venue={venue} onFormatChange={setFormat} onVenueChange={setVenue} />
+          {formatChanged && (
+            <p className="text-xs text-muted-foreground rounded-lg bg-muted/50 px-3 py-2">
+              Classes already scheduled on this course change too.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -432,6 +450,7 @@ function CourseDetailsDialog({ course, onClose, onSaved }: {
               id: course.id,
               ...(tutorId !== course.tutor.id && { tutorId }),
               categoryId: categoryId || null,
+              ...(formatChanged && { format, venue: format === "IN_PERSON" ? venue : null }),
             })}
           >
             {saving && <Loader2 className="size-4 animate-spin mr-1.5" />}
@@ -541,6 +560,8 @@ function NewCourseDialog({ onCreated, builderBase }: { onCreated: () => void; bu
   const [level, setLevel] = useState<CourseLevel>("L1")
   const [categoryId, setCategoryId] = useState("")
   const [tutorId, setTutorId] = useState("")
+  const [format, setFormat] = useState<CourseFormat>("ONLINE")
+  const [venue, setVenue] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -554,6 +575,7 @@ function NewCourseDialog({ onCreated, builderBase }: { onCreated: () => void; bu
   function reset() {
     setTitle(""); setDescription(""); setLevel("L1")
     setCategoryId(""); setTutorId(""); setError(null)
+    setFormat("ONLINE"); setVenue("")
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -568,6 +590,8 @@ function NewCourseDialog({ onCreated, builderBase }: { onCreated: () => void; bu
           title, description, level,
           categoryId: categoryId || undefined,
           tutorId: tutorId || undefined,
+          format,
+          ...(format === "IN_PERSON" && { venue }),
         }),
       })
       if (!res.ok) {
@@ -609,6 +633,8 @@ function NewCourseDialog({ onCreated, builderBase }: { onCreated: () => void; bu
               onChange={(e) => setTitle(e.target.value)}
               placeholder="BSL Level 1 — Tuesday evenings" />
           </div>
+
+          <CourseFormatPicker format={format} venue={venue} onFormatChange={setFormat} onVenueChange={setVenue} />
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="c-desc">Description</Label>

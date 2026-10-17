@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { cleanVenue, isCourseFormat, type CourseFormat } from "@/lib/course-format"
 import { uniqueCourseSlug } from "@/lib/course-slug"
 
 async function handleGET() {
@@ -67,12 +68,19 @@ async function handlePOST(req: NextRequest) {
       thumbnailUrl?: string
       /** Staff only — the tutor who will run the course. Optional. */
       tutorId?: string
+      format?: CourseFormat
+      /** Where a face-to-face course meets. */
+      venue?: string
     }
 
     const { title, description, level, categoryId, thumbnailUrl } = body
 
     if (!title?.trim() || !description?.trim()) {
       return NextResponse.json({ message: "Title and description are required" }, { status: 400 })
+    }
+    const format = body.format ?? "ONLINE"
+    if (!isCourseFormat(format)) {
+      return NextResponse.json({ message: "format must be ONLINE or IN_PERSON" }, { status: 400 })
     }
 
     // Tutors own what they create. Staff may hand the course to a named tutor;
@@ -98,6 +106,8 @@ async function handlePOST(req: NextRequest) {
         level,
         categoryId: categoryId ?? null,
         thumbnailUrl: thumbnailUrl ?? null,
+        format,
+        venue: format === "IN_PERSON" ? cleanVenue(body.venue) : null,
         status: "DRAFT",
       },
     })

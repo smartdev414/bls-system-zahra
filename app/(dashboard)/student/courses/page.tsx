@@ -28,6 +28,7 @@ import { useFetch, usePostCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
+import { ClassFormatBadge } from "@/components/sessions/face-to-face"
 
 type CourseProgress = {
   completedLessons: number
@@ -42,6 +43,8 @@ type Course = {
   description: string
   thumbnailUrl: string | null
   level: CourseLevel
+  format: "ONLINE" | "IN_PERSON"
+  venue: string | null
   tutor: { id: string; name: string; avatarUrl: string | null }
   category: { id: string; name: string } | null
   enrollmentCount: number
@@ -267,6 +270,11 @@ function CourseThumb({ course, className = "" }: { course: Course; className?: s
   )
 }
 
+/** Online or face to face, on every card — so nobody signs up for the wrong kind of class. */
+function FormatTag({ course }: { course: Course }) {
+  return <ClassFormatBadge inPerson={course.format === "IN_PERSON"} />
+}
+
 function TutorLine({ tutor }: { tutor: Course["tutor"] }) {
   return (
     <Link href={`/student/tutors/${tutor.id}`} className="flex items-center gap-1.5 group/tutor w-fit max-w-full">
@@ -320,7 +328,7 @@ function MyCourseCard({ course, onMutated }: { course: Course; onMutated: () => 
               <Link href={href} className="font-bold leading-snug line-clamp-2 hover:text-primary transition-colors">
                 {course.title}
               </Link>
-              <div className="mt-1"><TutorLine tutor={course.tutor} /></div>
+              <div className="mt-1 flex items-center gap-2 flex-wrap"><TutorLine tutor={course.tutor} /><FormatTag course={course} /></div>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -415,7 +423,7 @@ function CourseCard({ course, onMutated }: { course: Course; onMutated: () => vo
       <div className="flex flex-col flex-1 px-2 pt-3 pb-1 gap-3">
         <div>
           <h3 className="font-bold text-sm leading-snug line-clamp-2">{course.title}</h3>
-          <div className="mt-1.5"><TutorLine tutor={course.tutor} /></div>
+          <div className="mt-1.5 flex items-center gap-2 flex-wrap"><TutorLine tutor={course.tutor} /><FormatTag course={course} /></div>
         </div>
 
         <div className="flex items-center gap-3 text-xs text-muted-foreground">

@@ -25,6 +25,13 @@ async function handlePOST(
     if (liveSession.status === "CANCELLED" || liveSession.status === "COMPLETED") {
       return NextResponse.json({ message: "Session is no longer active" }, { status: 410 })
     }
+    // A face-to-face class has no online room to join.
+    if (liveSession.inPerson) {
+      return NextResponse.json(
+        { message: liveSession.venue ? `This class is face to face, at ${liveSession.venue}.` : "This class is face to face, not online." },
+        { status: 409 }
+      )
+    }
 
     // Students only get into the sessions meant for them: invited (or approved)
     // for invite-only ones, on the course for a course's class.

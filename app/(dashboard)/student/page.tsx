@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
 import { ThisWeekCard, type ThisWeek } from "@/components/student/this-week-card"
+import { VenueLink } from "@/components/sessions/face-to-face"
 
 type CurrentCourse = {
   courseId: string
@@ -42,6 +43,8 @@ type DashboardData = {
     scheduledAt: string
     tutorName: string
     status: string
+    inPerson: boolean
+    venue: string | null
   }>
 }
 
@@ -76,7 +79,8 @@ export default function StudentDashboardPage() {
 
   const name = data?.student.name?.split(" ")[0] ?? "there"
   const stats = data?.stats ?? { completedLessons: 0, totalLessons: 0, completion: 0, testsPassed: 0, totalTests: 0, classesAttended: 0 }
-  const liveSessions = data?.upcomingSessions.filter((s) => s.status === "LIVE") ?? []
+  // Only an online class can be joined; a face-to-face one is listed with its venue.
+  const liveSessions = data?.upcomingSessions.filter((s) => s.status === "LIVE" && !s.inPerson) ?? []
   const scheduledSessions = data?.upcomingSessions.filter((s) => s.status !== "LIVE") ?? []
 
   return (
@@ -205,6 +209,7 @@ export default function StudentDashboardPage() {
                               <Clock className="size-3" />
                               {time} · {session.tutorName}
                             </div>
+                            {session.inPerson && <VenueLink venue={session.venue} className="text-xs mt-1" />}
                           </div>
                         </div>
                       </div>
