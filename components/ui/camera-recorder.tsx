@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect, type SyntheticEvent } from "react"
-import { Camera, Square, Circle, Loader2, CheckCircle2, X, Pause, Play } from "lucide-react"
+import { Camera, Square, Circle, Loader2, CheckCircle2, X, Pause, Play, Volume2, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { UploadedFile } from "@/components/ui/file-upload"
@@ -86,7 +86,7 @@ type Props = {
   disabled?: boolean
   /** Film at 1080p instead of 720p. For short clips only: the file is twice the size. */
   highDefinition?: boolean
-  /** Film without sound — the microphone is never opened. For signs. */
+  /** Film without sound, with no way to turn it on — the microphone is never opened. For signs. */
   silent?: boolean
 }
 
@@ -99,6 +99,11 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<LessonVideoCanvas | null>(null)
+
+  // Signing needs no sound, and a microphone mostly picks up the room — so
+  // recordings are silent unless the tutor turns sound on for this one.
+  const [soundOn, setSoundOn] = useState(false)
+  const withSound = !silent && soundOn
 
   const [ready, setReady] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -171,7 +176,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
           height: { ideal: highDefinition ? 1080 : 720 },
           frameRate: { ideal: 30 },
         },
-        audio: !silent,
+        audio: withSound,
       })
       .then((stream) => {
         if (cancelled) return stream.getTracks().forEach((t) => t.stop())
@@ -183,7 +188,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
         setReady(true)
       })
       .catch(() => {
-        if (!cancelled) setCameraError(silent
+        if (!cancelled) setCameraError(!withSound
           ? "Could not access camera. Please allow camera permission."
           : "Could not access camera. Please allow camera and microphone permissions.")
       })
@@ -194,7 +199,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
       streamRef.current = null
       setReady(false)
     }
-  }, [uploaded, reviewing, highDefinition, silent])
+  }, [uploaded, reviewing, highDefinition, withSound])
 
   useEffect(() => () => {
     if (takeUrlRef.current) URL.revokeObjectURL(takeUrlRef.current)
@@ -594,6 +599,22 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="size-6 animate-spin text-white" />
           </div>
+        )}
+        {!silent && (
+          <button
+            type="button"
+            disabled={recording || disabled}
+            onClick={() => setSoundOn((on) => !on)}
+            aria-pressed={soundOn}
+            title={soundOn ? "Sound is recorded — tap to film without sound" : "No sound is recorded — tap to record sound too"}
+            className={cn(
+              "absolute top-3 right-3 z-10 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium text-white transition-colors disabled:opacity-60",
+              soundOn ? "bg-primary/90 hover:bg-primary" : "bg-black/60 hover:bg-black/75"
+            )}
+          >
+            {soundOn ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
+            {soundOn ? "Sound on" : "No sound"}
+          </button>
         )}
         {recording && (
           <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 rounded-full px-2.5 py-1">

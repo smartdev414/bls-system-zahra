@@ -405,6 +405,9 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 key={videoAsset.id}
                 src={videoAsset.fileUrl}
                 controls
+                // Lesson videos start silent (signing needs no sound); the
+                // player's speaker button turns it on.
+                muted
                 className="w-full h-full"
                 onLoadedMetadata={handleLoadedMetadata}
                 onTimeUpdate={handleVideoProgress}
@@ -456,6 +459,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                       <ProtectedVideo
                         src={asset.fileUrl}
                         controls
+                        muted
                         autoPlay
                         className="w-full aspect-video"
                         onTimeUpdate={handleTimeUpdate}

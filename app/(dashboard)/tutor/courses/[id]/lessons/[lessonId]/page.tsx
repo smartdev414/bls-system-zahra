@@ -198,7 +198,7 @@ function AssetView({ asset }: { asset: Asset }) {
     return (
       <div className="flex flex-col gap-2">
         <div className="rounded-xl overflow-hidden border bg-black">
-          <ProtectedVideo src={asset.fileUrl} controls allowDownload className="w-full aspect-video" />
+          <ProtectedVideo src={asset.fileUrl} controls muted allowDownload className="w-full aspect-video" />
         </div>
         <VideoCleanBadge url={asset.fileUrl} />
         {download}
