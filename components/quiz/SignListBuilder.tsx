@@ -173,8 +173,16 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
               autoFocus={!sign.id && !sign.question}
               onChange={(e) => patch(sign.uid, (s) => ({ ...s, question: e.target.value, dirty: true, error: null }))}
             />
+            {/* Film this sign again with the camera; the new take replaces its video. */}
+            <Button type="button" variant="ghost" size="icon"
+              className="size-9 shrink-0 text-muted-foreground hover:text-foreground"
+              title="Film again" aria-label={`Film sign ${i + 1} again`}
+              disabled={sign.questionImageUploading || sign.isSaving}
+              onClick={() => setFilming([{ id: sign.uid, word: sign.question.trim() || "New sign" }])}>
+              <Camera className="size-4" />
+            </Button>
             <label
-              title="Replace video"
+              title="Replace video with a file"
               className={cn(
                 "inline-flex size-9 shrink-0 items-center justify-center rounded-md cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground focus-within:ring-2 focus-within:ring-ring",
                 (sign.questionImageUploading || sign.isSaving) && "pointer-events-none opacity-50"
