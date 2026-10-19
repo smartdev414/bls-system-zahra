@@ -60,9 +60,11 @@ type Props = {
   nextHref?: string
 }
 
-// A slow connection should not eat into the time: the clock starts when the
-// video can play, or after this long if it never says so.
-const VIDEO_WAIT_MS = 4000
+// The clock starts once the sign has been watched to its end — the last play
+// when the plays are limited, the first when it repeats — so neither a slow
+// connection nor the length of the word eats into the time. This starts it
+// anyway if the video never gets there (it stalls, or autoplay is blocked).
+const VIDEO_WAIT_MS = 45_000
 
 function shuffled<T>(items: readonly T[]): T[] {
   const list = [...items]
@@ -109,7 +111,7 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
   sign: SignQuestion
   kind: SignTestData["settings"]["kind"]
   answerSeconds: number
-  /** Plays of the video before it is hidden; null = it loops until the time is up. */
+  /** Plays of the video before it is hidden; null = it repeats until the time is up. */
   plays?: number | null
   number: number
   total: number
@@ -119,6 +121,7 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
   aside?: React.ReactNode
 }) {
   const totalMs = answerSeconds * 1000
+  // Whether the clock is running: from the end of the sign (see VIDEO_WAIT_MS).
   const [ready, setReady] = useState(false)
   // A test set to play each sign once or twice: which play this is, and
   // whether they are used up (the video is then hidden).
@@ -172,6 +175,7 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
       <p className="text-4xl font-black tabular-nums leading-tight" role="timer" aria-label={`${secondsLeft} seconds left`}>
         {secondsLeft}
       </p>
+      {!ready && <p className="text-[11px] text-muted-foreground">Starts when the sign ends</p>}
       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
           className={cn("h-full rounded-full", urgent ? "bg-rose-500" : "bg-primary")}
@@ -198,17 +202,22 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
       <ProtectedVideo
         src={sign.imageUrl}
         autoPlay muted playsInline
-        loop={!plays}
-        onCanPlay={() => setReady(true)}
         onError={() => setReady(true)}
+        // Not looped with the attribute: a looping video never says it has ended.
         onEnded={(e) => {
-          if (!plays) return
-          if (play < plays) {
-            const v = e.currentTarget
+          const v = e.currentTarget
+          const replay = () => {
             v.currentTime = 0
             void v.play().catch(() => { /* muted autoplay is allowed; nothing to do */ })
+          }
+          if (!plays) {
+            setReady(true)
+            replay()
+          } else if (play < plays) {
+            replay()
             setPlay(play + 1)
           } else {
+            setReady(true)
             setPlaysUsed(true)
           }
         }}
@@ -604,7 +613,7 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
           {fingerspelling
             ? "Watch each word being fingerspelled and type it."
             : "Watch each sign and pick the right word."}
-          {" "}You have {settings.answerSeconds} seconds for each one, then the next comes up.
+          {" "}When each one finishes you have {settings.answerSeconds} seconds, then the next comes up.
           {settings.signPlays === 1 && " Each one is shown once only — watch closely!"}
           {settings.signPlays === 2 && " Each one is shown twice."}
         </p>

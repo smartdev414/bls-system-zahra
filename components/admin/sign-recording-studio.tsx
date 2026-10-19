@@ -1,7 +1,8 @@
 "use client"
 
 // The dictionary's recording page: works through every sign that has no video
-// yet, one after another, without touching the mouse. The camera stays on for
+// yet, one after another, without touching the mouse. A fingerspelling or
+// vocabulary test opens it over its own word list too (the words prop). The camera stays on for
 // the whole sitting and each take uploads in the background, so the next word
 // is ready the moment the last one is accepted.
 //
@@ -67,9 +68,10 @@ const RECORDING_MIME_TYPES = [
 type QueueSign = {
   id: string
   word: string
-  category: string
-  level: CourseLevel
-  description: string
+  /** Not known for a test's own words. */
+  category?: string
+  level?: CourseLevel
+  description?: string
 }
 
 type QueueData = { signs: QueueSign[]; hasMore: boolean; remaining: number; categories: string[] }
@@ -140,11 +142,28 @@ function writeStudioPrefs(prefs: StudioPrefs): void {
 // Kept against the blob so a retried upload asks for the same thing.
 const cleanColors = new WeakMap<Blob, string>()
 
+/** Saves a take on its dictionary sign. */
+async function attachToSign(sign: QueueSign, fileUrl: string): Promise<void> {
+  const saveRes = await fetch(`/api/admin/signs/${sign.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoUrl: fileUrl }),
+  })
+  if (!saveRes.ok) {
+    const err = await saveRes.json().catch(() => ({})) as { message?: string }
+    throw new Error(err.message ?? "Could not save the video to the sign")
+  }
+}
+
 /**
  * Uploads one take and attaches it to its sign. Returns the saved URL when the
  * take was sent to have its background replaced, so that can be followed.
  */
-async function persistTake(sign: QueueSign, blob: Blob): Promise<string | null> {
+async function persistTake(
+  sign: QueueSign,
+  blob: Blob,
+  attach: (sign: QueueSign, fileUrl: string) => Promise<void> | void,
+): Promise<string | null> {
   const contentType = blob.type === "video/mp4" ? "video/mp4" : "video/webm"
   const extension = contentType === "video/mp4" ? "mp4" : "webm"
   const baseName = sign.word.replace(/[^\w\- ]+/g, "").trim() || "sign"
@@ -174,15 +193,7 @@ async function persistTake(sign: QueueSign, blob: Blob): Promise<string | null> 
   })
   if (!uploadRes.ok) throw new Error("Upload to S3 failed")
 
-  const saveRes = await fetch(`/api/admin/signs/${sign.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ videoUrl: fileUrl }),
-  })
-  if (!saveRes.ok) {
-    const err = await saveRes.json().catch(() => ({})) as { message?: string }
-    throw new Error(err.message ?? "Could not save the video to the sign")
-  }
+  await attach(sign, fileUrl)
 
   if (!cleanColor) return null
   // The take is saved either way; if this can't start it shows as failed in
@@ -205,15 +216,28 @@ function Key({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function SignRecordingStudio() {
+type Props = {
+  /**
+   * A test's own words to film, in place of the dictionary's queue. Each take
+   * is handed to onRecorded rather than saved on a dictionary sign.
+   */
+  words?: { id: string; word: string }[]
+  onRecorded?: (id: string, fileUrl: string) => void
+  /** Leaves the recorder when it was opened over a test. */
+  onClose?: () => void
+}
+
+export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) {
+  const listMode = words !== undefined
   // ── Queue ──────────────────────────────────────────────────────────────────
   const [category, setCategory] = useState("all")
   const [level, setLevel] = useState("all")
-  const [items, setItems] = useState<QueueSign[]>([])
+  // Fixed for the recorder's life when it films a test's words.
+  const [items, setItems] = useState<QueueSign[]>(() => words ?? [])
   const [hasMore, setHasMore] = useState(false)
   const [remaining, setRemaining] = useState(0)
   const [categories, setCategories] = useState<string[]>([])
-  const [queueLoading, setQueueLoading] = useState(true)
+  const [queueLoading, setQueueLoading] = useState(!listMode)
   const [queueError, setQueueError] = useState(false)
   const [index, setIndex] = useState(0)
   const [statuses, setStatuses] = useState<Record<string, TakeStatus>>({})
@@ -318,8 +342,8 @@ export function SignRecordingStudio() {
   }, [category, level])
 
   useEffect(() => {
-    void loadQueue(null)
-  }, [loadQueue])
+    if (!listMode) void loadQueue(null)
+  }, [loadQueue, listMode])
 
   // Fetch the next batch a few signs before the loaded ones run out.
   useEffect(() => {
@@ -595,7 +619,7 @@ export function SignRecordingStudio() {
 
   function saveTake(sign: QueueSign, blob: Blob) {
     setStatuses((prev) => ({ ...prev, [sign.id]: "uploading" }))
-    persistTake(sign, blob)
+    persistTake(sign, blob, onRecorded ? (s, url) => onRecorded(s.id, url) : attachToSign)
       .then((cleanUrl) => {
         setCleanUrls((prev) => ({ ...prev, [sign.id]: cleanUrl }))
         failedTakesRef.current.delete(sign.id)
@@ -707,27 +731,39 @@ export function SignRecordingStudio() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const waitingCount = Math.max(remaining - savedCount - uploadingCount, 0)
+  const waitingCount = listMode
+    ? items.length - savedCount - uploadingCount
+    : Math.max(remaining - savedCount - uploadingCount, 0)
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link
-            href="/admin/signs"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" /> BSL Dictionary
-          </Link>
+          {!listMode && (
+            <Link
+              href="/admin/signs"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="size-3.5" /> BSL Dictionary
+            </Link>
+          )}
           <h1 className="mt-1 flex items-center gap-2 text-2xl font-black tracking-tight">
-            <Video className="size-6 text-primary" /> Record sign videos
+            <Video className="size-6 text-primary" /> {listMode ? "Film the words" : "Record sign videos"}
           </h1>
           <p className="mt-1 text-muted-foreground">
-            {savedCount} saved this session · {waitingCount} still without a video
+            {savedCount} saved{!listMode && " this session"} · {waitingCount} still without a video
             {uploadingCount > 0 && ` · ${uploadingCount} uploading`}
             {failedCount > 0 && ` · ${failedCount} failed`}
           </p>
         </div>
+        {listMode ? (
+          // Takes still uploading would be lost to the test if it closed now.
+          <Button onClick={onClose} disabled={phase !== "idle" || uploadingCount > 0} className="gap-2">
+            {uploadingCount > 0
+              ? <><Loader2 className="size-4 animate-spin" /> Saving…</>
+              : <><Check className="size-4" /> Done</>}
+          </Button>
+        ) : (
         <div className="flex flex-wrap gap-3">
           <Select
             value={category}
@@ -756,6 +792,7 @@ export function SignRecordingStudio() {
             </SelectContent>
           </Select>
         </div>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -766,8 +803,10 @@ export function SignRecordingStudio() {
               <>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-4xl font-black tracking-tight">{current.word}</p>
-                  <Badge variant="outline" className={`text-[10px] ${levelColor[current.level]}`}>{current.level}</Badge>
-                  <Badge variant="secondary" className="text-[10px]">{current.category}</Badge>
+                  {current.level && (
+                    <Badge variant="outline" className={`text-[10px] ${levelColor[current.level]}`}>{current.level}</Badge>
+                  )}
+                  {current.category && <Badge variant="secondary" className="text-[10px]">{current.category}</Badge>}
                   {statuses[current.id] === "saved" && (
                     <Badge variant="outline" className="gap-1 border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
                       <Check className="size-2.5" /> Saved — recording again replaces it
@@ -784,9 +823,11 @@ export function SignRecordingStudio() {
                   {items.length ? "That's all of them" : "No signs are waiting for a video"}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {items.length
-                    ? "Every sign in this list has been recorded or skipped. Skipped signs come back next time."
-                    : "Add words from the dictionary page (Bulk add takes a whole list) and they will appear here."}
+                  {listMode
+                    ? "Every word has been filmed or skipped. Press Done to go back to the test, then save it."
+                    : items.length
+                      ? "Every sign in this list has been recorded or skipped. Skipped signs come back next time."
+                      : "Add words from the dictionary page (Bulk add takes a whole list) and they will appear here."}
                 </p>
               </>
             ) : (

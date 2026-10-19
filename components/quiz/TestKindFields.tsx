@@ -63,7 +63,7 @@ export function AnswerSecondsField({ value, onChange }: { value: number; onChang
           {ANSWER_SECONDS.map((s) => <SelectItem key={s} value={String(s)}>{s} seconds</SelectItem>)}
         </SelectContent>
       </Select>
-      <p className="text-xs text-muted-foreground">When the time is up the next sign comes up by itself.</p>
+      <p className="text-xs text-muted-foreground">The time starts when the sign finishes playing. When it is up the next sign comes up by itself.</p>
     </div>
   )
 }
