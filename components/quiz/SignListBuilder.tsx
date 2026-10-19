@@ -64,8 +64,9 @@ function newSign(word: string, videoUrl?: string, uploading = !videoUrl): Questi
 export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictionary }: Props) {
   // The words handed to the recorder while it is open, in the order to film them.
   const [filming, setFilming] = useState<{ id: string; word: string }[] | null>(null)
-  // The "type the words first" box, and what is typed in it.
-  const [listOpen, setListOpen] = useState(false)
+  // "Bulk add words", as in the dictionary: the words go in first, without
+  // videos, and are filmed afterwards. Open from the start on an empty test.
+  const [listOpen, setListOpen] = useState(signs.length === 0)
   const [listText, setListText] = useState("")
   const [pickerOpen, setPickerOpen] = useState(false)
 
@@ -79,19 +80,15 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
     if (ordered.length) setFilming(ordered.map((s) => ({ id: s.uid, word: s.question.trim() })))
   }
 
-  function record() {
-    if (unfilmed.length) film(unfilmed)
-    else setListOpen(true)
-  }
 
-  /** Adds the typed words (skipping ones already in the test), then films them. */
+  const have = new Set(signs.map((s) => s.question.trim().toLowerCase()))
+  const typedWords = wordsFromList(listText).filter((w) => !have.has(w.toLowerCase()))
+
+  /** Adds the typed words (skipping ones already in the test), ready to film. */
   function addList() {
-    const have = new Set(signs.map((s) => s.question.trim().toLowerCase()))
-    const added = wordsFromList(listText).filter((w) => !have.has(w.toLowerCase())).map((w) => newSign(w, undefined, false))
-    onChange((current) => [...current, ...added])
+    onChange((current) => [...current, ...typedWords.map((w) => newSign(w, undefined, false))])
     setListText("")
     setListOpen(false)
-    film([...unfilmed, ...added])
   }
 
   const patch = (uid: string, change: (current: QuestionDraft) => QuestionDraft) =>
@@ -151,7 +148,7 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
                       onClick={() => film(unfilmed, sign.uid)}
                       className="flex size-full flex-col items-center justify-center gap-1 text-[11px] font-medium text-primary hover:bg-primary/10"
                     >
-                      <Camera className="size-4" /> Film it
+                      <Camera className="size-4" /> Record
                     </button>
                   ) : <span className="text-[10px] text-muted-foreground">No video</span>
                 )}
@@ -201,23 +198,25 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
 
       {listOpen && (
         <div className="flex flex-col gap-2 rounded-xl border bg-muted/30 p-3">
-          <label htmlFor="sign-word-list" className="text-sm font-medium">
-            Type the words you will {kind === "FINGERSPELLING" ? "fingerspell" : "sign"}
-          </label>
+          <label htmlFor="sign-word-list" className="text-sm font-medium">Bulk add words</label>
+          <p className="text-xs text-muted-foreground">
+            Type or paste the words you will {kind === "FINGERSPELLING" ? "fingerspell" : "sign"}, one per line. They are added
+            to the list without a video, ready to record one after another.
+          </p>
           <Textarea
             id="sign-word-list"
             autoFocus
             rows={5}
             value={listText}
             onChange={(e) => setListText(e.target.value)}
-            placeholder={"One per line, or separated by commas:\nblue, green, apple"}
+            placeholder={"Hello\nThank you\nPlease"}
           />
           <p className="text-xs text-muted-foreground">
-            Each word shows on screen while you film it. Recording stops by itself when your hands come back to rest, then the next word comes up.
+            {typedWords.length} word{typedWords.length !== 1 ? "s" : ""} · words already in this test are left as they are
           </p>
           <div className="flex gap-2">
-            <Button type="button" disabled={!wordsFromList(listText).length} onClick={addList}>
-              <Camera className="size-4 mr-1.5" /> Start filming
+            <Button type="button" disabled={!typedWords.length} onClick={addList}>
+              <ListPlus className="size-4 mr-1.5" /> Add {typedWords.length || ""} word{typedWords.length !== 1 ? "s" : ""}
             </Button>
             <Button type="button" variant="ghost" onClick={() => { setListOpen(false); setListText("") }}>Cancel</Button>
           </div>
@@ -233,7 +232,16 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
       <div className="rounded-xl border border-dashed p-4 flex flex-col items-center gap-3 text-center">
         <p className="text-sm font-medium">{signs.length === 0 ? "Add the first sign" : "Add more signs"}</p>
         <div className="flex flex-wrap justify-center gap-2">
-          <Button asChild type="button">
+          {unfilmed.length > 0 ? (
+            <Button type="button" onClick={() => film(unfilmed)}>
+              <Camera className="size-4 mr-1.5" /> Record {unfilmed.length} word{unfilmed.length > 1 ? "s" : ""}
+            </Button>
+          ) : !listOpen && (
+            <Button type="button" onClick={() => setListOpen(true)}>
+              <ListPlus className="size-4 mr-1.5" /> Bulk add words
+            </Button>
+          )}
+          <Button asChild type="button" variant="outline">
             <label className="cursor-pointer focus-within:ring-2 focus-within:ring-ring">
               <Upload className="size-4 mr-1.5" /> Upload videos
               <input
@@ -246,12 +254,11 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
               />
             </label>
           </Button>
-          <Button type="button" variant="outline" onClick={record}>
-            <Camera className="size-4 mr-1.5" /> {unfilmed.length ? `Film ${unfilmed.length} word${unfilmed.length > 1 ? "s" : ""}` : "Record"}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => setListOpen(true)}>
-            <ListPlus className="size-4 mr-1.5" /> Add words
-          </Button>
+          {unfilmed.length > 0 && !listOpen && (
+            <Button type="button" variant="outline" onClick={() => setListOpen(true)}>
+              <ListPlus className="size-4 mr-1.5" /> Bulk add words
+            </Button>
+          )}
           {onAddFromDictionary && (
             <Button type="button" variant="outline" onClick={onAddFromDictionary}>
               <Library className="size-4 mr-1.5" /> From the dictionary
