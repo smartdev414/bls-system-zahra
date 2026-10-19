@@ -145,6 +145,7 @@ export const SCREEN_ZOOM_STEP = 0.25
  * Tutor → class recorder. The recorder (app/egress) can listen but not ask, so
  * whenever recording starts or resumes the tutor's tab tells it what is open
  * right now — the whiteboard, breakouts — which it would otherwise only learn
- * from the next start/stop. Students ignore this topic.
+ * from the next start/stop. It also hears when the tutor pops the students out,
+ * which only the tutor's own screen knows. Students ignore this topic.
  */
 export const RECORDER_TOPIC = "cls-recorder"

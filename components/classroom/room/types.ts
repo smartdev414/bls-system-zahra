@@ -270,13 +270,20 @@ export type ScreenAction =
   | { action: "sync_request" }
   | { action: "sync_response"; private: boolean }
 
-/** What the tutor's tab tells the class recorder when recording (re)starts. See RECORDER_TOPIC. */
-export type RecorderStateAction = {
-  action: "state"
-  whiteboard: { active: boolean; snapshot: WhiteboardSnapshot | null }
-  breakouts: boolean
-  /** Who the tutor has spotlighted for everyone, and whether the room is in
-   *  gallery — the only times the recording shows a student's face. */
-  spotlight?: string | null
-  gallery?: boolean
-}
+/** What the tutor's tab tells the class recorder. See RECORDER_TOPIC. */
+export type RecorderStateAction =
+  // When recording (re)starts: everything that is open right now.
+  | {
+      action: "state"
+      whiteboard: { active: boolean; snapshot: WhiteboardSnapshot | null }
+      breakouts: boolean
+      /** Who the tutor has spotlighted for everyone, whether the room is in
+       *  gallery, and whether the tutor has the students popped out — the only
+       *  times the recording shows a student's face. */
+      spotlight?: string | null
+      gallery?: boolean
+      popout?: boolean
+    }
+  // The tutor opened or closed "Pop out students". Only their own screen shows
+  // it, so the recorder hears it from here rather than from the room.
+  | { action: "popout"; open: boolean }

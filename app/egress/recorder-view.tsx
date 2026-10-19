@@ -19,7 +19,9 @@
 //     and the tutor's hand pointer on the slides or video, so a viewer can
 //     follow what is being pointed at.
 //   • A student's FACE, only while the tutor shows them to the class: the one
-//     they spotlight for everyone, or everyone while the room is in gallery.
+//     they spotlight for everyone, or everyone while the room is in gallery —
+//     or everyone while the tutor has "Pop out students" open, which puts the
+//     class next to the shared screen or board, as on the tutor's own screen.
 //     That is how a viewer sees who was asked and how they answered. Any other
 //     time a student's camera is not even subscribed to here.
 //   • NOT a student's voice or screen, and NO names anywhere; captions (which
@@ -60,6 +62,7 @@ import type {
   WhiteboardAction, WhiteboardSnapshot,
 } from "@/components/classroom/room/types"
 import { useSlideContentBox } from "@/components/classroom/room/useSlideContentBox"
+import { cn } from "@/lib/utils"
 import type { WhiteboardApi } from "@/components/classroom/room/TldrawBoard"
 
 const TldrawBoard = dynamic(() => import("@/components/classroom/room/TldrawBoard"), { ssr: false })
@@ -146,11 +149,11 @@ export function RecorderView({ pass }: { pass: string | null }) {
   )
 }
 
-/** Which students the tutor is showing the class: nobody, one, or everyone. */
-type Shown = { gallery: boolean; spotlight: string | null }
+/** Which students the tutor is showing: nobody, one, or everyone (gallery or popped out). */
+type Shown = { gallery: boolean; spotlight: string | null; popout: boolean }
 
 const isShown = (shown: Shown, p: { identity: string; metadata?: string }) =>
-  isTutor(p) || shown.gallery || shown.spotlight === p.identity
+  isTutor(p) || shown.gallery || shown.popout || shown.spotlight === p.identity
 
 /**
  * Subscribes to the tutors' camera, voice and screen, and to the camera of a
@@ -176,7 +179,7 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
   const [stage, setStage] = useState<Stage>(EMPTY_STAGE)
   const [whiteboardActive, setWhiteboardActive] = useState(false)
   const [breakouts, setBreakouts] = useState(false)
-  const [shown, setShown] = useState<Shown>({ gallery: false, spotlight: null })
+  const [shownState, setShown] = useState<Shown>({ gallery: false, spotlight: null, popout: false })
   const lastLiveStage = useRef(0)
   const wbApi = useRef<WhiteboardApi | null>(null)
   const wbPending = useRef<{ snapshot: WhiteboardSnapshot | null; changes: unknown[]; presence: unknown }>({
@@ -191,6 +194,10 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
   const stageAreaRef = useRef<HTMLDivElement>(null)
   const [stageContentEl, setStageContentEl] = useState<HTMLElement | null>(null)
   const stageContentBox = useSlideContentBox(stageAreaRef, stageContentEl)
+
+  // The pop-out lives in the tutor's tab: with no tutor left, it is gone too.
+  const tutorPresent = useRemoteParticipants().some(isTutor)
+  const shown: Shown = tutorPresent ? shownState : { ...shownState, popout: false }
 
   // Only tracks we subscribed to are listed — the filters repeat the rules so a
   // mistake upstream still can't leak a student. Tutors first, as in the room.
@@ -335,9 +342,13 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
     if (!isTutor(msg.from)) return
     try {
       const data = JSON.parse(dec.decode(msg.payload)) as RecorderStateAction
+      if (data.action === "popout") {
+        setShown((s) => ({ ...s, popout: data.open }))
+        return
+      }
       if (data.action !== "state") return
       setBreakouts(data.breakouts)
-      setShown({ gallery: data.gallery ?? false, spotlight: data.spotlight ?? null })
+      setShown({ gallery: data.gallery ?? false, spotlight: data.spotlight ?? null, popout: data.popout ?? false })
       setWhiteboardActive(data.whiteboard.active)
       applyWhiteboard(data.whiteboard.snapshot)
     } catch { /* ignore malformed */ }
@@ -377,7 +388,7 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
   if (breakouts) {
     return (
       <>
-      <Subscriptions shown={{ gallery: false, spotlight: null }} />
+      <Subscriptions shown={{ gallery: false, spotlight: null, popout: false }} />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-zinc-950 text-white">
         <p className="text-3xl font-bold">Breakout rooms</p>
         <p className="text-lg text-white/60">Not recorded — the class continues shortly.</p>
@@ -451,6 +462,11 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
     )
   }
 
+  const tutorCams = cameras.filter((t) => isTutor(t.participant))
+  const studentCams = cameras.filter((t) => !isTutor(t.participant))
+  // One spotlighted student keeps a full tile; a popped-out class packs into a grid.
+  const studentCols = studentCams.length <= 1 ? 1 : Math.min(content ? 3 : 4, Math.ceil(Math.sqrt(studentCams.length)))
+
   // The hand only belongs on the slides or video it was pointed at — not over a
   // screen share or the board that may have replaced them.
   const pointerOnStage = !screens[0] && !(whiteboardActive && sessionId) && !!stage.kind && !!stage.url
@@ -484,12 +500,26 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
         )}
         {cameras.length > 0 && (
           <div className={content ? "flex-[3] min-w-0 flex flex-col justify-center gap-3" : "flex-1 min-w-0 flex gap-3"}>
-            {cameras.map((t) => (
+            {tutorCams.map((t) => (
               <div key={t.publication.trackSid} className="relative flex-1 min-h-0 rounded-lg overflow-hidden bg-zinc-900">
                 {/* Contained, not cropped: signing needs the hands in frame. */}
                 <VideoTrack trackRef={t} className="absolute inset-0 w-full h-full object-contain" />
               </div>
             ))}
+            {studentCams.length > 0 && (
+              // The class as a grid, like the tutor's pop-out — a stack of a
+              // dozen faces in one column would leave each a sliver.
+              <div
+                className={cn("min-w-0 min-h-0 grid gap-2", content && tutorCams.length > 0 ? "flex-[2]" : "flex-1")}
+                style={{ gridTemplateColumns: `repeat(${studentCols}, minmax(0, 1fr))`, gridAutoRows: "minmax(0, 1fr)" }}
+              >
+                {studentCams.map((t) => (
+                  <div key={t.publication.trackSid} className="relative min-h-0 rounded-lg overflow-hidden bg-zinc-900">
+                    <VideoTrack trackRef={t} className="absolute inset-0 w-full h-full object-contain" />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -2749,11 +2749,12 @@ export function ClassroomRoom({
   }, [recordingActive, breakoutsActive])
 
   // ── The class recorder (app/egress/recorder-view.tsx) ───────────────────
-  // It films the tutors and what they present (plus a student's face while
-  // they're spotlighted or the room is in gallery), and it can listen but not
-  // ask — so when recording starts or resumes, this tab tells it what is open
-  // (the whiteboard, breakouts, spotlight, gallery). Sent a few times: the recorder joins the room
-  // some seconds after the recording is started.
+  // It films the tutors and what they present (plus students' faces while one
+  // is spotlighted, the room is in gallery, or the tutor has them popped out),
+  // and it can listen but not ask — so when recording starts or resumes, this
+  // tab tells it what is open (the whiteboard, breakouts, spotlight, gallery,
+  // pop-out). Sent a few times: the recorder joins the room some seconds after
+  // the recording is started.
   const { send: sendRecorder } = useDataChannel(RECORDER_TOPIC)
   const recorderSyncTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const syncRecorder = useCallback(() => {
@@ -2766,11 +2767,23 @@ export function ClassroomRoom({
         breakouts: breakoutStateRef.current.active,
         spotlight: spotlightRef.current,
         gallery: galleryViewRef.current,
+        popout: studentsPopoutRef.current,
       }
       try { sendRecorder(enc.encode(JSON.stringify(state)), { reliable: true }) } catch { /* next one */ }
     }, ms))
   }, [sendRecorder])
   useEffect(() => () => recorderSyncTimers.current.forEach(clearTimeout), [])
+
+  // "Pop out students" puts the class next to a shared screen or the board; the
+  // recording shows them there too (faces only), so tell the recorder at once.
+  const studentsPopout = isTutor && !!studentsPip.pipWindow
+  const studentsPopoutRef = useRef(studentsPopout)
+  useEffect(() => {
+    studentsPopoutRef.current = studentsPopout
+    if (connectionState !== ConnectionState.Connected) return
+    const msg: RecorderStateAction = { action: "popout", open: studentsPopout }
+    try { sendRecorder(enc.encode(JSON.stringify(msg)), { reliable: true }) } catch { /* the next sync carries it */ }
+  }, [studentsPopout, connectionState, sendRecorder])
 
   // Tutor starts, pauses, or resumes recording. Each pause/resume creates a
   // separate MP4 segment in S3.
@@ -2802,7 +2815,7 @@ export function ClassroomRoom({
       }
       if (!prevStarted) {
         toast.success("Recording started", {
-          description: "Only you, any co-teacher and what you share are recorded — never the students.",
+          description: "You, any co-teacher and what you share are recorded. Students' faces only when you show them to the class or pop them out — never their voices or names.",
         })
       } else {
         toast.success(prevPaused ? "Recording resumed" : "Recording paused")
