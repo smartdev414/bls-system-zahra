@@ -2749,9 +2749,10 @@ export function ClassroomRoom({
   }, [recordingActive, breakoutsActive])
 
   // ── The class recorder (app/egress/recorder-view.tsx) ───────────────────
-  // It films only the tutors and what they present, and it can listen but not
+  // It films the tutors and what they present (plus a student's face while
+  // they're spotlighted or the room is in gallery), and it can listen but not
   // ask — so when recording starts or resumes, this tab tells it what is open
-  // (the whiteboard, breakouts). Sent a few times: the recorder joins the room
+  // (the whiteboard, breakouts, spotlight, gallery). Sent a few times: the recorder joins the room
   // some seconds after the recording is started.
   const { send: sendRecorder } = useDataChannel(RECORDER_TOPIC)
   const recorderSyncTimers = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -2763,6 +2764,8 @@ export function ClassroomRoom({
         action: "state",
         whiteboard: { active: wb.active, snapshot: wb.active ? (wbApiRef.current?.getSnapshot() ?? null) : null },
         breakouts: breakoutStateRef.current.active,
+        spotlight: spotlightRef.current,
+        gallery: galleryViewRef.current,
       }
       try { sendRecorder(enc.encode(JSON.stringify(state)), { reliable: true }) } catch { /* next one */ }
     }, ms))

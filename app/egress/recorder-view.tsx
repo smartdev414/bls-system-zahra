@@ -13,12 +13,15 @@
 // watches the console for exactly those strings. See
 // https://docs.livekit.io/home/egress/custom-template/
 //
-// What is recorded — and what is not (UK GDPR, agreed with the school):
+// What is recorded — and what is not (agreed with the school):
 //   • The tutor and any co-teacher: their cameras and their voices.
 //   • What they present: screen share, slides, a shared video, the whiteboard.
-//   • NOT the students: their cameras and microphones are never even
-//     subscribed to here, so they cannot end up in the file; no names are
-//     drawn anywhere; captions (which can carry what a student said) are off.
+//   • A student's FACE, only while the tutor shows them to the class: the one
+//     they spotlight for everyone, or everyone while the room is in gallery.
+//     That is how a viewer sees who was asked and how they answered. Any other
+//     time a student's camera is not even subscribed to here.
+//   • NOT a student's voice or screen, and NO names anywhere; captions (which
+//     can carry what a student said) are off.
 //   • NOT breakout rooms: the tutor's tab pauses the recording while they run,
 //     and should anything still be recording, this page shows a plain card
 //     with no sound instead.
@@ -45,9 +48,12 @@ import { ConnectionState, RemoteTrackPublication, Track, type RemoteParticipant 
 import { LogoWatermark } from "@/components/layout/logo"
 import { PptSlideViewer } from "@/components/classroom/PptSlideViewer"
 import { VideoPlayer } from "@/components/classroom/room/VideoPlayer"
-import { BREAKOUT_TOPIC, PPT_TOPIC, RECORDER_TOPIC, WHITEBOARD_TOPIC } from "@/components/classroom/room/constants"
+import {
+  BREAKOUT_TOPIC, PPT_TOPIC, RECORDER_TOPIC, SPOTLIGHT_TOPIC, VIEW_TOPIC, WHITEBOARD_TOPIC,
+} from "@/components/classroom/room/constants"
 import type {
-  BreakoutAction, PptAction, RecorderStateAction, WhiteboardAction, WhiteboardSnapshot,
+  BreakoutAction, PptAction, RecorderStateAction, SpotlightAction, ViewAction, WhiteboardAction,
+  WhiteboardSnapshot,
 } from "@/components/classroom/room/types"
 import type { WhiteboardApi } from "@/components/classroom/room/TldrawBoard"
 
@@ -56,7 +62,7 @@ const TldrawBoard = dynamic(() => import("@/components/classroom/room/TldrawBoar
 const dec = new TextDecoder()
 const isTutor = (p: { metadata?: string } | undefined | null) => p?.metadata === "tutor"
 
-/** Sources the recording takes from a tutor; a student's are never subscribed. */
+/** Sources the recording takes from a tutor. From a student: the camera alone. */
 const TUTOR_SOURCES = new Set([
   Track.Source.Camera,
   Track.Source.Microphone,
@@ -127,7 +133,6 @@ export function RecorderView({ pass }: { pass: string | null }) {
         options={{ adaptiveStream: false }}
         connectOptions={{ autoSubscribe: false }}
       >
-        <TutorOnlySubscriptions />
         <RecordingStage sessionId={sessionId} />
         <LogoWatermark className="top-4 left-4" size={72} />
         <RoomReadyBridge />
@@ -136,14 +141,25 @@ export function RecorderView({ pass }: { pass: string | null }) {
   )
 }
 
-/** Subscribes to the tutors' camera, voice and screen — and to nothing of anyone else's. */
-function TutorOnlySubscriptions() {
+/** Which students the tutor is showing the class: nobody, one, or everyone. */
+type Shown = { gallery: boolean; spotlight: string | null }
+
+const isShown = (shown: Shown, p: { identity: string; metadata?: string }) =>
+  isTutor(p) || shown.gallery || shown.spotlight === p.identity
+
+/**
+ * Subscribes to the tutors' camera, voice and screen, and to the camera of a
+ * student the tutor is showing — nothing else of a student's, ever.
+ */
+function Subscriptions({ shown }: { shown: Shown }) {
   const participants = useRemoteParticipants()
   useEffect(() => {
     for (const p of participants as RemoteParticipant[]) {
       for (const pub of p.trackPublications.values()) {
         if (!(pub instanceof RemoteTrackPublication)) continue
-        const wanted = isTutor(p) && TUTOR_SOURCES.has(pub.source)
+        const wanted = isTutor(p)
+          ? TUTOR_SOURCES.has(pub.source)
+          : pub.source === Track.Source.Camera && isShown(shown, p)
         if (pub.isSubscribed !== wanted) pub.setSubscribed(wanted)
       }
     }
@@ -155,21 +171,23 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
   const [stage, setStage] = useState<Stage>(EMPTY_STAGE)
   const [whiteboardActive, setWhiteboardActive] = useState(false)
   const [breakouts, setBreakouts] = useState(false)
+  const [shown, setShown] = useState<Shown>({ gallery: false, spotlight: null })
   const lastLiveStage = useRef(0)
   const wbApi = useRef<WhiteboardApi | null>(null)
   const wbPending = useRef<{ snapshot: WhiteboardSnapshot | null; changes: unknown[]; presence: unknown }>({
     snapshot: null, changes: [], presence: null,
   })
 
-  // Only tracks we subscribed to are listed, and we subscribe to tutors only —
-  // the filter repeats the rule so a mistake upstream still can't leak a student.
-  const cameras = useTracks([Track.Source.Camera], { onlySubscribed: true })
-    .filter((t) => isTutor(t.participant)) as TrackReference[]
+  // Only tracks we subscribed to are listed — the filters repeat the rules so a
+  // mistake upstream still can't leak a student. Tutors first, as in the room.
+  const cameras = (useTracks([Track.Source.Camera], { onlySubscribed: true })
+    .filter((t) => isShown(shown, t.participant)) as TrackReference[])
+    .sort((a, b) => Number(isTutor(b.participant)) - Number(isTutor(a.participant)))
   const screens = useTracks([Track.Source.ScreenShare], { onlySubscribed: true })
     .filter((t) => isTutor(t.participant)) as TrackReference[]
   const voices = useTracks([Track.Source.Microphone, Track.Source.ScreenShareAudio], { onlySubscribed: true })
     .filter((t) => isTutor(t.participant)) as TrackReference[]
-  const tutorIdentity = cameras[0]?.participant.identity ?? null
+  const tutorIdentity = cameras.find((t) => isTutor(t.participant))?.participant.identity ?? null
 
   // ── What's on the stage, from the server, for a recording that starts (or
   // resumes) mid-presentation. Live messages below take over once they flow.
@@ -279,8 +297,30 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
       const data = JSON.parse(dec.decode(msg.payload)) as RecorderStateAction
       if (data.action !== "state") return
       setBreakouts(data.breakouts)
+      setShown({ gallery: data.gallery ?? false, spotlight: data.spotlight ?? null })
       setWhiteboardActive(data.whiteboard.active)
       applyWhiteboard(data.whiteboard.snapshot)
+    } catch { /* ignore malformed */ }
+  })
+
+  // What the tutor shows the class — followed here so the recording shows it too.
+  useDataChannel(SPOTLIGHT_TOPIC, (msg) => {
+    if (!isTutor(msg.from)) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as SpotlightAction
+      if (data.action === "set") setShown((s) => ({ ...s, spotlight: data.identity }))
+      else if (data.action === "clear") setShown((s) => ({ ...s, spotlight: null }))
+      else if (data.action === "sync_response") setShown((s) => ({ ...s, spotlight: data.identity }))
+    } catch { /* ignore malformed */ }
+  })
+
+  useDataChannel(VIEW_TOPIC, (msg) => {
+    if (!isTutor(msg.from)) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as ViewAction
+      if (data.action === "set" || data.action === "sync_response") {
+        setShown((s) => ({ ...s, gallery: data.view === "gallery" }))
+      }
     } catch { /* ignore malformed */ }
   })
 
@@ -296,15 +336,39 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
 
   if (breakouts) {
     return (
+      <>
+      <Subscriptions shown={{ gallery: false, spotlight: null }} />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-zinc-950 text-white">
         <p className="text-3xl font-bold">Breakout rooms</p>
         <p className="text-lg text-white/60">Not recorded — the class continues shortly.</p>
       </div>
+      </>
     )
   }
 
   const noop = () => {}
   let content: React.ReactNode = null
+  if (shown.gallery) {
+    // Gallery: the class sees everyone the same size and no stage, so does the
+    // recording. Faces only — no name labels.
+    const cols = Math.max(1, Math.ceil(Math.sqrt(cameras.length)))
+    return (
+      <>
+        <Subscriptions shown={shown} />
+        <div
+          className="absolute inset-0 grid gap-2 p-3"
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridAutoRows: "minmax(0, 1fr)" }}
+        >
+          {cameras.map((t) => (
+            <div key={t.publication.trackSid} className="relative min-h-0 rounded-lg overflow-hidden bg-zinc-900">
+              <VideoTrack trackRef={t} className="absolute inset-0 w-full h-full object-contain" />
+            </div>
+          ))}
+        </div>
+        {voices.map((t) => <AudioTrack key={t.publication.trackSid} trackRef={t} />)}
+      </>
+    )
+  }
   if (screens[0]) {
     content = <VideoTrack trackRef={screens[0]} className="w-full h-full object-contain" />
   } else if (whiteboardActive && sessionId) {
@@ -346,6 +410,7 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
 
   return (
     <>
+      <Subscriptions shown={shown} />
       <div className="absolute inset-0 flex gap-3 p-3">
         {content && <div className="relative flex-[7] min-w-0 rounded-lg overflow-hidden bg-zinc-950">{content}</div>}
         {cameras.length > 0 && (

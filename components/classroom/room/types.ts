@@ -275,4 +275,8 @@ export type RecorderStateAction = {
   action: "state"
   whiteboard: { active: boolean; snapshot: WhiteboardSnapshot | null }
   breakouts: boolean
+  /** Who the tutor has spotlighted for everyone, and whether the room is in
+   *  gallery — the only times the recording shows a student's face. */
+  spotlight?: string | null
+  gallery?: boolean
 }
