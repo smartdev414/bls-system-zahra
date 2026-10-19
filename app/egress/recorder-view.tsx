@@ -15,7 +15,9 @@
 //
 // What is recorded — and what is not (agreed with the school):
 //   • The tutor and any co-teacher: their cameras and their voices.
-//   • What they present: screen share, slides, a shared video, the whiteboard.
+//   • What they present: screen share, slides, a shared video, the whiteboard,
+//     and the tutor's hand pointer on the slides or video, so a viewer can
+//     follow what is being pointed at.
 //   • A student's FACE, only while the tutor shows them to the class: the one
 //     they spotlight for everyone, or everyone while the room is in gallery.
 //     That is how a viewer sees who was asked and how they answered. Any other
@@ -45,16 +47,19 @@ import {
   type TrackReference,
 } from "@livekit/components-react"
 import { ConnectionState, RemoteTrackPublication, Track, type RemoteParticipant } from "livekit-client"
+import { Pointer } from "lucide-react"
 import { LogoWatermark } from "@/components/layout/logo"
 import { PptSlideViewer } from "@/components/classroom/PptSlideViewer"
 import { VideoPlayer } from "@/components/classroom/room/VideoPlayer"
 import {
-  BREAKOUT_TOPIC, PPT_TOPIC, RECORDER_TOPIC, SPOTLIGHT_TOPIC, VIEW_TOPIC, WHITEBOARD_TOPIC,
+  BREAKOUT_TOPIC, POINTER_SMOOTHING_MS, POINTER_STALE_MS, POINTER_TOPIC, PPT_TOPIC, RECORDER_TOPIC,
+  SPOTLIGHT_TOPIC, VIEW_TOPIC, WHITEBOARD_TOPIC,
 } from "@/components/classroom/room/constants"
 import type {
-  BreakoutAction, PptAction, RecorderStateAction, SpotlightAction, ViewAction, WhiteboardAction,
-  WhiteboardSnapshot,
+  BreakoutAction, PointerAction, PptAction, RecorderStateAction, SpotlightAction, ViewAction,
+  WhiteboardAction, WhiteboardSnapshot,
 } from "@/components/classroom/room/types"
+import { useSlideContentBox } from "@/components/classroom/room/useSlideContentBox"
 import type { WhiteboardApi } from "@/components/classroom/room/TldrawBoard"
 
 const TldrawBoard = dynamic(() => import("@/components/classroom/room/TldrawBoard"), { ssr: false })
@@ -177,6 +182,15 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
   const wbPending = useRef<{ snapshot: WhiteboardSnapshot | null; changes: unknown[]; presence: unknown }>({
     snapshot: null, changes: [], presence: null,
   })
+  // The tutor's hand pointer, placed against the drawn slide (or video) as in
+  // the classroom, so it lands on the same thing in the recording.
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
+  const pointerSeq = useRef(-1)
+  const pointerAt = useRef(0)
+  const pointerHide = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stageAreaRef = useRef<HTMLDivElement>(null)
+  const [stageContentEl, setStageContentEl] = useState<HTMLElement | null>(null)
+  const stageContentBox = useSlideContentBox(stageAreaRef, stageContentEl)
 
   // Only tracks we subscribed to are listed — the filters repeat the rules so a
   // mistake upstream still can't leak a student. Tutors first, as in the room.
@@ -252,6 +266,32 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
       }
     } catch { /* ignore malformed */ }
   })
+
+  // Same rules as the students' copy in ClassroomRoom: drop reordered moves,
+  // and take the hand down if the tutor goes silent.
+  useDataChannel(POINTER_TOPIC, (msg) => {
+    if (!isTutor(msg.from)) return
+    try {
+      const data = JSON.parse(dec.decode(msg.payload)) as PointerAction
+      if (data.action === "move") {
+        if (typeof data.n === "number") {
+          const stale = Date.now() - pointerAt.current > 1_000
+          if (!stale && pointerSeq.current - data.n >= 0) return
+          pointerSeq.current = data.n
+          pointerAt.current = Date.now()
+        }
+        setPointer({ x: data.x, y: data.y })
+        if (pointerHide.current) clearTimeout(pointerHide.current)
+        pointerHide.current = setTimeout(() => setPointer(null), POINTER_STALE_MS)
+      } else if (data.action === "hide") {
+        setPointer(null)
+        pointerSeq.current = -1
+        pointerAt.current = 0
+        if (pointerHide.current) clearTimeout(pointerHide.current)
+      }
+    } catch { /* ignore malformed */ }
+  })
+  useEffect(() => () => { if (pointerHide.current) clearTimeout(pointerHide.current) }, [])
 
   const applyWhiteboard = useCallback((snapshot: WhiteboardSnapshot | null) => {
     if (!snapshot) return
@@ -393,7 +433,9 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
       </div>
     )
   } else if (stage.kind === "slides" && stage.url) {
-    content = <PptSlideViewer fileUrl={stage.url} currentPage={stage.page} onTotalPages={noop} />
+    content = (
+      <PptSlideViewer fileUrl={stage.url} currentPage={stage.page} onTotalPages={noop} onContentElement={setStageContentEl} />
+    )
   } else if (stage.kind === "video" && stage.url) {
     content = (
       <VideoPlayer
@@ -404,15 +446,42 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
         asOf={stage.asOf}
         onPlayPause={noop}
         onSeek={noop}
+        onContentElement={setStageContentEl}
       />
     )
+  }
+
+  // The hand only belongs on the slides or video it was pointed at — not over a
+  // screen share or the board that may have replaced them.
+  const pointerOnStage = !screens[0] && !(whiteboardActive && sessionId) && !!stage.kind && !!stage.url
+  let pointerStyle: React.CSSProperties | null = null
+  if (pointer && pointerOnStage && stageContentBox) {
+    const px = stageContentBox.left + pointer.x * stageContentBox.width
+    const py = stageContentBox.top + pointer.y * stageContentBox.height
+    pointerStyle = {
+      left: 0,
+      top: 0,
+      // lucide's Pointer puts the fingertip near (4, 2) of its 24×24 box.
+      transform: `translate3d(${px}px, ${py}px, 0) translate(-16.7%, -8.3%)`,
+      transition: `transform ${POINTER_SMOOTHING_MS}ms linear`,
+      filter: "drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000) drop-shadow(0 2px 6px rgba(0,0,0,0.85))",
+    }
   }
 
   return (
     <>
       <Subscriptions shown={shown} />
       <div className="absolute inset-0 flex gap-3 p-3">
-        {content && <div className="relative flex-[7] min-w-0 rounded-lg overflow-hidden bg-zinc-950">{content}</div>}
+        {content && (
+          <div ref={stageAreaRef} className="relative flex-[7] min-w-0 rounded-lg overflow-hidden bg-zinc-950">
+            {content}
+            {pointerStyle && (
+              <div className="absolute pointer-events-none z-40" style={pointerStyle} aria-hidden>
+                <Pointer className="size-9 text-white" strokeWidth={2.25} style={{ fill: "rgb(255 255 255 / 0.95)", stroke: "#000" }} />
+              </div>
+            )}
+          </div>
+        )}
         {cameras.length > 0 && (
           <div className={content ? "flex-[3] min-w-0 flex flex-col justify-center gap-3" : "flex-1 min-w-0 flex gap-3"}>
             {cameras.map((t) => (
