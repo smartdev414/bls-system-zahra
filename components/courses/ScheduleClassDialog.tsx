@@ -106,7 +106,6 @@ export function ScheduleClassDialog({
 
   const group = groups.find((g) => g.id === target)
   const occurrences = repeatWeekly ? Math.min(Math.max(weeks || 2, 2), 52) : 1
-  const today = new Date(); today.setHours(0, 0, 0, 0)
   const ready = !!date && !!time && (!mustAssignTutor || !!tutorId)
   const ends = time ? endOptions(time, durationMins) : []
 
@@ -114,6 +113,19 @@ export function ScheduleClassDialog({
     if (!date || !time) return null
     const [hours, minutes] = time.split(":").map(Number)
     return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours, minutes)
+  }
+
+  // Weeks already over when the timetable starts in the past: saved as held.
+  function heldCount(): number {
+    const start = startsAt()
+    if (!start) return 0
+    const now = Date.now()
+    let held = 0
+    for (let i = 0; i < occurrences; i++) {
+      const at = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i * 7, start.getHours(), start.getMinutes())
+      if (at.getTime() + durationMins * 60_000 <= now) held++
+    }
+    return held
   }
 
   // "10 classes · Mondays 18:00–19:00 · 5 Oct to 7 Dec" — what pressing the button creates.
@@ -124,10 +136,13 @@ export function ScheduleClassDialog({
     const clock = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
     if (occurrences === 1) {
-      return `1 class · ${start.toLocaleDateString("en-GB", { weekday: "long" })} ${day(start)}, ${clock(start)}–${clock(end)}`
+      return `1 class · ${start.toLocaleDateString("en-GB", { weekday: "long" })} ${day(start)}, ${clock(start)}–${clock(end)}` +
+        (heldCount() > 0 ? " · already held" : "")
     }
     const last = new Date(start.getFullYear(), start.getMonth(), start.getDate() + (occurrences - 1) * 7)
-    return `${occurrences} classes · ${start.toLocaleDateString("en-GB", { weekday: "long" })}s ${clock(start)}–${clock(end)} · ${day(start)} to ${day(last)}`
+    const held = heldCount()
+    return `${occurrences} classes · ${start.toLocaleDateString("en-GB", { weekday: "long" })}s ${clock(start)}–${clock(end)} · ${day(start)} to ${day(last)}` +
+      (held > 0 ? ` · the first ${held} already held` : "")
   }
 
   async function submit(e: React.FormEvent) {
@@ -197,7 +212,7 @@ export function ScheduleClassDialog({
           <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_8.5rem] gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>{repeatWeekly ? "First class" : "Date"}</Label>
-              <DatePicker value={date} onChange={setDate} placeholder="Pick a date" disabled={(d) => d < today} />
+              <DatePicker value={date} onChange={setDate} placeholder="Pick a date" />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sc-time">Starts</Label>

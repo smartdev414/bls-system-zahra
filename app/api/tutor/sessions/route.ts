@@ -222,11 +222,17 @@ async function handlePOST(req: NextRequest) {
 
     const occurrences = Math.min(Math.max(Math.floor(repeatWeeks) || 1, 1), 52)
     const baseDate = new Date(scheduledAt)
+    const now = new Date()
 
+    // A timetable may start in the past (a course that began before it was set up
+    // here): the weeks already over are saved as held, so they are history, not
+    // missed classes, and nobody is told about them.
     const created = await Promise.all(
       Array.from({ length: occurrences }, (_, i) => {
         const occursAt = new Date(baseDate)
         occursAt.setDate(occursAt.getDate() + i * 7)
+        const endsAt = new Date(occursAt.getTime() + durationMins * 60_000)
+        const held = endsAt <= now
         return prisma.liveSession.create({
           data: {
             tutorId: ownerId,
@@ -240,7 +246,8 @@ async function handlePOST(req: NextRequest) {
             groupId,
             inPerson,
             venue,
-            status: "SCHEDULED",
+            status: held ? "COMPLETED" : "SCHEDULED",
+            ...(held && { startedAt: occursAt, endedAt: endsAt }),
             visibility,
             ...(visibility === "INVITE_ONLY" && invitedStudentIds.length > 0 && {
               invites: {
@@ -252,11 +259,12 @@ async function handlePOST(req: NextRequest) {
       })
     )
 
-    const firstScheduledDate = baseDate.toLocaleString("en-GB", {
+    const upcoming = created.filter((s) => s.status === "SCHEDULED")
+    const firstScheduledDate = (upcoming[0] ?? created[0]).scheduledAt.toLocaleString("en-GB", {
       dateStyle: "medium",
       timeStyle: "short",
     })
-    const seriesSuffix = occurrences > 1 ? ` (weekly series, ${occurrences} sessions)` : ""
+    const seriesSuffix = upcoming.length > 1 ? ` (weekly series, ${upcoming.length} sessions)` : ""
     const sessionLink = `/student/classroom`
 
     // Co-teacher invites (independent of student visibility)
@@ -301,11 +309,13 @@ async function handlePOST(req: NextRequest) {
       }
     }
 
-    if (visibility === "INVITE_ONLY" && invitedStudentIds.length > 0) {
+    if (upcoming.length === 0) {
+      // Only past weeks: nothing for students to come to.
+    } else if (visibility === "INVITE_ONLY" && invitedStudentIds.length > 0) {
       void createNotifications(
         invitedStudentIds,
         "SESSION_INVITE",
-        occurrences > 1 ? "You've been invited to a weekly live session series" : "You've been invited to a live session",
+        upcoming.length > 1 ? "You've been invited to a weekly live session series" : "You've been invited to a live session",
         `${session.name} invited you to "${title.trim()}" starting ${firstScheduledDate}${seriesSuffix}`,
         sessionLink,
       )
@@ -318,7 +328,7 @@ async function handlePOST(req: NextRequest) {
       void createNotifications(
         studentIds,
         "SESSION_SCHEDULED",
-        occurrences > 1 ? "New weekly live session series scheduled" : "New live session scheduled",
+        upcoming.length > 1 ? "New weekly live session series scheduled" : "New live session scheduled",
         `${session.name} scheduled "${title.trim()}" starting ${firstScheduledDate}${seriesSuffix}`,
         sessionLink,
       )
