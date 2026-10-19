@@ -795,7 +795,9 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      {/* A test's recorder sits in a medium-size window: the word list goes
+          under the camera there rather than squeezing it from the side. */}
+      <div className={cn("grid gap-6", !listMode && "lg:grid-cols-[minmax(0,1fr)_18rem]")}>
         {/* Stage */}
         <div className="flex flex-col gap-4">
           <div className="flex min-h-[4.5rem] flex-col justify-center">
@@ -845,9 +847,10 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
               className="relative mx-auto overflow-hidden rounded-xl bg-black"
               // Narrowed, never squashed, when full width would make it taller than
               // the screen (a phone on its side) — the whole frame stays in view.
+              // A test's recorder is a medium-size window, so its camera is too.
               style={{
                 aspectRatio: videoAspect ?? 16 / 9,
-                width: `min(100%, calc(85svh * ${videoAspect ?? 16 / 9}))`,
+                width: `min(100%, calc(${listMode ? 55 : 85}svh * ${videoAspect ?? 16 / 9}))`,
               }}
             >
               <video
@@ -1139,7 +1142,7 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
         {/* Queue */}
         <Card className="h-fit shadow-sm">
           <CardContent className="p-2">
-            <div className="flex max-h-[32rem] flex-col gap-0.5 overflow-y-auto">
+            <div className={cn("flex flex-col gap-0.5 overflow-y-auto", listMode ? "max-h-48" : "max-h-[32rem]")}>
               {items.map((sign, i) => {
                 const status = statuses[sign.id]
                 return (

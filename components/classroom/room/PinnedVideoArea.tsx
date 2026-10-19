@@ -30,6 +30,7 @@ export function PinnedVideoArea({
   handRaised,
   onLowerHand,
   fit = "cover",
+  hideName = false,
 }: {
   identity: string
   localIdentity: string
@@ -69,6 +70,12 @@ export function PinnedVideoArea({
    * narrow camera beside wide short slides.
    */
   fit?: "cover" | "contain"
+  /**
+   * Leave the name off this tile. A classmate shown to the whole class by the
+   * tutor appears on every student's screen face only — the class sees who is
+   * signing without their name going up with them.
+   */
+  hideName?: boolean
 }) {
   const allParticipants = useParticipants()
   const camTracks       = useTracks([Track.Source.Camera])
@@ -82,7 +89,7 @@ export function PinnedVideoArea({
     (t) => t.participant.identity === identity && isTrackReference(t)
   )
   const active      = screenRef ?? camRef
-  const displayName = participant?.name ?? identity
+  const displayName = hideName ? "Classmate" : participant?.name ?? identity
   const mirrorLocalCamera = identity === localIdentity && !screenRef
 
   return (
@@ -110,7 +117,7 @@ export function PinnedVideoArea({
       ) : (
         <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-600">
           <div className="size-20 rounded-full bg-primary/10 flex items-center justify-center text-primary text-3xl font-bold">
-            {displayName[0]?.toUpperCase()}
+            {hideName ? "?" : displayName[0]?.toUpperCase()}
           </div>
           <span className="text-sm">{displayName} · Camera off</span>
         </div>
@@ -174,10 +181,12 @@ export function PinnedVideoArea({
       </div>
 
       <div className="absolute bottom-10 left-3 flex items-center gap-2">
-        <span className="bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
-          {handRaised && <span className="mr-1" aria-hidden>✋</span>}
-          {displayName}
-        </span>
+        {!hideName && (
+          <span className="bg-black/60 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full">
+            {handRaised && <span className="mr-1" aria-hidden>✋</span>}
+            {displayName}
+          </span>
+        )}
         {handRaised && (
           onLowerHand ? (
             <button

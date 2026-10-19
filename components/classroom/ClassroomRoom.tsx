@@ -4168,6 +4168,7 @@ export function ClassroomRoom({
       unpinTitle={paired ? "Close — give the whole stage back to the teacher" : undefined}
       showSpotlight={isTutor && id !== localParticipant.identity}
       spotlightActive={spotlightedId === id}
+      hideName={!isTutor && spotlightedId === id && id !== localParticipant.identity}
       onToggleSpotlight={handleToggleSpotlight}
       handRaised={raisedHandIds.has(id)}
       onLowerHand={isTutor ? handleLowerHand : undefined}

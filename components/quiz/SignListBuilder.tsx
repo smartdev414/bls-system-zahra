@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { FilmOverlay } from "./FilmOverlay"
@@ -69,6 +70,8 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
   const [listOpen, setListOpen] = useState(signs.length === 0)
   const [listText, setListText] = useState("")
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Signs ticked to film together, filmed or not — a whole test can be re-recorded in one go.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // Words typed in but not filmed yet — what the recorder works through.
   const unfilmed = signs.filter((s) => !s.imageUrl && !s.questionImageUploading && s.question.trim())
@@ -84,6 +87,26 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
   function record() {
     if (unfilmed.length) film(unfilmed)
     else setFilming([{ id: crypto.randomUUID(), word: "New sign" }])
+  }
+
+  // Only signs that can be filmed right now take part in the selection.
+  const selectable = signs.filter((s) => !s.questionImageUploading && !s.isSaving)
+  const chosen = selectable.filter((s) => selected.has(s.uid))
+  const allChosen = selectable.length > 0 && chosen.length === selectable.length
+
+  function toggle(uid: string, on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (on) next.add(uid)
+      else next.delete(uid)
+      return next
+    })
+  }
+
+  /** Films the ticked signs in list order; each new take replaces its video. */
+  function recordSelected() {
+    setFilming(chosen.map((s) => ({ id: s.uid, word: s.question.trim() || "New sign" })))
+    setSelected(new Set())
   }
 
   const have = new Set(signs.map((s) => s.question.trim().toLowerCase()))
@@ -136,11 +159,34 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
         <Hand className="size-4 text-primary" />
         <h3 className="font-semibold text-sm">{kind === "FINGERSPELLING" ? "Words to fingerspell" : "Signs"}</h3>
         <Badge variant="outline" className="text-[10px]">{signs.length}</Badge>
+        {selectable.length > 0 && (
+          <div className="ml-auto flex items-center gap-2">
+            {chosen.length > 0 && (
+              <Button type="button" size="sm" onClick={recordSelected}>
+                <Camera className="size-4 mr-1.5" /> Record {chosen.length} selected
+              </Button>
+            )}
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted-foreground">
+              <Checkbox
+                checked={allChosen}
+                onCheckedChange={(v) => setSelected(v === true ? new Set(selectable.map((s) => s.uid)) : new Set())}
+              />
+              Select all
+            </label>
+          </div>
+        )}
       </div>
 
       {signs.map((sign, i) => (
         <div key={sign.uid} className={cn("flex flex-col gap-1.5 rounded-xl border bg-background p-2", sign.error && "border-destructive/50")}>
           <div className="flex items-center gap-3">
+            <Checkbox
+              className="size-5 shrink-0"
+              aria-label={`Select sign ${i + 1} to record`}
+              checked={selected.has(sign.uid)}
+              disabled={sign.questionImageUploading || sign.isSaving}
+              onCheckedChange={(v) => toggle(sign.uid, v === true)}
+            />
             <div className="relative w-28 sm:w-36 aspect-video shrink-0 overflow-hidden rounded-lg border bg-muted flex items-center justify-center">
               {sign.imageUrl
                 ? isVideoMedia(sign.imageUrl, sign.mediaType)
