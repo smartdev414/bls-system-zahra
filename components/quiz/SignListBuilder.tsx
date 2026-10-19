@@ -80,6 +80,11 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
     if (ordered.length) setFilming(ordered.map((s) => ({ id: s.uid, word: s.question.trim() })))
   }
 
+  /** Films the words still without a video, or — when there are none — one new sign, named after. */
+  function record() {
+    if (unfilmed.length) film(unfilmed)
+    else setFilming([{ id: crypto.randomUUID(), word: "New sign" }])
+  }
 
   const have = new Set(signs.map((s) => s.question.trim().toLowerCase()))
   const typedWords = wordsFromList(listText).filter((w) => !have.has(w.toLowerCase()))
@@ -225,19 +230,23 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
 
       <FilmOverlay
         items={filming}
-        onRecorded={(uid, fileUrl) => patch(uid, (s) => ({ ...s, imageUrl: fileUrl, mediaType: "video", dirty: true, error: null }))}
+        onRecorded={(uid, fileUrl) => onChange((current) =>
+          current.some((s) => s.uid === uid)
+            ? current.map((s) => (s.uid === uid ? { ...s, imageUrl: fileUrl, mediaType: "video", dirty: true, error: null } : s))
+            // A new sign filmed without a word yet: it joins the list to be named.
+            : [...current, { ...newSign("", fileUrl), uid }])}
         onClose={() => setFilming(null)}
       />
 
       <div className="rounded-xl border border-dashed p-4 flex flex-col items-center gap-3 text-center">
         <p className="text-sm font-medium">{signs.length === 0 ? "Add the first sign" : "Add more signs"}</p>
         <div className="flex flex-wrap justify-center gap-2">
-          {unfilmed.length > 0 ? (
-            <Button type="button" onClick={() => film(unfilmed)}>
-              <Camera className="size-4 mr-1.5" /> Record {unfilmed.length} word{unfilmed.length > 1 ? "s" : ""}
-            </Button>
-          ) : !listOpen && (
-            <Button type="button" onClick={() => setListOpen(true)}>
+          <Button type="button" onClick={record}>
+            <Camera className="size-4 mr-1.5" />
+            {unfilmed.length > 0 ? `Record ${unfilmed.length} word${unfilmed.length > 1 ? "s" : ""}` : "Record"}
+          </Button>
+          {!listOpen && (
+            <Button type="button" variant="outline" onClick={() => setListOpen(true)}>
               <ListPlus className="size-4 mr-1.5" /> Bulk add words
             </Button>
           )}
@@ -254,11 +263,6 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
               />
             </label>
           </Button>
-          {unfilmed.length > 0 && !listOpen && (
-            <Button type="button" variant="outline" onClick={() => setListOpen(true)}>
-              <ListPlus className="size-4 mr-1.5" /> Bulk add words
-            </Button>
-          )}
           {onAddFromDictionary && (
             <Button type="button" variant="outline" onClick={onAddFromDictionary}>
               <Library className="size-4 mr-1.5" /> From the dictionary

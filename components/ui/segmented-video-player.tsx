@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { Play } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 // SegmentedVideoPlayer
 // ────────────────────
@@ -15,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 //   cache (S3 region, TLS handshake) without paying for the bytes twice.
 // • Surfaces a small "Part X of N" pill so users understand what they're
 //   watching when there are multiple segments. Hidden when there's only one.
+// • A row of "Part N" buttons under the video jumps straight to any part.
 //
 // Why no MediaSource Extensions / single buffer? MP4 segments produced by
 // independent egress jobs each carry their own moov atoms and timestamp
@@ -45,6 +48,8 @@ export function SegmentedVideoPlayer({
   const videoRef = useRef<HTMLVideoElement>(null)
   const [index, setIndex] = useState(0)
   const prefetchedRef = useRef<Set<number>>(new Set())
+  // Set when the viewer picks a part, so it starts playing as it loads.
+  const playOnSwapRef = useRef(false)
 
   // Reset to segment 0 when the parent passes a different list (e.g. another
   // session's recording is opened in the same dialog). Using the "store
@@ -82,7 +87,9 @@ export function SegmentedVideoPlayer({
     v.pause()
     v.src = currentSrc
     v.load()
-    if (autoPlay || index > 0 || wasPlaying) {
+    const picked = playOnSwapRef.current
+    playOnSwapRef.current = false
+    if (autoPlay || index > 0 || wasPlaying || picked) {
       // Index>0 means we just advanced from a prior segment — keep playing.
       v.play().catch(() => {
         // Autoplay can be blocked on first segment; user gesture resumes it.
@@ -112,24 +119,51 @@ export function SegmentedVideoPlayer({
     }
   }, [index, segments, total])
 
+  const pickPart = (i: number) => {
+    playOnSwapRef.current = true
+    if (i === index) {
+      const v = videoRef.current
+      if (v) { v.currentTime = 0; v.play().catch(() => {}) }
+    } else setIndex(i)
+  }
+
   return (
-    <div className="relative w-full">
-      <video
-        ref={videoRef}
-        controls
-        controlsList={controlsList}
-        disablePictureInPicture
-        poster={poster}
-        onEnded={handleEnded}
-        onTimeUpdate={handleTimeUpdate}
-        onContextMenu={(e) => e.preventDefault()}
-        className={className}
-        style={style}
-      />
+    <div className="flex w-full flex-col gap-2">
+      <div className="relative w-full">
+        <video
+          ref={videoRef}
+          controls
+          controlsList={controlsList}
+          disablePictureInPicture
+          poster={poster}
+          onEnded={handleEnded}
+          onTimeUpdate={handleTimeUpdate}
+          onContextMenu={(e) => e.preventDefault()}
+          className={className}
+          style={style}
+        />
+
+        {hasMultiple && (
+          <div className="absolute top-2 right-2 pointer-events-none rounded-full bg-black/65 backdrop-blur-sm text-white text-[11px] font-semibold px-2.5 py-1 shadow">
+            Part {index + 1} of {total}
+          </div>
+        )}
+      </div>
 
       {hasMultiple && (
-        <div className="absolute top-2 right-2 pointer-events-none rounded-full bg-black/65 backdrop-blur-sm text-white text-[11px] font-semibold px-2.5 py-1 shadow">
-          Part {index + 1} of {total}
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Recording parts">
+          {segments.map((segment, i) => (
+            <Button
+              key={segment}
+              type="button"
+              size="sm"
+              variant={i === index ? "default" : "outline"}
+              aria-current={i === index ? "true" : undefined}
+              onClick={() => pickPart(i)}
+            >
+              <Play className="size-3.5 mr-1.5" /> Part {i + 1}
+            </Button>
+          ))}
         </div>
       )}
     </div>
