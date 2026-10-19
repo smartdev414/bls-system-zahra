@@ -302,7 +302,9 @@ export function CourseGroups({
   }
 
   const loading = (roster.loading && !roster.data) || (groupsLoading && !groupData)
-  const empty = !loading && groups.length === 0 && students.length === 0
+  // A course with classes is not empty even before anyone signs up — face-to-face
+  // courses usually get their dates first.
+  const empty = !loading && groups.length === 0 && students.length === 0 && courseSessions.length === 0
 
   const table = (list: CourseStudent[]) => (
     <StudentProgressTable
@@ -377,6 +379,9 @@ export function CourseGroups({
               </Button>
               <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
                 <UserPlus className="size-4 mr-1.5" /> Add Students without a group
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setScheduleFor(WHOLE_COURSE)}>
+                <CalendarPlus className="size-4 mr-1.5" /> Schedule class for the whole course
               </Button>
             </div>
           </CardContent>
@@ -537,11 +542,17 @@ export function CourseGroups({
           {/* Classes for everyone on the course */}
           {courseSessions.length > 0 && (
             <Card className="shadow-sm overflow-hidden py-0 gap-0" data-group="Whole course">
-              <div className="px-4 pt-3.5 pb-2">
-                <p className="font-semibold text-sm">Classes for the whole course</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Everyone on the course can join these, whichever group they are in, unless marked otherwise.
-                </p>
+              <div className="flex items-start gap-2 px-4 pt-3.5 pb-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">Classes for the whole course</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Everyone on the course can join these, whichever group they are in, unless marked otherwise.
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" className="shrink-0" title="Schedule class" onClick={() => setScheduleFor(WHOLE_COURSE)}>
+                  <CalendarPlus className="size-4 @lg:mr-1.5" />
+                  <span className="hidden @lg:inline">Schedule class</span>
+                </Button>
               </div>
               <div className="border-t">
                 <ClassList sessions={courseSessions} onChanged={() => void refetchGroups()} showInviteOnly />
