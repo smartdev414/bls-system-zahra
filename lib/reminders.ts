@@ -16,6 +16,7 @@
 import prisma from "@/lib/prisma"
 import { createNotification } from "@/lib/notifications"
 import { BEHIND_AFTER_DAYS, reminderLink } from "@/lib/homework"
+import { completeOverdueLiveSessions } from "@/lib/live-session-status"
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -208,6 +209,9 @@ async function homeworkReminders(now: Date): Promise<number> {
 }
 
 export async function runReminders(now: Date = new Date()) {
+  // Not a reminder, but this is the job that runs on a clock: finish classes
+  // left live after their slot with nobody in the room.
+  await completeOverdueLiveSessions(now)
   const classes = await classReminders(now)
   const unlocked = await unlockReminders(now)
   const homework = await homeworkReminders(now)

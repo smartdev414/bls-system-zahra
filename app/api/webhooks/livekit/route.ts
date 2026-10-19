@@ -4,7 +4,7 @@ import { EgressStatus } from "@livekit/protocol"
 import prisma from "@/lib/prisma"
 import { withAudit } from "@/lib/audit"
 import { reconcileSessionRecording, startRecordingSegment } from "@/lib/recording"
-import { notifySessionStatusChange } from "@/lib/live-session-status"
+import { completeLiveSession, scheduledEnd } from "@/lib/live-session-status"
 
 const receiver = new WebhookReceiver(
   process.env.LIVEKIT_API_KEY!,
@@ -18,34 +18,23 @@ async function handlePOST(req: NextRequest) {
 
     const event = await receiver.receive(body, authorization)
 
-    // When everyone leaves the LiveKit room it closes; mark the session completed
-    // so co-teachers don't keep seeing "Live Now" after the host walked away.
+    // When everyone leaves the LiveKit room it closes. Once the booked slot is
+    // over that means the class is done, so mark it completed — co-teachers
+    // otherwise keep seeing "Live Now" after the host walked away. Before then
+    // it's a break (the tutor went for a cup of tea): the class stays live so
+    // they can come back, and completeOverdueLiveSessions finishes it later if
+    // nobody does.
     if (event.event === "room_finished") {
       const roomName = event.room?.name
       if (roomName) {
         const liveSession = await prisma.liveSession.findFirst({
           where: { roomName, status: "LIVE" },
         })
-        if (liveSession) {
-          const updated = await prisma.liveSession.update({
-            where: { id: liveSession.id },
-            data: {
-              status: "COMPLETED",
-              endedAt: liveSession.endedAt ?? new Date(),
-            },
-          })
-          void notifySessionStatusChange(
-            liveSession.id,
-            "COMPLETED",
-            updated.title,
-            liveSession.tutorId,
-          )
-          // The stage snapshot is what late joiners hydrate from — clear it with
-          // the room, so reopening this session never restores a finished lesson.
-          void prisma.liveSessionPresentation
-            .deleteMany({ where: { sessionId: liveSession.id } })
-            .catch(() => { /* best effort */ })
+        if (liveSession && scheduledEnd(liveSession) <= new Date()) {
+          await completeLiveSession(liveSession)
           console.info("[webhook/livekit] auto-completed session", liveSession.id, "after room finished")
+        } else if (liveSession) {
+          console.info("[webhook/livekit] room closed mid-slot; session", liveSession.id, "stays live")
         }
       }
     }

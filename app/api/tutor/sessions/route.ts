@@ -7,6 +7,7 @@ import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
 import { reconcilePendingRecordings } from "@/lib/recording"
+import { completeOverdueLiveSessions } from "@/lib/live-session-status"
 import { usableGroups } from "@/lib/course-groups"
 import { cleanVenue } from "@/lib/course-format"
 
@@ -58,6 +59,9 @@ async function handleGET(req: NextRequest) {
     } as const
 
     const staff = isStaff(session.role)
+
+    // Finish classes left live after their slot, so the timetable shows them done.
+    await completeOverdueLiveSessions()
 
     const [owned, coTutorLinks] = await Promise.all([
       prisma.liveSession.findMany({
