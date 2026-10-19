@@ -4,7 +4,7 @@ import { useState } from "react"
 import {
   Plus, Trash2, CheckCircle2, Circle, ArrowUp, ArrowDown,
   ChevronDown, ChevronUp, Loader2, Save, FlaskConical,
-  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2,
+  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2, ListPlus,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -13,12 +13,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { CameraRecorder } from "@/components/ui/camera-recorder"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { isSignTest, isVideoMedia } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
+import { FilmOverlay } from "./FilmOverlay"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -336,15 +335,16 @@ function QuestionCard({
   }
 
   // ── Film with the camera ── which slot the clip is for: the question (undefined) or an answer.
+  // The recorder shows what is being filmed, so it is named by its text where it has some.
   const [filming, setFilming] = useState<{ option?: number } | null>(null)
+  const filmingItem = filming && (filming.option === undefined
+    ? { id: "question", word: q.question.trim() || `Question ${index + 1}` }
+    : { id: String(filming.option), word: q.options[filming.option]?.text.trim() || `Answer ${filming.option + 1}` })
 
-  function applyFilmed(fileUrl: string) {
-    const target = filming
-    setFilming(null)
-    if (!target) return
+  function applyFilmed(id: string, fileUrl: string) {
     const media = { imageUrl: fileUrl, mediaType: "video" as const }
-    if (target.option === undefined) edit((cur) => ({ ...cur, ...media }))
-    else setOption(target.option, media)
+    if (id === "question") edit((cur) => ({ ...cur, ...media }))
+    else setOption(Number(id), media)
   }
 
   function addOption() {
@@ -665,15 +665,7 @@ function QuestionCard({
         </div>
       )}
 
-      <Dialog open={filming !== null} onOpenChange={(open) => { if (!open) setFilming(null) }}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{filming?.option === undefined ? "Film the question" : `Film answer ${filming.option + 1}`}</DialogTitle>
-            <DialogDescription>Record with your camera. When you save the clip it is added here.</DialogDescription>
-          </DialogHeader>
-          {filming && <CameraRecorder uploaded={null} silent onUploaded={(file) => applyFilmed(file.fileUrl)} />}
-        </DialogContent>
-      </Dialog>
+      <FilmOverlay items={filmingItem && [filmingItem]} onRecorded={applyFilmed} onClose={() => setFilming(null)} />
     </div>
   )
 }
@@ -684,6 +676,19 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }
   const [orderError, setOrderError] = useState<string | null>(null)
   // Where a sign chosen in the dictionary goes: a question's clip, or one of its answers.
   const [signTarget, setSignTarget] = useState<{ uid: string; option?: number } | null>(null)
+  // "Add questions": typed one per line, then filmed one after another.
+  const [listOpen, setListOpen] = useState(false)
+  const [listText, setListText] = useState("")
+  const [filming, setFilming] = useState<{ id: string; word: string }[] | null>(null)
+  const typedQuestions = listText.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
+
+  function addList() {
+    const added = typedQuestions.map((text) => ({ ...blankMultiple(), question: text, dirty: true }))
+    onChange((current) => [...current, ...added])
+    setListText("")
+    setListOpen(false)
+    setFilming(added.map((q) => ({ id: q.uid, word: q.question })))
+  }
 
   function applySign(sign: DictionarySign) {
     if (!signTarget) return
@@ -804,6 +809,37 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }
 
       {orderError && <p className="text-xs text-destructive">{orderError}</p>}
 
+      {listOpen && (
+        <div className="flex flex-col gap-2 rounded-xl border bg-muted/30 p-3">
+          <label htmlFor="question-list" className="text-sm font-medium">Type the questions you will sign</label>
+          <Textarea
+            id="question-list"
+            autoFocus
+            rows={5}
+            value={listText}
+            onChange={(e) => setListText(e.target.value)}
+            placeholder={"One question per line:\nWhat is this sign?\nWhich colour is this?"}
+          />
+          <p className="text-xs text-muted-foreground">
+            Each question shows on screen while you film it. Recording stops by itself when your hands come back to rest, then the next one comes up. Add the answers afterwards.
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" disabled={!typedQuestions.length} onClick={addList}>
+              <Camera className="size-4 mr-1.5" /> Start filming
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => { setListOpen(false); setListText("") }}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      <FilmOverlay
+        items={filming}
+        onRecorded={(uid, fileUrl) => onChange((current) => current.map((q) => (
+          q.uid === uid ? { ...q, imageUrl: fileUrl, mediaType: "video", dirty: true, error: null } : q
+        )))}
+        onClose={() => setFilming(null)}
+      />
+
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-muted-foreground">Add a question:</span>
         <Button type="button" variant="outline" size="sm" onClick={() => add("MULTIPLE_CHOICE")}>
@@ -811,6 +847,9 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={() => add("TRUE_FALSE")}>
           <Plus className="size-3.5 mr-1.5" /> True / False
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => setListOpen(true)}>
+          <ListPlus className="size-3.5 mr-1.5" /> Add and film several
         </Button>
         {onAddFromDictionary && (
           <Button type="button" variant="outline" size="sm" onClick={onAddFromDictionary}>

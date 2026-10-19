@@ -748,7 +748,7 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
             </Link>
           )}
           <h1 className="mt-1 flex items-center gap-2 text-2xl font-black tracking-tight">
-            <Video className="size-6 text-primary" /> {listMode ? "Film the words" : "Record sign videos"}
+            <Video className="size-6 text-primary" /> {listMode ? "Film your signs" : "Record sign videos"}
           </h1>
           <p className="mt-1 text-muted-foreground">
             {savedCount} saved{!listMode && " this session"} · {waitingCount} still without a video
@@ -824,7 +824,7 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {listMode
-                    ? "Every word has been filmed or skipped. Press Done to go back to the test, then save it."
+                    ? "Everything has been filmed or skipped. Press Done to go back to the test, then save it."
                     : items.length
                       ? "Every sign in this list has been recorded or skipped. Skipped signs come back next time."
                       : "Add words from the dictionary page (Bulk add takes a whole list) and they will appear here."}

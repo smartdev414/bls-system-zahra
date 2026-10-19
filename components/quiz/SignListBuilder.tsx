@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import dynamic from "next/dynamic"
 import { Camera, FolderOpen, Hand, Library, ListPlus, Loader2, RefreshCw, Trash2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
+import { FilmOverlay } from "./FilmOverlay"
 import { cn } from "@/lib/utils"
 import { isVideoMedia } from "@/lib/quiz"
 import { uploadMedia, type QuestionDraft } from "./QuizBuilder"
@@ -23,13 +23,6 @@ type Props = {
   /** Opens the dictionary to take signs from it. */
   onAddFromDictionary?: () => void
 }
-
-// The dictionary's recorder: shows each word while it is filmed and stops by
-// itself when the hands come back to rest. Browser only — it opens the camera.
-const SignRecordingStudio = dynamic(
-  () => import("@/components/admin/sign-recording-studio").then((m) => m.SignRecordingStudio),
-  { ssr: false, loading: () => <Loader2 className="mx-auto mt-24 size-8 animate-spin text-primary" /> }
-)
 
 /** "good-morning.mp4" → "good morning": a clip named after its word needs no typing. */
 function wordFromFileName(name: string): string {
@@ -231,15 +224,11 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
         </div>
       )}
 
-      {filming && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 sm:p-6">
-          <SignRecordingStudio
-            words={filming}
-            onRecorded={(uid, fileUrl) => patch(uid, (s) => ({ ...s, imageUrl: fileUrl, mediaType: "video", dirty: true, error: null }))}
-            onClose={() => setFilming(null)}
-          />
-        </div>
-      )}
+      <FilmOverlay
+        items={filming}
+        onRecorded={(uid, fileUrl) => patch(uid, (s) => ({ ...s, imageUrl: fileUrl, mediaType: "video", dirty: true, error: null }))}
+        onClose={() => setFilming(null)}
+      />
 
       <div className="rounded-xl border border-dashed p-4 flex flex-col items-center gap-3 text-center">
         <p className="text-sm font-medium">{signs.length === 0 ? "Add the first sign" : "Add more signs"}</p>
