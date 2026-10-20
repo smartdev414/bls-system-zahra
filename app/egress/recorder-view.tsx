@@ -452,9 +452,12 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
   }
 
   const tutorCams = cameras.filter((t) => isTutor(t.participant))
-  const studentCams = cameras.filter((t) => !isTutor(t.participant))
-  // The class packs into a grid beside the tutor, who stays the biggest face:
-  // the signing is what the recording is for.
+  // The student the tutor shows to the whole class gets a big tile beside the
+  // tutor, as in the room, so a viewer sees who was asked and how they answered.
+  const featured = cameras.find((t) => !isTutor(t.participant) && t.participant.identity === shown.spotlight) ?? null
+  const studentCams = cameras.filter((t) => !isTutor(t.participant) && t !== featured)
+  // The rest of the class packs into a grid beside the tutor, who stays the
+  // biggest face: the signing is what the recording is for.
   const studentCols = studentCams.length <= 1 ? 1 : Math.min(tutorCams.length > 0 ? 3 : 4, Math.ceil(Math.sqrt(studentCams.length)))
 
   // The hand only belongs on the slides or video it was pointed at — not over a
@@ -496,13 +499,18 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
                 <VideoTrack trackRef={t} className="absolute inset-0 w-full h-full object-contain" />
               </div>
             ))}
+            {featured && (
+              <div className="relative flex-1 min-h-0 rounded-lg overflow-hidden bg-zinc-900 ring-2 ring-amber-400">
+                <VideoTrack trackRef={featured} className="absolute inset-0 w-full h-full object-contain" />
+              </div>
+            )}
             {studentCams.length > 0 && (
               // The class as a grid, like the tutor's pop-out — a stack of a
               // dozen faces in one column would leave each a sliver.
               <div
                 className={cn(
                   "min-w-0 min-h-0 grid gap-2",
-                  tutorCams.length === 0 ? "flex-1" : content ? "flex-[2]" : "flex-[0.5]",
+                  tutorCams.length === 0 && !featured ? "flex-1" : content ? (featured ? "flex-1" : "flex-[2]") : "flex-[0.5]",
                 )}
                 style={{ gridTemplateColumns: `repeat(${studentCols}, minmax(0, 1fr))`, gridAutoRows: "minmax(0, 1fr)" }}
               >
