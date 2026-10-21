@@ -6,7 +6,7 @@ export default function SupportTimetablePage() {
   return (
     <SessionsManager
       heading="Timetable"
-      subheading="Schedule classes and put students in them"
+      subheading="Online classroom classes — face-to-face ones are under Face to face"
       scope={{
         // Office staff build the timetable but don't run the room, and lesson
         // material stays with the tutors.

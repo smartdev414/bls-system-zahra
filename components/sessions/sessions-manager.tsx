@@ -9,7 +9,7 @@ import {
   CalendarDays, List, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
   Globe, Lock, X, Pencil, Play, Copy,
-  Paperclip, FileText, Trash2, Repeat, FolderOpen, Download,
+  Paperclip, FileText, Trash2, Repeat, FolderOpen, Download, MapPin,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
@@ -61,6 +61,11 @@ export type SessionsScope = {
   basePath: string
   /** Creator can't teach the class themselves, so a lead tutor must be picked. */
   mustAssignTutor: boolean
+  /**
+   * The face-to-face calendar: only classes taught at a venue, scheduled for a
+   * face-to-face course. Without it the screen is the online classroom's.
+   */
+  faceToFace?: boolean
 }
 
 const TUTOR_SCOPE: SessionsScope = {
@@ -192,7 +197,7 @@ function buildMonthGrid(year: number, month: number): Date[][] {
 
 // ─── Schedule Session Dialog ──────────────────────────────────────────────────
 
-type CoursesData = { courses: Array<{ id: string; title: string }> }
+type CoursesData = { courses: Array<{ id: string; title: string; format?: "ONLINE" | "IN_PERSON" }> }
 type StudentResult = { id: string; name: string; email: string; avatarUrl: string | null }
 type TutorResult = { id: string; name: string; email: string; avatarUrl: string | null }
 type SessionBody = {
@@ -262,7 +267,13 @@ function ScheduleSessionDialog({
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const { data: coursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
+  const { data: allCoursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
+  // Each calendar only offers its own kind of course: a class is face to face
+  // exactly when its course is.
+  const faceToFace = !!scope.faceToFace
+  const coursesData = allCoursesData && {
+    courses: allCoursesData.courses.filter((c) => (c.format === "IN_PERSON") === faceToFace),
+  }
   const { data: leadTutorData } = useFetch<{ tutors: TutorResult[] }>(
     "/api/tutor/colleagues",
     { immediate: scope.mustAssignTutor, errorMessage: false }
@@ -427,7 +438,8 @@ function ScheduleSessionDialog({
   const loading = submitting
 
   const today = new Date(); today.setHours(0, 0, 0, 0)
-  const canSubmit = title.trim() && date && time
+  // A face-to-face class takes its venue from its course, so it needs one.
+  const canSubmit = title.trim() && date && time && (!faceToFace || courseId)
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v && !isEdit) resetForm() }}>
@@ -576,16 +588,20 @@ function ScheduleSessionDialog({
           )}
 
           {/* Course */}
-          {coursesData?.courses.length ? (
+          {faceToFace && !coursesData?.courses.length ? (
+            <p className="text-sm text-muted-foreground rounded-lg border border-dashed p-3">
+              No face-to-face courses yet. Create a course and choose “Face to face” first.
+            </p>
+          ) : coursesData?.courses.length ? (
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="s-course">Link to Course (optional)</Label>
+              <Label htmlFor="s-course">{faceToFace ? "Course" : "Link to Course (optional)"}</Label>
               <select
                 id="s-course"
                 value={courseId}
                 onChange={(e) => setCourseId(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="">No course</option>
+                <option value="">{faceToFace ? "Choose a course" : "No course"}</option>
                 {coursesData.courses.map((c) => (
                   <option key={c.id} value={c.id}>{c.title}</option>
                 ))}
@@ -1647,7 +1663,11 @@ export function SessionsManager({
     errorMessage: "Could not load sessions",
   })
 
-  const sessions = data?.sessions ?? []
+  const faceToFace = !!scope.faceToFace
+  const sessions = useMemo(
+    () => (data?.sessions ?? []).filter((s) => s.inPerson === faceToFace),
+    [data, faceToFace],
+  )
 
   // Co-teachers don't get a push when the host ends from another tab unless we
   // poll or listen — the layout listener dispatches SESSION_STATUS_EVENT.
@@ -1670,7 +1690,7 @@ export function SessionsManager({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Video className="size-5 text-primary" />
+            {faceToFace ? <MapPin className="size-5 text-primary" /> : <Video className="size-5 text-primary" />}
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tight">{heading}</h1>

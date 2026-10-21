@@ -468,6 +468,9 @@ return (
                 key={section.id}
                 courseId={id}
                 section={section}
+                laterLocked={course.sections.filter(
+                  (s) => s.order > section.order && s.lessons.some((l) => l.releaseAt && new Date(l.releaseAt) > new Date()),
+                ).length}
                 canEdit={canEdit}
                 isCollapsed={!!collapsed[section.id]}
                 onToggle={() => toggleSection(section.id)}
@@ -619,6 +622,7 @@ return (
 function SectionBlock({
   courseId,
   section,
+  laterLocked,
   canEdit,
   isCollapsed,
   onToggle,
@@ -629,6 +633,8 @@ function SectionBlock({
 }: {
   courseId: string
   section: SectionItem
+  /** Sections after this one that are still locked — moved along when its date changes. */
+  laterLocked: number
   canEdit: boolean
   isCollapsed: boolean
   onToggle: () => void
@@ -728,6 +734,7 @@ function SectionBlock({
                 sectionId={section.id}
                 releaseAt={sharedRelease(section)}
                 hasLessons={section.lessons.length > 0}
+                laterLocked={laterLocked}
                 onSaved={onMutated}
                 onOpenSchedule={onOpenSchedule}
               />

@@ -7,7 +7,7 @@ import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
   Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
-  CalendarDays, UserPlus, Headset, GraduationCap,
+  CalendarDays, UserPlus, Headset, GraduationCap, MapPin,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -63,6 +63,7 @@ const adminNav: NavItem[] = [
   { label: "Library", href: "/admin/library", icon: FolderOpen },
   { label: "Tests", href: "/admin/tests", icon: FlaskConical },
   { label: "Live Sessions", href: "/admin/sessions", icon: Video },
+  { label: "Face to face", href: "/admin/face-to-face", icon: MapPin },
   { label: "Students", href: "/admin/students", icon: GraduationCap },
   { label: "Users", href: "/admin/users", icon: Users },
 ]
@@ -81,6 +82,7 @@ const adminDropdownNav: NavItem[] = [
 const supportNav: NavItem[] = [
   { label: "Dashboard", href: "/support", icon: LayoutDashboard },
   { label: "Timetable", href: "/support/timetable", icon: CalendarDays },
+  { label: "Face to face", href: "/support/face-to-face", icon: MapPin },
   { label: "Enrolments", href: "/support/enrolments", icon: UserPlus },
   { label: "Courses", href: "/support/courses", icon: BookOpen },
   { label: "Students", href: "/support/students", icon: Users },
@@ -98,6 +100,7 @@ const tutorNav: NavItem[] = [
   { label: "Library", href: "/tutor/library", icon: FolderOpen },
   { label: "Tests", href: "/tutor/tests", icon: FlaskConical },
   { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
+  { label: "Face to face", href: "/tutor/face-to-face", icon: MapPin },
   { label: "Students", href: "/tutor/students", icon: Users },
   { label: "Reviews", href: "/tutor/reviews", icon: Star },
 ]

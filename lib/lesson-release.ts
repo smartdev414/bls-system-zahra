@@ -86,15 +86,27 @@ export function isValidTimeZone(timeZone: unknown): timeZone is string {
  * releases at 09:00 in September would land at 08:00 once the clocks go back,
  * and a September course copied for a November group crosses exactly that.
  */
-export function shiftReleaseAt(date: Date, days: number, timeZone: string): Date {
+export function shiftReleaseAt(date: Date, days: number, timeZone: string, minutes = 0): Date {
   const w = wallClock(date, timeZone)
   // The target wall-clock time, written as if it were UTC…
-  const wall = Date.UTC(w.year, w.month - 1, w.day + days, w.hour, w.minute, w.second)
+  const wall = Date.UTC(w.year, w.month - 1, w.day + days, w.hour, w.minute + minutes, w.second)
   // …then moved back by the zone's offset. Twice, so the offset used is the one
   // in force at the result rather than at the first guess.
   let utc = wall - zoneOffsetMs(new Date(wall), timeZone)
   utc = wall - zoneOffsetMs(new Date(utc), timeZone)
   return new Date(utc)
+}
+
+/**
+ * How far `to` is from `from` on the wall clock in `timeZone`, in minutes —
+ * "a week later, 30 minutes earlier" — so the same move can be made to other
+ * dates with `shiftReleaseAt(date, 0, timeZone, minutes)`.
+ */
+export function wallClockGapMinutes(from: Date, to: Date, timeZone: string): number {
+  const a = wallClock(from, timeZone)
+  const b = wallClock(to, timeZone)
+  const ms = Date.UTC(b.year, b.month - 1, b.day, b.hour, b.minute) - Date.UTC(a.year, a.month - 1, a.day, a.hour, a.minute)
+  return Math.round(ms / 60000)
 }
 
 /**

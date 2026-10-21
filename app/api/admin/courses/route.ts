@@ -15,7 +15,8 @@ async function handleGET(req: NextRequest) {
     const status = req.nextUrl.searchParams.get("status")?.toUpperCase()
     const q = req.nextUrl.searchParams.get("q")?.trim()
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
-    const limit = 20
+    // Pickers (e.g. "add to a course" when approving a student) ask for the lot.
+    const limit = Math.min(100, Math.max(1, parseInt(req.nextUrl.searchParams.get("limit") ?? "20") || 20))
     const skip = (page - 1) * limit
 
     const where = {

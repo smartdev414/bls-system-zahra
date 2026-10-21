@@ -4,7 +4,7 @@ import { useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Users, Search, Filter, Loader2, ShieldCheck,
-  UserCheck, Trash2, ChevronDown, Clock, Check, X,
+  UserCheck, Trash2, ChevronDown, Clock, Check, X, BookOpen,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
@@ -196,6 +199,7 @@ function UserRow({
   canDelete: boolean
 }) {
   const initials = user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+  const [approving, setApproving] = useState(false)
 
   const { execute: updateRole } = usePatchCallback<
     { user: UserItem },
@@ -217,11 +221,11 @@ function UserRow({
 
   const { execute: setStatus, loading: deciding } = usePatchCallback<
     { user: UserItem },
-    { status: "ACTIVE" | "REJECTED" }
+    { status: "ACTIVE" | "REJECTED"; courseIds?: string[] }
   >(`/api/admin/users/${user.id}`, {
     successMessage: (d) => (d.user.status === "ACTIVE" ? `${user.name} approved` : `${user.name} not approved`),
     errorMessage: "Could not update the account",
-    onSuccess: () => onMutated(),
+    onSuccess: () => { setApproving(false); onMutated() },
   })
 
   const { execute: deleteUser, loading: deleting } = useDeleteCallback(
@@ -282,7 +286,7 @@ function UserRow({
               <Button
                 size="sm"
                 disabled={deciding}
-                onClick={() => setStatus({ status: "ACTIVE" })}
+                onClick={() => setApproving(true)}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <Check className="size-3.5 mr-1" /> Approve
@@ -357,6 +361,96 @@ function UserRow({
           </div>
         </div>
       </CardContent>
+      {approving && (
+        <ApproveDialog
+          user={user}
+          saving={deciding}
+          onApprove={(courseIds) => setStatus({ status: "ACTIVE", courseIds })}
+          onClose={() => setApproving(false)}
+        />
+      )}
     </Card>
+  )
+}
+
+// ─── Approve — and put them on their course in the same step ─────────────────
+
+type CourseOption = { id: string; title: string; level: string | null; status: string; enrollmentCount: number }
+
+function ApproveDialog({ user, saving, onApprove, onClose }: {
+  user: UserItem
+  saving: boolean
+  onApprove: (courseIds: string[]) => void
+  onClose: () => void
+}) {
+  const { data, loading } = useFetch<{ courses: CourseOption[] }>("/api/admin/courses?status=published&limit=100", {
+    errorMessage: "Could not load courses",
+  })
+  const [picked, setPicked] = useState<string[]>([])
+  const courses = data?.courses ?? []
+
+  function toggle(id: string) {
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Approve {user.name}</DialogTitle>
+          <DialogDescription>Tick the course they&apos;re joining and they&apos;ll be on it as soon as they sign in.</DialogDescription>
+        </DialogHeader>
+        {user.signupNote && (
+          <p className="text-sm italic rounded-lg bg-muted/50 px-3 py-2 break-words">&ldquo;{user.signupNote}&rdquo;</p>
+        )}
+        {loading ? (
+          <div className="flex justify-center py-6"><Loader2 className="size-5 animate-spin text-primary" /></div>
+        ) : courses.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-2">No published courses yet — you can add them to one later.</p>
+        ) : (
+          <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+            {courses.map((c) => {
+              const on = picked.includes(c.id)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => toggle(c.id)}
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                    on ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <span className={`flex size-5 shrink-0 items-center justify-center rounded border ${
+                    on ? "bg-primary border-primary text-primary-foreground" : "border-input"
+                  }`}>
+                    {on && <Check className="size-3.5" />}
+                  </span>
+                  <BookOpen className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium truncate">{c.title}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {c.enrollmentCount} student{c.enrollmentCount === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={saving}
+            onClick={() => onApprove(picked)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {saving ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Check className="size-4 mr-1.5" />}
+            {picked.length === 0
+              ? "Approve"
+              : `Approve & add to ${picked.length === 1 ? "course" : `${picked.length} courses`}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

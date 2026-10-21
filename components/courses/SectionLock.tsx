@@ -25,12 +25,15 @@ function nextMondayMorning(): Date {
  * The padlock on a section header: sets the date the section opens to students
  * (next Monday 09:00 unless changed); on a locked section the same button
  * offers "Open now". Students see a locked section with its opening date.
+ * Changing a locked section's date moves the locked sections after it by the
+ * same amount (unless unticked) — one change for a week off, not ten.
  */
 export function SectionLock({
   courseId,
   sectionId,
   releaseAt,
   hasLessons,
+  laterLocked = 0,
   onSaved,
   onOpenSchedule,
 }: {
@@ -39,6 +42,8 @@ export function SectionLock({
   /** The date the section is locked until, or null when it is open. */
   releaseAt: string | null
   hasLessons: boolean
+  /** How many sections after this one are still locked. */
+  laterLocked?: number
   onSaved: () => void
   /** Opens the course-wide release schedule, for dating every section at once. */
   onOpenSchedule?: () => void
@@ -46,16 +51,22 @@ export function SectionLock({
   const [open, setOpen] = useState(false)
   const [date, setDate] = useState<Date | undefined>()
   const [time, setTime] = useState("09:00")
+  const [moveLater, setMoveLater] = useState(true)
 
   const locked = !!releaseAt && new Date(releaseAt) > new Date()
+  const showMoveLater = locked && laterLocked > 0
 
-  const { execute: save, loading } = usePatchCallback<{ ok: true }, { releaseAt: string | null }>(
+  const { execute: save, loading } = usePatchCallback<
+    { ok: true; moved?: number },
+    { releaseAt: string | null; moveLater?: boolean; timeZone?: string }
+  >(
     `/api/tutor/courses/${courseId}/sections/${sectionId}`,
     {
       successMessage: false,
       errorMessage: "Could not change the lock",
-      onSuccess: (_, body) => {
-        toast.success(body.releaseAt ? `Opens ${releaseLabel(body.releaseAt)}` : "Section open now")
+      onSuccess: (res, body) => {
+        const moved = res.moved ? ` · ${res.moved} later section${res.moved === 1 ? "" : "s"} moved too` : ""
+        toast.success(body.releaseAt ? `Opens ${releaseLabel(body.releaseAt)}${moved}` : "Section open now")
         setOpen(false)
         onSaved()
       },
@@ -67,6 +78,7 @@ export function SectionLock({
       const start = locked ? new Date(releaseAt!) : nextMondayMorning()
       setDate(start)
       setTime(timeOf(start))
+      setMoveLater(true)
     }
     setOpen(next)
   }
@@ -74,7 +86,11 @@ export function SectionLock({
   function lockUntil() {
     if (!date) return
     const [h, m] = time.split(":").map(Number)
-    save({ releaseAt: new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, m).toISOString() })
+    save({
+      releaseAt: new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, m).toISOString(),
+      moveLater: showMoveLater && moveLater,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    })
   }
 
   return (
@@ -103,6 +119,19 @@ export function SectionLock({
             {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
+        {showMoveLater && (
+          <label className="flex items-start gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-primary"
+              checked={moveLater}
+              onChange={(e) => setMoveLater(e.target.checked)}
+            />
+            <span>
+              Move the {laterLocked} later section{laterLocked === 1 ? "" : "s"} by the same amount
+            </span>
+          </label>
+        )}
         <div className="flex gap-2">
           {locked && (
             <Button variant="outline" size="sm" className="flex-1" disabled={loading} onClick={() => save({ releaseAt: null })}>

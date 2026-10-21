@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { can, roleLabel, type AppRole } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { createNotification } from "@/lib/notifications"
+import { enrolStudents } from "@/lib/course-groups"
 
 async function handlePATCH(
   req: NextRequest,
@@ -24,6 +25,8 @@ async function handlePATCH(
       isVerified?: boolean
       /** Approve or turn down a student who signed up on their own. */
       status?: "ACTIVE" | "REJECTED"
+      /** Courses to put a student on as they are approved, so staff don't have to do it after. */
+      courseIds?: string[]
     }
 
     const user = await prisma.user.findUnique({ where: { id } })
@@ -65,16 +68,34 @@ async function handlePATCH(
       if (user.role !== "STUDENT") {
         return NextResponse.json({ message: "Only student sign-ups are approved here" }, { status: 400 })
       }
+      const courseIds = body.status === "ACTIVE" && Array.isArray(body.courseIds) ? body.courseIds : []
+      if (courseIds.length > 0 && !can(session.role, "enrolments.manage")) {
+        return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+      }
+      const courses = courseIds.length > 0
+        ? await prisma.course.findMany({
+            where: { id: { in: courseIds }, status: { not: "ARCHIVED" } },
+            select: { id: true, title: true, tutorId: true },
+          })
+        : []
+
       await prisma.user.update({ where: { id }, data: { status: body.status } })
       // The student is sitting on the waiting page (or will be next time they
       // sign in); the email is how they find out.
       if (body.status === "ACTIVE") {
+        for (const course of courses) {
+          // The approval email below names the courses, so no separate enrolment email.
+          await enrolStudents(course, [id], session, { notifyStudents: false })
+        }
+        const onCourses = courses.map((c) => `"${c.title}"`).join(", ")
         void createNotification(
           id,
           "ACCOUNT_APPROVED",
           "Your account is approved",
-          "Welcome to Teach Me Sign! Your account has been approved — sign in to start learning.",
-          "/student",
+          courses.length > 0
+            ? `Welcome to Teach Me Sign! Your account has been approved and you've been added to ${onCourses} — sign in to start learning.`
+            : "Welcome to Teach Me Sign! Your account has been approved — sign in to start learning.",
+          courses.length === 1 ? `/student/lessons?courseId=${courses[0].id}` : "/student",
         )
       } else {
         void createNotification(

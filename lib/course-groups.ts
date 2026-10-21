@@ -38,6 +38,8 @@ export async function enrolStudents(
   course: { id: string; title: string; tutorId: string },
   studentIds: string[],
   actor: Actor,
+  /** False when the caller tells the students itself (e.g. in their approval email). */
+  { notifyStudents = true }: { notifyStudents?: boolean } = {},
 ): Promise<{ added: string[]; skipped: number }> {
   const students = await prisma.user.findMany({
     where: { id: { in: [...new Set(studentIds)] }, role: "STUDENT" },
@@ -72,13 +74,15 @@ export async function enrolStudents(
     await prisma.liveSessionInvite.createMany({ data: invites, skipDuplicates: true })
   }
 
-  void createNotifications(
-    added,
-    "NEW_ENROLLMENT",
-    "You've been added to a course",
-    `${actor.name} enrolled you in "${course.title}"`,
-    `/student/lessons?courseId=${course.id}`,
-  )
+  if (notifyStudents) {
+    void createNotifications(
+      added,
+      "NEW_ENROLLMENT",
+      "You've been added to a course",
+      `${actor.name} enrolled you in "${course.title}"`,
+      `/student/lessons?courseId=${course.id}`,
+    )
+  }
   // The lead only needs telling when somebody else did it for them.
   if (course.tutorId !== actor.sub) {
     void createNotification(
