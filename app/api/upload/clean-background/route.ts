@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { backgroundCleanConfigured, startBackgroundClean } from "@/lib/background-clean"
 import { isRawRecordingKey } from "@/lib/background-clean-keys"
+import { isBackgroundValue } from "@/lib/background-presets"
 
 // Background replacement after upload — see lib/background-clean.ts.
 
@@ -25,8 +26,8 @@ async function handlePOST(req: NextRequest) {
     if (!backgroundCleanConfigured()) return NextResponse.json({ message: "Not configured" }, { status: 503 })
 
     const { key, color } = await req.json() as { key?: string; color?: string }
-    if (typeof color !== "string" || !/^#[0-9a-f]{6}$/i.test(color)) {
-      return NextResponse.json({ message: "color must be #rrggbb" }, { status: 400 })
+    if (!isBackgroundValue(color)) {
+      return NextResponse.json({ message: "color must be #rrggbb or a background image" }, { status: 400 })
     }
     // Only a raw recording this user has just uploaded: `videos/{userId}/{uuid}/{name}.raw.webm`.
     const segments = typeof key === "string" ? key.split("/") : []

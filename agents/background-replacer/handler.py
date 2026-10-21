@@ -9,6 +9,7 @@ One job = one video:
   input.source_url   signed GET for the raw recording (camera as-is)
   input.upload_url   signed PUT the finished MP4 is sent to
   input.color        "#rrggbb" to put behind the tutor
+  input.background_url  optional picture to put behind the tutor instead (scaled to fill)
   input.logo_url     optional logo, stamped on the lower chest the way the recorder does
 
 The worker never holds storage credentials: it only sees the two signed URLs.
@@ -112,6 +113,19 @@ def build_logo(url, video_width, video_height):
     return rgb, alpha
 
 
+def build_background(url, video_width, video_height):
+    """A picture scaled to cover the frame and cropped to it, as float RGB (1, 3, H, W)."""
+    res = requests.get(url, timeout=30)
+    res.raise_for_status()
+    picture = Image.open(BytesIO(res.content)).convert("RGB")
+    scale = max(video_width / picture.width, video_height / picture.height)
+    w, h = max(video_width, round(picture.width * scale)), max(video_height, round(picture.height * scale))
+    picture = picture.resize((w, h), Image.LANCZOS)
+    x, y = (w - video_width) // 2, (h - video_height) // 2
+    picture = picture.crop((x, y, x + video_width, y + video_height))
+    return torch.from_numpy(np.array(picture)).to(DEVICE).float().permute(2, 0, 1).unsqueeze(0)
+
+
 @torch.inference_mode()
 def matte(frames):
     """frames: uint8 (B, H, W, 3) on DEVICE → person alpha, float (B, 1, H, W)."""
@@ -157,7 +171,7 @@ def person_colour(image, alpha):
     return blur_fusion(image, foreground, background, alpha, max(2, round(height * 0.006)))[0]
 
 
-def process(source, output, color, logo_url, on_progress):
+def process(source, output, color, logo_url, on_progress, background_url=None):
     width, height = probe_size(source)
     frame_bytes = width * height * 3
 
@@ -181,7 +195,10 @@ def process(source, output, color, logo_url, on_progress):
         stdin=subprocess.PIPE,
     )
 
-    background = torch.tensor(color, device=DEVICE).float().view(1, 3, 1, 1)
+    if background_url:
+        background = build_background(background_url, width, height)
+    else:
+        background = torch.tensor(color, device=DEVICE).float().view(1, 3, 1, 1)
     logo = build_logo(logo_url, width, height) if logo_url else None
 
     timings = {"matte": 0.0, "edges": 0.0}
@@ -316,6 +333,7 @@ def handler(job):
     upload_url = require_https("upload_url", data.get("upload_url"))
     color = parse_color(data.get("color"))
     logo_url = require_https("logo_url", data["logo_url"]) if data.get("logo_url") else None
+    background_url = require_https("background_url", data["background_url"]) if data.get("background_url") else None
 
     started = time.time()
     with tempfile.TemporaryDirectory() as work:
@@ -327,7 +345,7 @@ def handler(job):
             import runpod
             runpod.serverless.progress_update(job, f"{frames // FPS}s processed")
 
-        result = process(source, output, color, logo_url, on_progress)
+        result = process(source, output, color, logo_url, on_progress, background_url)
 
         with open(output, "rb") as body:
             res = requests.put(upload_url, data=body, headers={"Content-Type": "video/mp4"}, timeout=600)

@@ -31,6 +31,7 @@
 // against a flat colour, hence the separate renderer here.
 
 import type { ImageSegmenter } from "@mediapipe/tasks-vision"
+import { backgroundImage } from "@/lib/background-presets"
 
 // Keep in step with the @mediapipe/tasks-vision version in package.json — the
 // WASM runtime has to match the JS that drives it.
@@ -102,11 +103,22 @@ void main() {
   o = vec4(sum / weights, 0.0, 0.0, 1.0);
 }`
 
+// What goes behind the tutor: the flat colour, or a picture scaled to cover
+// the frame (u_bgScale is how much of the picture shows on each axis).
+const BACKGROUND_GLSL = `
+uniform vec3 u_color;
+uniform sampler2D u_bg;
+uniform float u_useBg;
+uniform vec2 u_bgScale;
+vec3 background(vec2 uv) {
+  return mix(u_color, texture(u_bg, (uv - 0.5) * u_bgScale + 0.5).rgb, u_useBg);
+}`
+
 const COMPOSITE_SHADER = `#version 300 es
 precision mediump float;
 uniform sampler2D u_frame;
 uniform sampler2D u_mask;
-uniform vec3 u_color;
+${BACKGROUND_GLSL}
 in vec2 v_uv;
 out vec4 o;
 void main() {
@@ -115,7 +127,7 @@ void main() {
   // middling confidence, so a cut biased any further inwards thins the fingers
   // and lets the flat colour bleed through them.
   float alpha = smoothstep(0.4, 0.7, person);
-  o = vec4(mix(u_color, texture(u_frame, v_uv).rgb, alpha), 1.0);
+  o = vec4(mix(background(v_uv), texture(u_frame, v_uv).rgb, alpha), 1.0);
 }`
 
 // Chroma key for the "backdrop" method. Works on colour only (the Cb/Cr part
@@ -160,7 +172,7 @@ uniform sampler2D u_cover;
 uniform sampler2D u_mask;
 uniform vec2 u_coverStep;
 uniform float u_useMask;
-uniform vec3 u_color;
+${BACKGROUND_GLSL}
 ${KEY_GLSL}
 in vec2 v_uv;
 out vec4 o;
@@ -200,7 +212,7 @@ void main() {
   float r = px.x + px.z / 0.713;
   float b = px.x + px.y / 0.564;
   float g = (px.x - 0.299 * r - 0.114 * b) / 0.587;
-  o = vec4(mix(u_color, clamp(vec3(r, g, b), 0.0, 1.0), alpha), 1.0);
+  o = vec4(mix(background(v_uv), clamp(vec3(r, g, b), 0.0, 1.0), alpha), 1.0);
 }`
 
 // The backdrop colour is read from a small copy of the frame: its top third,
@@ -351,10 +363,11 @@ export type BackgroundMethod = "auto" | "model" | "backdrop"
 
 export type LessonVideoCanvas = {
   /**
-   * Set the background colour (`#rrggbb`), or null for the real background.
+   * Set the background colour (`#rrggbb`) or picture (one of
+   * BACKGROUND_IMAGES), or null for the real background.
    * With the "model" and "auto" methods the first colour downloads the
    * segmentation model; the promise resolves once the colour is actually on
-   * screen and rejects if the model can't load. The "backdrop" method resolves at once
+   * screen and rejects if the model or picture can't load. The "backdrop" method resolves at once
    * and shows the colour as soon as a backdrop is found (see
    * `onBackdropDetected`).
    */
@@ -448,6 +461,7 @@ export function createLessonVideoCanvas(
 
   const frameTexture = createTexture(gl)
   const rawMaskTexture = createTexture(gl)
+  const backgroundTexture = createTexture(gl)
   // Two targets so the temporal pass can read last frame's mask while writing this one's.
   const history = [createMaskTarget(gl), createMaskTarget(gl)]
   const refined = createMaskTarget(gl)
@@ -456,6 +470,8 @@ export function createLessonVideoCanvas(
   let historyValid = false
   let maskBytes = new Uint8Array(0)
   let rgb: [number, number, number] | null = null
+  // Size of the picture in backgroundTexture while one is in use.
+  let picture: { width: number; height: number } | null = null
   let method: BackgroundMethod = "model"
   let backgroundRequest = 0
   let destroyed = false
@@ -544,6 +560,19 @@ export function createLessonVideoCanvas(
   }
   let output: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; track?: MediaStreamTrack } | null = null
 
+  const pictures = new Map<string, Promise<HTMLImageElement>>()
+  function loadPicture(src: string): Promise<HTMLImageElement> {
+    let loading = pictures.get(src)
+    if (!loading) {
+      const image = new Image()
+      image.src = src
+      loading = image.decode().then(() => image)
+      loading.catch(() => pictures.delete(src)) // let a later attempt retry
+      pictures.set(src, loading)
+    }
+    return loading
+  }
+
   // Must run in the same task as the frame's last draw call, while the WebGL
   // drawing buffer still holds it.
   function copyToOutput(width: number, height: number) {
@@ -590,6 +619,20 @@ export function createLessonVideoCanvas(
     gl.bindTexture(gl.TEXTURE_2D, frameTexture)
     if (on) gl.generateMipmap(gl.TEXTURE_2D)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, on ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
+  }
+
+  function setBackgroundUniforms(program: WebGLProgram, width: number, height: number) {
+    if (!rgb) return
+    gl.uniform3f(gl.getUniformLocation(program, "u_color"), rgb[0], rgb[1], rgb[2])
+    gl.uniform1f(gl.getUniformLocation(program, "u_useBg"), picture ? 1 : 0)
+    // Cover: fill the frame and crop whichever way the picture is too long.
+    const frameAspect = width / height
+    const pictureAspect = picture ? picture.width / picture.height : frameAspect
+    gl.uniform2f(
+      gl.getUniformLocation(program, "u_bgScale"),
+      frameAspect < pictureAspect ? frameAspect / pictureAspect : 1,
+      frameAspect > pictureAspect ? pictureAspect / frameAspect : 1,
+    )
   }
 
   function draw(target: MaskTarget | null, width: number, height: number) {
@@ -744,15 +787,15 @@ export function createLessonVideoCanvas(
       draw(cover, coverWidth, coverHeight)
 
       // Without a mask (model still loading, or it failed) the key works alone.
-      bind(chroma, { u_frame: frameTexture, u_cover: cover.texture, u_mask: haveMask ? refined.texture : cover.texture }, -1)
-      gl.uniform3f(gl.getUniformLocation(chroma, "u_color"), rgb[0], rgb[1], rgb[2])
+      bind(chroma, { u_frame: frameTexture, u_cover: cover.texture, u_mask: haveMask ? refined.texture : cover.texture, u_bg: backgroundTexture }, -1)
+      setBackgroundUniforms(chroma, width, height)
       gl.uniform2f(gl.getUniformLocation(chroma, "u_key"), key[0], key[1])
       gl.uniform2f(gl.getUniformLocation(chroma, "u_range"), start, end)
       gl.uniform2f(gl.getUniformLocation(chroma, "u_coverStep"), 1 / coverWidth, 1 / coverHeight)
       gl.uniform1f(gl.getUniformLocation(chroma, "u_useMask"), haveMask ? 1 : 0)
     } else {
-      bind(composite, { u_frame: frameTexture, u_mask: refined.texture }, -1)
-      gl.uniform3f(gl.getUniformLocation(composite, "u_color"), rgb[0], rgb[1], rgb[2])
+      bind(composite, { u_frame: frameTexture, u_mask: refined.texture, u_bg: backgroundTexture }, -1)
+      setBackgroundUniforms(composite, width, height)
     }
     draw(null, width, height)
     setFrameMipmaps(false)
@@ -784,12 +827,15 @@ export function createLessonVideoCanvas(
         rgb = null
         return
       }
+      const image = backgroundImage(hex)
+      const loadingPicture = image ? loadPicture(image.value) : null
       if (nextMethod === "backdrop") {
         // The key can start alone; the model joins in once it has loaded.
         if (!segmenter) loadSegmenter().catch((err) => console.warn("[lesson-video-canvas] model failed to load", err))
       } else if (!segmenter) {
         await loadSegmenter()
       }
+      const loaded = loadingPicture ? await loadingPicture : null
       // A newer choice was made while the model was loading — leave it be.
       if (destroyed || request !== backgroundRequest) return
       if (nextMethod !== method) {
@@ -800,7 +846,15 @@ export function createLessonVideoCanvas(
         framesSinceKeySample = KEY_SAMPLE_INTERVAL
       }
       method = nextMethod
-      rgb = hexToRgb(hex)
+      if (image && loaded) {
+        gl.bindTexture(gl.TEXTURE_2D, backgroundTexture)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, loaded)
+        picture = { width: loaded.naturalWidth, height: loaded.naturalHeight }
+        rgb = hexToRgb(image.average)
+      } else {
+        picture = null
+        rgb = hexToRgb(hex)
+      }
     },
     resampleBackdrop() {
       setKey(null)
@@ -836,6 +890,7 @@ export function createLessonVideoCanvas(
       }
       gl.deleteTexture(frameTexture)
       gl.deleteTexture(rawMaskTexture)
+      gl.deleteTexture(backgroundTexture)
       output = null
       gl.deleteBuffer(quad)
     },

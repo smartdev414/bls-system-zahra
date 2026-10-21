@@ -29,6 +29,7 @@ import { publicAppUrl } from "@/lib/publicUrl"
 import { createNotification } from "@/lib/notifications"
 import { cleanKeyFor, rawKeyFromUrl } from "@/lib/background-clean-keys"
 import { LOGO_MARK_SRC } from "@/components/layout/logo"
+import { backgroundImage } from "@/lib/background-presets"
 
 const RUNPOD_API = "https://api.runpod.ai/v2"
 // A job can wait for a worker to start and then run for several minutes per
@@ -101,6 +102,9 @@ async function sendToRunpod(job: Pick<VideoCleanJob, "id" | "rawKey" | "color">)
     getPresignedDownloadUrl(job.rawKey, JOB_URL_TTL_SECS),
     getPresignedUploadUrl(cleanKeyFor(job.rawKey), "video/mp4", JOB_URL_TTL_SECS),
   ])
+  // A picture goes as its URL, with its average colour for a worker that only
+  // knows colours.
+  const image = backgroundImage(job.color)
   const res = await fetch(`${RUNPOD_API}/${target.id}/run`, {
     method: "POST",
     headers: { Authorization: `Bearer ${target.key}`, "Content-Type": "application/json" },
@@ -108,7 +112,8 @@ async function sendToRunpod(job: Pick<VideoCleanJob, "id" | "rawKey" | "color">)
       input: {
         source_url: sourceUrl,
         upload_url: uploadUrl,
-        color: job.color,
+        color: image ? image.average : job.color,
+        ...(image ? { background_url: `${publicAppUrl()}${image.value}` } : {}),
         logo_url: `${publicAppUrl()}${LOGO_MARK_SRC}`,
       },
       webhook: `${publicAppUrl()}/api/webhooks/runpod?job=${job.id}&sig=${sign(job.id)}`,

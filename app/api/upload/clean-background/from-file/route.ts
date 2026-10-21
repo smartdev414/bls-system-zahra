@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { backgroundCleanConfigured, startBackgroundClean } from "@/lib/background-clean"
 import { rawRecordingName } from "@/lib/background-clean-keys"
-import { BACKGROUND_COLOR_RE } from "@/lib/background-presets"
+import { isBackgroundValue } from "@/lib/background-presets"
 import { findVisibleFile } from "@/lib/library-access"
 import { copyObject, objectExists, publicUrl } from "@/lib/s3"
 import { sanitizeUploadFileName } from "@/lib/upload-filename"
@@ -49,8 +49,8 @@ async function handlePOST(req: NextRequest) {
     }
 
     const body = await req.json() as { fileUrl?: string; color?: string; title?: string }
-    if (typeof body.color !== "string" || !BACKGROUND_COLOR_RE.test(body.color)) {
-      return NextResponse.json({ message: "color must be #rrggbb" }, { status: 400 })
+    if (!isBackgroundValue(body.color)) {
+      return NextResponse.json({ message: "color must be #rrggbb or a background image" }, { status: 400 })
     }
     if (typeof body.fileUrl !== "string") {
       return NextResponse.json({ message: "fileUrl is required" }, { status: 400 })

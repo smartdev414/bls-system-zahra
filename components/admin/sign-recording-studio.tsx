@@ -32,11 +32,15 @@ import {
 } from "@/lib/lesson-video-canvas"
 import { createHandsRestDetector, type HandsRestDetector } from "@/lib/hands-rest-detector"
 import { rawRecordingName } from "@/lib/background-clean-keys"
+import { BACKGROUND_IMAGES, DICTIONARY_BACKGROUND, backgroundImage, isBackgroundValue } from "@/lib/background-presets"
 import { setVideoCleanState } from "@/hooks/use-video-clean"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
-// Shared with the lesson recorder, so a colour chosen there carries over.
-const BACKGROUND_PREF_KEY = "recorder:background"
+// The dictionary's own, so every sign is filmed against the same blue unless
+// the person filming picks something else.
+const BACKGROUND_PREF_KEY = "sign-recorder:background"
+// Stored for "Original", so it isn't mistaken for "never chosen".
+const NO_BACKGROUND = "none"
 const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
 const STUDIO_PREFS_KEY = "sign-recorder:prefs"
 // Signs are watched full screen, where 720p looks soft: film at 1080p, with
@@ -83,16 +87,16 @@ type StudioPrefs = { review: boolean; countdown: number; autoStop: boolean }
 function readBackgroundPreference(): string | null {
   try {
     const value = window.localStorage.getItem(BACKGROUND_PREF_KEY)
-    return value && /^#[0-9a-f]{6}$/i.test(value) ? value : null
+    if (value === NO_BACKGROUND) return null
+    return isBackgroundValue(value) ? value : DICTIONARY_BACKGROUND
   } catch {
-    return null
+    return DICTIONARY_BACKGROUND
   }
 }
 
 function writeBackgroundPreference(color: string | null): void {
   try {
-    if (color) window.localStorage.setItem(BACKGROUND_PREF_KEY, color)
-    else window.localStorage.removeItem(BACKGROUND_PREF_KEY)
+    window.localStorage.setItem(BACKGROUND_PREF_KEY, color ?? NO_BACKGROUND)
   } catch {
     // Private mode / quota — ignore. The preference simply won't persist.
   }
@@ -305,7 +309,8 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
     ready && backgroundOn && rendererActive && !cleanLater && method !== "backdrop" && !backgroundReady
   const keying = method === "backdrop" || (method === "auto" && backdropDetected)
   const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
-  const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
+  const customBackground =
+    backgroundOn && !backgroundImage(background) && !BACKGROUND_PRESETS.some((p) => p.value === background)
   const canRecord = ready && !backgroundPending && !!current
   const savedCount = Object.values(statuses).filter((s) => s === "saved").length
   const uploadingCount = Object.values(statuses).filter((s) => s === "uploading").length
@@ -986,6 +991,22 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
             >
               Original
             </button>
+            {BACKGROUND_IMAGES.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                disabled={phase !== "idle"}
+                onClick={() => chooseBackground(preset.value)}
+                aria-label={`${preset.label} background`}
+                aria-pressed={background === preset.value}
+                title={preset.label}
+                className={cn(
+                  "size-7 rounded-full border bg-cover bg-center transition-shadow disabled:opacity-50",
+                  background === preset.value && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                )}
+                style={{ backgroundImage: `url("${preset.value}")` }}
+              />
+            ))}
             {BACKGROUND_PRESETS.map((preset) => (
               <button
                 key={preset.value}
@@ -1019,7 +1040,7 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
                 type="color"
                 aria-label="Custom background colour"
                 disabled={phase !== "idle"}
-                value={background ?? "#ffffff"}
+                value={backgroundImage(background)?.average ?? background ?? "#ffffff"}
                 onChange={(e) => chooseBackground(e.target.value)}
                 className="absolute inset-0 size-full cursor-pointer opacity-0"
               />
