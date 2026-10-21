@@ -404,6 +404,7 @@ function ScheduleSessionDialog({
             invitedTutorIds: invitedTutors.map((t) => t.id),
             ...(scope.mustAssignTutor ? { tutorId: leadTutorId } : {}),
             repeatWeeks: occurrences,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           }),
         })
         if (!res.ok) throw new Error((await res.json() as { message?: string }).message ?? "Could not schedule session")

@@ -165,6 +165,7 @@ export function ScheduleClassDialog({
           // class is open to everyone enrolled.
           ...(group ? { groupId: group.id } : { visibility: "PUBLIC" }),
           repeatWeeks: occurrences,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           ...(mustAssignTutor ? { tutorId } : {}),
           ...(inPerson ? { venue } : {}),
         }),

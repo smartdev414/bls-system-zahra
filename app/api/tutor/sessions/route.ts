@@ -10,6 +10,10 @@ import { reconcilePendingRecordings } from "@/lib/recording"
 import { completeOverdueLiveSessions } from "@/lib/live-session-status"
 import { usableGroups } from "@/lib/course-groups"
 import { cleanVenue } from "@/lib/course-format"
+import { isValidTimeZone, shiftReleaseAt } from "@/lib/lesson-release"
+
+/** For callers that do not send one (older app builds). */
+const DEFAULT_TIME_ZONE = "Europe/London"
 
 /**
  * Resolves the tutor a live session belongs to.
@@ -168,6 +172,8 @@ async function handlePOST(req: NextRequest) {
       invitedStudentIds?: string[]
       invitedTutorIds?: string[]
       repeatWeeks?: number
+      /** The teacher's time zone, so a weekly class keeps its time when the clocks change. */
+      timeZone?: string
       /** Staff only — the tutor who will take the class. */
       tutorId?: string
       /** The class is for this group: its members are invited, nobody else. */
@@ -222,6 +228,7 @@ async function handlePOST(req: NextRequest) {
 
     const occurrences = Math.min(Math.max(Math.floor(repeatWeeks) || 1, 1), 52)
     const baseDate = new Date(scheduledAt)
+    const timeZone = isValidTimeZone(body.timeZone) ? body.timeZone : DEFAULT_TIME_ZONE
     const now = new Date()
 
     // A timetable may start in the past (a course that began before it was set up
@@ -229,8 +236,9 @@ async function handlePOST(req: NextRequest) {
     // missed classes, and nobody is told about them.
     const created = await Promise.all(
       Array.from({ length: occurrences }, (_, i) => {
-        const occursAt = new Date(baseDate)
-        occursAt.setDate(occursAt.getDate() + i * 7)
+        // Same wall-clock time each week where the teacher is: 18:00 stays 18:00
+        // after the clocks go back, not 17:00 (the server itself runs on UTC).
+        const occursAt = shiftReleaseAt(baseDate, i * 7, timeZone)
         const endsAt = new Date(occursAt.getTime() + durationMins * 60_000)
         const held = endsAt <= now
         return prisma.liveSession.create({
