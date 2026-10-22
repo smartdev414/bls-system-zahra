@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { mediaGatewayPath } from "@/lib/protected-media"
-import { reconcileSessionRecording } from "@/lib/recording"
+import { discoverMp4Keys, reconcileSessionRecording } from "@/lib/recording"
+import { deleteObject } from "@/lib/s3"
 import { withAudit } from "@/lib/audit"
 import { recordingViewers } from "@/lib/session-access"
 
@@ -51,4 +52,47 @@ async function handleGET(
   }
 }
 
+// Delete one part of a class's recording — e.g. a test the tutor recorded
+// before teaching — so nobody can watch it. The part is named by the gateway
+// path GET handed out. The tutor who ran the class and admins only.
+async function handleDELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    if (session.role !== "TUTOR" && session.role !== "ADMIN") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+
+    const { id } = await params
+    const { segment } = (await req.json().catch(() => ({}))) as { segment?: string }
+
+    const liveSession = await prisma.liveSession.findFirst({
+      where: { id, ...(session.role === "ADMIN" ? {} : { tutorId: session.sub }) },
+    })
+    if (!liveSession) return NextResponse.json({ message: "Not found" }, { status: 404 })
+
+    const key = (await discoverMp4Keys(id)).find((k) => mediaGatewayPath(k) === segment)
+    if (!key) return NextResponse.json({ message: "That part no longer exists" }, { status: 404 })
+
+    if (liveSession.egressId && liveSession.recordingKey === key) {
+      return NextResponse.json(
+        { message: "This part is still recording. Stop the recording first." },
+        { status: 409 },
+      )
+    }
+
+    await deleteObject(key)
+
+    const { keys } = await reconcileSessionRecording(id, { pollEgress: false })
+    return NextResponse.json({ segments: keys.map(mediaGatewayPath) })
+  } catch (err) {
+    console.error("[DELETE /api/sessions/[id]/recording]", err)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
+}
+
 export const GET = withAudit(handleGET)
+export const DELETE = withAudit(handleDELETE)

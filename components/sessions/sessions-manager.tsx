@@ -975,6 +975,7 @@ function SessionCard({
   const [recordingOpen, setRecordingOpen] = useState(false)
   const [recordingSegments, setRecordingSegments] = useState<string[]>([])
   const [recordingLoading, setRecordingLoading] = useState(false)
+  const [deletingSegment, setDeletingSegment] = useState<string | null>(null)
 
   const { execute: patch, loading: patching } = usePatchCallback<
     { session: SessionItem },
@@ -1010,6 +1011,32 @@ function SessionCard({
       if (segs.length) { setRecordingSegments(segs); setRecordingOpen(true) }
     } finally {
       setRecordingLoading(false)
+    }
+  }
+
+  async function deleteRecordingPart(segment: string, name: string) {
+    if (!window.confirm(`Delete ${name}? Students will not see it. This cannot be undone.`)) return
+    setDeletingSegment(segment)
+    try {
+      const res = await fetch(`/api/sessions/${session.id}/recording`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ segment }),
+      })
+      const data = await res.json() as { segments?: string[]; message?: string }
+      if (!res.ok) {
+        toast.error(data.message ?? "Could not delete it")
+        return
+      }
+      const left = data.segments ?? []
+      setRecordingSegments(left)
+      if (left.length === 0) setRecordingOpen(false)
+      toast.success("Deleted")
+      onMutated?.()
+    } catch {
+      toast.error("Could not delete it")
+    } finally {
+      setDeletingSegment(null)
     }
   }
 
@@ -1213,17 +1240,34 @@ function SessionCard({
               autoPlay
             />
           )}
-          {/* Only teaching staff reach this dialog; students get no download. */}
+          {/* Only teaching staff reach this dialog; students get no download.
+              Deleting drops a part (say, a test before teaching) for good. */}
           {canWatch && recordingSegments.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {recordingSegments.map((segment, i) => (
-                <Button key={segment} asChild variant="outline" size="sm">
-                  <a href={mediaDownloadHref(segment)}>
-                    <Download className="size-4 mr-1.5" />
-                    {recordingSegments.length > 1 ? `Download part ${i + 1}` : "Download recording"}
-                  </a>
-                </Button>
-              ))}
+            <div className="flex flex-col gap-2">
+              {recordingSegments.map((segment, i) => {
+                const name = recordingSegments.length > 1 ? `part ${i + 1}` : "recording"
+                return (
+                  <div key={segment} className="flex flex-wrap gap-2">
+                    <Button asChild variant="outline" size="sm">
+                      <a href={mediaDownloadHref(segment)}>
+                        <Download className="size-4 mr-1.5" />
+                        Download {name}
+                      </a>
+                    </Button>
+                    <Button
+                      variant="outline" size="sm"
+                      className="text-destructive hover:text-destructive"
+                      disabled={deletingSegment !== null}
+                      onClick={() => deleteRecordingPart(segment, name)}
+                    >
+                      {deletingSegment === segment
+                        ? <Loader2 className="size-4 mr-1.5 animate-spin" />
+                        : <Trash2 className="size-4 mr-1.5" />}
+                      Delete {name}
+                    </Button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </DialogContent>
