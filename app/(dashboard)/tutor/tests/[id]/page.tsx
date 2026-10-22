@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 import {
-  QuizBuilder, isBlankQuestion, questionProblem, saveQuestionDraft, withSaved, type QuestionDraft,
+  QuizBuilder, isBlankQuestion, questionProblem, saveQuestionDraft, withSaved, type QuestionDraft, type QuestionKind,
 } from "@/components/quiz/QuizBuilder"
 import { SignListBuilder } from "@/components/quiz/SignListBuilder"
 import { AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker } from "@/components/quiz/TestKindFields"
@@ -41,7 +41,9 @@ type ApiQuestion = {
   mediaType: string | null
   videoControls: boolean
   questionAfterVideo: boolean
-  type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
+  type: QuestionKind
+  modelAnswer: string | null
+  answerVideoUrl: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
 
@@ -94,6 +96,8 @@ function toDraft(q: ApiQuestion): QuestionDraft {
     videoControls: q.videoControls,
     questionAfterVideo: q.questionAfterVideo,
     type: q.type,
+    modelAnswer: q.modelAnswer ?? undefined,
+    answerVideoUrl: q.answerVideoUrl ?? undefined,
     options: q.options.map((o) => ({
       id: o.id,
       text: o.text,
@@ -499,6 +503,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                 />
               ) : (
                 <QuizBuilder
+                  selfMarked
                   testId={id}
                   questions={questions}
                   onChange={(next) => { setQuestions(next); setError(null) }}

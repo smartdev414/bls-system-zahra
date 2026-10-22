@@ -54,8 +54,13 @@ async function handleGET(
         where: { lessonId: id, userId: studentId },
         orderBy: { createdAt: "desc" },
         select: {
-          id: true, score: true, passed: true, createdAt: true,
-          answers: { select: { questionId: true, optionId: true, optionIds: true, answerText: true, isCorrect: true } },
+          id: true, score: true, passed: true, selfMarked: true, createdAt: true,
+          answers: {
+            select: {
+              id: true, questionId: true, optionId: true, optionIds: true, answerText: true, videoUrl: true,
+              marks: true, markedByTutor: true, isCorrect: true,
+            },
+          },
         },
       })
       return NextResponse.json({ attempts })
@@ -75,7 +80,7 @@ async function handleGET(
       ? await prisma.quizAttempt.findMany({
           where: { lessonId: id, userId: { in: studentIds } },
           orderBy: { createdAt: "asc" },
-          select: { id: true, userId: true, score: true, passed: true, createdAt: true },
+          select: { id: true, userId: true, score: true, passed: true, selfMarked: true, createdAt: true },
         })
       : []
 
@@ -91,6 +96,8 @@ async function handleGET(
         bestScore: mine.length > 0 ? Math.max(...mine.map((a) => a.score)) : null,
         latestScore: latest?.score ?? null,
         lastAttemptAt: latest?.createdAt.toISOString() ?? null,
+        // Submitted, but the student has not marked their written or signed answers yet.
+        awaitingMarks: mine.some((a) => !a.selfMarked),
         status: passed ? "PASSED" : mine.length === 0 ? "NOT_STARTED" : left === 0 ? "FAILED" : "IN_PROGRESS",
       }
     })

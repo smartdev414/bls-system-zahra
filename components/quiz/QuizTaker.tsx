@@ -4,16 +4,18 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, XCircle, ChevronLeft,
-  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen, Check,
+  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen, Check, PenLine,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Textarea } from "@/components/ui/textarea"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
-import { chosenOptionIds, correctNeeded, isSignTest, isVideoMedia, type TestKind } from "@/lib/quiz"
+import { ANSWER_VIDEO_DAYS, attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, maxMarks, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
+import { SignAnswerRecorder } from "./SignAnswerRecorder"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -31,9 +33,22 @@ type Question = {
   questionAfterVideo?: boolean
   /** More than one answer is correct: the student ticks every one. */
   multiple?: boolean
+  /** WRITTEN: the model answer — sent once the student has submitted, to mark themselves against. */
+  modelAnswer?: string | null
+  /** SIGN: the sign done right — likewise only after submitting. */
+  answerVideoUrl?: string | null
 }
 
-type AttemptAnswer = { questionId: string; optionId: string | null; optionIds?: string[]; isCorrect: boolean }
+type AttemptAnswer = {
+  questionId: string; optionId: string | null; optionIds?: string[]; isCorrect: boolean
+  /** WRITTEN: what the student wrote. */
+  answerText?: string | null
+  /** SIGN: the student's recording; gone after 30 days. */
+  videoUrl?: string | null
+  /** WRITTEN / SIGN: the marks given; null until the student has marked it. */
+  marks?: number | null
+  markedByTutor?: boolean
+}
 
 type QuizData = {
   questions: Question[]
@@ -51,9 +66,14 @@ type QuizData = {
   attemptsLeft: number | null
   answersRevealed: boolean
   bestAttempt: (AttemptSummary & { answers: AttemptAnswer[] }) | null
+  /** Submitted, with written or signed answers the student has still to mark. */
+  pendingAttempt: (AttemptSummary & { answers: AttemptAnswer[] }) | null
 }
 
 type Result = {
+  attemptId: string
+  /** False until the student has marked their written and signed answers. */
+  selfMarked: boolean
   score: number
   passed: boolean
   correct: number
@@ -79,8 +99,16 @@ type Props = {
 // enrolment as well as test, so two students sharing a computer never see each
 // other's.
 
-/** The options ticked on each question — one, or several where more than one is correct. */
-type Draft = { selected: Record<string, string[]>; currentIndex: number }
+/**
+ * The options ticked on each question — one, or several where more than one is
+ * correct — and the written answers and recordings made so far.
+ */
+type Draft = { selected: Record<string, string[]>; texts: Record<string, string>; videos: Record<string, string>; currentIndex: number }
+
+const stringsOnly = (value: unknown): Record<string, string> =>
+  typeof value === "object" && value !== null
+    ? Object.fromEntries(Object.entries(value).filter((e): e is [string, string] => typeof e[1] === "string"))
+    : {}
 
 function draftKey(lessonId: string, enrollmentId: string | null) {
   return `bls-test-draft:${enrollmentId ?? "preview"}:${lessonId}`
@@ -96,7 +124,7 @@ function readDraft(key: string): Draft | null {
         q, (Array.isArray(ids) ? ids : [ids]).filter((id): id is string => typeof id === "string"),
       ])
     )
-    return { selected, currentIndex: Number(draft.currentIndex) || 0 }
+    return { selected, texts: stringsOnly(draft.texts), videos: stringsOnly(draft.videos), currentIndex: Number(draft.currentIndex) || 0 }
   } catch {
     return null
   }
@@ -161,6 +189,156 @@ function optionsLayout(q: Question, gridGap: string, listGap: string) {
   return cn("flex flex-col", listGap)
 }
 
+// ─── Written and signed answers — the student's next to the model ─────────────
+
+/** What the student wrote or signed, side by side with the model answer. */
+function AnswerAndModel({ question, answer }: { question: Question; answer?: AttemptAnswer }) {
+  const box = "rounded-lg border px-3 py-2 text-sm flex flex-col gap-1"
+  const label = "text-[10px] font-semibold uppercase tracking-wide"
+  if (question.type === "SIGN") {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <p className={cn(label, "text-muted-foreground")}>You</p>
+          {answer?.videoUrl
+            ? <ProtectedVideo src={answer.videoUrl} controls playsInline autoPlay muted loop className="w-full aspect-video rounded-lg border bg-black" />
+            : <p className="text-xs text-muted-foreground rounded-lg border px-3 py-6 text-center">
+                {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : `Your video has been deleted (videos are kept for ${ANSWER_VIDEO_DAYS} days)`}
+              </p>}
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className={cn(label, "text-emerald-600")}>The sign done right</p>
+          {question.answerVideoUrl && (
+            <ProtectedVideo src={question.answerVideoUrl} controls playsInline autoPlay muted loop className="w-full aspect-video rounded-lg border border-emerald-300 bg-black" />
+          )}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className={box}>
+        <p className={cn(label, "text-muted-foreground")}>Your answer</p>
+        <p className={cn("whitespace-pre-wrap", !answer?.answerText && "text-muted-foreground")}>{answer?.answerText || "Not answered"}</p>
+      </div>
+      <div className={cn(box, "border-emerald-300 bg-emerald-50 text-emerald-900")}>
+        <p className={cn(label, "text-emerald-600")}>Model answer</p>
+        <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
+      </div>
+    </div>
+  )
+}
+
+/** The marks given, as a badge: "2 / 3 marks", or a tick or cross for a signed answer. */
+function MarksBadge({ question, answer }: { question: Question; answer?: AttemptAnswer }) {
+  if (answer?.marks === null || answer?.marks === undefined) return <Badge variant="outline" className="text-[10px]">Not marked yet</Badge>
+  const full = answer.marks === maxMarks(question.type)
+  return (
+    <Badge variant="outline" className={cn("text-[10px]", full ? "bg-emerald-50 text-emerald-700 border-emerald-200" : answer.marks > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-rose-50 text-rose-700 border-rose-200")}>
+      {question.type === "SIGN" ? (full ? "✓ Correct" : "✗ Not right") : `${answer.marks} / ${maxMarks(question.type)} marks`}
+      {answer.markedByTutor && " · marked by your teacher"}
+    </Badge>
+  )
+}
+
+/**
+ * Straight after submitting: the student compares each written or signed
+ * answer with the model and marks it — 0 to 3 for writing, a tick or a cross
+ * for signing. Their score is worked out once every one is marked.
+ */
+function MarkAnswers({ lessonId, attemptId, questions, answers, onMarked }: {
+  lessonId: string
+  attemptId: string
+  questions: Question[]
+  answers: AttemptAnswer[]
+  onMarked: (result: { score: number; passed: boolean; earned: number; total: number; attemptsLeft: number | null }, marks: Record<string, number>) => void
+}) {
+  const toMark = questions.filter((q) => isSelfMarked(q.type) && answers.some((a) => a.questionId === q.id))
+  const [marks, setMarks] = useState<Record<string, number>>(() =>
+    Object.fromEntries(answers.flatMap((a) => (typeof a.marks === "number" ? [[a.questionId, a.marks]] : []))))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const left = toMark.filter((q) => marks[q.id] === undefined).length
+
+  async function finish() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/student/lessons/${lessonId}/quiz/attempt/${attemptId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marks }),
+      })
+      const body = await res.json().catch(() => ({})) as { score: number; passed: boolean; earned: number; total: number; attemptsLeft: number | null; message?: string }
+      if (!res.ok) throw new Error(body.message ?? "Could not save your marks")
+      onMarked(body, marks)
+    } catch (e) {
+      setError(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "Could not save your marks. Check your connection and try again.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-5 py-4">
+      <div>
+        <h3 className="font-bold flex items-center gap-2"><PenLine className="size-4 text-primary" /> Mark your answers</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Compare each answer with the correct one and mark it honestly. Your teacher can see your marks and may change them.
+        </p>
+      </div>
+
+      {toMark.map((q) => {
+        const answer = answers.find((a) => a.questionId === q.id)
+        const blank = answer?.marks === 0 && !answer.answerText && !answer.videoUrl
+        const max = maxMarks(q.type)
+        return (
+          <div key={q.id} className="rounded-xl border p-4 flex flex-col gap-3">
+            <p className="text-sm font-medium">{questions.indexOf(q) + 1}. {q.question}</p>
+            <AnswerAndModel question={q} answer={answer} />
+            {blank ? (
+              <p className="text-xs text-muted-foreground">Not answered — 0 marks.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium">
+                  {q.type === "SIGN" ? "Does your signing match?" : "How many marks did you get? More detail that matches the model answer earns more."}
+                </p>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={`Marks for question ${questions.indexOf(q) + 1}`}>
+                  {(q.type === "SIGN" ? [1, 0] : Array.from({ length: max + 1 }, (_, n) => n)).map((n) => (
+                    <Button
+                      key={n}
+                      type="button"
+                      size="sm"
+                      role="radio"
+                      aria-checked={marks[q.id] === n}
+                      variant={marks[q.id] === n ? "default" : "outline"}
+                      className={cn("min-w-12", q.type === "SIGN" && marks[q.id] === n && (n ? "bg-emerald-600 hover:bg-emerald-600" : "bg-rose-600 hover:bg-rose-600"))}
+                      onClick={() => setMarks((m) => ({ ...m, [q.id]: n }))}
+                    >
+                      {q.type === "SIGN" ? (n ? <><Check className="size-4 mr-1" /> Yes</> : <><XCircle className="size-4 mr-1" /> No</>) : n}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {error && (
+        <p role="alert" className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">{error}</p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={finish} disabled={left > 0 || saving}>
+          {saving ? <><Loader2 className="size-4 mr-1.5 animate-spin" /> Saving…</> : "Finish and see my score"}
+        </Button>
+        {left > 0 && <span className="text-xs text-muted-foreground">{left === 1 ? "1 answer" : `${left} answers`} still to mark</span>}
+      </div>
+    </div>
+  )
+}
+
 // ─── Review — one attempt's answers, question by question ─────────────────────
 
 function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
@@ -175,13 +353,17 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
   const isRight = (q: Question) => !!answers.find((a) => a.questionId === q.id)?.isCorrect
   const right = questions.filter(isRight).length
   const wrong = questions.length - right
+  // With written answers (worth up to 3) the score is in marks, not questions right.
+  const marks = questions.some((q) => isSelfMarked(q.type)) ? attemptScore(questions, answers) : null
 
   return (
     <div className="flex flex-col gap-5 py-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="font-bold">Review Answers</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">{right} of {questions.length} correct</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {marks ? `${marks.earned} of ${marks.total} marks` : `${right} of ${questions.length} correct`}
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={onBack}>
           <ChevronLeft className="size-4 mr-1" /> Back
@@ -213,14 +395,16 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
             <div className="flex items-start gap-2">
               {answer?.isCorrect
                 ? <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
-                : <XCircle className="size-4 text-rose-500 shrink-0 mt-0.5" />}
+                : <XCircle className={cn("size-4 shrink-0 mt-0.5", answer?.marks ? "text-amber-500" : "text-rose-500")} />}
               <div className="flex flex-col gap-2 flex-1">
                 <p className="text-sm font-medium">{i + 1}. {q.question}</p>
                 <QuestionMedia question={q} className="max-h-48 self-start" />
-                {chosenOptionIds(answer).length === 0 && <p className="text-xs text-rose-600">Not answered</p>}
+                {isSelfMarked(q.type) && <div className="self-start"><MarksBadge question={q} answer={answer} /></div>}
+                {!isSelfMarked(q.type) && chosenOptionIds(answer).length === 0 && <p className="text-xs text-rose-600">Not answered</p>}
               </div>
             </div>
-            <div className={cn(
+            {isSelfMarked(q.type) && <div className="sm:pl-6"><AnswerAndModel question={q} answer={answer} /></div>}
+            {!isSelfMarked(q.type) && <div className={cn(
               "sm:pl-6",
               optionsLayout(q, "gap-2", "gap-1.5")
             )}>
@@ -267,7 +451,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
                   </div>
                 )
               })}
-            </div>
+            </div>}
           </div>
         )
       })}
@@ -292,10 +476,12 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   })
 
   const storageKey = draftKey(lessonId, enrollmentId)
-  const [view, setView] = useState<"start" | "taking" | "result" | "review-result" | "review-best">("start")
+  const [view, setView] = useState<"start" | "taking" | "marking" | "result" | "review-result" | "review-best">("start")
   // Starts from whatever was answered last time, if the test was left part-way.
   const [stored] = useState(() => readDraft(storageKey))
   const [rawSelected, setSelected] = useState<Record<string, string[]>>(stored?.selected ?? {})
+  const [texts, setTexts] = useState<Record<string, string>>(stored?.texts ?? {})
+  const [videos, setVideos] = useState<Record<string, string>>(stored?.videos ?? {})
   const [currentIndex, setCurrentIndex] = useState(stored?.currentIndex ?? 0)
   const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -307,8 +493,8 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   const topRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (view === "taking") writeDraft(storageKey, { selected: rawSelected, currentIndex })
-  }, [view, storageKey, rawSelected, currentIndex])
+    if (view === "taking") writeDraft(storageKey, { selected: rawSelected, texts, videos, currentIndex })
+  }, [view, storageKey, rawSelected, texts, videos, currentIndex])
 
   if (!data) {
     return loading
@@ -356,11 +542,17 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
       return kept.length > 0 ? [[q.id, kept]] : []
     })
   ) as Record<string, string[]>
-  const answered = Object.keys(selected).length
-  const firstUnanswered = questions.findIndex((q) => !selected[q.id])
+  const isAnswered = (q: Question) =>
+    q.type === "WRITTEN" ? !!texts[q.id]?.trim() : q.type === "SIGN" ? !!videos[q.id] : !!selected[q.id]
+  const answered = questions.filter(isAnswered).length
+  const firstUnanswered = questions.findIndex((q) => !isAnswered(q))
+  const hasMarks = questions.some((q) => isSelfMarked(q.type))
+  const pending = data.pendingAttempt
 
   function start() {
     setSelected({})
+    setTexts({})
+    setVideos({})
     setCurrentIndex(0)
     setResult(null)
     setError(null)
@@ -401,17 +593,23 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
     setSubmitting(true)
     setError(null)
     try {
-      const answers = questions.map((q) => ({ questionId: q.id, optionIds: selected[q.id] ?? [] }))
+      const answers = questions.map((q) =>
+        q.type === "WRITTEN" ? { questionId: q.id, text: texts[q.id] ?? "" }
+        : q.type === "SIGN" ? { questionId: q.id, videoUrl: videos[q.id] }
+        : { questionId: q.id, optionIds: selected[q.id] ?? [] })
       const res = await fetch(`/api/student/lessons/${lessonId}/quiz/attempt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enrollmentId, answers }),
       })
-      const body = await res.json() as Omit<Result, "answers"> & { attempt: { answers: AttemptAnswer[] }; message?: string }
+      const body = await res.json() as Omit<Result, "answers" | "attemptId"> & { attempt: { id: string; answers: AttemptAnswer[] }; message?: string }
       if (!res.ok) throw new Error(body.message ?? "Could not submit your answers")
-      setResult({ ...body, answers: body.attempt.answers })
-      setView("result")
+      setResult({ ...body, attemptId: body.attempt.id, answers: body.attempt.answers })
+      // Written and signed answers are marked by the student before the score.
+      setView(body.selfMarked ? "result" : "marking")
       setSelected({})
+      setTexts({})
+      setVideos({})
       setConfirming(false)
       writeDraft(storageKey, null)
       if (body.passed) onCompleted()
@@ -424,6 +622,41 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         : "Could not submit your answers. Check your connection and try again.")
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // ── Marking — straight after submitting, or coming back to it ─────────────
+  if (view === "marking") {
+    const marking = result && !result.selfMarked
+      ? { attemptId: result.attemptId, questions: result.questions, answers: result.answers }
+      : pending && { attemptId: pending.id, questions, answers: pending.answers }
+    if (marking) {
+      return (
+        <MarkAnswers
+          lessonId={lessonId}
+          attemptId={marking.attemptId}
+          questions={marking.questions}
+          answers={marking.answers}
+          onMarked={(marked, marks) => {
+            setResult({
+              attemptId: marking.attemptId,
+              selfMarked: true,
+              score: marked.score,
+              passed: marked.passed,
+              correct: marked.earned,
+              total: marked.total,
+              passMark: result?.passMark ?? settings.passMark,
+              attemptsLeft: marked.attemptsLeft,
+              answersRevealed: result?.answersRevealed ?? data.answersRevealed,
+              questions: marking.questions,
+              answers: marking.answers.map((a) => (a.questionId in marks ? { ...a, marks: marks[a.questionId], isCorrect: a.isCorrect || marks[a.questionId] === maxMarks(marking.questions.find((q) => q.id === a.questionId)?.type) } : a)),
+            })
+            setView("result")
+            if (marked.passed) onCompleted()
+            void refetch()
+          }}
+        />
+      )
     }
   }
 
@@ -445,7 +678,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         <div>
           <p className="text-3xl font-black">{result.score}%</p>
           <p className="text-muted-foreground mt-1">
-            {result.correct} / {result.total} correct
+            {result.correct} / {result.total} {hasMarks ? "marks" : "correct"}
           </p>
         </div>
 
@@ -463,7 +696,9 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
 
         {!result.passed && (
           <p className="text-sm text-muted-foreground max-w-sm">
-            {missed === 1 ? "One more correct answer" : `${missed} more correct answers`} would have passed.
+            {hasMarks
+              ? missed === 1 ? "One more mark" : `${missed} more marks`
+              : missed === 1 ? "One more correct answer" : `${missed} more correct answers`} would have passed.
             {result.attemptsLeft === 0
               ? " You have no attempts left. Speak to your teacher if you need another go."
               : ` Look over your answers, then try again${left ? ` — ${left}` : ""}.`}
@@ -520,7 +755,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
     // Watch first, then answer: such a question waits until its video has
     // played through, unless it was answered already (e.g. coming back to it).
     const waitingForVideo = !!q?.questionAfterVideo && isVideoMedia(q.imageUrl, q.mediaType) &&
-      !watched.has(q.id) && !selected[q.id]?.length
+      !watched.has(q.id) && !isAnswered(q)
     const progress = Math.round((answered / questions.length) * 100)
     const isLast = currentIndex === questions.length - 1
     const allAnswered = answered === questions.length
@@ -552,17 +787,17 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
           <nav aria-label="Questions" className="flex flex-wrap gap-1.5">
             {questions.map((question, i) => {
               const isCurrent = i === currentIndex
-              const isAnswered = !!selected[question.id]
+              const done = isAnswered(question)
               return (
                 <button
                   key={question.id}
                   type="button"
                   onClick={() => go(i)}
                   aria-current={isCurrent ? "step" : undefined}
-                  aria-label={`Question ${i + 1}, ${isAnswered ? "answered" : "not answered"}`}
+                  aria-label={`Question ${i + 1}, ${done ? "answered" : "not answered"}`}
                   className={cn(
                     "size-8 rounded-lg border text-xs font-semibold transition-colors",
-                    isAnswered ? "bg-primary/10 border-primary/30 text-primary" : "bg-background text-muted-foreground hover:bg-muted",
+                    done ? "bg-primary/10 border-primary/30 text-primary" : "bg-background text-muted-foreground hover:bg-muted",
                     isCurrent && "ring-2 ring-primary ring-offset-1"
                   )}
                 >
@@ -609,8 +844,42 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
               className="max-h-64 mx-auto"
             />
 
+            {!waitingForVideo && q.type === "WRITTEN" && (
+              <div className="flex flex-col gap-1.5">
+                <Textarea
+                  aria-labelledby={`question-${q.id}`}
+                  rows={4}
+                  maxLength={5000}
+                  placeholder="Type your answer"
+                  value={texts[q.id] ?? ""}
+                  onChange={(e) => setTexts((t) => ({ ...t, [q.id]: e.target.value }))}
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">Up to 3 marks — the more detail, the more marks. You mark it yourself after you submit.</p>
+              </div>
+            )}
+
+            {!waitingForVideo && q.type === "SIGN" && (
+              <div className="flex flex-col gap-1.5">
+                <SignAnswerRecorder
+                  key={q.id}
+                  lessonId={lessonId}
+                  videoUrl={videos[q.id]}
+                  onChange={(url) => setVideos((v) => {
+                    const next = { ...v }
+                    if (url) next[q.id] = url
+                    else delete next[q.id]
+                    return next
+                  })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Film yourself signing it. After you submit, the correct sign plays next to yours and you mark it yourself.
+                </p>
+              </div>
+            )}
+
             {/* Options — side by side when they are pictures or videos */}
-            {!waitingForVideo && (
+            {!waitingForVideo && !isSelfMarked(q.type) && (
               <div role={q.multiple ? "group" : "radiogroup"} aria-labelledby={`question-${q.id}`} className={optionsLayout(q, "gap-3", "gap-2")}>
                 {q.options.map((opt, n) => {
                   const isSelected = !!selected[q.id]?.includes(opt.id)
@@ -784,7 +1053,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
             <div className="flex items-center gap-2">
               {!isLast && (
                 <Button variant={allAnswered ? "outline" : "default"} onClick={() => go(currentIndex + 1)}>
-                  {selected[q?.id] ? "Next" : "Skip"} <ChevronRight className="size-4 ml-1" />
+                  {q && isAnswered(q) ? "Next" : "Skip"} <ChevronRight className="size-4 ml-1" />
                 </Button>
               )}
               {/* Offered as soon as everything is answered, wherever the student is */}
@@ -854,7 +1123,18 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-center gap-3">
+      {pending && (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-center">
+          <p className="text-sm text-amber-900">
+            You submitted this test but haven&apos;t marked your written or signed answers yet. Mark them to get your score.
+          </p>
+          <Button onClick={() => setView("marking")}>
+            <PenLine className="size-4 mr-1.5" /> Mark your answers
+          </Button>
+        </div>
+      )}
+
+      {!pending && <div className="flex flex-wrap items-center justify-center gap-3">
         {canAttempt && inProgress ? (
           <>
             <Button onClick={resume} disabled={!enrollmentId}>
@@ -878,7 +1158,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         {bestAttempt && (
           <Button variant="outline" onClick={() => setView("review-best")}>Review answers</Button>
         )}
-      </div>
+      </div>}
 
       {canAttempt && inProgress && (
         <p className="text-xs text-muted-foreground text-center">

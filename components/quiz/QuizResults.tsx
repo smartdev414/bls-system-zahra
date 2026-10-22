@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import {
-  CheckCircle2, ChevronDown, ChevronUp, Download, Loader2, RotateCcw, Search, XCircle,
+  CheckCircle2, ChevronDown, ChevronUp, Circle, Download, Loader2, RotateCcw, Search, XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,8 @@ import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
-import { chosenOptionIds } from "@/lib/quiz"
+import { ProtectedVideo } from "@/components/ui/protected-video"
+import { ANSWER_VIDEO_DAYS, chosenOptionIds, isSelfMarked, maxMarks } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,8 @@ type StudentResult = {
   latestScore: number | null
   lastAttemptAt: string | null
   status: Status
+  /** Submitted, but the student has not marked their written or signed answers yet. */
+  awaitingMarks?: boolean
 }
 
 type ResultsData = {
@@ -40,18 +43,34 @@ type ResultsData = {
   seesAnswers: boolean
 }
 
+type AttemptAnswer = {
+  id: string
+  questionId: string
+  optionId: string | null
+  optionIds?: string[]
+  answerText?: string | null
+  videoUrl?: string | null
+  marks?: number | null
+  markedByTutor?: boolean
+  isCorrect: boolean
+}
+
 type Attempt = {
   id: string
   score: number
   passed: boolean
+  selfMarked?: boolean
   createdAt: string
-  answers: Array<{ questionId: string; optionId: string | null; optionIds?: string[]; answerText?: string | null; isCorrect: boolean }>
+  answers: AttemptAnswer[]
 }
 
 /** The test's questions, as the lesson page already has them — to name what a student chose. */
 export type ResultsQuestion = {
   id: string
   question: string
+  type?: string
+  modelAnswer?: string | null
+  answerVideoUrl?: string | null
   options: Array<{ id: string; text: string; isCorrect?: boolean }>
 }
 
@@ -108,15 +127,114 @@ function shortDate(iso: string) {
 // Fixed widths (not `auto`) so the headings sit exactly over their columns.
 const COLUMNS = "grid-cols-[minmax(0,1fr)_6.5rem_2rem] sm:grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_5.5rem_7.5rem_6.5rem_2rem]"
 
+// ─── A written or signed answer, with the marks the student gave ───────────────
+
+/**
+ * What the student wrote or signed next to the model answer, the marks they
+ * gave themselves, and buttons to change them. A change is saved straight away
+ * and the attempt's score follows.
+ */
+function MarkedAnswer({ lessonId, question, answer, onChanged }: {
+  lessonId: string
+  question: ResultsQuestion
+  answer: AttemptAnswer
+  onChanged: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const max = maxMarks(question.type)
+  const isSign = question.type === "SIGN"
+
+  async function setMarks(marks: number) {
+    if (marks === answer.marks) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/tutor/lessons/${lessonId}/results/answers/${answer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marks }),
+      })
+      const data = await res.json().catch(() => ({})) as { message?: string }
+      if (!res.ok) throw new Error(data.message ?? "Could not change the marks")
+      toast.success("Marks changed")
+      onChanged()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not change the marks")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 mt-1">
+      {isSign ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student</span>
+            {answer.videoUrl
+              ? <ProtectedVideo src={answer.videoUrl} controls playsInline className="w-full aspect-video rounded-md border bg-black" />
+              : <p className="rounded-md border px-2 py-4 text-center text-muted-foreground">
+                  {answer.marks === 0 && !answer.markedByTutor ? "No video recorded" : `Video deleted (kept for ${ANSWER_VIDEO_DAYS} days)`}
+                </p>}
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">The sign done right</span>
+            {question.answerVideoUrl && (
+              <ProtectedVideo src={question.answerVideoUrl} controls playsInline className="w-full aspect-video rounded-md border border-emerald-300 bg-black" />
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
+          <div className="rounded-md border bg-background px-2 py-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student</span>
+            <p className={cn("whitespace-pre-wrap", !answer.answerText && "text-muted-foreground")}>{answer.answerText || "Not answered"}</p>
+          </div>
+          <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-emerald-900">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Model answer</span>
+            <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-muted-foreground mr-1">
+          {answer.marks === null || answer.marks === undefined
+            ? "Not marked by the student yet."
+            : answer.markedByTutor ? "Marked by a teacher:" : "Student's mark:"}
+        </span>
+        {(isSign ? [1, 0] : Array.from({ length: max + 1 }, (_, n) => n)).map((n) => (
+          <Button
+            key={n}
+            type="button"
+            size="sm"
+            variant={answer.marks === n ? "default" : "outline"}
+            className="h-7 min-w-9 px-2 text-xs"
+            disabled={saving}
+            aria-pressed={answer.marks === n}
+            title={answer.marks === n ? undefined : "Change the marks to this"}
+            onClick={() => setMarks(n)}
+          >
+            {isSign ? (n ? "✓" : "✗") : n}
+          </Button>
+        ))}
+        {!isSign && <span className="text-muted-foreground">/ {max}</span>}
+        {saving && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+      </div>
+    </div>
+  )
+}
+
 // ─── One student's attempts and what they answered ────────────────────────────
 
-function StudentAttempts({ lessonId, student, questions, onReset }: {
+function StudentAttempts({ lessonId, student, questions, onReset, onMarksChanged }: {
   lessonId: string
   student: StudentResult
   questions: ResultsQuestion[]
   onReset: () => void
+  /** A teacher changed a mark: the scores in the table move too. */
+  onMarksChanged: () => void
 }) {
-  const { data, loading } = useFetch<{ attempts: Attempt[] }>(
+  const { data, loading, refetch } = useFetch<{ attempts: Attempt[] }>(
     `/api/tutor/lessons/${lessonId}/results?studentId=${student.id}`,
     { errorMessage: "Could not load this student's attempts" },
   )
@@ -160,6 +278,9 @@ function StudentAttempts({ lessonId, student, questions, onReset }: {
               Attempt {data.attempts.length - i} · {shortDate(attempt.createdAt)}
             </span>
             <span className="flex items-center gap-2">
+              {attempt.selfMarked === false && (
+                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">Student hasn&apos;t marked it yet</Badge>
+              )}
               <span className="font-semibold">{attempt.score}%</span>
               {attempt.passed
                 ? <CheckCircle2 className="size-3.5 text-emerald-500" />
@@ -178,6 +299,27 @@ function StudentAttempts({ lessonId, student, questions, onReset }: {
                 const chosen = q.options.filter((o) => ids.includes(o.id))
                 const name = (o: ResultsQuestion["options"][number]) => o.text || `option ${q.options.indexOf(o) + 1}`
                 const right = q.options.filter((o) => o.isCorrect)
+                if (isSelfMarked(q.type)) {
+                  const full = answer.marks === maxMarks(q.type)
+                  return (
+                    <li key={q.id} className="flex items-start gap-2 px-3 py-2 text-xs">
+                      {answer.marks === null || answer.marks === undefined
+                        ? <Circle className="size-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                        : full
+                        ? <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                        : <XCircle className={cn("size-3.5 shrink-0 mt-0.5", answer.marks > 0 ? "text-amber-500" : "text-rose-500")} />}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{n + 1}. {q.question}</p>
+                        <MarkedAnswer
+                          lessonId={lessonId}
+                          question={q}
+                          answer={answer}
+                          onChanged={() => { void refetch(); onMarksChanged() }}
+                        />
+                      </div>
+                    </li>
+                  )
+                }
                 return (
                   <li key={q.id} className="flex items-start gap-2 px-3 py-2 text-xs">
                     {answer.isCorrect
@@ -378,7 +520,7 @@ export function QuizResults({ lessonId, questions }: { lessonId: string; questio
                   </span>
 
                   <Badge variant="outline" className={cn("text-[10px] justify-self-start", STATUS[student.status].className)}>
-                    {STATUS[student.status].label}
+                    {student.awaitingMarks ? "Not marked yet" : STATUS[student.status].label}
                     {/* On a phone the score columns are hidden, so it rides along here. */}
                     {student.bestScore !== null && <span className="sm:hidden ml-1">· {student.bestScore}%</span>}
                   </Badge>
@@ -402,6 +544,7 @@ export function QuizResults({ lessonId, questions }: { lessonId: string; questio
                       student={student}
                       questions={questions}
                       onReset={() => { setOpenStudent(null); void refetch() }}
+                      onMarksChanged={() => void refetch()}
                     />
                   </div>
                 )}

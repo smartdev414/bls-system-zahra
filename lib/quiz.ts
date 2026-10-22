@@ -214,3 +214,66 @@ export function chosenOptionIds(answer: { optionId: string | null; optionIds?: s
   if (answer.optionIds && answer.optionIds.length > 0) return answer.optionIds
   return answer.optionId ? [answer.optionId] : []
 }
+
+// ─── Questions the student marks ──────────────────────────────────────────────
+
+/**
+ * Written and signed answers cannot be marked by the server. Once the attempt
+ * is submitted the student sees the model answer (or the sign's video next to
+ * their own) and marks themselves; a teacher can change the marks afterwards.
+ */
+export function isSelfMarked(type: string | null | undefined): type is "WRITTEN" | "SIGN" {
+  return type === "WRITTEN" || type === "SIGN"
+}
+
+/** What a question is worth: a written answer up to 3 marks, anything else 1. */
+export function maxMarks(type: string | null | undefined): number {
+  return type === "WRITTEN" ? 3 : 1
+}
+
+/** How long a student's recording of a signed answer is kept. */
+export const ANSWER_VIDEO_DAYS = 30
+
+/**
+ * An attempt's score, out of 100, from its answers. A self-marked question
+ * counts the marks given (none until it is marked); any other question is
+ * worth 1 when right. With only one-mark questions this is simply the share
+ * answered correctly, as it always was.
+ */
+export function attemptScore(
+  questions: ReadonlyArray<{ id: string; type: string }>,
+  answers: ReadonlyArray<{ questionId: string; isCorrect: boolean; marks?: number | null }>,
+): { earned: number; total: number; score: number } {
+  let earned = 0
+  let total = 0
+  for (const q of questions) {
+    const answer = answers.find((a) => a.questionId === q.id)
+    total += maxMarks(q.type)
+    if (!answer) continue
+    earned += isSelfMarked(q.type) ? Math.min(answer.marks ?? 0, maxMarks(q.type)) : answer.isCorrect ? 1 : 0
+  }
+  return { earned, total, score: total > 0 ? Math.round((earned / total) * 100) : 0 }
+}
+
+/**
+ * A Questions or Story test's questions as the student is sent them. Which
+ * options are correct only once `reveal` allows; the model answer of a written
+ * or signed question only once `showModel` does (after their first submit,
+ * when they need it to mark themselves).
+ */
+export function questionsForStudent<
+  Q extends {
+    type: string
+    modelAnswer: string | null
+    answerVideoUrl: string | null
+    options: ReadonlyArray<{ isCorrect: boolean }>
+  },
+>(questions: readonly Q[], reveal: boolean, showModel: boolean) {
+  return questions.map(({ modelAnswer, answerVideoUrl, ...q }) => ({
+    ...q,
+    // Whether to tick every correct answer, without saying which they are.
+    multiple: hasMultipleAnswers(q.options),
+    options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
+    ...(showModel && isSelfMarked(q.type) && { modelAnswer, answerVideoUrl }),
+  }))
+}

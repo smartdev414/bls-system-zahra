@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { requireCapability } from "@/lib/permissions"
-import { isSignTest } from "@/lib/quiz"
+import { isSelfMarked, isSignTest } from "@/lib/quiz"
 import { testEditScope } from "@/lib/tests"
 import { validateQuestion, type QuestionBody } from "./validate"
 
@@ -29,7 +29,7 @@ async function handlePOST(
     const body = await req.json() as QuestionBody
     const invalid = validateQuestion(body, test.testKind)
     if (invalid) return NextResponse.json({ message: invalid }, { status: 400 })
-    const options = isSignTest(test.testKind) ? [] : body.options
+    const options = isSignTest(test.testKind) || isSelfMarked(body.type) ? [] : body.options
 
     // After the last question — not `count + 1`, which repeats a number once a
     // question in the middle has been deleted.
@@ -44,6 +44,8 @@ async function handlePOST(
         videoControls: body.videoControls === true,
         questionAfterVideo: body.questionAfterVideo === true && !!body.imageUrl,
         type: body.type ?? "MULTIPLE_CHOICE",
+        modelAnswer: body.type === "WRITTEN" ? body.modelAnswer?.trim() ?? null : null,
+        answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
         order: (last._max.order ?? 0) + 1,
         options: {
           create: options.map((opt, i) => ({

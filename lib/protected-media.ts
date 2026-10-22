@@ -16,7 +16,7 @@
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i
 
 /** Everything under these prefixes is private. */
-const PRIVATE_PREFIXES = ["videos/", "recordings/"]
+const PRIVATE_PREFIXES = ["videos/", "recordings/", "test-answers/"]
 
 /** Mixed-content prefixes (images, PDFs, …): only their video files are private. */
 const VIDEO_ONLY_PREFIXES = ["classroom-chat/", "slides/"]

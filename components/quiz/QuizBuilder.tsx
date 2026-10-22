@@ -4,7 +4,7 @@ import { useState } from "react"
 import {
   Plus, Trash2, CheckCircle2, Circle, ArrowUp, ArrowDown,
   ChevronDown, ChevronUp, Loader2, Save, FlaskConical,
-  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2, ListPlus,
+  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2, ListPlus, PenLine, Hand,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
-import { isSignTest, isVideoMedia } from "@/lib/quiz"
+import { isSelfMarked, isSignTest, isVideoMedia } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { FilmOverlay } from "./FilmOverlay"
@@ -34,6 +34,13 @@ export type QuizOptionDraft = {
   uploadId?: string
 }
 
+/**
+ * Multiple choice and true / false are marked by the server. A written answer
+ * (0-3 marks) and a signed one (tick or cross) are marked by the student
+ * against the model answer once they submit.
+ */
+export type QuestionKind = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "WRITTEN" | "SIGN"
+
 export type QuestionDraft = {
   /** Identifies the draft in the list while it is edited; any unique string. */
   uid: string
@@ -45,7 +52,12 @@ export type QuestionDraft = {
   videoControls?: boolean
   /** The question and answers appear only once the question's video has ended. */
   questionAfterVideo?: boolean
-  type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
+  type: QuestionKind
+  /** WRITTEN: what a full-marks answer says — students compare theirs with it. */
+  modelAnswer?: string
+  /** SIGN: the video of the sign done right, shown next to the student's own. */
+  answerVideoUrl?: string
+  answerVideoUploading?: boolean
   options: QuizOptionDraft[]
   isOpen: boolean
   isSaving: boolean
@@ -68,6 +80,8 @@ type Props = {
   onChange: (next: QuestionDraft[] | ((current: QuestionDraft[]) => QuestionDraft[])) => void
   /** Opens the dictionary to make questions from its signs. */
   onAddFromDictionary?: () => void
+  /** Offer written and signed answers, which students mark themselves. Tests only. */
+  selfMarked?: boolean
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -89,6 +103,11 @@ export function blankMultiple(): QuestionDraft {
   }
 }
 
+/** A written or signed answer: no options — the model answer is what students compare against. */
+function blankSelfMarked(type: "WRITTEN" | "SIGN"): QuestionDraft {
+  return { uid: crypto.randomUUID(), question: "", type, options: [], isOpen: true, isSaving: false, error: null }
+}
+
 function blankTrueFalse(): QuestionDraft {
   return {
     uid: crypto.randomUUID(),
@@ -107,6 +126,7 @@ function blankTrueFalse(): QuestionDraft {
 /** A question nobody has typed anything into — left out rather than reported as unfinished. */
 export function isBlankQuestion(q: QuestionDraft): boolean {
   if (q.id || q.question.trim() || q.imageUrl || q.questionImageUploading) return false
+  if (isSelfMarked(q.type)) return !q.modelAnswer?.trim() && !q.answerVideoUrl && !q.answerVideoUploading
   return q.type === "TRUE_FALSE" || q.options.every((o) => !o.text.trim() && !o.imageUrl && !o.uploading)
 }
 
@@ -119,6 +139,9 @@ export function questionProblem(q: QuestionDraft, testKind?: string): string | n
     return q.question.trim() ? null : "Type the word"
   }
   if (!q.question.trim()) return "Type the question"
+  if (q.questionImageUploading || q.answerVideoUploading) return "Wait for the upload to finish"
+  if (q.type === "WRITTEN") return q.modelAnswer?.trim() ? null : "Type the model answer"
+  if (q.type === "SIGN") return q.answerVideoUrl ? null : "Add the video of the sign done right"
   if (q.options.some((o) => !o.text.trim() && !o.imageUrl)) return "Each answer needs text, an image or a video"
   if (!q.options.some((o) => o.isCorrect)) return "Choose which answer is correct"
   if (q.options.every((o) => o.isCorrect)) return "At least one answer must be wrong"
@@ -143,6 +166,8 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
       videoControls: !!q.videoControls,
       questionAfterVideo: !!q.questionAfterVideo,
       type: q.type,
+      modelAnswer: q.type === "WRITTEN" ? q.modelAnswer ?? null : null,
+      answerVideoUrl: q.type === "SIGN" ? q.answerVideoUrl ?? null : null,
       options: q.options.map((o) => ({
         id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
       })),
@@ -268,8 +293,8 @@ function QuestionCard({
   /** Swap with the question above / below; undefined at the ends. */
   onMoveUp?: () => void
   onMoveDown?: () => void
-  /** Use a dictionary sign as the question's clip (no option) or an answer's. */
-  onChooseSign?: (option?: number) => void
+  /** Use a dictionary sign as the question's clip (no option), an answer's, or — "model" — a signed answer's model video. */
+  onChooseSign?: (option?: number | "model") => void
 }) {
   /** A change to what the question says — as opposed to opening it or a save in progress. */
   function edit(change: (current: QuestionDraft) => QuestionDraft) {
@@ -295,10 +320,12 @@ function QuestionCard({
   const [fixing, setFixing] = useState(false)
   // What the question said before the last correction, for Undo.
   const [beforeFix, setBeforeFix] = useState<{ question: string; answers: string[] } | null>(null)
-  const hasText = !!q.question.trim() || q.options.some((o) => o.text.trim())
+  // A written question's model answer is checked as its one answer.
+  const answerTexts = (cur: QuestionDraft) => (cur.type === "WRITTEN" ? [cur.modelAnswer ?? ""] : cur.options.map((o) => o.text))
+  const hasText = !!q.question.trim() || answerTexts(q).some((t) => t.trim())
 
   async function fixEnglish() {
-    const sent = { question: q.question, answers: q.options.map((o) => o.text) }
+    const sent = { question: q.question, answers: answerTexts(q) }
     setFixing(true)
     try {
       const res = await fetch("/api/tests/questions/correct", {
@@ -320,7 +347,9 @@ function QuestionCard({
       edit((cur) => ({
         ...cur,
         question: cur.question === sent.question ? fixed.question : cur.question,
-        options: cur.options.map((o, i) => (o.text === sent.answers[i] ? { ...o, text: fixed.answers[i] ?? o.text } : o)),
+        ...(cur.type === "WRITTEN"
+          ? { modelAnswer: (cur.modelAnswer ?? "") === sent.answers[0] ? fixed.answers[0] ?? cur.modelAnswer : cur.modelAnswer }
+          : { options: cur.options.map((o, i) => (o.text === sent.answers[i] ? { ...o, text: fixed.answers[i] ?? o.text } : o)) }),
       }))
       setBeforeFix(sent)
     } catch (e) {
@@ -336,22 +365,38 @@ function QuestionCard({
     edit((cur) => ({
       ...cur,
       question: before.question,
-      options: cur.options.map((o, i) => (i < before.answers.length ? { ...o, text: before.answers[i] } : o)),
+      ...(cur.type === "WRITTEN"
+        ? { modelAnswer: before.answers[0] }
+        : { options: cur.options.map((o, i) => (i < before.answers.length ? { ...o, text: before.answers[i] } : o)) }),
     }))
     setBeforeFix(null)
   }
 
   // ── Film with the camera ── which slot the clip is for: the question (undefined) or an answer.
   // The recorder shows what is being filmed, so it is named by its text where it has some.
-  const [filming, setFilming] = useState<{ option?: number } | null>(null)
+  const [filming, setFilming] = useState<{ option?: number | "model" } | null>(null)
   const filmingItem = filming && (filming.option === undefined
     ? { id: "question", word: q.question.trim() || `Question ${index + 1}` }
+    : filming.option === "model"
+    ? { id: "model", word: q.question.trim() || `Question ${index + 1}` }
     : { id: String(filming.option), word: q.options[filming.option]?.text.trim() || `Answer ${filming.option + 1}` })
 
   function applyFilmed(id: string, fileUrl: string) {
     const media = { imageUrl: fileUrl, mediaType: "video" as const }
     if (id === "question") edit((cur) => ({ ...cur, ...media }))
+    else if (id === "model") edit((cur) => ({ ...cur, answerVideoUrl: fileUrl }))
     else setOption(Number(id), media)
+  }
+
+  async function handleModelVideo(file: File) {
+    onPatch((cur) => ({ ...cur, answerVideoUploading: true, error: null }))
+    try {
+      const { url } = await uploadMedia(file)
+      onPatch((cur) => ({ ...cur, answerVideoUrl: url, answerVideoUploading: false, dirty: true }))
+    } catch (e) {
+      const error = e instanceof Error ? e.message : "Upload failed"
+      onPatch((cur) => ({ ...cur, answerVideoUploading: false, error }))
+    }
   }
 
   function addOption() {
@@ -471,8 +516,14 @@ function QuestionCard({
           </p>
           {!q.isOpen && (
             <p className="text-xs text-muted-foreground truncate">
-              {q.type === "TRUE_FALSE" ? "True / False" : `${q.options.length} answers`}
-              {correctLabel ? ` · Correct: ${correctLabel}` : " · No correct answer chosen"}
+              {q.type === "WRITTEN"
+                ? `Written answer · 0–3 marks${q.modelAnswer?.trim() ? ` · Model answer: ${q.modelAnswer.trim()}` : " · No model answer yet"}`
+                : q.type === "SIGN"
+                ? `Signed answer · tick or cross${q.answerVideoUrl ? "" : " · No video of the sign yet"}`
+                : <>
+                    {q.type === "TRUE_FALSE" ? "True / False" : `${q.options.length} answers`}
+                    {correctLabel ? ` · Correct: ${correctLabel}` : " · No correct answer chosen"}
+                  </>}
             </p>
           )}
         </button>
@@ -535,7 +586,11 @@ function QuestionCard({
               id={`question-${q.uid}`}
               rows={2}
               className="min-h-10"
-              placeholder="e.g. What does this BSL sign mean?"
+              placeholder={q.type === "SIGN"
+                ? "e.g. Sign the word: bus"
+                : q.type === "WRITTEN"
+                ? "e.g. Describe how BSL uses facial expression"
+                : "e.g. What does this BSL sign mean?"}
               value={q.question}
               // A question just added is ready to type into.
               autoFocus={!q.id && !q.question}
@@ -571,8 +626,54 @@ function QuestionCard({
             )}
           </div>
 
+          {q.type === "WRITTEN" && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs" htmlFor={`model-${q.uid}`}>Model answer</Label>
+              <Textarea
+                id={`model-${q.uid}`}
+                rows={3}
+                placeholder="What a full-marks answer says"
+                value={q.modelAnswer ?? ""}
+                onChange={(e) => { setBeforeFix(null); edit((cur) => ({ ...cur, modelAnswer: e.target.value })) }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Students type their answer. After they submit, they see this and give themselves 0, 1, 2 or 3 marks. You can change their marks in the results.
+              </p>
+            </div>
+          )}
+
+          {q.type === "SIGN" && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">The sign done right</Label>
+              <MediaUploadButton
+                mediaUrl={q.answerVideoUrl}
+                mediaType="video"
+                uploading={q.answerVideoUploading}
+                onUpload={handleModelVideo}
+                onRemove={() => edit((cur) => ({ ...cur, answerVideoUrl: undefined }))}
+                size="question"
+                videoOnly
+              />
+              {!q.answerVideoUrl && !q.answerVideoUploading && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {onChooseSign && (
+                    <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => onChooseSign("model")}>
+                      <Library className="size-3.5" /> Use a sign from the dictionary
+                    </button>
+                  )}
+                  <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" onClick={() => setFilming({ option: "model" })}>
+                    <Camera className="size-3.5" /> Film with your camera
+                  </button>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Students film themselves signing. After they submit, this video plays next to theirs and they give themselves a tick or a cross. You can change it in the results. Their videos are deleted after 30 days.
+              </p>
+            </div>
+          )}
+
           {/* Options */}
-          <div className="flex flex-col gap-2">
+          {!isSelfMarked(q.type) && <div className="flex flex-col gap-2">
             <div>
               <Label className="text-xs">{q.type === "TRUE_FALSE" ? "Correct answer" : "Answers"}</Label>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -654,7 +755,7 @@ function QuestionCard({
                 <Plus className="size-3.5 mr-1" /> Add answer
               </Button>
             )}
-          </div>
+          </div>}
 
           {multipleCorrect && (
             <p className="text-xs text-muted-foreground">
@@ -713,10 +814,10 @@ function QuestionCard({
 
 // ─── QuizBuilder ──────────────────────────────────────────────────────────────
 
-export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }: Props) {
+export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary, selfMarked }: Props) {
   const [orderError, setOrderError] = useState<string | null>(null)
   // Where a sign chosen in the dictionary goes: a question's clip, or one of its answers.
-  const [signTarget, setSignTarget] = useState<{ uid: string; option?: number } | null>(null)
+  const [signTarget, setSignTarget] = useState<{ uid: string; option?: number | "model" } | null>(null)
   // "Add questions": typed one per line, then filmed one after another.
   const [listOpen, setListOpen] = useState(false)
   const [listText, setListText] = useState("")
@@ -738,6 +839,14 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }
     onChange((current) => current.map((q) => {
       if (q.uid !== uid) return q
       if (option === undefined) return { ...q, ...media, dirty: true, error: null }
+      // A signed answer: the sign is the model, and names what to sign if nothing does yet.
+      if (option === "model") {
+        if (!sign.videoUrl) return { ...q, error: "This sign has no video yet" }
+        return {
+          ...q, answerVideoUrl: sign.videoUrl, dirty: true, error: null,
+          question: q.question.trim() ? q.question : `Sign the word: ${sign.word}`,
+        }
+      }
       // The answer is named after the sign, unless it already has its own words.
       return {
         ...q, dirty: true, error: null,
@@ -746,8 +855,9 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }
     }))
   }
 
-  function add(type: "MULTIPLE_CHOICE" | "TRUE_FALSE") {
-    onChange((current) => [...current, type === "TRUE_FALSE" ? blankTrueFalse() : blankMultiple()])
+  function add(type: QuestionKind) {
+    const blank = type === "TRUE_FALSE" ? blankTrueFalse() : isSelfMarked(type) ? blankSelfMarked(type) : blankMultiple()
+    onChange((current) => [...current, blank])
   }
 
   // A copy to change, for questions that only differ by a sign or a word. It is
@@ -762,7 +872,7 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }
         uid: crypto.randomUUID(),
         id: undefined,
         options: source.options.map((o) => ({ ...o, id: undefined, uploading: false, uploadId: undefined })),
-        isOpen: true, isSaving: false, error: null, dirty: true, questionImageUploading: false,
+        isOpen: true, isSaving: false, error: null, dirty: true, questionImageUploading: false, answerVideoUploading: false,
       }
       // On a saved test a new question is stored after the others, so it is shown there.
       return testId ? [...current, copy] : [...current.slice(0, at + 1), copy, ...current.slice(at + 1)]
@@ -844,6 +954,8 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }
         multiple={false}
         description={signTarget?.option === undefined
           ? "The sign's video is shown with the question."
+          : signTarget.option === "model"
+          ? "Students compare their own signing with this video."
           : "The sign's video becomes this answer."}
         onPick={([sign]) => { if (sign) applySign(sign) }}
       />
@@ -889,6 +1001,16 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary }
         <Button type="button" variant="outline" size="sm" onClick={() => add("TRUE_FALSE")}>
           <Plus className="size-3.5 mr-1.5" /> True / False
         </Button>
+        {selfMarked && (
+          <>
+            <Button type="button" variant="outline" size="sm" onClick={() => add("WRITTEN")}>
+              <PenLine className="size-3.5 mr-1.5" /> Written answer
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => add("SIGN")}>
+              <Hand className="size-3.5 mr-1.5" /> Student signs it
+            </Button>
+          </>
+        )}
         <Button type="button" variant="outline" size="sm" onClick={() => setListOpen(true)}>
           <ListPlus className="size-3.5 mr-1.5" /> Add and film several
         </Button>

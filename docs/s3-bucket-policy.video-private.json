@@ -9,6 +9,7 @@
       "NotResource": [
         "arn:aws:s3:::theagencyengineer-adcreative-thumbnails/recordings/*",
         "arn:aws:s3:::theagencyengineer-adcreative-thumbnails/videos/*",
+        "arn:aws:s3:::theagencyengineer-adcreative-thumbnails/test-answers/*",
         "arn:aws:s3:::theagencyengineer-adcreative-thumbnails/classroom-chat/*.mp4",
         "arn:aws:s3:::theagencyengineer-adcreative-thumbnails/classroom-chat/*.MP4",
         "arn:aws:s3:::theagencyengineer-adcreative-thumbnails/classroom-chat/*.webm",

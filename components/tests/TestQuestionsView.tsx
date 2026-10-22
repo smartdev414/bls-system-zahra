@@ -10,6 +10,11 @@ export type ViewQuestion = {
   question: string
   imageUrl: string | null
   mediaType: string | null
+  type?: string
+  /** WRITTEN: what a full-marks answer says. */
+  modelAnswer?: string | null
+  /** SIGN: the sign done right. */
+  answerVideoUrl?: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
 
@@ -64,6 +69,20 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
               <p className="text-sm font-medium">{i + 1}. {q.question}</p>
               {q.imageUrl && (
                 <Media url={q.imageUrl} type={q.mediaType} alt="question" className="rounded-lg max-h-48 border self-start" />
+              )}
+              {q.type === "WRITTEN" && (
+                <div className="ml-6 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Model answer · students mark themselves 0–3</p>
+                  <p className="whitespace-pre-wrap mt-0.5">{q.modelAnswer}</p>
+                </div>
+              )}
+              {q.type === "SIGN" && (
+                <div className="ml-6 flex flex-col gap-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">The sign done right · students film themselves and tick or cross</p>
+                  {q.answerVideoUrl && (
+                    <Media url={q.answerVideoUrl} type="video" alt={q.question} className="rounded-lg max-h-48 border self-start" />
+                  )}
+                </div>
               )}
               <div className={cn(
                 "pl-6",

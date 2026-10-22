@@ -43,6 +43,8 @@ async function handlePOST(
             videoControls: q.videoControls,
             questionAfterVideo: q.questionAfterVideo,
             type: q.type,
+            modelAnswer: q.modelAnswer,
+            answerVideoUrl: q.answerVideoUrl,
             order: q.order,
             options: {
               create: q.options.map((o) => ({

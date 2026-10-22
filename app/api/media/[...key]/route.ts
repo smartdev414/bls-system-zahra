@@ -7,6 +7,8 @@ import { assertCanAccessSession, recordingViewers } from "@/lib/session-access"
 import { isProtectedMediaKey } from "@/lib/protected-media"
 import { withAudit } from "@/lib/audit"
 import { recorderSessionId } from "@/lib/recorder-pass"
+import { can, courseTeachScope } from "@/lib/permissions"
+import { parseAnswerVideoKey } from "@/lib/test-recordings"
 
 /**
  * The only way to a private video (see lib/protected-media.ts).
@@ -47,6 +49,19 @@ async function denyReason(session: SessionPayload, key: string): Promise<NextRes
     const sessionId = key.split("/")[1]
     const access = await assertCanAccessSession(session, sessionId)
     return access.error ?? null
+  }
+
+  // A student's recording in a test: theirs, and the course's teaching staff's.
+  if (key.startsWith("test-answers/")) {
+    const parsed = parseAnswerVideoKey(key)
+    if (!parsed) return notFound()
+    if (session.role === "STUDENT") return parsed.userId === session.sub ? null : notFound()
+    if (!can(session.role, "resources.view")) return notFound()
+    const lesson = await prisma.lesson.findFirst({
+      where: { id: parsed.lessonId, section: { course: courseTeachScope(session) } },
+      select: { id: true },
+    })
+    return lesson ? null : notFound()
   }
 
   // Lesson, dictionary and presented videos are reused across courses and

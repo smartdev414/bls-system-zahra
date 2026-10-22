@@ -5,13 +5,21 @@ import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
-import { attemptsLeft, hasMultipleAnswers, isSignTest, revealsAnswers, sameWord, signQuestionsForStudent } from "@/lib/quiz"
+import {
+  attemptScore, attemptsLeft, hasMultipleAnswers, isSignTest, questionsForStudent, revealsAnswers, sameWord,
+  signQuestionsForStudent,
+} from "@/lib/quiz"
+import { isOwnAnswerVideo } from "@/lib/test-recordings"
 
 // POST /api/student/lessons/[id]/quiz/attempt
-// body: { answers: { questionId: string; optionId?: string; optionIds?: string[]; text?: string }[]; durationMs?: number }
+// body: { answers: { questionId: string; optionId?: string; optionIds?: string[]; text?: string; videoUrl?: string }[]; durationMs?: number }
 // `optionIds` are the options ticked on a question with more than one correct
 // answer (`optionId` alone is one choice). `text` is the word typed or picked
-// in a fingerspelling or vocabulary test.
+// in a fingerspelling or vocabulary test, or a written answer. `videoUrl` is
+// the student's recording for a signed answer (from ./recording).
+//
+// Written and signed answers are left unmarked: the attempt waits for the
+// student to mark them (PATCH ./[attemptId]) before it can pass.
 async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -47,7 +55,7 @@ async function handlePOST(
     }
 
     const body = await req.json() as {
-      answers: Array<{ questionId: string; optionId?: string; optionIds?: unknown; text?: string }>
+      answers: Array<{ questionId: string; optionId?: string; optionIds?: unknown; text?: string; videoUrl?: unknown }>
       durationMs?: number
     }
 
@@ -60,16 +68,18 @@ async function handlePOST(
 
     const previous = await prisma.quizAttempt.findMany({
       where: { lessonId: id, userId: session.sub },
-      select: { passed: true },
+      select: { passed: true, selfMarked: true },
     })
     if (attemptsLeft(test.maxAttempts, previous.length) === 0) {
       return NextResponse.json({ message: "You have used all your attempts for this test" }, { status: 409 })
+    }
+    if (previous.some((a) => !a.selfMarked)) {
+      return NextResponse.json({ message: "Mark your answers from last time first" }, { status: 409 })
     }
 
     // Grade the attempt
     const kind = test.testKind
     const answerMap = new Map(body.answers.map((a) => [a.questionId, a]))
-    let correct = 0
 
     const gradedAnswers = test.questions.map((q) => {
       const given = answerMap.get(q.id)
@@ -77,8 +87,17 @@ async function handlePOST(
         // The question's text is the word; a sign that ran out of time has none.
         const answerText = typeof given?.text === "string" ? given.text.trim().slice(0, 100) : ""
         const isCorrect = sameWord(answerText, q.question)
-        if (isCorrect) correct++
         return { questionId: q.id, optionId: null, answerText: answerText || null, isCorrect }
+      }
+      // Marked by the student once they see the model answer. Nothing given
+      // (a blank box, no recording) has nothing to mark, and gets 0 now.
+      if (q.type === "WRITTEN") {
+        const answerText = typeof given?.text === "string" ? given.text.trim().slice(0, 5000) : ""
+        return { questionId: q.id, optionId: null, answerText: answerText || null, marks: answerText ? null : 0, isCorrect: false }
+      }
+      if (q.type === "SIGN") {
+        const videoUrl = isOwnAnswerVideo(given?.videoUrl, id, session.sub) ? given.videoUrl : null
+        return { questionId: q.id, optionId: null, videoUrl, marks: videoUrl ? null : 0, isCorrect: false }
       }
       // Only options of this question count; anything else is ignored, and
       // nothing left means unanswered.
@@ -88,13 +107,11 @@ async function handlePOST(
         // One answer: the first option sent is the one chosen.
         const selectedOption = q.options.find((o) => o.id === ids[0])
         const isCorrect = selectedOption?.isCorrect ?? false
-        if (isCorrect) correct++
         return { questionId: q.id, optionId: selectedOption?.id ?? null, isCorrect }
       }
       // Several answers: right only when every correct one is ticked and nothing else.
       const isCorrect = chosen.length > 0 && chosen.every((o) => o.isCorrect)
         && chosen.length === q.options.filter((o) => o.isCorrect).length
-      if (isCorrect) correct++
       return { questionId: q.id, optionId: chosen[0]?.id ?? null, optionIds: chosen.map((o) => o.id), isCorrect }
     })
 
@@ -102,9 +119,11 @@ async function handlePOST(
       ? Math.min(Math.round(Number(body.durationMs)), 24 * 60 * 60 * 1000)
       : null
 
-    const total = test.questions.length
-    const score = Math.round((correct / total) * 100)
-    const passed = score >= test.passMark
+    // Out of the marks available — 1 a question, up to 3 for a written answer.
+    const { earned: correct, total, score } = attemptScore(test.questions, gradedAnswers)
+    // Until the student has marked their written and signed answers it cannot pass.
+    const selfMarked = gradedAnswers.every((a) => !("marks" in a) || a.marks !== null)
+    const passed = selfMarked && score >= test.passMark
 
     const attempt = await prisma.quizAttempt.create({
       data: {
@@ -113,10 +132,13 @@ async function handlePOST(
         score,
         passed,
         durationMs,
+        selfMarked,
         answers: { create: gradedAnswers },
       },
       include: {
-        answers: { select: { questionId: true, optionId: true, optionIds: true, answerText: true, isCorrect: true } },
+        answers: {
+          select: { questionId: true, optionId: true, optionIds: true, answerText: true, videoUrl: true, marks: true, markedByTutor: true, isCorrect: true },
+        },
       },
     })
 
@@ -132,8 +154,9 @@ async function handlePOST(
     const attempts = [...previous, { passed }]
     const left = attemptsLeft(test.maxAttempts, attempts.length)
 
-    // Notify the student of their quiz result
-    void createNotification(
+    // Notify the student of their quiz result — once they have marked it, if
+    // there is marking to do.
+    if (selfMarked) void createNotification(
       session.sub,
       passed ? "QUIZ_PASSED" : "QUIZ_FAILED",
       passed ? `Test passed — ${score}%` : `Test not passed — ${score}%`,
@@ -155,14 +178,10 @@ async function handlePOST(
     })
     const questions = isSignTest(kind)
       ? signQuestionsForStudent(kind, fullQuestions, reveal)
-      : fullQuestions.map((q) => ({
-          ...q,
-          multiple: hasMultipleAnswers(q.options),
-          options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
-        }))
+      : questionsForStudent(fullQuestions, reveal, true)
 
     return NextResponse.json({
-      attempt, score, passed, correct, total,
+      attempt, score, passed, correct, total, selfMarked,
       passMark: test.passMark,
       attemptsLeft: left,
       answersRevealed: reveal,

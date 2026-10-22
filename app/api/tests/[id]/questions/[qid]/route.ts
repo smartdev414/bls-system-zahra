@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { requireCapability } from "@/lib/permissions"
-import { isSignTest } from "@/lib/quiz"
+import { isSelfMarked, isSignTest } from "@/lib/quiz"
 import { testEditScope } from "@/lib/tests"
 import { validateQuestion, type QuestionBody } from "../validate"
 
@@ -32,7 +32,7 @@ async function handlePUT(
     const body = await req.json() as QuestionBody
     const invalid = validateQuestion(body, existing.test.testKind)
     if (invalid) return NextResponse.json({ message: invalid }, { status: 400 })
-    if (isSignTest(existing.test.testKind)) body.options = []
+    if (isSignTest(existing.test.testKind) || isSelfMarked(body.type)) body.options = []
 
     // Options are updated in place. Replacing them wholesale (as this used to)
     // blanks the answer every student gave to this question, because their
@@ -59,6 +59,8 @@ async function handlePUT(
           videoControls: body.videoControls === true,
           questionAfterVideo: body.questionAfterVideo === true && !!body.imageUrl,
           type: body.type,
+          modelAnswer: body.type === "WRITTEN" ? body.modelAnswer?.trim() ?? null : null,
+          answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
           options: {
             update: body.options.flatMap((opt, i) =>
               opt.id && kept.has(opt.id) ? [{ where: { id: opt.id }, data: optionData(opt, i) }] : []
