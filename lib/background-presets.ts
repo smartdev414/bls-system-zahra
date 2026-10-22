@@ -20,8 +20,8 @@ export const BACKGROUND_COLOR_RE = /^#[0-9a-f]{6}$/i
  * is named. `average` is used wherever a single colour is needed instead.
  */
 export const BACKGROUND_IMAGES = [
-  // The blue every dictionary sign is filmed against, old and new.
-  { label: "Dictionary blue", value: "/course_background.png", average: "#02457a" },
+  // The blue every dictionary sign is filmed against, old and new; lessons can use it too.
+  { label: "Studio blue", value: "/course_background.png", average: "#02457a" },
 ] as const
 
 export const DICTIONARY_BACKGROUND = BACKGROUND_IMAGES[0].value

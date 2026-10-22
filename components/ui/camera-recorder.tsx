@@ -16,7 +16,7 @@ import { setVideoCleanState, useVideoCleanState } from "@/hooks/use-video-clean"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 import { RecordingTrimmer } from "@/components/ui/recording-trimmer"
 import { KEYFRAME_INTERVAL_MS, trimRecording, type TrimRange } from "@/lib/video-trim"
-import { BACKGROUND_PRESETS } from "@/lib/background-presets"
+import { BACKGROUND_IMAGES, BACKGROUND_PRESETS, backgroundImage, isBackgroundValue } from "@/lib/background-presets"
 
 const BACKGROUND_PREF_KEY = "recorder:background"
 const BACKGROUND_METHOD_PREF_KEY = "recorder:background-method"
@@ -27,12 +27,12 @@ const RECORDING_VIDEO_BITRATE = 4_000_000
 const HD_RECORDING_VIDEO_BITRATE = 8_000_000
 
 
-/** The tutor's last background colour, or null for the camera's real background. */
+/** The tutor's last background (colour or picture), or null for the camera's real background. */
 function readBackgroundPreference(): string | null {
   if (typeof window === "undefined") return null
   try {
     const value = window.localStorage.getItem(BACKGROUND_PREF_KEY)
-    return value && /^#[0-9a-f]{6}$/i.test(value) ? value : null
+    return isBackgroundValue(value) ? value : null
   } catch {
     return null
   }
@@ -550,7 +550,8 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
     ready && backgroundOn && rendererActive && !cleanLater && method !== "backdrop" && !backgroundReady
   const keying = method === "backdrop" || (method === "auto" && backdropDetected)
   const backdropMissing = ready && backgroundOn && rendererActive && method === "backdrop" && !backdropDetected
-  const customBackground = backgroundOn && !BACKGROUND_PRESETS.some((p) => p.value === background)
+  const customBackground =
+    backgroundOn && !backgroundImage(background) && !BACKGROUND_PRESETS.some((p) => p.value === background)
 
   return (
     <div className="flex flex-col gap-3">
@@ -639,6 +640,22 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
         >
           Original
         </button>
+        {BACKGROUND_IMAGES.map((preset) => (
+          <button
+            key={preset.value}
+            type="button"
+            disabled={recording || disabled}
+            onClick={() => chooseBackground(preset.value)}
+            aria-label={`${preset.label} background`}
+            aria-pressed={background === preset.value}
+            title={preset.label}
+            className={cn(
+              "size-7 rounded-full border bg-cover bg-center transition-shadow disabled:opacity-50",
+              background === preset.value && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+            )}
+            style={{ backgroundImage: `url("${preset.value}")` }}
+          />
+        ))}
         {BACKGROUND_PRESETS.map((preset) => (
           <button
             key={preset.value}
@@ -672,7 +689,7 @@ export function CameraRecorder({ onUploaded, onRemove, uploaded, disabled, highD
             type="color"
             aria-label="Custom background colour"
             disabled={recording || disabled}
-            value={background ?? "#ffffff"}
+            value={backgroundImage(background)?.average ?? background ?? "#ffffff"}
             onChange={(e) => chooseBackground(e.target.value)}
             className="absolute inset-0 size-full cursor-pointer opacity-0"
           />
