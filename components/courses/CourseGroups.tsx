@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useFetch } from "@/hooks/use-fetch"
 import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
 import { StudentProgressTable, type CourseStudent } from "@/components/courses/StudentProgressTable"
@@ -100,7 +101,44 @@ function ClassList({
 }) {
   const [showAll, setShowAll] = useState(false)
   const [cancelling, setCancelling] = useState<string | null>(null)
-  const shown = showAll ? sessions : sessions.slice(0, CLASSES_SHOWN)
+  // Classes ticked to cancel together; null when not choosing.
+  const [picked, setPicked] = useState<Set<string> | null>(null)
+  const [cancellingMany, setCancellingMany] = useState(false)
+  const cancellable = sessions.filter((s) => s.status === "SCHEDULED" && s.canManage)
+  const shown = showAll || picked ? sessions : sessions.slice(0, CLASSES_SHOWN)
+  const allPicked = picked !== null && cancellable.length > 0 && cancellable.every((s) => picked.has(s.id))
+
+  function pick(id: string, on: boolean) {
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  async function cancelPicked() {
+    if (!picked || picked.size === 0) return
+    const n = picked.size
+    if (!window.confirm(`Cancel ${n} class${n === 1 ? "" : "es"}? The students are told they are cancelled.`)) return
+    setCancellingMany(true)
+    try {
+      const res = await fetch("/api/tutor/sessions/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...picked] }),
+      })
+      if (!res.ok) throw new Error()
+      const { cancelled } = await res.json() as { cancelled: number }
+      toast.success(`${cancelled} class${cancelled === 1 ? "" : "es"} cancelled`)
+      setPicked(null)
+      onChanged()
+    } catch {
+      toast.error("Could not cancel the classes")
+    } finally {
+      setCancellingMany(false)
+    }
+  }
 
   async function cancel(s: ClassSession) {
     if (!window.confirm(`Cancel the class on ${classDate(s.scheduledAt)}? The students are told it is cancelled.`)) return
@@ -123,8 +161,59 @@ function ClassList({
 
   return (
     <div className="divide-y">
+      {cancellable.length > 1 && (
+        picked ? (
+          <div className="flex items-center gap-2.5 px-4 py-2 text-sm bg-muted/30">
+            <Checkbox
+              checked={allPicked}
+              onCheckedChange={(v) => setPicked(v ? new Set(cancellable.map((s) => s.id)) : new Set())}
+              aria-label="Select all classes"
+            />
+            <span className="text-xs flex-1 min-w-0">
+              {picked.size > 0 ? `${picked.size} selected` : "Select all"}
+            </span>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7 px-2 text-xs shrink-0"
+              disabled={picked.size === 0 || cancellingMany}
+              onClick={() => void cancelPicked()}
+            >
+              {cancellingMany && <Loader2 className="size-3 mr-1 animate-spin" />}
+              Cancel {picked.size > 0 ? picked.size : ""} class{picked.size === 1 ? "" : "es"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs shrink-0"
+              disabled={cancellingMany}
+              onClick={() => setPicked(null)}
+            >
+              Done
+            </Button>
+          </div>
+        ) : (
+          <div className="flex justify-end px-4 py-1">
+            <button
+              type="button"
+              className="text-xs text-primary hover:underline"
+              onClick={() => setPicked(new Set())}
+            >
+              Select classes to cancel
+            </button>
+          </div>
+        )
+      )}
       {shown.map((s) => (
         <div key={s.id} className="flex items-center gap-2.5 px-4 py-2 text-sm">
+          {picked && (
+            <Checkbox
+              checked={picked.has(s.id)}
+              disabled={!cancellable.includes(s)}
+              onCheckedChange={(v) => pick(s.id, v === true)}
+              aria-label={`Select class on ${classDate(s.scheduledAt)}`}
+            />
+          )}
           {s.status === "LIVE"
             ? <Radio className="size-3.5 text-emerald-600 shrink-0" />
             : <CalendarClock className="size-3.5 text-muted-foreground shrink-0" />}
@@ -135,7 +224,7 @@ function ClassList({
           </span>
           {s.status === "LIVE" ? (
             <Badge variant="outline" className="text-[10px] shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200">Live now</Badge>
-          ) : s.canManage ? (
+          ) : s.canManage && !picked ? (
             <Button
               variant="ghost"
               size="sm"
@@ -149,7 +238,7 @@ function ClassList({
           ) : null}
         </div>
       ))}
-      {sessions.length > CLASSES_SHOWN && (
+      {sessions.length > CLASSES_SHOWN && !picked && (
         <button
           type="button"
           className="w-full px-4 py-2 text-left text-xs text-primary hover:bg-muted/30"
