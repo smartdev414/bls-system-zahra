@@ -5,6 +5,7 @@ import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isCourseVisibility, type CourseVisibility } from "@/lib/course-visibility"
 import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
+import { deleteCourseAnswerVideos } from "@/lib/test-recordings"
 
 async function handleGET(
   _req: Request,
@@ -114,6 +115,9 @@ async function handlePUT(
       )
     }
 
+    // The course has finished: students' recordings in its tests are deleted.
+    if (body.status === "ARCHIVED" && existing.status !== "ARCHIVED") await deleteCourseAnswerVideos(id)
+
     return NextResponse.json({ course })
   } catch (err) {
     console.error("[PUT /api/tutor/courses/[id]]", err)
@@ -135,6 +139,9 @@ async function handleDELETE(
     const { id } = await params
     const existing = await prisma.course.findFirst({ where: { id, ...courseContentScope(session) } })
     if (!existing) return NextResponse.json({ message: "Course not found" }, { status: 404 })
+
+    // Students' recordings in its tests go first, while its lessons still say which they are.
+    await deleteCourseAnswerVideos(id)
 
     // Classes that were held for the course stay in the timetable history
     // (with their attendance and recordings) — they just stop pointing at it.

@@ -667,7 +667,7 @@ function QuestionCard({
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Students film themselves signing. After they submit, this video plays next to theirs and they give themselves a tick or a cross. You can change it in the results. Their videos are deleted after 30 days.
+                Students film themselves signing. After they submit, this video plays next to theirs and they give themselves a tick or a cross. You can change it in the results. Their videos are deleted when the course is archived, or when a student leaves it.
               </p>
             </div>
           )}

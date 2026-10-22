@@ -5,6 +5,7 @@ import { can, roleLabel, type AppRole } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { createNotification } from "@/lib/notifications"
 import { enrolStudents } from "@/lib/course-groups"
+import { deleteStudentAnswerVideos } from "@/lib/test-recordings"
 
 async function handlePATCH(
   req: NextRequest,
@@ -184,6 +185,8 @@ async function handleDELETE(
       await tx.certEnrollment.deleteMany({ where: { studentId: id } })
       await tx.user.delete({ where: { id } })
     })
+    // Their recordings in tests went with their attempts; the files go too.
+    if (user.role === "STUDENT") await deleteStudentAnswerVideos(id)
     return NextResponse.json({ message: "User deleted" })
   } catch (err) {
     console.error("[DELETE /api/admin/users/[id]]", err)

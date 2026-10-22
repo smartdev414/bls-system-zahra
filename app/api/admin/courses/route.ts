@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can } from "@/lib/permissions"
+import { deleteCourseAnswerVideos } from "@/lib/test-recordings"
 import { withAudit } from "@/lib/audit"
 import { isCourseVisibility, type CourseVisibility } from "@/lib/course-visibility"
 import { cleanVenue, isCourseFormat, type CourseFormat } from "@/lib/course-format"
@@ -134,6 +135,8 @@ async function handlePATCH(req: NextRequest) {
     }
     // The lead is not also one of the course's extra teachers.
     if (tutorId) await prisma.courseTutor.deleteMany({ where: { courseId: id, tutorId } })
+    // The course has finished: students' recordings in its tests are deleted.
+    if (status === "ARCHIVED") await deleteCourseAnswerVideos(id)
 
     return NextResponse.json({ course })
   } catch (err) {

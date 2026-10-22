@@ -1024,8 +1024,9 @@ model QuizAttemptAnswer {
   // Fingerspelling / vocabulary: the word the student typed or picked.
   // WRITTEN: what the student wrote.
   answerText String?
-  // SIGN: the student's recording of themselves. Deleted 30 days after the
-  // attempt (lib/test-recordings.ts), when this goes back to null.
+  // SIGN: the student's recording of themselves. Deleted when the course is
+  // archived or the student leaves it (lib/test-recordings.ts), when this goes
+  // back to null.
   videoUrl   String?
   // WRITTEN / SIGN: the marks given — by the student, or by a teacher who
   // changed them. Null until the student has marked the question.

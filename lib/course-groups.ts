@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma"
 import type { Prisma } from "@/app/generated/prisma/client"
 import { isStaff, STAFF_ROLES } from "@/lib/permissions"
+import { deleteCourseAnswerVideos } from "@/lib/test-recordings"
 import { createNotification, createNotifications } from "@/lib/notifications"
 
 /**
@@ -144,4 +145,6 @@ export async function onStudentRemovedFromCourse(courseId: string, studentId: st
   await prisma.liveSessionInvite.deleteMany({
     where: { studentId, session: { courseId, status: UPCOMING } },
   })
+  // Their recordings in the course's tests go with them.
+  await deleteCourseAnswerVideos(courseId, studentId)
 }

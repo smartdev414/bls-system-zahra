@@ -3,18 +3,17 @@
  *
  * Stored at `test-answers/{lessonId}/{userId}/{recordedAt}-{uuid}.{ext}`, which
  * is private (lib/protected-media.ts): the student who made it and the
- * course's teachers can watch it, nobody else. The time in the name is what
- * the clean-up goes by, so a take the student recorded again over — and never
- * submitted — is deleted on the same 30 days as the rest.
+ * course's teachers can watch it, nobody else. They are kept until the course
+ * ends: archiving (or deleting) it deletes them all, and a student taken off
+ * the course loses theirs. Being filed by test and student, a take recorded
+ * again over — never submitted — goes with the rest.
  */
 import { randomUUID } from "crypto"
 import prisma from "@/lib/prisma"
-import { deleteObject, listObjectKeys, publicUrl } from "@/lib/s3"
-import { ANSWER_VIDEO_DAYS } from "@/lib/quiz"
+import type { Prisma } from "@/app/generated/prisma/client"
+import { deleteObject, listObjectKeys } from "@/lib/s3"
 
 export const ANSWER_VIDEO_PREFIX = "test-answers/"
-
-const DAY = 24 * 60 * 60 * 1000
 
 /** Recording formats browsers produce (and phones' own camera apps). */
 export const ANSWER_VIDEO_TYPES: Record<string, string> = {
@@ -54,28 +53,44 @@ export function isOwnAnswerVideo(url: unknown, lessonId: string, userId: string)
   return !!parsed && parsed.lessonId === lessonId && parsed.userId === userId
 }
 
-/**
- * Deletes recordings older than ANSWER_VIDEO_DAYS, and clears them from the
- * answers that pointed at them, which then show "deleted after 30 days". Run
- * by the cron (app/api/cron/reminders). Returns how many files went.
- */
-export async function deleteExpiredAnswerVideos(now = new Date()): Promise<number> {
-  const cutoff = now.getTime() - ANSWER_VIDEO_DAYS * DAY
-  const deleted: string[] = []
-  for (const key of await listObjectKeys(ANSWER_VIDEO_PREFIX)) {
-    const parsed = parseAnswerVideoKey(key)
-    if (!parsed || parsed.recordedAt >= cutoff) continue
-    await deleteObject(key)
-    deleted.push(publicUrl(key))
+/** Deletes the recordings under these key prefixes and clears them from the answers that used them. */
+async function deleteUnder(prefixes: string[], answers: Prisma.QuizAttemptAnswerWhereInput): Promise<number> {
+  let deleted = 0
+  for (const prefix of prefixes) {
+    for (const key of await listObjectKeys(prefix)) {
+      await deleteObject(key)
+      deleted++
+    }
   }
-  await prisma.quizAttemptAnswer.updateMany({
-    where: {
-      OR: [
-        { videoUrl: { in: deleted } },
-        { videoUrl: { not: null }, attempt: { createdAt: { lt: new Date(cutoff) } } },
-      ],
-    },
-    data: { videoUrl: null },
-  })
-  return deleted.length
+  await prisma.quizAttemptAnswer.updateMany({ where: { ...answers, videoUrl: { not: null } }, data: { videoUrl: null } })
+  return deleted
+}
+
+/**
+ * When a course ends — it is archived or deleted — its students' recordings
+ * go; with `studentId`, only that student's, as they leave the course. Never
+ * throws: a failure is logged, and must not stop the archive or removal.
+ */
+export async function deleteCourseAnswerVideos(courseId: string, studentId?: string): Promise<void> {
+  try {
+    const lessons = await prisma.lesson.findMany({ where: { type: "QUIZ", section: { courseId } }, select: { id: true } })
+    if (lessons.length === 0) return
+    const prefixes = lessons.map((l) => `${ANSWER_VIDEO_PREFIX}${l.id}/${studentId ? `${studentId}/` : ""}`)
+    await deleteUnder(prefixes, {
+      attempt: { lessonId: { in: lessons.map((l) => l.id) }, ...(studentId && { userId: studentId }) },
+    })
+  } catch (err) {
+    console.error("[test-recordings] deleting a course's recordings", courseId, studentId, err)
+  }
+}
+
+/** Every recording a student made, on any course — for when their account is deleted. */
+export async function deleteStudentAnswerVideos(studentId: string): Promise<void> {
+  try {
+    for (const key of await listObjectKeys(ANSWER_VIDEO_PREFIX)) {
+      if (parseAnswerVideoKey(key)?.userId === studentId) await deleteObject(key)
+    }
+  } catch (err) {
+    console.error("[test-recordings] deleting a student's recordings", studentId, err)
+  }
 }

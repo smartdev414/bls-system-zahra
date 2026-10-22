@@ -12,7 +12,7 @@ import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
-import { ANSWER_VIDEO_DAYS, attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, maxMarks, type TestKind } from "@/lib/quiz"
+import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, maxMarks, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
@@ -43,7 +43,7 @@ type AttemptAnswer = {
   questionId: string; optionId: string | null; optionIds?: string[]; isCorrect: boolean
   /** WRITTEN: what the student wrote. */
   answerText?: string | null
-  /** SIGN: the student's recording; gone after 30 days. */
+  /** SIGN: the student's recording; gone once the course is archived. */
   videoUrl?: string | null
   /** WRITTEN / SIGN: the marks given; null until the student has marked it. */
   marks?: number | null
@@ -203,7 +203,7 @@ function AnswerAndModel({ question, answer }: { question: Question; answer?: Att
           {answer?.videoUrl
             ? <ProtectedVideo src={answer.videoUrl} controls playsInline autoPlay muted loop className="w-full aspect-video rounded-lg border bg-black" />
             : <p className="text-xs text-muted-foreground rounded-lg border px-3 py-6 text-center">
-                {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : `Your video has been deleted (videos are kept for ${ANSWER_VIDEO_DAYS} days)`}
+                {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : "Your video has been deleted"}
               </p>}
         </div>
         <div className="flex flex-col gap-1">

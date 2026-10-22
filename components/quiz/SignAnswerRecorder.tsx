@@ -114,7 +114,7 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
     const type = recordingType()
     if (!stream || !type) return
     const chunks: Blob[] = []
-    const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 2_500_000 })
+    const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 1_500_000 })
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
     recorder.onstop = () => void save(new Blob(chunks, { type: type.split(";")[0] }))
     recorderRef.current = recorder

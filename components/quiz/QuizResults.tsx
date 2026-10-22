@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { ANSWER_VIDEO_DAYS, chosenOptionIds, isSelfMarked, maxMarks } from "@/lib/quiz"
+import { chosenOptionIds, isSelfMarked, maxMarks } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -173,7 +173,7 @@ function MarkedAnswer({ lessonId, question, answer, onChanged }: {
             {answer.videoUrl
               ? <ProtectedVideo src={answer.videoUrl} controls playsInline className="w-full aspect-video rounded-md border bg-black" />
               : <p className="rounded-md border px-2 py-4 text-center text-muted-foreground">
-                  {answer.marks === 0 && !answer.markedByTutor ? "No video recorded" : `Video deleted (kept for ${ANSWER_VIDEO_DAYS} days)`}
+                  {answer.marks === 0 && !answer.markedByTutor ? "No video recorded" : "Video deleted"}
                 </p>}
           </div>
           <div className="flex flex-col gap-1">

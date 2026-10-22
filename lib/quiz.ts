@@ -231,9 +231,6 @@ export function maxMarks(type: string | null | undefined): number {
   return type === "WRITTEN" ? 3 : 1
 }
 
-/** How long a student's recording of a signed answer is kept. */
-export const ANSWER_VIDEO_DAYS = 30
-
 /**
  * An attempt's score, out of 100, from its answers. A self-marked question
  * counts the marks given (none until it is marked); any other question is
