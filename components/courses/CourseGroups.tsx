@@ -186,8 +186,21 @@ export function CourseGroups({
     { errorMessage: "Could not load groups" },
   )
 
-  // Cards the viewer has flipped from their default (open when there is only one).
-  const [toggled, setToggled] = useState<Set<string>>(new Set())
+  // Cards the viewer has opened or closed, by id (a card left alone is open only
+  // when it is the only one). Remembered per course on this device, so a reload
+  // keeps the student lists the teacher had open or closed.
+  const cardsKey = `course:groupCards:${courseId}`
+  const [chosen, setChosen] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {}
+    try {
+      const saved: unknown = JSON.parse(window.localStorage.getItem(cardsKey) ?? "{}")
+      return saved && typeof saved === "object" && !Array.isArray(saved)
+        ? Object.fromEntries(Object.entries(saved).filter(([, v]) => typeof v === "boolean"))
+        : {}
+    } catch {
+      return {}
+    }
+  })
   const [addGroupOpen, setAddGroupOpen] = useState(false)
   // Group id (or WHOLE_COURSE) a class is being scheduled for.
   const [scheduleFor, setScheduleFor] = useState<string | null>(null)
@@ -213,14 +226,14 @@ export function CourseGroups({
   const behindTotal = students.filter((s) => s.behind).length
 
   const cardCount = groups.length + (ungrouped.length > 0 ? 1 : 0)
-  const isOpen = (id: string) => (cardCount === 1) !== toggled.has(id)
-  const toggle = (id: string) =>
-    setToggled((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const isOpen = (id: string) => chosen[id] ?? cardCount === 1
+  function toggle(id: string) {
+    const next = { ...chosen, [id]: !isOpen(id) }
+    setChosen(next)
+    try {
+      window.localStorage.setItem(cardsKey, JSON.stringify(next))
+    } catch { /* ignore */ }
+  }
 
   function refreshAll() {
     void roster.refetch()
