@@ -18,6 +18,8 @@ type DatePickerProps = {
   placeholder?: string
   disabled?: (date: Date) => boolean
   className?: string
+  /** date-fns format for the chosen date; narrow fields can pass a shorter one. */
+  dateFormat?: string
 }
 
 export function DatePicker({
@@ -26,6 +28,7 @@ export function DatePicker({
   placeholder = "Pick a date",
   disabled,
   className,
+  dateFormat = "PPP",
 }: DatePickerProps) {
   // Picking a day is the whole job, so the calendar closes on it.
   const [open, setOpen] = React.useState(false)
@@ -35,13 +38,13 @@ export function DatePicker({
         <Button
           variant="outline"
           className={cn(
-            "w-full justify-start text-left font-normal",
+            "w-full min-w-0 justify-start overflow-hidden text-left font-normal",
             !value && "text-muted-foreground",
             className
           )}
         >
-          <CalendarIcon className="mr-2 size-4" />
-          {value ? format(value, "PPP") : <span>{placeholder}</span>}
+          <CalendarIcon className="mr-2 size-4 shrink-0" />
+          <span className="truncate">{value ? format(value, dateFormat) : placeholder}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">

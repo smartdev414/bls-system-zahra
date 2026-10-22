@@ -213,7 +213,7 @@ export function ScheduleClassDialog({
           <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_8.5rem] gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>{repeatWeekly ? "First class" : "Date"}</Label>
-              <DatePicker value={date} onChange={setDate} placeholder="Pick a date" />
+              <DatePicker value={date} onChange={setDate} placeholder="Pick a date" dateFormat="EEE d MMM yyyy" />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sc-time">Starts</Label>
