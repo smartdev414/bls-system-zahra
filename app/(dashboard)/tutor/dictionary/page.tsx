@@ -252,7 +252,13 @@ export default function TutorDictionaryPage() {
                   <ProtectedVideo
                     src={selectedSign.videoUrl}
                     controls
+                    // Opening a word plays it straight away, over and over, so
+                    // nobody has to press play — the way the flashcards work.
+                    autoPlay
+                    loop
+                    playsInline
                     // Signs have no sound; this also silences any older upload that has some.
+                    // (Muted is also what lets the browser start it by itself.)
                     muted
                     allowDownload
                     className="w-full rounded-xl max-h-[45vh] object-contain bg-black"

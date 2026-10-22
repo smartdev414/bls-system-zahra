@@ -279,7 +279,10 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   const LessonIcon = typeIcon[lesson.type]
 
   return (
-    <div className="flex gap-0 -mx-6 -mt-8 min-h-[calc(100vh-4rem)]">
+    // From md up the page is exactly one screen tall below the header, so the
+    // course menu and the lesson each scroll on their own and scrolling the
+    // menu never moves the video.
+    <div className="flex gap-0 -mx-6 -mt-8 min-h-[calc(100vh-4rem)] md:min-h-0 md:h-[calc(100dvh-4rem)] md:-mb-8">
 
       {/* ── Left sidebar — syllabus ───────────────────────────────────────── */}
       <aside
