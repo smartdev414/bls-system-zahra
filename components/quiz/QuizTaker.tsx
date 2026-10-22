@@ -25,6 +25,8 @@ type Option = {
 }
 type Question = {
   id: string; question: string; imageUrl?: string | null; mediaType?: string | null; type: string; options: Option[]
+  /** The student may pause and rewind the question's videos while taking the test. */
+  videoControls?: boolean
   /** More than one answer is correct: the student ticks every one. */
   multiple?: boolean
 }
@@ -107,10 +109,12 @@ function writeDraft(key: string, draft: Draft | null) {
 
 // ─── Question media — image or video ──────────────────────────────────────────
 
-function QuestionMedia({ question, className }: { question: Question; className?: string }) {
+// While the test is being taken a video only has controls when the test's
+// author allowed them; looking back over the results it always has them.
+function QuestionMedia({ question, className, controls = true }: { question: Question; className?: string; controls?: boolean }) {
   if (!question.imageUrl) return null
   return isVideoMedia(question.imageUrl, question.mediaType)
-    ? <ProtectedVideo src={question.imageUrl} autoPlay muted loop playsInline controls className={cn("rounded-xl border bg-black", className)} />
+    ? <ProtectedVideo src={question.imageUrl} autoPlay muted loop playsInline controls={controls} className={cn("rounded-xl border bg-black", className)} />
     : <img src={question.imageUrl} alt="question" className={cn("rounded-xl object-contain border", className)} />
 }
 
@@ -554,7 +558,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
             </div>
 
             {/* Optional question image or video */}
-            <QuestionMedia question={q} className="max-h-64 mx-auto" />
+            <QuestionMedia question={q} controls={!!q.videoControls} className="max-h-64 mx-auto" />
 
             {/* Options — side by side when they are pictures or videos */}
             <div role={q.multiple ? "group" : "radiogroup"} aria-labelledby={`question-${q.id}`} className={optionsLayout(q, "gap-3", "gap-2")}>
@@ -581,7 +585,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                           muted
                           loop
                           playsInline
-                          controls
+                          controls={!!q.videoControls}
                           className="w-full aspect-video object-cover"
                         />
                         {isSelected && (

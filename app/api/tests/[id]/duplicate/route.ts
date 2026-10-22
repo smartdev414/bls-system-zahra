@@ -39,6 +39,7 @@ async function handlePOST(
             question: q.question,
             imageUrl: q.imageUrl,
             mediaType: q.mediaType,
+            videoControls: q.videoControls,
             type: q.type,
             order: q.order,
             options: {

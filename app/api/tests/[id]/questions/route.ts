@@ -41,6 +41,7 @@ async function handlePOST(
         question: body.question.trim(),
         imageUrl: body.imageUrl ?? null,
         mediaType: body.imageUrl ? body.mediaType ?? null : null,
+        videoControls: body.videoControls === true,
         type: body.type ?? "MULTIPLE_CHOICE",
         order: (last._max.order ?? 0) + 1,
         options: {

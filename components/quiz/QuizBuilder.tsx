@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
 import { isSignTest, isVideoMedia } from "@/lib/quiz"
@@ -40,6 +41,8 @@ export type QuestionDraft = {
   question: string
   imageUrl?: string   // image or video url
   mediaType?: "image" | "video"
+  /** Students may pause and rewind this question's videos during the test. */
+  videoControls?: boolean
   type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
   options: QuizOptionDraft[]
   isOpen: boolean
@@ -135,6 +138,7 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
       question: q.question,
       imageUrl: q.imageUrl ?? null,
       mediaType: q.mediaType ?? null,
+      videoControls: !!q.videoControls,
       type: q.type,
       options: q.options.map((o) => ({
         id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
@@ -429,6 +433,7 @@ function QuestionCard({
     .flatMap((o, i) => (o.isCorrect ? [o.text.trim() || `Answer ${i + 1}`] : []))
     .join(", ")
   const multipleCorrect = q.type === "MULTIPLE_CHOICE" && q.options.filter((o) => o.isCorrect).length > 1
+  const hasVideo = isVideoMedia(q.imageUrl, q.mediaType) || q.options.some((o) => isVideoMedia(o.imageUrl, o.mediaType))
   // On a test that is not created yet everything is saved together, so there is no per-question state to show.
   const status = !testId ? null : q.id && !q.dirty ? "saved" : q.id ? "changed" : "new"
 
@@ -651,6 +656,22 @@ function QuestionCard({
             <p className="text-xs text-muted-foreground">
               {q.options.filter((o) => o.isCorrect).length} answers are correct. Students tick all of them, and get the question right only if they tick exactly these.
             </p>
+          )}
+
+          {hasVideo && (
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <Checkbox
+                className="mt-0.5"
+                checked={!!q.videoControls}
+                onCheckedChange={(v) => edit((cur) => ({ ...cur, videoControls: v === true }))}
+              />
+              <span>
+                Students can control the video
+                <span className="block text-xs text-muted-foreground">
+                  Pause, rewind and skip during the test. Untick to have it just play, over and over.
+                </span>
+              </span>
+            </label>
           )}
 
           {q.error && <p className="text-xs text-destructive">{q.error}</p>}

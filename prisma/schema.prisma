@@ -945,6 +945,9 @@ model QuizQuestion {
   question String
   imageUrl String? // optional image or video shown with the question
   mediaType String? // "image" | "video"
+  // Whether students may pause, rewind and scrub this question's videos (its
+  // own and its answers') while sitting the test. Off: they just play, looping.
+  videoControls Boolean @default(false)
   type     QuestionType @default(MULTIPLE_CHOICE)
   order    Int
 
