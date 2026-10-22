@@ -14,6 +14,8 @@ export type TestSettings = {
   /** Sign tests: how often each video plays; null = repeats until the time is up. */
   signPlays: number | null
   storyUrl: string | null
+  /** Story tests: students may pause, rewind and skip the story video. */
+  storyControls: boolean
 }
 
 
@@ -111,7 +113,7 @@ export function signQuestionsForStudent(
  * instead when a value makes no sense, for the caller to answer 400 with.
  */
 export function parseTestSettings(
-  body: { passMark?: unknown; maxAttempts?: unknown; answerSeconds?: unknown; signPlays?: unknown; storyUrl?: unknown },
+  body: { passMark?: unknown; maxAttempts?: unknown; answerSeconds?: unknown; signPlays?: unknown; storyUrl?: unknown; storyControls?: unknown },
 ): Partial<TestSettings> | string {
   const settings: Partial<TestSettings> = {}
 
@@ -156,6 +158,8 @@ export function parseTestSettings(
   if (body.storyUrl !== undefined) {
     settings.storyUrl = typeof body.storyUrl === "string" && body.storyUrl.trim() ? body.storyUrl.trim() : null
   }
+
+  if (body.storyControls !== undefined) settings.storyControls = body.storyControls === true
 
   return settings
 }

@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -60,6 +61,7 @@ type TestFull = {
   level: CourseLevel | null
   testKind: TestKind
   storyUrl: string | null
+  storyControls: boolean
   answerSeconds: number | null
   signPlays: number | null
   passMark: number
@@ -78,6 +80,7 @@ type Details = {
   answerSeconds: number
   signPlays: number | null
   storyUrl: string | null
+  storyControls: boolean
 }
 
 function toDraft(q: ApiQuestion): QuestionDraft {
@@ -112,6 +115,7 @@ function detailsOf(test: TestFull): Details {
     answerSeconds: test.answerSeconds ?? DEFAULT_ANSWER_SECONDS,
     signPlays: test.signPlays ?? null,
     storyUrl: test.storyUrl,
+    storyControls: test.storyControls,
   }
 }
 
@@ -242,7 +246,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
           testKind: kind,
           ...testSettingsBody(details.settings),
           ...(signTest && { answerSeconds: details.answerSeconds, signPlays: details.signPlays }),
-          ...(kind === "STORY" && { storyUrl: details.storyUrl }),
+          ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls }),
         }),
       })
       const d = await res.json().catch(() => ({})) as { message?: string }
@@ -461,7 +465,22 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                 </p>
               )}
               {kind === "STORY" && (
-                <StoryVideoField value={details.storyUrl} onChange={(url) => patch({ storyUrl: url })} />
+                <>
+                  <StoryVideoField value={details.storyUrl} onChange={(url) => patch({ storyUrl: url })} />
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <Checkbox
+                      className="mt-0.5"
+                      checked={details.storyControls}
+                      onCheckedChange={(v) => patch({ storyControls: v === true })}
+                    />
+                    <span>
+                      Students can control the story video
+                      <span className="block text-xs text-muted-foreground">
+                        Pause, rewind and skip. Untick to have it just play through, like an assessment.
+                      </span>
+                    </span>
+                  </label>
+                </>
               )}
               {addingSigns && (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">

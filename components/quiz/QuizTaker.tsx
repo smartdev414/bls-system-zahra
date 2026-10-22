@@ -41,6 +41,8 @@ type QuizData = {
     kind: TestKind
     /** Story tests: the video the questions are about. */
     storyUrl: string | null
+    /** Story tests: the student may pause, rewind and skip the story. */
+    storyControls?: boolean
   }
   /** Newest first. */
   attempts: AttemptSummary[]
@@ -116,6 +118,26 @@ function QuestionMedia({ question, className, controls = true }: { question: Que
   return isVideoMedia(question.imageUrl, question.mediaType)
     ? <ProtectedVideo src={question.imageUrl} autoPlay muted loop playsInline controls={controls} className={cn("rounded-xl border bg-black", className)} />
     : <img src={question.imageUrl} alt="question" className={cn("rounded-xl object-contain border", className)} />
+}
+
+// A story without controls plays straight through: it starts by itself, muted
+// (browsers only start silent video unasked — a signed story needs no sound),
+// and a tap can start it where the browser wouldn't, but never pause it.
+function StoryVideo({ src, controls, autoPlay, className }: { src: string; controls: boolean; autoPlay?: boolean; className?: string }) {
+  return (
+    <ProtectedVideo
+      src={src}
+      playsInline
+      controls={controls}
+      autoPlay={autoPlay || !controls}
+      muted={!controls}
+      onClick={(e) => {
+        const video = e.currentTarget
+        if (!controls && video.paused && !video.ended) void video.play().catch(() => {})
+      }}
+      className={className}
+    />
+  )
 }
 
 /** Answers side by side when they are pictures; one per row on a phone when they are videos, to keep them watchable. */
@@ -542,7 +564,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
               <BookOpen className="size-4 mr-1.5" /> {storyOpen ? "Hide the story" : "Watch the story again"}
             </Button>
             {storyOpen && (
-              <ProtectedVideo src={settings.storyUrl} autoPlay playsInline controls className="w-full max-h-80 rounded-xl border bg-black" />
+              <StoryVideo src={settings.storyUrl} controls={settings.storyControls !== false} autoPlay className="w-full max-h-80 rounded-xl border bg-black" />
             )}
           </div>
         )}
@@ -784,7 +806,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
       </div>
 
       {settings.storyUrl && (
-        <ProtectedVideo src={settings.storyUrl} playsInline controls className="w-full max-h-96 rounded-xl border bg-black" />
+        <StoryVideo src={settings.storyUrl} controls={settings.storyControls !== false} className="w-full max-h-96 rounded-xl border bg-black" />
       )}
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">

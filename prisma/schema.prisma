@@ -914,6 +914,9 @@ model Test {
   testKind      TestKind     @default(STANDARD)
   // STORY: the video the questions are about.
   storyUrl      String?
+  // STORY: whether students may pause, rewind and skip the story video. Off:
+  // it just plays through, as on the old platform's assessments.
+  storyControls Boolean      @default(false)
   // FINGERSPELLING / VOCABULARY: seconds a student has for each sign. In these
   // tests a question is just a video and its word (QuizQuestion.question), with
   // no options.

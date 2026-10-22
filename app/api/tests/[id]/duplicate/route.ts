@@ -30,6 +30,7 @@ async function handlePOST(
         level: source.level,
         testKind: source.testKind,
         storyUrl: source.storyUrl,
+        storyControls: source.storyControls,
         answerSeconds: source.answerSeconds,
         passMark: source.passMark,
         maxAttempts: source.maxAttempts,
