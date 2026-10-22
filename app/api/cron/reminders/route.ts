@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { runReminders } from "@/lib/reminders"
+import { runAnswerVideoDeletions } from "@/lib/test-recordings"
 
 // Reminders read the clock and the database every time; never cache this.
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
 /**
- * GET /api/cron/reminders — sends the automatic reminders (lib/reminders.ts).
+ * GET /api/cron/reminders — sends the automatic reminders (lib/reminders.ts),
+ * and deletes students' test recordings once their week to download them is up.
  *
  * Called every 10 minutes by the scheduler (Vercel Cron, or any cron hitting
  * this URL) with `Authorization: Bearer $CRON_SECRET`. Without CRON_SECRET set
@@ -21,7 +23,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const sent = await runReminders()
-    return NextResponse.json({ sent })
+    const answerVideos = await runAnswerVideoDeletions().catch((err) => {
+      console.error("[cron] test recordings", err)
+      return null
+    })
+    return NextResponse.json({ sent, answerVideos })
   } catch (err) {
     console.error("[GET /api/cron/reminders]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

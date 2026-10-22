@@ -5,7 +5,7 @@ import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isCourseVisibility, type CourseVisibility } from "@/lib/course-visibility"
 import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
-import { deleteCourseAnswerVideos } from "@/lib/test-recordings"
+import { deleteCourseAnswerVideos, scheduleAnswerVideoDeletion } from "@/lib/test-recordings"
 
 async function handleGET(
   _req: Request,
@@ -115,8 +115,8 @@ async function handlePUT(
       )
     }
 
-    // The course has finished: students' recordings in its tests are deleted.
-    if (body.status === "ARCHIVED" && existing.status !== "ARCHIVED") await deleteCourseAnswerVideos(id)
+    // The course has finished: students' recordings in its tests are deleted a week from now.
+    if (body.status === "ARCHIVED" && existing.status !== "ARCHIVED") await scheduleAnswerVideoDeletion(id)
 
     return NextResponse.json({ course })
   } catch (err) {

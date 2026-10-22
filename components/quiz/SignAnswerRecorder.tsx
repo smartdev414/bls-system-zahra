@@ -5,6 +5,8 @@ import { Camera, Circle, Loader2, RotateCcw, Square, Upload } from "lucide-react
 import { Button } from "@/components/ui/button"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
+import { LOGO_MARK_SRC } from "@/components/layout/logo"
+import { WATERMARK_CENTER_Y, WATERMARK_HEIGHT, WATERMARK_OPACITY } from "@/lib/lesson-video-canvas"
 
 /** One sign takes seconds; recording stops by itself after this. */
 const MAX_SECONDS = 30
@@ -13,6 +15,49 @@ const MAX_SECONDS = 30
 function recordingType(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined
   return ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find((t) => MediaRecorder.isTypeSupported(t))
+}
+
+/**
+ * The camera with the TMS logos stamped on, as every recording on the site
+ * has them: the white tile in the top-left corner (as on class recordings)
+ * and the faint mark on the signer's chest (as on lesson videos). Drawn on a
+ * 2D canvas, so it works without WebGL; the picture is not mirrored.
+ */
+function stampedStream(video: HTMLVideoElement, logo: HTMLImageElement): { stream: MediaStream; stop: () => void } {
+  const canvas = document.createElement("canvas")
+  canvas.width = video.videoWidth || 1280
+  canvas.height = video.videoHeight || 720
+  const ctx = canvas.getContext("2d")!
+  const { width: w, height: h } = canvas
+  const aspect = logo.naturalWidth && logo.naturalHeight ? logo.naturalWidth / logo.naturalHeight : 1.2
+  // Corner tile: 72px high on a 1080p class recording, 16px in from the edges.
+  const tile = Math.round(h * 0.067)
+  const pad = Math.round(tile * 0.1)
+  const inset = Math.round(h * 0.015)
+  const markH = tile - pad * 2
+  const markW = Math.round(markH * aspect)
+  // Chest mark: the lesson recorder's geometry.
+  const chestH = Math.round(h * WATERMARK_HEIGHT)
+  const chestW = Math.round(chestH * aspect)
+  let frame = 0
+  const draw = () => {
+    ctx.drawImage(video, 0, 0, w, h)
+    if (logo.complete && logo.naturalWidth) {
+      ctx.globalAlpha = WATERMARK_OPACITY
+      ctx.drawImage(logo, Math.round((w - chestW) / 2), Math.round(h * WATERMARK_CENTER_Y - chestH / 2), chestW, chestH)
+      ctx.globalAlpha = 0.95
+      ctx.fillStyle = "#ffffff"
+      ctx.beginPath()
+      ctx.roundRect(inset, inset, markW + pad * 2, tile, Math.round(tile * 0.17))
+      ctx.fill()
+      ctx.globalAlpha = 1
+      ctx.drawImage(logo, inset + pad, inset + pad, markW, markH)
+    }
+    frame = requestAnimationFrame(draw)
+  }
+  draw()
+  const stream = canvas.captureStream(30)
+  return { stream, stop: () => { cancelAnimationFrame(frame); stream.getTracks().forEach((t) => t.stop()) } }
 }
 
 /** Uploads a recording into the student's private folder for this test; resolves to its URL. */
@@ -44,6 +89,8 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
   const liveRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
+  const logoRef = useRef<HTMLImageElement | null>(null)
+  const stampRef = useRef<{ stop: () => void } | null>(null)
   const [state, setState] = useState<"idle" | "starting" | "ready" | "recording" | "uploading">("idle")
   const [seconds, setSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +106,7 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
   useEffect(() => () => {
     if (recorderRef.current?.state === "recording") recorderRef.current.onstop = null
     recorderRef.current?.stop()
+    stampRef.current?.stop()
     stopCamera()
   }, [])
 
@@ -73,6 +121,10 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
   }, [state, seconds])
 
   async function startCamera() {
+    if (!logoRef.current) {
+      logoRef.current = new Image()
+      logoRef.current.src = LOGO_MARK_SRC
+    }
     setError(null)
     setState("starting")
     try {
@@ -110,13 +162,18 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
   }
 
   function record() {
-    const stream = streamRef.current
+    const video = liveRef.current
     const type = recordingType()
-    if (!stream || !type) return
+    if (!streamRef.current || !video || !type) return
+    const stamped = stampedStream(video, logoRef.current!)
+    stampRef.current = stamped
     const chunks: Blob[] = []
-    const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 1_500_000 })
+    const recorder = new MediaRecorder(stamped.stream, { mimeType: type, videoBitsPerSecond: 1_500_000 })
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
-    recorder.onstop = () => void save(new Blob(chunks, { type: type.split(";")[0] }))
+    recorder.onstop = () => {
+      stamped.stop()
+      void save(new Blob(chunks, { type: type.split(";")[0] }))
+    }
     recorderRef.current = recorder
     recorder.start()
     setSeconds(0)

@@ -3,15 +3,20 @@
  *
  * Stored at `test-answers/{lessonId}/{userId}/{recordedAt}-{uuid}.{ext}`, which
  * is private (lib/protected-media.ts): the student who made it and the
- * course's teachers can watch it, nobody else. They are kept until the course
- * ends: archiving (or deleting) it deletes them all, and a student taken off
- * the course loses theirs. Being filed by test and student, a take recorded
- * again over — never submitted — goes with the rest.
+ * course's teachers can watch it, nobody else. They are kept while the course
+ * runs. When it ends for a student — the course is archived, or they leave it
+ * — they are told to download them, reminded the day before, and a week later
+ * they are deleted (scheduleAnswerVideoDeletion, runAnswerVideoDeletions).
+ * Deleting the course or the student's account deletes them straight away.
+ * Being filed by test and student, a take recorded again over — never
+ * submitted — goes with the rest.
  */
 import { randomUUID } from "crypto"
 import prisma from "@/lib/prisma"
 import type { Prisma } from "@/app/generated/prisma/client"
 import { deleteObject, listObjectKeys } from "@/lib/s3"
+import { createNotification } from "@/lib/notifications"
+import { ANSWER_VIDEO_GRACE_DAYS } from "@/lib/quiz"
 
 export const ANSWER_VIDEO_PREFIX = "test-answers/"
 
@@ -93,4 +98,90 @@ export async function deleteStudentAnswerVideos(studentId: string): Promise<void
   } catch (err) {
     console.error("[test-recordings] deleting a student's recordings", studentId, err)
   }
+}
+
+// ─── A week to download them ──────────────────────────────────────────────────
+
+const DAY = 24 * 60 * 60 * 1000
+
+/** Where a student finds and downloads their recordings. */
+export const MY_VIDEOS_PATH = "/student/videos"
+
+const dateLabel = (d: Date) =>
+  d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/London" })
+
+/**
+ * The course has ended for these students (with `studentId`, just that one):
+ * their recordings in its tests are deleted in ANSWER_VIDEO_GRACE_DAYS, and
+ * they are told so now, with a link to download them. A student with nothing
+ * recorded hears nothing. Never throws.
+ */
+export async function scheduleAnswerVideoDeletion(courseId: string, studentId?: string): Promise<void> {
+  try {
+    const recorded = await prisma.quizAttempt.findMany({
+      where: {
+        lesson: { section: { courseId } },
+        ...(studentId && { userId: studentId }),
+        answers: { some: { videoUrl: { not: null } } },
+      },
+      distinct: ["userId"],
+      select: { userId: true, lesson: { select: { section: { select: { course: { select: { title: true } } } } } } },
+    })
+    const deleteAt = new Date(Date.now() + ANSWER_VIDEO_GRACE_DAYS * DAY)
+    for (const { userId, lesson } of recorded) {
+      const existing = await prisma.testVideoDeletion.findUnique({ where: { userId_courseId: { userId, courseId } } })
+      if (existing) continue
+      await prisma.testVideoDeletion.create({ data: { userId, courseId, deleteAt } })
+      void createNotification(
+        userId,
+        "TEST_VIDEOS_EXPIRING",
+        "Download your signing videos",
+        `"${lesson.section.course.title}" has finished for you. Your signing videos from its tests will be deleted on ${dateLabel(deleteAt)} — download any you want to keep before then.`,
+        MY_VIDEOS_PATH,
+      )
+    }
+  } catch (err) {
+    console.error("[test-recordings] scheduling deletion", courseId, studentId, err)
+  }
+}
+
+/**
+ * Run by the cron: reminds students the day before their recordings go, and
+ * deletes those whose week is up. A student back on the course (or a course
+ * brought back from the archive) keeps theirs — the deletion is dropped.
+ */
+export async function runAnswerVideoDeletions(now = new Date()): Promise<{ reminded: number; deleted: number; kept: number }> {
+  const result = { reminded: 0, deleted: 0, kept: 0 }
+  const pending = await prisma.testVideoDeletion.findMany({ where: { deleteAt: { lte: new Date(now.getTime() + DAY) } } })
+  for (const row of pending) {
+    const course = await prisma.course.findUnique({ where: { id: row.courseId }, select: { title: true, status: true } })
+    const enrolled = course && course.status !== "ARCHIVED" && await prisma.enrollment.findFirst({
+      where: { courseId: row.courseId, studentId: row.userId },
+      select: { id: true },
+    })
+    if (enrolled) {
+      await prisma.testVideoDeletion.delete({ where: { id: row.id } })
+      result.kept++
+      continue
+    }
+    if (row.deleteAt <= now) {
+      await deleteCourseAnswerVideos(row.courseId, row.userId)
+      await prisma.testVideoDeletion.delete({ where: { id: row.id } })
+      result.deleted++
+      continue
+    }
+    // The day before — unless the week was cut short to a day already.
+    if (!row.remindedAt && row.createdAt.getTime() < now.getTime() - DAY) {
+      await prisma.testVideoDeletion.update({ where: { id: row.id }, data: { remindedAt: now } })
+      void createNotification(
+        row.userId,
+        "TEST_VIDEOS_EXPIRING",
+        "Your signing videos are deleted tomorrow",
+        `Your signing videos from "${course?.title ?? "your course"}" will be deleted on ${dateLabel(row.deleteAt)}. Download any you want to keep now.`,
+        MY_VIDEOS_PATH,
+      )
+      result.reminded++
+    }
+  }
+  return result
 }

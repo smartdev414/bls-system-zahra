@@ -70,6 +70,16 @@ async function denyReason(session: SessionPayload, key: string): Promise<NextRes
   return null
 }
 
+/** The name a download is saved under: a student's recording by its date, anything else by its own name. */
+function downloadName(key: string): string | undefined {
+  const recording = parseAnswerVideoKey(key)
+  if (recording) {
+    const day = new Date(recording.recordedAt).toISOString().slice(0, 10)
+    return `my-signing-${day}-${recording.recordedAt % 100000}.${key.split(".").pop()}`
+  }
+  return key.split("/").pop()
+}
+
 async function handleGET(
   req: NextRequest,
   { params }: { params: Promise<{ key: string[] }> }
@@ -96,9 +106,11 @@ async function handleGET(
     const denied = await denyReason(session, key)
     if (denied) return denied
 
-    // Saving a copy is for teaching staff only; students watch in the player.
+    // Saving a copy is for teaching staff only; students watch in the player —
+    // except their own recordings in tests, which are theirs to keep (denyReason
+    // has already made sure a student only reaches their own).
     const download = req.nextUrl.searchParams.has("download")
-    if (download && session.role !== "TUTOR" && session.role !== "ADMIN") {
+    if (download && session.role !== "TUTOR" && session.role !== "ADMIN" && !key.startsWith("test-answers/")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -113,7 +125,7 @@ async function handleGET(
     }
 
     const url = download
-      ? await getPresignedDownloadUrl(serveKey, DOWNLOAD_URL_TTL_SECS, serveKey.split("/").pop())
+      ? await getPresignedDownloadUrl(serveKey, DOWNLOAD_URL_TTL_SECS, downloadName(serveKey))
       : await getPresignedDownloadUrl(serveKey, MEDIA_URL_TTL_SECS)
     const res = NextResponse.redirect(url, 302)
     // The signed URL is per-request — never let a shared cache replay it.

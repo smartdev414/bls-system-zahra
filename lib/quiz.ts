@@ -226,6 +226,12 @@ export function isSelfMarked(type: string | null | undefined): type is "WRITTEN"
   return type === "WRITTEN" || type === "SIGN"
 }
 
+/**
+ * Days a student has to download their recordings once the course has ended
+ * for them (archived, or they left it) before they are deleted.
+ */
+export const ANSWER_VIDEO_GRACE_DAYS = 7
+
 /** What a question is worth: a written answer up to 3 marks, anything else 1. */
 export function maxMarks(type: string | null | undefined): number {
   return type === "WRITTEN" ? 3 : 1

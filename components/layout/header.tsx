@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
-  LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
+  LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare, Clapperboard,
   Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
   CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy,
 } from "lucide-react"
@@ -73,6 +73,7 @@ const studentNav: NavEntry[] = [
 
 const studentDropdownNav: NavItem[] = [
   { label: "Dictionary", href: "/student/dictionary", icon: Library },
+  { label: "My videos", href: "/student/videos", icon: Clapperboard },
   { label: "Resources", href: "/student/resources", icon: FolderOpen },
   { label: "Tickets", href: "/student/tickets", icon: Ticket },
   { label: "Connection check", href: "/student/connection-check", icon: Wifi },

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, XCircle, ChevronLeft,
-  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen, Check, PenLine,
+  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen, Check, PenLine, Download,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
+import { mediaDownloadHref } from "@/lib/protected-media"
 import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, maxMarks, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
@@ -201,9 +202,14 @@ function AnswerAndModel({ question, answer }: { question: Question; answer?: Att
         <div className="flex flex-col gap-1">
           <p className={cn(label, "text-muted-foreground")}>You</p>
           {answer?.videoUrl
-            ? <ProtectedVideo src={answer.videoUrl} controls playsInline autoPlay muted loop className="w-full aspect-video rounded-lg border bg-black" />
+            ? <>
+                <ProtectedVideo src={answer.videoUrl} controls playsInline autoPlay muted loop className="w-full aspect-video rounded-lg border bg-black" />
+                <a href={mediaDownloadHref(answer.videoUrl)} download className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline">
+                  <Download className="size-3.5" /> Download my video
+                </a>
+              </>
             : <p className="text-xs text-muted-foreground rounded-lg border px-3 py-6 text-center">
-                {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : "Your video has been deleted"}
+                {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : "Your video has been deleted (the course has ended)"}
               </p>}
         </div>
         <div className="flex flex-col gap-1">
