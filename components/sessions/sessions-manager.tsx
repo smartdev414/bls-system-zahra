@@ -37,6 +37,7 @@ import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
 import { ClassFormatBadge, VenueLink } from "@/components/sessions/face-to-face"
 import { mediaDownloadHref } from "@/lib/protected-media"
+import { isUpcomingClass, sortClasses } from "@/lib/session-order"
 import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
 
 const RECORDING_PROCESSING_MS = 10 * 60 * 1000
@@ -1580,9 +1581,10 @@ const PAST_PAGE_SIZE = 10
 function ListView({ sessions, onMutated }: { sessions: SessionItem[]; onMutated: () => void }) {
   const [pastPage, setPastPage] = useState(1)
 
-  const live      = sessions.filter((s) => s.status === "LIVE")
-  const upcoming  = sessions.filter((s) => s.status === "SCHEDULED")
-  const past      = sessions.filter((s) => s.status === "COMPLETED" || s.status === "CANCELLED")
+  const ordered   = sortClasses(sessions)
+  const live      = ordered.filter((s) => s.status === "LIVE")
+  const upcoming  = ordered.filter((s) => s.status === "SCHEDULED" && isUpcomingClass(s))
+  const past      = ordered.filter((s) => !isUpcomingClass(s))
   const pastTotalPages = Math.ceil(past.length / PAST_PAGE_SIZE)
   const pastPaged = past.slice((pastPage - 1) * PAST_PAGE_SIZE, pastPage * PAST_PAGE_SIZE)
 

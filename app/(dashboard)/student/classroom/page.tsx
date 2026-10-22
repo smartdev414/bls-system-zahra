@@ -19,6 +19,7 @@ import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { toast } from "sonner"
 import { ClassFormatBadge, VenueLink } from "@/components/sessions/face-to-face"
 import { cn } from "@/lib/utils"
+import { sortClasses } from "@/lib/session-order"
 
 type LiveSession = {
   id: string
@@ -686,14 +687,6 @@ const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "private", label: "Private", icon: Lock },
 ]
 
-function sortUpcoming(a: LiveSession, b: LiveSession) {
-  // LIVE first, then SCHEDULED by date asc, then COMPLETED by date desc
-  const order = { LIVE: 0, SCHEDULED: 1, COMPLETED: 2, CANCELLED: 3 }
-  if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status]
-  if (a.status === "COMPLETED") return new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
-  return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
-}
-
 function ListView({ sessions, onMutated }: { sessions: LiveSession[]; onMutated: () => void }) {
   const [tab, setTab] = useState<Tab>("invited")
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
@@ -701,15 +694,15 @@ function ListView({ sessions, onMutated }: { sessions: LiveSession[]; onMutated:
 
   // Categorise
   const invited = useMemo(
-    () => sessions.filter((s) => s.visibility === "PUBLIC" || s.isInvited || s.joinRequest?.status === "APPROVED").sort(sortUpcoming),
+    () => sortClasses(sessions.filter((s) => s.visibility === "PUBLIC" || s.isInvited || s.joinRequest?.status === "APPROVED")),
     [sessions],
   )
   const publicSessions = useMemo(
-    () => sessions.filter((s) => s.visibility === "PUBLIC").sort(sortUpcoming),
+    () => sortClasses(sessions.filter((s) => s.visibility === "PUBLIC")),
     [sessions],
   )
   const privateSessions = useMemo(
-    () => sessions.filter((s) => s.visibility === "INVITE_ONLY" && !s.isInvited && s.joinRequest?.status !== "APPROVED").sort(sortUpcoming),
+    () => sortClasses(sessions.filter((s) => s.visibility === "INVITE_ONLY" && !s.isInvited && s.joinRequest?.status !== "APPROVED")),
     [sessions],
   )
 
