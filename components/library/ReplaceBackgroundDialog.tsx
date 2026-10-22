@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { setVideoCleanState, type CleanState } from "@/hooks/use-video-clean"
-import { BACKGROUND_PRESETS } from "@/lib/background-presets"
+import { BACKGROUND_IMAGES, BACKGROUND_PRESETS, DICTIONARY_BACKGROUND, backgroundImage } from "@/lib/background-presets"
 import type { LibraryItem } from "@/lib/library"
 
 type Props = {
@@ -37,11 +37,12 @@ export function ReplaceBackgroundDialog({ file, onClose, onStarted }: Props) {
 }
 
 function Body({ file, onClose, onStarted }: { file: LibraryItem } & Omit<Props, "file">) {
-  const [color, setColor] = useState<string>(BACKGROUND_PRESETS[2].value)
+  // The studio blue first, so a video filmed elsewhere matches the rest.
+  const [color, setColor] = useState<string>(DICTIONARY_BACKGROUND)
   const [title, setTitle] = useState(() => `${file.title.replace(/\.[^.]+$/, "")} (new background)`)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const custom = !BACKGROUND_PRESETS.some((p) => p.value === color)
+  const custom = !backgroundImage(color) && !BACKGROUND_PRESETS.some((p) => p.value === color)
 
   async function start() {
     setStarting(true)
@@ -74,15 +75,31 @@ function Body({ file, onClose, onStarted }: { file: LibraryItem } & Omit<Props, 
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2"><Wand2 className="size-4 text-primary" /> Replace the background</DialogTitle>
         <DialogDescription>
-          The person in <span className="font-medium">{file.title}</span> is cut out and placed on a flat colour, with
+          The person in <span className="font-medium">{file.title}</span> is cut out and placed on the background you pick, with
           the logo added. The original video is kept; the result is a new video in the library.
         </DialogDescription>
       </DialogHeader>
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Background colour</Label>
+          <Label>Background</Label>
           <div className="flex flex-wrap items-center gap-2">
+            {BACKGROUND_IMAGES.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                disabled={starting}
+                onClick={() => setColor(preset.value)}
+                aria-label={`${preset.label} background`}
+                aria-pressed={color === preset.value}
+                title={preset.label}
+                className={cn(
+                  "size-8 rounded-full border bg-cover bg-center transition-shadow disabled:opacity-50",
+                  color === preset.value && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+                )}
+                style={{ backgroundImage: `url("${preset.value}")` }}
+              />
+            ))}
             {BACKGROUND_PRESETS.map((preset) => (
               <button
                 key={preset.value}
@@ -116,7 +133,7 @@ function Body({ file, onClose, onStarted }: { file: LibraryItem } & Omit<Props, 
                 type="color"
                 aria-label="Custom background colour"
                 disabled={starting}
-                value={color}
+                value={backgroundImage(color)?.average ?? color}
                 onChange={(e) => setColor(e.target.value)}
                 className="absolute inset-0 size-full cursor-pointer opacity-0"
               />
