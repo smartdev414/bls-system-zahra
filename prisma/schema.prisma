@@ -199,6 +199,9 @@ model User {
   teachingCourses      CourseTutor[]           @relation("CourseTeaching")
   quizAttempts         QuizAttempt[]
   testsCreated         Test[]                  @relation("TestsCreated")
+  leaguesCreated       League[]                @relation("LeaguesCreated")
+  leagueMemberships    LeagueMember[]
+  leagueAttempts       LeagueAttempt[]
   hostedSessions       LiveSession[]           @relation("TutorLiveSessions")
   coTutorSessions      LiveSessionCoTutor[]    @relation("CoTutorSessions")
   coTutorInvitesSent   LiveSessionCoTutor[]    @relation("CoTutorInvitesSent")
@@ -943,6 +946,7 @@ model Test {
   createdBy User?          @relation("TestsCreated", fields: [createdById], references: [id], onDelete: SetNull)
   questions QuizQuestion[]
   lessons   Lesson[]
+  leagues   League[]
 
   @@index([createdById])
   @@index([level])
@@ -1041,6 +1045,71 @@ model QuizAttemptAnswer {
   option   QuizOption?  @relation(fields: [optionId], references: [id])
 
   @@index([attemptId])
+}
+
+/// How hard a fingerspelling league is played (lib/leagues.ts): the time for
+/// each word and how often it is shown.
+enum LeagueDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+// A fingerspelling league: a competition any student can choose to join,
+// whatever their level or courses. Its words are a fingerspelling test from the
+// test bank; its difficulty sets the clock. Each member's best go ranks them.
+model League {
+  id          String           @id @default(cuid())
+  title       String
+  difficulty  LeagueDifficulty
+  // The words. Null when that test has been deleted — the table stays, but
+  // nobody can play until a teacher picks new words.
+  testId      String?
+  // After this the table is final and no more goes count. Null = it runs on.
+  endsAt      DateTime?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  test      Test?           @relation(fields: [testId], references: [id], onDelete: SetNull)
+  createdBy User?           @relation("LeaguesCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  members   LeagueMember[]
+  attempts  LeagueAttempt[]
+
+  @@index([testId])
+}
+
+model LeagueMember {
+  id       String   @id @default(cuid())
+  leagueId String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId])
+  @@index([userId])
+}
+
+// One go at a league. Kept apart from course tests: it never counts towards
+// passing a course.
+model LeagueAttempt {
+  id         String   @id @default(cuid())
+  leagueId   String
+  userId     String
+  correct    Int
+  total      Int
+  // correct out of total, as a whole percent.
+  score      Int
+  // As timed by the student's device — splits a tie.
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId, userId])
 }
 
 model Ticket {

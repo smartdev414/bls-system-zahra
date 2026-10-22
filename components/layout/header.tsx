@@ -7,7 +7,7 @@ import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare,
   Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
-  CalendarDays, UserPlus, Headset, GraduationCap, MapPin,
+  CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -38,11 +38,35 @@ type NavItem = {
   icon: React.ElementType
 }
 
-const studentNav: NavItem[] = [
+// A parent menu in the main bar: one button that opens its child links, so the
+// bar stays short enough to fit on one line.
+type NavGroup = {
+  label: string
+  icon: React.ElementType
+  items: NavItem[]
+}
+
+type NavEntry = NavItem | NavGroup
+
+const isGroup = (entry: NavEntry): entry is NavGroup => "items" in entry
+
+function isActiveHref(pathname: string, href: string) {
+  // Only use startsWith for paths deeper than the role root (e.g. /student/courses)
+  // otherwise /student would always match /student/courses, /student/classroom, etc.
+  const hasSubPaths = href.split("/").filter(Boolean).length > 1
+  return pathname === href || (hasSubPaths && pathname.startsWith(href + "/"))
+}
+
+const studentNav: NavEntry[] = [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
-  { label: "Courses", href: "/student/courses", icon: BookOpen },
-  { label: "Tests", href: "/student/tests", icon: FlaskConical },
-  { label: "Certifications", href: "/student/certifications", icon: ShieldCheck },
+  {
+    label: "Learning", icon: BookOpen, items: [
+      { label: "Courses", href: "/student/courses", icon: BookOpen },
+      { label: "Tests", href: "/student/tests", icon: FlaskConical },
+      { label: "Leagues", href: "/student/leagues", icon: Trophy },
+      { label: "Certifications", href: "/student/certifications", icon: ShieldCheck },
+    ],
+  },
   { label: "Tutors", href: "/student/tutors", icon: Users },
   { label: "Classroom", href: "/student/classroom", icon: Video },
 ]
@@ -57,15 +81,28 @@ const studentDropdownNav: NavItem[] = [
 // Admins run the school from this one login: the courses and the library they
 // build, the timetable, and the students — so those sit in the main bar and the
 // occasional admin screens move into the menu.
-const adminNav: NavItem[] = [
+const adminNav: NavEntry[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-  { label: "Courses", href: "/admin/courses", icon: BookOpen },
-  { label: "Library", href: "/admin/library", icon: FolderOpen },
-  { label: "Tests", href: "/admin/tests", icon: FlaskConical },
-  { label: "Live Sessions", href: "/admin/sessions", icon: Video },
-  { label: "Face to face", href: "/admin/face-to-face", icon: MapPin },
-  { label: "Students", href: "/admin/students", icon: GraduationCap },
-  { label: "Users", href: "/admin/users", icon: Users },
+  {
+    label: "Content", icon: BookOpen, items: [
+      { label: "Courses", href: "/admin/courses", icon: BookOpen },
+      { label: "Library", href: "/admin/library", icon: FolderOpen },
+      { label: "Tests", href: "/admin/tests", icon: FlaskConical },
+      { label: "Leagues", href: "/admin/leagues", icon: Trophy },
+    ],
+  },
+  {
+    label: "Classes", icon: Video, items: [
+      { label: "Live Sessions", href: "/admin/sessions", icon: Video },
+      { label: "Face to face", href: "/admin/face-to-face", icon: MapPin },
+    ],
+  },
+  {
+    label: "People", icon: Users, items: [
+      { label: "Students", href: "/admin/students", icon: GraduationCap },
+      { label: "Users", href: "/admin/users", icon: Users },
+    ],
+  },
 ]
 
 const adminDropdownNav: NavItem[] = [
@@ -79,12 +116,20 @@ const adminDropdownNav: NavItem[] = [
 
 // Support Team — the timetable and the people on it. No dictionary, no lesson
 // resources, no audit logs: see SUPPORT_CAPABILITIES in lib/permissions.ts.
-const supportNav: NavItem[] = [
+const supportNav: NavEntry[] = [
   { label: "Dashboard", href: "/support", icon: LayoutDashboard },
-  { label: "Timetable", href: "/support/timetable", icon: CalendarDays },
-  { label: "Face to face", href: "/support/face-to-face", icon: MapPin },
-  { label: "Enrolments", href: "/support/enrolments", icon: UserPlus },
-  { label: "Courses", href: "/support/courses", icon: BookOpen },
+  {
+    label: "Classes", icon: CalendarDays, items: [
+      { label: "Timetable", href: "/support/timetable", icon: CalendarDays },
+      { label: "Face to face", href: "/support/face-to-face", icon: MapPin },
+    ],
+  },
+  {
+    label: "Courses", icon: BookOpen, items: [
+      { label: "Courses", href: "/support/courses", icon: BookOpen },
+      { label: "Enrolments", href: "/support/enrolments", icon: UserPlus },
+    ],
+  },
   { label: "Students", href: "/support/students", icon: Users },
 ]
 
@@ -94,15 +139,28 @@ const supportDropdownNav: NavItem[] = [
   { label: "Connection check", href: "/support/connection-check", icon: Wifi },
 ]
 
-const tutorNav: NavItem[] = [
+const tutorNav: NavEntry[] = [
   { label: "Dashboard", href: "/tutor", icon: LayoutDashboard },
-  { label: "My Courses", href: "/tutor/courses", icon: BookOpen },
-  { label: "Library", href: "/tutor/library", icon: FolderOpen },
-  { label: "Tests", href: "/tutor/tests", icon: FlaskConical },
-  { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
-  { label: "Face to face", href: "/tutor/face-to-face", icon: MapPin },
-  { label: "Students", href: "/tutor/students", icon: Users },
-  { label: "Reviews", href: "/tutor/reviews", icon: Star },
+  {
+    label: "Teaching", icon: BookOpen, items: [
+      { label: "My Courses", href: "/tutor/courses", icon: BookOpen },
+      { label: "Library", href: "/tutor/library", icon: FolderOpen },
+      { label: "Tests", href: "/tutor/tests", icon: FlaskConical },
+      { label: "Leagues", href: "/tutor/leagues", icon: Trophy },
+    ],
+  },
+  {
+    label: "Classes", icon: Video, items: [
+      { label: "Live Sessions", href: "/tutor/sessions", icon: Video },
+      { label: "Face to face", href: "/tutor/face-to-face", icon: MapPin },
+    ],
+  },
+  {
+    label: "Students", icon: Users, items: [
+      { label: "My Students", href: "/tutor/students", icon: Users },
+      { label: "Reviews", href: "/tutor/reviews", icon: Star },
+    ],
+  },
 ]
 
 const tutorDropdownNav: NavItem[] = [
@@ -187,17 +245,51 @@ export function Header({ role, user }: HeaderProps) {
           <Logo />
 
           <nav className="hidden lg:flex items-center gap-1">
-            {navItems.map(({ label, href, icon: Icon }) => {
-              // Only use startsWith for paths deeper than the role root (e.g. /student/courses)
-              // otherwise /student would always match /student/courses, /student/classroom, etc.
-              const hasSubPaths = href.split("/").filter(Boolean).length > 1
-              const isActive = pathname === href || (hasSubPaths && pathname.startsWith(href + "/"))
+            {navItems.map((entry) => {
+              if (isGroup(entry)) {
+                const { label, icon: Icon, items } = entry
+                const groupActive = items.some((item) => isActiveHref(pathname, item.href))
+                return (
+                  <DropdownMenu key={label} modal={false}>
+                    <DropdownMenuTrigger
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors outline-none",
+                        groupActive
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground"
+                      )}
+                    >
+                      <Icon className="size-4" />
+                      {label}
+                      <ChevronDown className="size-3.5 opacity-70" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-48">
+                      {items.map(({ label: itemLabel, href, icon: ItemIcon }) => (
+                        <DropdownMenuItem key={href} asChild>
+                          <Link
+                            href={href}
+                            className={cn(
+                              "cursor-pointer",
+                              isActiveHref(pathname, href) && "bg-primary/10 text-primary focus:text-primary"
+                            )}
+                          >
+                            <ItemIcon className="size-4 mr-2" />
+                            {itemLabel}
+                          </Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )
+              }
+              const { label, href, icon: Icon } = entry
+              const isActive = isActiveHref(pathname, href)
               return (
                 <Link
                   key={href}
                   href={href}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -321,9 +413,8 @@ export function Header({ role, user }: HeaderProps) {
       {mobileNavOpen && (
         <div className="lg:hidden absolute top-16 inset-x-0 max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-t bg-background/95 backdrop-blur-md shadow-lg">
           <nav className="max-w-7xl mx-auto px-3 py-2 flex flex-col">
-            {[...navItems, ...dropdownNavItems].map(({ label, href, icon: Icon }) => {
-              const hasSubPaths = href.split("/").filter(Boolean).length > 1
-              const isActive = pathname === href || (hasSubPaths && pathname.startsWith(href + "/"))
+            {[...navItems.flatMap((entry) => (isGroup(entry) ? entry.items : [entry])), ...dropdownNavItems].map(({ label, href, icon: Icon }) => {
+              const isActive = isActiveHref(pathname, href)
               return (
                 <Link
                   key={href}

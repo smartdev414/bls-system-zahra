@@ -36,11 +36,13 @@ export function bankTestFacts(test: Pick<BankTest, "testKind" | "questionCount" 
  * Choose a test from the test bank — to put it in a course. The list is
  * searched as you type; a test can also be made from here.
  */
-export function TestBankPicker({ value, onChange, createHref }: {
+export function TestBankPicker({ value, onChange, createHref, kind }: {
   value: string | null
   onChange: (test: BankTest) => void
   /** Where "Create a new test" goes — with the course to put it in, when there is one. */
   createHref?: string
+  /** Only tests of this kind — a league's words are a fingerspelling test. */
+  kind?: TestKind
 }) {
   const testsBase = useTestsBase()
   const [query, setQuery] = useState("")
@@ -55,6 +57,7 @@ export function TestBankPicker({ value, onChange, createHref }: {
   const params = new URLSearchParams()
   if (search) params.set("q", search)
   if (level) params.set("level", level)
+  if (kind) params.set("kind", kind)
   const { data, loading } = useFetch<{ tests: BankTest[] }>(`/api/tests?${params}`, {
     errorMessage: "Could not load the tests",
   })
@@ -84,7 +87,9 @@ export function TestBankPicker({ value, onChange, createHref }: {
         ) : tests.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
             <FlaskConical className="size-8" />
-            {search || level ? "No tests match your search." : "There are no tests yet."}
+            {search || level
+              ? "No tests match your search."
+              : kind ? `There are no ${TEST_KIND_INFO[kind].label.toLowerCase()} tests yet.` : "There are no tests yet."}
           </div>
         ) : (
           tests.map((test) => {
