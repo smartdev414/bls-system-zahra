@@ -37,6 +37,9 @@ export function ReplaceBackgroundDialog({ file, onClose, onStarted }: Props) {
 }
 
 function Body({ file, onClose, onStarted }: { file: LibraryItem } & Omit<Props, "file">) {
+  // The server replaces a library video the viewer could delete in place;
+  // anything else comes back as a new library video (see the route).
+  const replacing = file.source === "library" && file.canRemove
   // The studio blue first, so a video filmed elsewhere matches the rest.
   const [color, setColor] = useState<string>(DICTIONARY_BACKGROUND)
   const [title, setTitle] = useState(() => `${file.title.replace(/\.[^.]+$/, "")} (new background)`)
@@ -51,13 +54,13 @@ function Body({ file, onClose, onStarted }: { file: LibraryItem } & Omit<Props, 
       const res = await fetch("/api/upload/clean-background/from-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileUrl: file.fileUrl, color, title: title.trim() }),
+        body: JSON.stringify({ fileUrl: file.fileUrl, color, ...(!replacing && { title: title.trim() }) }),
       })
       const data = await res.json().catch(() => ({})) as { item?: LibraryItem; state?: CleanState; message?: string }
       if (!res.ok || !data.item) throw new Error(data.message ?? "Could not start background replacement")
       setVideoCleanState(data.item.fileUrl, data.state ?? "processing")
       if (data.state === "failed") {
-        toast.error("The video was copied but the background job could not start. Press Retry next to it.")
+        toast.error("The background job could not start. Press Retry next to the video.")
       } else {
         toast.success("Replacing the background — you'll get a notification when it's ready")
       }
@@ -76,7 +79,10 @@ function Body({ file, onClose, onStarted }: { file: LibraryItem } & Omit<Props, 
         <DialogTitle className="flex items-center gap-2"><Wand2 className="size-4 text-primary" /> Replace the background</DialogTitle>
         <DialogDescription>
           The person in <span className="font-medium">{file.title}</span> is cut out and placed on the background you pick, with
-          the logo added. The original video is kept; the result is a new video in the library.
+          the logo added.{" "}
+          {replacing
+            ? "The new version takes this video's place in the library once it's ready."
+            : "The result is a new video in the library; this one stays as it is."}
         </DialogDescription>
       </DialogHeader>
 
@@ -141,10 +147,12 @@ function Body({ file, onClose, onStarted }: { file: LibraryItem } & Omit<Props, 
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="clean-title">Name of the new video</Label>
-          <Input id="clean-title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={starting} />
-        </div>
+        {!replacing && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="clean-title">Name of the new video</Label>
+            <Input id="clean-title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={starting} />
+          </div>
+        )}
 
         <p className="text-xs text-muted-foreground">
           Works best when one person is filmed against a plain, still background in good light. It takes a few

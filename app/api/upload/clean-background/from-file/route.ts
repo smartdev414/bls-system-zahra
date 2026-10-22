@@ -71,7 +71,7 @@ async function handlePOST(req: NextRequest) {
     }
 
     // A fresh copy for the worker, in the caller's own folder: the original
-    // stays untouched for the lessons and classes already using it.
+    // file stays untouched for the lessons and classes already using it.
     const baseName = sanitizeUploadFileName(source.fileName || sourceKey.split("/").pop() || "video.mp4")
     const rawName = rawRecordingName(baseName)
     const rawKey = `videos/${session.sub}/${randomUUID()}/${rawName}`
@@ -80,25 +80,36 @@ async function handlePOST(req: NextRequest) {
 
     const job = await startBackgroundClean(rawKey, session.sub, body.color)
 
+    // A library video the caller could delete is replaced where it is, so no
+    // second copy piles up. Until the new version is ready (or if it fails)
+    // the entry plays the untouched copy, and the original file stays in
+    // storage. Anything else — someone else's shared video, a video that only
+    // lives in a lesson — gets a new library entry instead.
+    const replace = source.source === "library" && source.canRemove
     const title = body.title?.trim() || `${source.title.replace(/\.[^.]+$/, "")} (new background)`
-    const file = await prisma.libraryFile.create({
-      data: {
-        tutorId: session.sub,
-        title,
-        fileUrl: publicUrl(rawKey),
-        fileName: rawName,
-        fileSize: source.fileSize,
-        // The gateway serves the finished MP4 under this address once it exists.
-        mimeType: "video/mp4",
-        assetType: "VIDEO",
-        level: source.source === "library" ? source.level : null,
-      },
-    })
+    const file = replace
+      ? await prisma.libraryFile.update({
+          where: { id: source.id },
+          data: { fileUrl: publicUrl(rawKey), fileName: rawName, mimeType: "video/mp4" },
+        })
+      : await prisma.libraryFile.create({
+          data: {
+            tutorId: session.sub,
+            title,
+            fileUrl: publicUrl(rawKey),
+            fileName: rawName,
+            fileSize: source.fileSize,
+            // The gateway serves the finished MP4 under this address once it exists.
+            mimeType: "video/mp4",
+            assetType: "VIDEO",
+            level: source.source === "library" ? source.level : null,
+          },
+        })
 
     const item: LibraryItem = {
       id: file.id,
       source: "library",
-      shared: session.role === "ADMIN",
+      shared: replace ? source.shared : session.role === "ADMIN",
       canRemove: true,
       level: file.level,
       title: file.title,
@@ -112,7 +123,7 @@ async function handlePOST(req: NextRequest) {
       usedIn: null,
       createdAt: file.createdAt.toISOString(),
     }
-    return NextResponse.json({ item, state: job.status === "FAILED" ? "failed" : "processing" }, { status: 201 })
+    return NextResponse.json({ item, replaced: replace, state: job.status === "FAILED" ? "failed" : "processing" }, { status: replace ? 200 : 201 })
   } catch (err) {
     console.error("[POST /api/upload/clean-background/from-file]", err)
     return NextResponse.json({ message: "Could not start background replacement" }, { status: 500 })
