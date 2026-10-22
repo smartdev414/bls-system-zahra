@@ -7,6 +7,8 @@ export type QuestionBody = {
   mediaType?: string | null
   /** Students may pause and rewind this question's videos during the test. */
   videoControls?: boolean
+  /** Hide the question and answers until its video has played to the end. */
+  questionAfterVideo?: boolean
   type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
   /** Left out for a sign in a fingerspelling or vocabulary test. */
   options: Array<{

@@ -57,6 +57,7 @@ async function handlePUT(
           imageUrl: body.imageUrl ?? null,
           mediaType: body.imageUrl ? body.mediaType ?? null : null,
           videoControls: body.videoControls === true,
+          questionAfterVideo: body.questionAfterVideo === true && !!body.imageUrl,
           type: body.type,
           options: {
             update: body.options.flatMap((opt, i) =>

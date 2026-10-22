@@ -951,6 +951,10 @@ model QuizQuestion {
   // Whether students may pause, rewind and scrub this question's videos (its
   // own and its answers') while sitting the test. Off: they just play, looping.
   videoControls Boolean @default(false)
+  // The question and its answers stay hidden until the question's video has
+  // played to the end — watch first, then answer (the old platform's "After
+  // watching video show question and answers").
+  questionAfterVideo Boolean @default(false)
   type     QuestionType @default(MULTIPLE_CHOICE)
   order    Int
 

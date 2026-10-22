@@ -43,6 +43,8 @@ export type QuestionDraft = {
   mediaType?: "image" | "video"
   /** Students may pause and rewind this question's videos during the test. */
   videoControls?: boolean
+  /** The question and answers appear only once the question's video has ended. */
+  questionAfterVideo?: boolean
   type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
   options: QuizOptionDraft[]
   isOpen: boolean
@@ -139,6 +141,7 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
       imageUrl: q.imageUrl ?? null,
       mediaType: q.mediaType ?? null,
       videoControls: !!q.videoControls,
+      questionAfterVideo: !!q.questionAfterVideo,
       type: q.type,
       options: q.options.map((o) => ({
         id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
@@ -433,7 +436,8 @@ function QuestionCard({
     .flatMap((o, i) => (o.isCorrect ? [o.text.trim() || `Answer ${i + 1}`] : []))
     .join(", ")
   const multipleCorrect = q.type === "MULTIPLE_CHOICE" && q.options.filter((o) => o.isCorrect).length > 1
-  const hasVideo = isVideoMedia(q.imageUrl, q.mediaType) || q.options.some((o) => isVideoMedia(o.imageUrl, o.mediaType))
+  const questionVideo = isVideoMedia(q.imageUrl, q.mediaType)
+  const hasVideo = questionVideo || q.options.some((o) => isVideoMedia(o.imageUrl, o.mediaType))
   // On a test that is not created yet everything is saved together, so there is no per-question state to show.
   const status = !testId ? null : q.id && !q.dirty ? "saved" : q.id ? "changed" : "new"
 
@@ -669,6 +673,22 @@ function QuestionCard({
                 Students can control the video
                 <span className="block text-xs text-muted-foreground">
                   Pause, rewind and skip during the test. Untick to have it just play, over and over.
+                </span>
+              </span>
+            </label>
+          )}
+
+          {questionVideo && (
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <Checkbox
+                className="mt-0.5"
+                checked={!!q.questionAfterVideo}
+                onCheckedChange={(v) => edit((cur) => ({ ...cur, questionAfterVideo: v === true }))}
+              />
+              <span>
+                Show the question after the video
+                <span className="block text-xs text-muted-foreground">
+                  Students watch the video first; the question and answers appear when it ends.
                 </span>
               </span>
             </label>

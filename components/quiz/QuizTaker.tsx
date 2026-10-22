@@ -27,6 +27,8 @@ type Question = {
   id: string; question: string; imageUrl?: string | null; mediaType?: string | null; type: string; options: Option[]
   /** The student may pause and rewind the question's videos while taking the test. */
   videoControls?: boolean
+  /** The question and answers appear only once the question's video has ended. */
+  questionAfterVideo?: boolean
   /** More than one answer is correct: the student ticks every one. */
   multiple?: boolean
 }
@@ -113,10 +115,22 @@ function writeDraft(key: string, draft: Draft | null) {
 
 // While the test is being taken a video only has controls when the test's
 // author allowed them; looking back over the results it always has them.
-function QuestionMedia({ question, className, controls = true }: { question: Question; className?: string; controls?: boolean }) {
+// With `onEnded` the video plays once instead of looping, so it can end; a tap
+// starts it where the browser wouldn't autoplay and there are no controls.
+function QuestionMedia({ question, className, controls = true, onEnded }: {
+  question: Question; className?: string; controls?: boolean; onEnded?: () => void
+}) {
   if (!question.imageUrl) return null
   return isVideoMedia(question.imageUrl, question.mediaType)
-    ? <ProtectedVideo src={question.imageUrl} autoPlay muted loop playsInline controls={controls} className={cn("rounded-xl border bg-black", className)} />
+    ? <ProtectedVideo
+        src={question.imageUrl} autoPlay muted loop={!onEnded} playsInline controls={controls}
+        onEnded={onEnded}
+        onClick={(e) => {
+          const video = e.currentTarget
+          if (!controls && video.paused && !video.ended) void video.play().catch(() => {})
+        }}
+        className={cn("rounded-xl border bg-black", className)}
+      />
     : <img src={question.imageUrl} alt="question" className={cn("rounded-xl object-contain border", className)} />
 }
 
@@ -288,6 +302,8 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Result | null>(null)
   const [storyOpen, setStoryOpen] = useState(false)
+  // Questions whose video has played to the end, for those shown after it.
+  const [watched, setWatched] = useState<Set<string>>(() => new Set())
   const topRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -501,6 +517,10 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   // ── Quiz taking ───────────────────────────────────────────────────────────
   if (view === "taking") {
     const q = questions[currentIndex]
+    // Watch first, then answer: such a question waits until its video has
+    // played through, unless it was answered already (e.g. coming back to it).
+    const waitingForVideo = !!q?.questionAfterVideo && isVideoMedia(q.imageUrl, q.mediaType) &&
+      !watched.has(q.id) && !selected[q.id]?.length
     const progress = Math.round((answered / questions.length) * 100)
     const isLast = currentIndex === questions.length - 1
     const allAnswered = answered === questions.length
@@ -573,134 +593,143 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         {q && (
           <div className="rounded-xl border bg-muted/20 p-4 sm:p-5 flex flex-col gap-4">
             <div>
-              <p id={`question-${q.id}`} className="font-semibold text-base leading-snug">{currentIndex + 1}. {q.question}</p>
-              {q.multiple && (
+              <p id={`question-${q.id}`} className="font-semibold text-base leading-snug">
+                {currentIndex + 1}. {waitingForVideo ? "Watch the video — the question and answers appear when it ends." : q.question}
+              </p>
+              {q.multiple && !waitingForVideo && (
                 <p className="text-sm text-primary font-medium mt-1">More than one answer is correct — tick them all.</p>
               )}
             </div>
 
             {/* Optional question image or video */}
-            <QuestionMedia question={q} controls={!!q.videoControls} className="max-h-64 mx-auto" />
+            <QuestionMedia
+              question={q}
+              controls={!!q.videoControls}
+              onEnded={waitingForVideo ? () => setWatched((prev) => new Set(prev).add(q.id)) : undefined}
+              className="max-h-64 mx-auto"
+            />
 
             {/* Options — side by side when they are pictures or videos */}
-            <div role={q.multiple ? "group" : "radiogroup"} aria-labelledby={`question-${q.id}`} className={optionsLayout(q, "gap-3", "gap-2")}>
-              {q.options.map((opt, n) => {
-                const isSelected = !!selected[q.id]?.includes(opt.id)
-                const role = q.multiple ? "checkbox" : "radio"
-                const isVideo = isVideoMedia(opt.imageUrl, opt.mediaType)
-                const name = opt.text || `Answer ${n + 1}`
+            {!waitingForVideo && (
+              <div role={q.multiple ? "group" : "radiogroup"} aria-labelledby={`question-${q.id}`} className={optionsLayout(q, "gap-3", "gap-2")}>
+                {q.options.map((opt, n) => {
+                  const isSelected = !!selected[q.id]?.includes(opt.id)
+                  const role = q.multiple ? "checkbox" : "radio"
+                  const isVideo = isVideoMedia(opt.imageUrl, opt.mediaType)
+                  const name = opt.text || `Answer ${n + 1}`
 
-                if (opt.imageUrl && isVideo) {
-                  // ── Video option card — video is for watching only; text label selects
-                  return (
-                    <div
-                      key={opt.id}
-                      className={cn(
-                        "rounded-xl border overflow-hidden flex flex-col transition-all",
-                        isSelected ? "border-primary ring-2 ring-primary" : "border-border"
-                      )}
-                    >
-                      <div className="relative">
-                        <ProtectedVideo
-                          src={opt.imageUrl}
-                          autoPlay
-                          muted
-                          loop
-                          playsInline
-                          controls={!!q.videoControls}
-                          className="w-full aspect-video object-cover"
-                        />
-                        {isSelected && (
-                          <div className="absolute top-2 right-2 pointer-events-none">
-                            <CheckCircle2 className="size-6 text-primary drop-shadow-md" />
-                          </div>
+                  if (opt.imageUrl && isVideo) {
+                    // ── Video option card — video is for watching only; text label selects
+                    return (
+                      <div
+                        key={opt.id}
+                        className={cn(
+                          "rounded-xl border overflow-hidden flex flex-col transition-all",
+                          isSelected ? "border-primary ring-2 ring-primary" : "border-border"
                         )}
+                      >
+                        <div className="relative">
+                          <ProtectedVideo
+                            src={opt.imageUrl}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            controls={!!q.videoControls}
+                            className="w-full aspect-video object-cover"
+                          />
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 pointer-events-none">
+                              <CheckCircle2 className="size-6 text-primary drop-shadow-md" />
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          role={role}
+                          aria-checked={isSelected}
+                          onClick={() => choose(q, opt.id)}
+                          className={cn(
+                            "px-3 py-3 text-sm font-medium text-center w-full transition-colors",
+                            isSelected
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-background text-foreground hover:bg-muted"
+                          )}
+                        >
+                          {isSelected ? `✓ ${opt.text || "Selected"}` : opt.text || "Select this answer"}
+                        </button>
                       </div>
+                    )
+                  }
+
+                  if (opt.imageUrl) {
+                    // ── Image option card
+                    return (
                       <button
+                        key={opt.id}
                         type="button"
                         role={role}
                         aria-checked={isSelected}
+                        aria-label={name}
                         onClick={() => choose(q, opt.id)}
                         className={cn(
-                          "px-3 py-3 text-sm font-medium text-center w-full transition-colors",
+                          "rounded-xl border overflow-hidden flex flex-col transition-all",
                           isSelected
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-background text-foreground hover:bg-muted"
+                            ? "border-primary ring-2 ring-primary"
+                            : "border-border hover:border-primary/50"
                         )}
                       >
-                        {isSelected ? `✓ ${opt.text || "Selected"}` : opt.text || "Select this answer"}
+                        <div className="relative w-full">
+                          <img src={opt.imageUrl} alt={name} className="w-full aspect-square object-cover" />
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                              <CheckCircle2 className="size-8 text-primary drop-shadow" />
+                            </div>
+                          )}
+                        </div>
+                        {opt.text && (
+                          <div className={cn(
+                            "px-3 py-2 text-xs font-medium text-center w-full",
+                            isSelected ? "bg-primary text-primary-foreground" : "bg-background text-foreground"
+                          )}>
+                            {opt.text}
+                          </div>
+                        )}
                       </button>
-                    </div>
-                  )
-                }
+                    )
+                  }
 
-                if (opt.imageUrl) {
-                  // ── Image option card
+                  // ── Text option row
                   return (
                     <button
                       key={opt.id}
                       type="button"
                       role={role}
                       aria-checked={isSelected}
-                      aria-label={name}
                       onClick={() => choose(q, opt.id)}
                       className={cn(
-                        "rounded-xl border overflow-hidden flex flex-col transition-all",
+                        "flex items-center gap-3 rounded-xl border px-4 py-3 text-sm text-left transition-colors",
                         isSelected
-                          ? "border-primary ring-2 ring-primary"
-                          : "border-border hover:border-primary/50"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background hover:bg-muted border-border"
                       )}
                     >
-                      <div className="relative w-full">
-                        <img src={opt.imageUrl} alt={name} className="w-full aspect-square object-cover" />
-                        {isSelected && (
-                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                            <CheckCircle2 className="size-8 text-primary drop-shadow" />
-                          </div>
-                        )}
+                      {/* A round dot for one answer, a tick box where several can be chosen */}
+                      <div className={cn(
+                        "size-4 border-2 shrink-0 flex items-center justify-center",
+                        q.multiple ? "rounded" : "rounded-full",
+                        isSelected ? "border-primary-foreground bg-primary-foreground" : "border-muted-foreground"
+                      )}>
+                        {isSelected && (q.multiple
+                          ? <Check className="size-3 text-primary" strokeWidth={3} />
+                          : <div className="size-2 rounded-full bg-primary" />)}
                       </div>
-                      {opt.text && (
-                        <div className={cn(
-                          "px-3 py-2 text-xs font-medium text-center w-full",
-                          isSelected ? "bg-primary text-primary-foreground" : "bg-background text-foreground"
-                        )}>
-                          {opt.text}
-                        </div>
-                      )}
+                      {opt.text}
                     </button>
                   )
-                }
-
-                // ── Text option row
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    role={role}
-                    aria-checked={isSelected}
-                    onClick={() => choose(q, opt.id)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-xl border px-4 py-3 text-sm text-left transition-colors",
-                      isSelected
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background hover:bg-muted border-border"
-                    )}
-                  >
-                    {/* A round dot for one answer, a tick box where several can be chosen */}
-                    <div className={cn(
-                      "size-4 border-2 shrink-0 flex items-center justify-center",
-                      q.multiple ? "rounded" : "rounded-full",
-                      isSelected ? "border-primary-foreground bg-primary-foreground" : "border-muted-foreground"
-                    )}>
-                      {isSelected && (q.multiple
-                        ? <Check className="size-3 text-primary" strokeWidth={3} />
-                        : <div className="size-2 rounded-full bg-primary" />)}
-                    </div>
-                    {opt.text}
-                  </button>
-                )
-              })}
-            </div>
+                })}
+              </div>
+            )}
           </div>
         )}
 

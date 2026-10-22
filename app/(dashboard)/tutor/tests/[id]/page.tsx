@@ -40,6 +40,7 @@ type ApiQuestion = {
   imageUrl: string | null
   mediaType: string | null
   videoControls: boolean
+  questionAfterVideo: boolean
   type: "MULTIPLE_CHOICE" | "TRUE_FALSE"
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
@@ -91,6 +92,7 @@ function toDraft(q: ApiQuestion): QuestionDraft {
     imageUrl: q.imageUrl ?? undefined,
     mediaType: (q.mediaType ?? undefined) as "image" | "video" | undefined,
     videoControls: q.videoControls,
+    questionAfterVideo: q.questionAfterVideo,
     type: q.type,
     options: q.options.map((o) => ({
       id: o.id,
