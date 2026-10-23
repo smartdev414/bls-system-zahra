@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { chosenOptionIds, isSelfMarked, maxMarks } from "@/lib/quiz"
+import { chosenOptionIds, isVideoMedia, marksLabel, maxMarks, questionMarking, type MarkingTest } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,8 +69,15 @@ export type ResultsQuestion = {
   id: string
   question: string
   type?: string
+  /** WRITTEN: what it is worth; null = 3. */
+  maxMarks?: number | null
   modelAnswer?: string | null
   answerVideoUrl?: string | null
+  /** Vocabulary signed: the sign the student's own signing is marked against. */
+  imageUrl?: string | null
+  mediaType?: string | null
+  /** "image" when the sign done right is only a picture. */
+  answerMediaType?: string | null
   options: Array<{ id: string; text: string; isCorrect?: boolean }>
 }
 
@@ -141,7 +148,7 @@ function MarkedAnswer({ lessonId, question, answer, onChanged }: {
   onChanged: () => void
 }) {
   const [saving, setSaving] = useState(false)
-  const max = maxMarks(question.type)
+  const max = maxMarks(question)
   const isSign = question.type === "SIGN"
 
   async function setMarks(marks: number) {
@@ -178,9 +185,10 @@ function MarkedAnswer({ lessonId, question, answer, onChanged }: {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">The sign done right</span>
-            {question.answerVideoUrl && (
-              <ProtectedVideo src={question.answerVideoUrl} controls playsInline className="w-full aspect-video rounded-md border border-emerald-300 bg-black" />
-            )}
+            {question.answerVideoUrl && (isVideoMedia(question.answerVideoUrl, question.answerMediaType ?? "video")
+              ? <ProtectedVideo src={question.answerVideoUrl} controls playsInline className="w-full aspect-video rounded-md border border-emerald-300 bg-black" />
+              // eslint-disable-next-line @next/next/no-img-element
+              : <img src={question.answerVideoUrl} alt="The sign" className="w-full aspect-video rounded-md border border-emerald-300 bg-black object-contain" />)}
           </div>
         </div>
       ) : (
@@ -226,10 +234,11 @@ function MarkedAnswer({ lessonId, question, answer, onChanged }: {
 
 // ─── One student's attempts and what they answered ────────────────────────────
 
-function StudentAttempts({ lessonId, student, questions, onReset, onMarksChanged }: {
+function StudentAttempts({ lessonId, student, questions, marking, onReset, onMarksChanged }: {
   lessonId: string
   student: StudentResult
   questions: ResultsQuestion[]
+  marking: MarkingTest
   onReset: () => void
   /** A teacher changed a mark: the scores in the table move too. */
   onMarksChanged: () => void
@@ -299,8 +308,12 @@ function StudentAttempts({ lessonId, student, questions, onReset, onMarksChanged
                 const chosen = q.options.filter((o) => ids.includes(o.id))
                 const name = (o: ResultsQuestion["options"][number]) => o.text || `option ${q.options.indexOf(o) + 1}`
                 const right = q.options.filter((o) => o.isCorrect)
-                if (isSelfMarked(q.type)) {
-                  const full = answer.marks === maxMarks(q.type)
+                const { picked, self } = questionMarking({ type: q.type ?? "MULTIPLE_CHOICE", maxMarks: q.maxMarks }, marking)
+                if (self > 0) {
+                  // Both ways round, right only when the word picked was right too.
+                  const full = answer.marks === self && (!picked || answer.isCorrect)
+                  // A word signed in a vocabulary test is marked as a signed answer, against the sign.
+                  const marked = q.type === "WRITTEN" || q.type === "SIGN" ? q : { ...q, type: "SIGN", answerVideoUrl: q.imageUrl, answerMediaType: q.mediaType }
                   return (
                     <li key={q.id} className="flex items-start gap-2 px-3 py-2 text-xs">
                       {answer.marks === null || answer.marks === undefined
@@ -309,10 +322,18 @@ function StudentAttempts({ lessonId, student, questions, onReset, onMarksChanged
                         ? <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0 mt-0.5" />
                         : <XCircle className={cn("size-3.5 shrink-0 mt-0.5", answer.marks > 0 ? "text-amber-500" : "text-rose-500")} />}
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{n + 1}. {q.question}</p>
+                        <p className="font-medium">
+                          {n + 1}. {q.question}{q.type === "WRITTEN" && ` (${marksLabel(self)})`}
+                        </p>
+                        {/* Both ways round: the word picked as well as the sign filmed. */}
+                        {picked && (
+                          <p className={answer.isCorrect ? "text-emerald-700" : "text-rose-700"}>
+                            Word picked: {answer.answerText ?? "ran out of time"} {answer.isCorrect ? "✓" : "✗"}
+                          </p>
+                        )}
                         <MarkedAnswer
                           lessonId={lessonId}
-                          question={q}
+                          question={marked}
                           answer={answer}
                           onChanged={() => { void refetch(); onMarksChanged() }}
                         />
@@ -371,7 +392,12 @@ function StudentAttempts({ lessonId, student, questions, onReset, onMarksChanged
  * How the course's students did on one test: the headline numbers, every
  * student's best score, and which questions the class got wrong most.
  */
-export function QuizResults({ lessonId, questions }: { lessonId: string; questions: ResultsQuestion[] }) {
+export function QuizResults({ lessonId, questions, marking }: {
+  lessonId: string
+  questions: ResultsQuestion[]
+  /** How its questions are marked: the kind of test, and which way round a vocabulary test goes. */
+  marking: MarkingTest
+}) {
   const { data, loading, refetch } = useFetch<ResultsData>(`/api/tutor/lessons/${lessonId}/results`, {
     errorMessage: "Could not load the results",
   })
@@ -543,6 +569,7 @@ export function QuizResults({ lessonId, questions }: { lessonId: string; questio
                       lessonId={lessonId}
                       student={student}
                       questions={questions}
+                      marking={marking}
                       onReset={() => { setOpenStudent(null); void refetch() }}
                       onMarksChanged={() => void refetch()}
                     />

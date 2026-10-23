@@ -4,7 +4,7 @@ import { useState } from "react"
 import {
   Plus, Trash2, CheckCircle2, Circle, ArrowUp, ArrowDown,
   ChevronDown, ChevronUp, Loader2, Save, FlaskConical,
-  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2, ListPlus, PenLine, Hand,
+  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2, ListPlus, PenLine,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
-import { isSelfMarked, isSignTest, isVideoMedia } from "@/lib/quiz"
+import { DEFAULT_WRITTEN_MARKS, MAX_WRITTEN_MARKS, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { FilmOverlay } from "./FilmOverlay"
@@ -55,6 +55,8 @@ export type QuestionDraft = {
   type: QuestionKind
   /** WRITTEN: what a full-marks answer says — students compare theirs with it. */
   modelAnswer?: string
+  /** WRITTEN: what it is worth; students see "(2 marks)" after the question. */
+  maxMarks?: number
   /** SIGN: the video of the sign done right, shown next to the student's own. */
   answerVideoUrl?: string
   answerVideoUploading?: boolean
@@ -80,7 +82,7 @@ type Props = {
   onChange: (next: QuestionDraft[] | ((current: QuestionDraft[]) => QuestionDraft[])) => void
   /** Opens the dictionary to make questions from its signs. */
   onAddFromDictionary?: () => void
-  /** Offer written and signed answers, which students mark themselves. Tests only. */
+  /** Offer written answers, which students mark themselves. Tests only. */
   selfMarked?: boolean
 }
 
@@ -105,7 +107,10 @@ export function blankMultiple(): QuestionDraft {
 
 /** A written or signed answer: no options — the model answer is what students compare against. */
 function blankSelfMarked(type: "WRITTEN" | "SIGN"): QuestionDraft {
-  return { uid: crypto.randomUUID(), question: "", type, options: [], isOpen: true, isSaving: false, error: null }
+  return {
+    uid: crypto.randomUUID(), question: "", type, options: [], isOpen: true, isSaving: false, error: null,
+    ...(type === "WRITTEN" && { maxMarks: DEFAULT_WRITTEN_MARKS }),
+  }
 }
 
 function blankTrueFalse(): QuestionDraft {
@@ -167,6 +172,7 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
       questionAfterVideo: !!q.questionAfterVideo,
       type: q.type,
       modelAnswer: q.type === "WRITTEN" ? q.modelAnswer ?? null : null,
+      maxMarks: q.type === "WRITTEN" ? maxMarks(q) : null,
       answerVideoUrl: q.type === "SIGN" ? q.answerVideoUrl ?? null : null,
       options: q.options.map((o) => ({
         id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
@@ -517,7 +523,7 @@ function QuestionCard({
           {!q.isOpen && (
             <p className="text-xs text-muted-foreground truncate">
               {q.type === "WRITTEN"
-                ? `Written answer · 0–3 marks${q.modelAnswer?.trim() ? ` · Model answer: ${q.modelAnswer.trim()}` : " · No model answer yet"}`
+                ? `Written answer · ${marksLabel(maxMarks(q))}${q.modelAnswer?.trim() ? ` · Model answer: ${q.modelAnswer.trim()}` : " · No model answer yet"}`
                 : q.type === "SIGN"
                 ? `Signed answer · tick or cross${q.answerVideoUrl ? "" : " · No video of the sign yet"}`
                 : <>
@@ -628,6 +634,31 @@ function QuestionCard({
 
           {q.type === "WRITTEN" && (
             <div className="flex flex-col gap-1.5">
+              <Label className="text-xs" id={`marks-${q.uid}`}>Marks</Label>
+              <div role="radiogroup" aria-labelledby={`marks-${q.uid}`} className="flex flex-wrap gap-1">
+                {Array.from({ length: MAX_WRITTEN_MARKS }, (_, i) => i + 1).map((n) => (
+                  <Button
+                    key={n}
+                    type="button"
+                    size="sm"
+                    role="radio"
+                    aria-checked={maxMarks(q) === n}
+                    variant={maxMarks(q) === n ? "default" : "outline"}
+                    className="h-8 w-9 px-0"
+                    onClick={() => edit((cur) => ({ ...cur, maxMarks: n }))}
+                  >
+                    {n}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Students see &ldquo;({marksLabel(maxMarks(q))})&rdquo; after the question.
+              </p>
+            </div>
+          )}
+
+          {q.type === "WRITTEN" && (
+            <div className="flex flex-col gap-1.5">
               <Label className="text-xs" htmlFor={`model-${q.uid}`}>Model answer</Label>
               <Textarea
                 id={`model-${q.uid}`}
@@ -637,7 +668,7 @@ function QuestionCard({
                 onChange={(e) => { setBeforeFix(null); edit((cur) => ({ ...cur, modelAnswer: e.target.value })) }}
               />
               <p className="text-xs text-muted-foreground">
-                Students type their answer. After they submit, they see this and give themselves 0, 1, 2 or 3 marks. You can change their marks in the results.
+                Students type their answer. After they submit, they see this and give themselves 0 to {maxMarks(q)} marks. You can change their marks in the results.
               </p>
             </div>
           )}
@@ -1001,15 +1032,11 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary, 
         <Button type="button" variant="outline" size="sm" onClick={() => add("TRUE_FALSE")}>
           <Plus className="size-3.5 mr-1.5" /> True / False
         </Button>
+        {/* Signing a word is done in a vocabulary test now, word → sign. */}
         {selfMarked && (
-          <>
-            <Button type="button" variant="outline" size="sm" onClick={() => add("WRITTEN")}>
-              <PenLine className="size-3.5 mr-1.5" /> Written answer
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => add("SIGN")}>
-              <Hand className="size-3.5 mr-1.5" /> Student signs it
-            </Button>
-          </>
+          <Button type="button" variant="outline" size="sm" onClick={() => add("WRITTEN")}>
+            <PenLine className="size-3.5 mr-1.5" /> Written answer
+          </Button>
         )}
         <Button type="button" variant="outline" size="sm" onClick={() => setListOpen(true)}>
           <ListPlus className="size-3.5 mr-1.5" /> Add and film several

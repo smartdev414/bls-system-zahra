@@ -16,6 +16,8 @@ export type TestSettings = {
   storyUrl: string | null
   /** Story tests: students may pause, rewind and skip the story video. */
   storyControls: boolean
+  /** Vocabulary tests: which way round the signs are practised. */
+  vocabularyMode: VocabularyMode
 }
 
 
@@ -28,7 +30,7 @@ export const TEST_KIND_INFO: Record<TestKind, { label: string; hint: string }> =
   STANDARD: { label: "Questions", hint: "Questions, each with or without a video." },
   STORY: { label: "Story", hint: "One signed story, then questions about it." },
   FINGERSPELLING: { label: "Fingerspelling", hint: "Students watch a word being spelled and type it." },
-  VOCABULARY: { label: "Vocabulary", hint: "Students watch a sign and pick the right word." },
+  VOCABULARY: { label: "Vocabulary", hint: "Students pick the word for a sign, or read a word and sign it." },
 }
 
 export function parseTestKind(value: unknown): TestKind | null {
@@ -41,6 +43,31 @@ export function parseTestKind(value: unknown): TestKind | null {
  */
 export function isSignTest(kind: string | null | undefined): kind is "FINGERSPELLING" | "VOCABULARY" {
   return kind === "FINGERSPELLING" || kind === "VOCABULARY"
+}
+
+// ─── Vocabulary both ways round ───────────────────────────────────────────────
+
+export const VOCABULARY_MODES = ["PICK_WORD", "SIGN_IT", "BOTH"] as const
+export type VocabularyMode = (typeof VOCABULARY_MODES)[number]
+
+export const VOCABULARY_MODE_INFO: Record<VocabularyMode, { label: string; hint: string }> = {
+  PICK_WORD: { label: "Sign → word", hint: "Students watch each sign and pick its word, against the clock." },
+  SIGN_IT: { label: "Word → sign", hint: "Students read each word and film themselves signing it. Then the sign plays next to theirs and they mark it." },
+  BOTH: { label: "Both ways", hint: "Students first read each word and sign it, then watch the signs and pick the words." },
+}
+
+export function parseVocabularyMode(value: unknown): VocabularyMode | null {
+  return VOCABULARY_MODES.includes(value as VocabularyMode) ? (value as VocabularyMode) : null
+}
+
+/** A vocabulary test the student watches and picks words in (one way, or both ways round). */
+export function picksWords(test: { testKind: string; vocabularyMode?: string | null }): boolean {
+  return test.testKind === "VOCABULARY" && test.vocabularyMode !== "SIGN_IT"
+}
+
+/** A vocabulary test the student signs the words in (one way, or both ways round). */
+export function signsWords(test: { testKind: string; vocabularyMode?: string | null }): boolean {
+  return test.testKind === "VOCABULARY" && (test.vocabularyMode === "SIGN_IT" || test.vocabularyMode === "BOTH")
 }
 
 /** Seconds a student can be given for each sign. */
@@ -76,22 +103,33 @@ export type SignQuestion = {
   choices?: string[]
   /** The word itself — only once the student may see the correct answers. */
   answer?: string
+  /** Vocabulary signed: the word to sign. */
+  word?: string
 }
 
 /**
  * A fingerspelling or vocabulary test as the student is sent it: the word is
  * the answer, so it is left out. In a vocabulary test each sign comes with
  * words to pick from — its own, and others taken from the rest of the test.
+ *
+ * A vocabulary test the student signs sends each word to sign. Signed only
+ * (no picking), the sign's video is held back until they have submitted
+ * (`showModel`) — it is what they mark their own signing against.
  */
 export function signQuestionsForStudent(
-  kind: "FINGERSPELLING" | "VOCABULARY",
+  test: { testKind: "FINGERSPELLING" | "VOCABULARY"; vocabularyMode?: string | null },
   questions: ReadonlyArray<{ id: string; question: string; imageUrl: string | null; mediaType: string | null }>,
   reveal: boolean,
+  showModel: boolean,
 ): SignQuestion[] {
+  const picks = test.testKind === "FINGERSPELLING" || picksWords(test)
   return questions.map((q) => {
-    const sign: SignQuestion = { id: q.id, imageUrl: q.imageUrl, mediaType: q.mediaType }
+    const sign: SignQuestion = picks || showModel
+      ? { id: q.id, imageUrl: q.imageUrl, mediaType: q.mediaType }
+      : { id: q.id, imageUrl: null, mediaType: null }
     if (reveal) sign.answer = q.question
-    if (kind === "VOCABULARY") {
+    if (signsWords(test)) sign.word = q.question
+    if (test.testKind === "VOCABULARY" && picks) {
       const others: string[] = []
       for (const other of shuffled(questions)) {
         if (others.length >= VOCABULARY_CHOICES - 1) break
@@ -113,7 +151,7 @@ export function signQuestionsForStudent(
  * instead when a value makes no sense, for the caller to answer 400 with.
  */
 export function parseTestSettings(
-  body: { passMark?: unknown; maxAttempts?: unknown; answerSeconds?: unknown; signPlays?: unknown; storyUrl?: unknown; storyControls?: unknown },
+  body: { passMark?: unknown; maxAttempts?: unknown; answerSeconds?: unknown; signPlays?: unknown; storyUrl?: unknown; storyControls?: unknown; vocabularyMode?: unknown },
 ): Partial<TestSettings> | string {
   const settings: Partial<TestSettings> = {}
 
@@ -160,6 +198,12 @@ export function parseTestSettings(
   }
 
   if (body.storyControls !== undefined) settings.storyControls = body.storyControls === true
+
+  if (body.vocabularyMode !== undefined) {
+    const mode = parseVocabularyMode(body.vocabularyMode)
+    if (!mode) return "Choose how the vocabulary is practised"
+    settings.vocabularyMode = mode
+  }
 
   return settings
 }
@@ -232,28 +276,67 @@ export function isSelfMarked(type: string | null | undefined): type is "WRITTEN"
  */
 export const ANSWER_VIDEO_GRACE_DAYS = 7
 
-/** What a question is worth: a written answer up to 3 marks, anything else 1. */
-export function maxMarks(type: string | null | undefined): number {
-  return type === "WRITTEN" ? 3 : 1
+/** What a written answer is worth unless the teacher chose otherwise. */
+export const DEFAULT_WRITTEN_MARKS = 3
+/** The most a written answer can be worth. */
+export const MAX_WRITTEN_MARKS = 10
+
+/** What a question is worth: a written answer as many marks as it was given (3 unless chosen), anything else 1. */
+export function maxMarks(question: { type?: string | null; maxMarks?: number | null } | null | undefined): number {
+  return question?.type === "WRITTEN" ? question.maxMarks ?? DEFAULT_WRITTEN_MARKS : 1
+}
+
+/** "1 mark", "2 marks" — what students see after a written question. */
+export function marksLabel(marks: number): string {
+  return marks === 1 ? "1 mark" : `${marks} marks`
+}
+
+/** The question's test, as far as marking goes. */
+export type MarkingTest = { testKind: string; vocabularyMode?: string | null }
+
+/**
+ * How a question is marked in its test: whether it has an answer the server
+ * marks — an option, or the word typed or picked, worth 1 when right — and how
+ * many marks the student gives themselves on top (0 for none). A vocabulary
+ * test done both ways round has both: the word picked, and the sign filmed.
+ */
+export function questionMarking(
+  question: { type: string; maxMarks?: number | null },
+  test: MarkingTest,
+): { picked: boolean; self: number } {
+  if (test.testKind === "VOCABULARY") return { picked: picksWords(test), self: signsWords(test) ? 1 : 0 }
+  if (test.testKind === "FINGERSPELLING") return { picked: true, self: 0 }
+  return isSelfMarked(question.type) ? { picked: false, self: maxMarks(question) } : { picked: true, self: 0 }
+}
+
+/** Whether an answer still waits for the student to mark it. */
+export function awaitsMarks(
+  question: { type: string; maxMarks?: number | null },
+  answer: { marks?: number | null },
+  test: MarkingTest,
+): boolean {
+  return questionMarking(question, test).self > 0 && (answer.marks === null || answer.marks === undefined)
 }
 
 /**
- * An attempt's score, out of 100, from its answers. A self-marked question
- * counts the marks given (none until it is marked); any other question is
- * worth 1 when right. With only one-mark questions this is simply the share
+ * An attempt's score, out of 100, from its answers. An answer the server marks
+ * is worth 1 when right; marks the student gave themselves count as given
+ * (none until marked). With only one-mark questions this is simply the share
  * answered correctly, as it always was.
  */
 export function attemptScore(
-  questions: ReadonlyArray<{ id: string; type: string }>,
+  questions: ReadonlyArray<{ id: string; type: string; maxMarks?: number | null }>,
   answers: ReadonlyArray<{ questionId: string; isCorrect: boolean; marks?: number | null }>,
+  test: MarkingTest,
 ): { earned: number; total: number; score: number } {
   let earned = 0
   let total = 0
   for (const q of questions) {
+    const { picked, self } = questionMarking(q, test)
+    total += (picked ? 1 : 0) + self
     const answer = answers.find((a) => a.questionId === q.id)
-    total += maxMarks(q.type)
     if (!answer) continue
-    earned += isSelfMarked(q.type) ? Math.min(answer.marks ?? 0, maxMarks(q.type)) : answer.isCorrect ? 1 : 0
+    earned += (picked && answer.isCorrect ? 1 : 0) + Math.min(answer.marks ?? 0, self)
   }
   return { earned, total, score: total > 0 ? Math.round((earned / total) * 100) : 0 }
 }

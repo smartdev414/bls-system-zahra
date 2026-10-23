@@ -28,7 +28,7 @@ async function handleGET() {
           description: true,
           test: {
             select: {
-              testKind: true, passMark: true, maxAttempts: true, answerSeconds: true,
+              testKind: true, vocabularyMode: true, passMark: true, maxAttempts: true, answerSeconds: true,
               _count: { select: { questions: true } },
             },
           },
@@ -55,6 +55,7 @@ async function handleGET() {
         sectionTitle: lesson.section.title,
         tutorName: lesson.section.course.tutor.name,
         kind: test.testKind,
+        vocabularyMode: test.vocabularyMode,
         answerSeconds: test.answerSeconds,
         questionCount: test._count.questions,
         passMark: test.passMark,

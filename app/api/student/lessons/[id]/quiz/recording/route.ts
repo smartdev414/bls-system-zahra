@@ -5,10 +5,12 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
 import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
+import { signsWords } from "@/lib/quiz"
 import { ANSWER_VIDEO_MAX_BYTES, ANSWER_VIDEO_TYPES, answerVideoKey } from "@/lib/test-recordings"
 
 // POST /api/student/lessons/[id]/quiz/recording — { contentType, fileSize }
-// Somewhere to upload the student's recording of a signed answer: a presigned
+// Somewhere to upload the student's recording of a signed answer, or of a
+// word signed in a vocabulary test: a presigned
 // PUT into their own private folder for this test (lib/test-recordings.ts).
 // The URL that comes back is sent with the attempt.
 async function handlePOST(
@@ -24,13 +26,15 @@ async function handlePOST(
       where: { id },
       include: {
         section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } },
-        test: { select: { questions: { where: { type: "SIGN" }, select: { id: true }, take: 1 } } },
+        test: {
+          select: { testKind: true, vocabularyMode: true, questions: { where: { type: "SIGN" }, select: { id: true }, take: 1 } },
+        },
       },
     })
     if (!lesson?.test || lesson.type !== "QUIZ" || !isReleased(lesson)) {
       return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
     }
-    if (lesson.test.questions.length === 0) {
+    if (lesson.test.questions.length === 0 && !signsWords(lesson.test)) {
       return NextResponse.json({ message: "This test has nothing to film" }, { status: 400 })
     }
 

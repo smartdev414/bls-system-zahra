@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, XCircle, ChevronLeft,
-  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen, Check, PenLine, Download,
+  ChevronRight, RotateCcw, Trophy, Loader2, Circle, LogOut, BookOpen, Check, PenLine,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -12,11 +12,11 @@ import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
-import { mediaDownloadHref } from "@/lib/protected-media"
 import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, maxMarks, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
+import { AnswerAndModel, MarkAnswers, MarksBadge, questionText } from "./SelfMarking"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -34,6 +34,8 @@ type Question = {
   questionAfterVideo?: boolean
   /** More than one answer is correct: the student ticks every one. */
   multiple?: boolean
+  /** WRITTEN: what it is worth; null = 3. */
+  maxMarks?: number | null
   /** WRITTEN: the model answer — sent once the student has submitted, to mark themselves against. */
   modelAnswer?: string | null
   /** SIGN: the sign done right — likewise only after submitting. */
@@ -190,161 +192,6 @@ function optionsLayout(q: Question, gridGap: string, listGap: string) {
   return cn("flex flex-col", listGap)
 }
 
-// ─── Written and signed answers — the student's next to the model ─────────────
-
-/** What the student wrote or signed, side by side with the model answer. */
-function AnswerAndModel({ question, answer }: { question: Question; answer?: AttemptAnswer }) {
-  const box = "rounded-lg border px-3 py-2 text-sm flex flex-col gap-1"
-  const label = "text-[10px] font-semibold uppercase tracking-wide"
-  if (question.type === "SIGN") {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <p className={cn(label, "text-muted-foreground")}>You</p>
-          {answer?.videoUrl
-            ? <>
-                <ProtectedVideo src={answer.videoUrl} controls playsInline autoPlay muted loop className="w-full aspect-video rounded-lg border bg-black" />
-                <a href={mediaDownloadHref(answer.videoUrl)} download className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline">
-                  <Download className="size-3.5" /> Download my video
-                </a>
-              </>
-            : <p className="text-xs text-muted-foreground rounded-lg border px-3 py-6 text-center">
-                {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : "Your video has been deleted (the course has ended)"}
-              </p>}
-        </div>
-        <div className="flex flex-col gap-1">
-          <p className={cn(label, "text-emerald-600")}>The sign done right</p>
-          {question.answerVideoUrl && (
-            <ProtectedVideo src={question.answerVideoUrl} controls playsInline autoPlay muted loop className="w-full aspect-video rounded-lg border border-emerald-300 bg-black" />
-          )}
-        </div>
-      </div>
-    )
-  }
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <div className={box}>
-        <p className={cn(label, "text-muted-foreground")}>Your answer</p>
-        <p className={cn("whitespace-pre-wrap", !answer?.answerText && "text-muted-foreground")}>{answer?.answerText || "Not answered"}</p>
-      </div>
-      <div className={cn(box, "border-emerald-300 bg-emerald-50 text-emerald-900")}>
-        <p className={cn(label, "text-emerald-600")}>Model answer</p>
-        <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
-      </div>
-    </div>
-  )
-}
-
-/** The marks given, as a badge: "2 / 3 marks", or a tick or cross for a signed answer. */
-function MarksBadge({ question, answer }: { question: Question; answer?: AttemptAnswer }) {
-  if (answer?.marks === null || answer?.marks === undefined) return <Badge variant="outline" className="text-[10px]">Not marked yet</Badge>
-  const full = answer.marks === maxMarks(question.type)
-  return (
-    <Badge variant="outline" className={cn("text-[10px]", full ? "bg-emerald-50 text-emerald-700 border-emerald-200" : answer.marks > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-rose-50 text-rose-700 border-rose-200")}>
-      {question.type === "SIGN" ? (full ? "✓ Correct" : "✗ Not right") : `${answer.marks} / ${maxMarks(question.type)} marks`}
-      {answer.markedByTutor && " · marked by your teacher"}
-    </Badge>
-  )
-}
-
-/**
- * Straight after submitting: the student compares each written or signed
- * answer with the model and marks it — 0 to 3 for writing, a tick or a cross
- * for signing. Their score is worked out once every one is marked.
- */
-function MarkAnswers({ lessonId, attemptId, questions, answers, onMarked }: {
-  lessonId: string
-  attemptId: string
-  questions: Question[]
-  answers: AttemptAnswer[]
-  onMarked: (result: { score: number; passed: boolean; earned: number; total: number; attemptsLeft: number | null }, marks: Record<string, number>) => void
-}) {
-  const toMark = questions.filter((q) => isSelfMarked(q.type) && answers.some((a) => a.questionId === q.id))
-  const [marks, setMarks] = useState<Record<string, number>>(() =>
-    Object.fromEntries(answers.flatMap((a) => (typeof a.marks === "number" ? [[a.questionId, a.marks]] : []))))
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const left = toMark.filter((q) => marks[q.id] === undefined).length
-
-  async function finish() {
-    setSaving(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/student/lessons/${lessonId}/quiz/attempt/${attemptId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ marks }),
-      })
-      const body = await res.json().catch(() => ({})) as { score: number; passed: boolean; earned: number; total: number; attemptsLeft: number | null; message?: string }
-      if (!res.ok) throw new Error(body.message ?? "Could not save your marks")
-      onMarked(body, marks)
-    } catch (e) {
-      setError(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "Could not save your marks. Check your connection and try again.")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-5 py-4">
-      <div>
-        <h3 className="font-bold flex items-center gap-2"><PenLine className="size-4 text-primary" /> Mark your answers</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Compare each answer with the correct one and mark it honestly. Your teacher can see your marks and may change them.
-        </p>
-      </div>
-
-      {toMark.map((q) => {
-        const answer = answers.find((a) => a.questionId === q.id)
-        const blank = answer?.marks === 0 && !answer.answerText && !answer.videoUrl
-        const max = maxMarks(q.type)
-        return (
-          <div key={q.id} className="rounded-xl border p-4 flex flex-col gap-3">
-            <p className="text-sm font-medium">{questions.indexOf(q) + 1}. {q.question}</p>
-            <AnswerAndModel question={q} answer={answer} />
-            {blank ? (
-              <p className="text-xs text-muted-foreground">Not answered — 0 marks.</p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-xs font-medium">
-                  {q.type === "SIGN" ? "Does your signing match?" : "How many marks did you get? More detail that matches the model answer earns more."}
-                </p>
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={`Marks for question ${questions.indexOf(q) + 1}`}>
-                  {(q.type === "SIGN" ? [1, 0] : Array.from({ length: max + 1 }, (_, n) => n)).map((n) => (
-                    <Button
-                      key={n}
-                      type="button"
-                      size="sm"
-                      role="radio"
-                      aria-checked={marks[q.id] === n}
-                      variant={marks[q.id] === n ? "default" : "outline"}
-                      className={cn("min-w-12", q.type === "SIGN" && marks[q.id] === n && (n ? "bg-emerald-600 hover:bg-emerald-600" : "bg-rose-600 hover:bg-rose-600"))}
-                      onClick={() => setMarks((m) => ({ ...m, [q.id]: n }))}
-                    >
-                      {q.type === "SIGN" ? (n ? <><Check className="size-4 mr-1" /> Yes</> : <><XCircle className="size-4 mr-1" /> No</>) : n}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )
-      })}
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">{error}</p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={finish} disabled={left > 0 || saving}>
-          {saving ? <><Loader2 className="size-4 mr-1.5 animate-spin" /> Saving…</> : "Finish and see my score"}
-        </Button>
-        {left > 0 && <span className="text-xs text-muted-foreground">{left === 1 ? "1 answer" : `${left} answers`} still to mark</span>}
-      </div>
-    </div>
-  )
-}
-
 // ─── Review — one attempt's answers, question by question ─────────────────────
 
 function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
@@ -359,8 +206,9 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
   const isRight = (q: Question) => !!answers.find((a) => a.questionId === q.id)?.isCorrect
   const right = questions.filter(isRight).length
   const wrong = questions.length - right
-  // With written answers (worth up to 3) the score is in marks, not questions right.
-  const marks = questions.some((q) => isSelfMarked(q.type)) ? attemptScore(questions, answers) : null
+  // With written answers (worth more than 1) the score is in marks, not questions
+  // right. Story tests are marked as Questions tests are.
+  const marks = questions.some((q) => isSelfMarked(q.type)) ? attemptScore(questions, answers, { testKind: "STANDARD" }) : null
 
   return (
     <div className="flex flex-col gap-5 py-4">
@@ -403,7 +251,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
                 ? <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
                 : <XCircle className={cn("size-4 shrink-0 mt-0.5", answer?.marks ? "text-amber-500" : "text-rose-500")} />}
               <div className="flex flex-col gap-2 flex-1">
-                <p className="text-sm font-medium">{i + 1}. {q.question}</p>
+                <p className="text-sm font-medium">{i + 1}. {questionText(q)}</p>
                 <QuestionMedia question={q} className="max-h-48 self-start" />
                 {isSelfMarked(q.type) && <div className="self-start"><MarksBadge question={q} answer={answer} /></div>}
                 {!isSelfMarked(q.type) && chosenOptionIds(answer).length === 0 && <p className="text-xs text-rose-600">Not answered</p>}
@@ -655,7 +503,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
               attemptsLeft: marked.attemptsLeft,
               answersRevealed: result?.answersRevealed ?? data.answersRevealed,
               questions: marking.questions,
-              answers: marking.answers.map((a) => (a.questionId in marks ? { ...a, marks: marks[a.questionId], isCorrect: a.isCorrect || marks[a.questionId] === maxMarks(marking.questions.find((q) => q.id === a.questionId)?.type) } : a)),
+              answers: marking.answers.map((a) => (a.questionId in marks ? { ...a, marks: marks[a.questionId], isCorrect: a.isCorrect || marks[a.questionId] === maxMarks(marking.questions.find((q) => q.id === a.questionId)) } : a)),
             })
             setView("result")
             if (marked.passed) onCompleted()
@@ -835,7 +683,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
           <div className="rounded-xl border bg-muted/20 p-4 sm:p-5 flex flex-col gap-4">
             <div>
               <p id={`question-${q.id}`} className="font-semibold text-base leading-snug">
-                {currentIndex + 1}. {waitingForVideo ? "Watch the video — the question and answers appear when it ends." : q.question}
+                {currentIndex + 1}. {waitingForVideo ? "Watch the video — the question and answers appear when it ends." : questionText(q)}
               </p>
               {q.multiple && !waitingForVideo && (
                 <p className="text-sm text-primary font-medium mt-1">More than one answer is correct — tick them all.</p>
@@ -861,7 +709,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                   onChange={(e) => setTexts((t) => ({ ...t, [q.id]: e.target.value }))}
                   className="bg-background"
                 />
-                <p className="text-xs text-muted-foreground">Up to 3 marks — the more detail, the more marks. You mark it yourself after you submit.</p>
+                <p className="text-xs text-muted-foreground">The more detail, the more marks. You mark it yourself after you submit.</p>
               </div>
             )}
 

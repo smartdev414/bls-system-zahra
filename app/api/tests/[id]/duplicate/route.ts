@@ -32,6 +32,8 @@ async function handlePOST(
         storyUrl: source.storyUrl,
         storyControls: source.storyControls,
         answerSeconds: source.answerSeconds,
+        signPlays: source.signPlays,
+        vocabularyMode: source.vocabularyMode,
         passMark: source.passMark,
         maxAttempts: source.maxAttempts,
         createdById: session!.sub,
@@ -44,6 +46,7 @@ async function handlePOST(
             questionAfterVideo: q.questionAfterVideo,
             type: q.type,
             modelAnswer: q.modelAnswer,
+            maxMarks: q.maxMarks,
             answerVideoUrl: q.answerVideoUrl,
             order: q.order,
             options: {

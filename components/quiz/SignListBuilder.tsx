@@ -23,6 +23,8 @@ type Props = {
   onChange: (next: QuestionDraft[] | ((current: QuestionDraft[]) => QuestionDraft[])) => void
   /** Opens the dictionary to take signs from it. */
   onAddFromDictionary?: () => void
+  /** Vocabulary, word → sign: nothing is picked, so any number of signs will do. */
+  signOnly?: boolean
 }
 
 /** "good-morning.mp4" → "good morning": a clip named after its word needs no typing. */
@@ -62,7 +64,7 @@ function newSign(word: string, videoUrl?: string, uploading = !videoUrl): Questi
   }
 }
 
-export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictionary }: Props) {
+export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictionary, signOnly }: Props) {
   // The words handed to the recorder while it is open, in the order to film them.
   const [filming, setFilming] = useState<{ id: string; word: string }[] | null>(null)
   // "Bulk add words", as in the dictionary: the words go in first, without
@@ -342,9 +344,11 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
         ])}
       />
 
-      <p className={cn("text-xs text-muted-foreground", kind === "VOCABULARY" && signs.length > 0 && signs.length < 4 && "text-amber-700")}>
+      <p className={cn("text-xs text-muted-foreground", kind === "VOCABULARY" && !signOnly && signs.length > 0 && signs.length < 4 && "text-amber-700")}>
         {kind === "FINGERSPELLING"
           ? "Students watch each clip and type the word. Capitals and spaces do not matter."
+          : signOnly
+          ? "Students read each word and film themselves signing it. Then each clip plays next to their video, to mark it against."
           : signs.length < 4
             ? "Students pick each sign's word from the words of the other signs — add at least 4 so there is a real choice."
             : "Students pick each sign's word from the words of the other signs, so there are no wrong answers to type."}

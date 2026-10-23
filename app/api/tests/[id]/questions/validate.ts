@@ -1,4 +1,4 @@
-import { isSelfMarked, isSignTest } from "@/lib/quiz"
+import { MAX_WRITTEN_MARKS, isSelfMarked, isSignTest } from "@/lib/quiz"
 
 export type QuestionBody = {
   question: string
@@ -12,6 +12,8 @@ export type QuestionBody = {
   type: "MULTIPLE_CHOICE" | "TRUE_FALSE" | "WRITTEN" | "SIGN"
   /** WRITTEN: what a full-marks answer says. */
   modelAnswer?: string | null
+  /** WRITTEN: what it is worth; left out = 3. */
+  maxMarks?: number | null
   /** SIGN: the video of the sign done right. */
   answerVideoUrl?: string | null
   /** Left out for a sign in a fingerspelling or vocabulary test, and for a written or signed answer. */
@@ -34,7 +36,12 @@ export function validateQuestion(body: QuestionBody, testKind?: string): string 
     return null
   }
   if (!body.question?.trim()) return "Question text is required"
-  if (body.type === "WRITTEN") return body.modelAnswer?.trim() ? null : "Add the model answer"
+  if (body.type === "WRITTEN") {
+    if (body.maxMarks != null && (!Number.isInteger(body.maxMarks) || body.maxMarks < 1 || body.maxMarks > MAX_WRITTEN_MARKS)) {
+      return `A written answer is worth 1 to ${MAX_WRITTEN_MARKS} marks`
+    }
+    return body.modelAnswer?.trim() ? null : "Add the model answer"
+  }
   if (body.type === "SIGN") return body.answerVideoUrl ? null : "Add the video of the sign"
   if (isSelfMarked(body.type)) return null
   if (!Array.isArray(body.options) || body.options.length < 2) return "A question needs at least two options"

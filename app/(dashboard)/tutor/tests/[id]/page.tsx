@@ -22,14 +22,16 @@ import {
   QuizBuilder, isBlankQuestion, questionProblem, saveQuestionDraft, withSaved, type QuestionDraft, type QuestionKind,
 } from "@/components/quiz/QuizBuilder"
 import { SignListBuilder } from "@/components/quiz/SignListBuilder"
-import { AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker } from "@/components/quiz/TestKindFields"
+import {
+  AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker, VocabularyModeField,
+} from "@/components/quiz/TestKindFields"
 import { TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
 import { AddToCourseDialog } from "@/components/tests/AddToCourseDialog"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { TestQuestionsView } from "@/components/tests/TestQuestionsView"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_SECONDS, TEST_KIND_INFO, isSignTest, type TestKind } from "@/lib/quiz"
+import { DEFAULT_ANSWER_SECONDS, TEST_KIND_INFO, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -43,6 +45,7 @@ type ApiQuestion = {
   questionAfterVideo: boolean
   type: QuestionKind
   modelAnswer: string | null
+  maxMarks: number | null
   answerVideoUrl: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
@@ -67,6 +70,7 @@ type TestFull = {
   storyControls: boolean
   answerSeconds: number | null
   signPlays: number | null
+  vocabularyMode: VocabularyMode
   passMark: number
   maxAttempts: number | null
   createdByName: string | null
@@ -82,6 +86,7 @@ type Details = {
   settings: TestSettingsDraft
   answerSeconds: number
   signPlays: number | null
+  vocabularyMode: VocabularyMode
   storyUrl: string | null
   storyControls: boolean
 }
@@ -97,6 +102,7 @@ function toDraft(q: ApiQuestion): QuestionDraft {
     questionAfterVideo: q.questionAfterVideo,
     type: q.type,
     modelAnswer: q.modelAnswer ?? undefined,
+    maxMarks: q.maxMarks ?? undefined,
     answerVideoUrl: q.answerVideoUrl ?? undefined,
     options: q.options.map((o) => ({
       id: o.id,
@@ -120,6 +126,7 @@ function detailsOf(test: TestFull): Details {
     settings: { passMark: String(test.passMark), maxAttempts: test.maxAttempts ? String(test.maxAttempts) : null },
     answerSeconds: test.answerSeconds ?? DEFAULT_ANSWER_SECONDS,
     signPlays: test.signPlays ?? null,
+    vocabularyMode: test.vocabularyMode,
     storyUrl: test.storyUrl,
     storyControls: test.storyControls,
   }
@@ -252,6 +259,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
           testKind: kind,
           ...testSettingsBody(details.settings),
           ...(signTest && { answerSeconds: details.answerSeconds, signPlays: details.signPlays }),
+          ...(kind === "VOCABULARY" && { vocabularyMode: details.vocabularyMode }),
           ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls }),
         }),
       })
@@ -470,6 +478,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                   Students have already taken this test. A change applies to their next go, in every course it is in.
                 </p>
               )}
+              {kind === "VOCABULARY" && (
+                <VocabularyModeField value={details.vocabularyMode} onChange={(vocabularyMode) => patch({ vocabularyMode })} />
+              )}
               {kind === "STORY" && (
                 <>
                   <StoryVideoField value={details.storyUrl} onChange={(url) => patch({ storyUrl: url })} />
@@ -500,6 +511,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                   signs={questions}
                   onChange={(next) => { setQuestions(next); setError(null) }}
                   onAddFromDictionary={() => setPickingSigns(true)}
+                  signOnly={kind === "VOCABULARY" && details.vocabularyMode === "SIGN_IT"}
                 />
               ) : (
                 <QuizBuilder
@@ -557,7 +569,8 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               noun={itemName.toLowerCase()}
             />
 
-            {signTest && (
+            {/* The clock is for picking the word; signing a word is not timed. */}
+            {signTest && (kind === "FINGERSPELLING" || picksWords({ testKind: kind, vocabularyMode: details.vocabularyMode })) && (
               <div className="flex flex-col sm:flex-row gap-4">
                 <AnswerSecondsField value={details.answerSeconds} onChange={(answerSeconds) => patch({ answerSeconds })} />
                 <SignPlaysField value={details.signPlays} onChange={(signPlays) => patch({ signPlays })} />

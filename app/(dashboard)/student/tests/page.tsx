@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { useFetch } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
-import { TEST_KIND_INFO, isSignTest, type TestKind } from "@/lib/quiz"
+import { TEST_KIND_INFO, VOCABULARY_MODE_INFO, isSignTest, signsWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,7 @@ type TestItem = {
   sectionTitle: string
   tutorName: string
   kind: TestKind
+  vocabularyMode: VocabularyMode
   answerSeconds: number | null
   questionCount: number
   passMark: number
@@ -51,10 +52,13 @@ const STATUS: Record<TestItem["status"], { label: string; className: string }> =
 /** "Vocabulary · 12 signs · 10 seconds each · Pass mark 70% · 1 of 3 attempts used" */
 function testFacts(test: TestItem) {
   const noun = isSignTest(test.kind) ? "sign" : "question"
+  // Signing the words is not against the clock.
+  const signOnly = test.vocabularyMode === "SIGN_IT"
   return [
     test.kind !== "STANDARD" ? TEST_KIND_INFO[test.kind].label : null,
+    signsWords({ testKind: test.kind, vocabularyMode: test.vocabularyMode }) ? VOCABULARY_MODE_INFO[test.vocabularyMode].label : null,
     `${test.questionCount} ${noun}${test.questionCount !== 1 ? "s" : ""}`,
-    isSignTest(test.kind) && test.answerSeconds ? `${test.answerSeconds} seconds each` : null,
+    isSignTest(test.kind) && !(test.kind === "VOCABULARY" && signOnly) && test.answerSeconds ? `${test.answerSeconds} seconds each` : null,
     `Pass mark ${test.passMark}%`,
     test.maxAttempts === null
       ? test.attempts > 0 ? `${test.attempts} attempt${test.attempts !== 1 ? "s" : ""}` : null

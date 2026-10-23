@@ -6,7 +6,7 @@ import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
 import {
-  attemptScore, attemptsLeft, hasMultipleAnswers, isSignTest, questionsForStudent, revealsAnswers, sameWord,
+  attemptScore, attemptsLeft, hasMultipleAnswers, isSignTest, questionMarking, questionsForStudent, revealsAnswers, sameWord,
   signQuestionsForStudent,
 } from "@/lib/quiz"
 import { isOwnAnswerVideo } from "@/lib/test-recordings"
@@ -16,7 +16,8 @@ import { isOwnAnswerVideo } from "@/lib/test-recordings"
 // `optionIds` are the options ticked on a question with more than one correct
 // answer (`optionId` alone is one choice). `text` is the word typed or picked
 // in a fingerspelling or vocabulary test, or a written answer. `videoUrl` is
-// the student's recording for a signed answer (from ./recording).
+// the student's recording for a signed answer, or of a word signed in a
+// vocabulary test (from ./recording).
 //
 // Written and signed answers are left unmarked: the attempt waits for the
 // student to mark them (PATCH ./[attemptId]) before it can pass.
@@ -84,10 +85,14 @@ async function handlePOST(
     const gradedAnswers = test.questions.map((q) => {
       const given = answerMap.get(q.id)
       if (isSignTest(kind)) {
+        const { picked, self } = questionMarking(q, test)
         // The question's text is the word; a sign that ran out of time has none.
-        const answerText = typeof given?.text === "string" ? given.text.trim().slice(0, 100) : ""
-        const isCorrect = sameWord(answerText, q.question)
-        return { questionId: q.id, optionId: null, answerText: answerText || null, isCorrect }
+        const answerText = picked && typeof given?.text === "string" ? given.text.trim().slice(0, 100) : ""
+        const graded = { questionId: q.id, optionId: null, answerText: answerText || null, isCorrect: picked && sameWord(answerText, q.question) }
+        if (!self) return graded
+        // The word signed: marked by the student against the sign, like a signed answer.
+        const videoUrl = isOwnAnswerVideo(given?.videoUrl, id, session.sub) ? given.videoUrl : null
+        return { ...graded, videoUrl, marks: videoUrl ? null : 0 }
       }
       // Marked by the student once they see the model answer. Nothing given
       // (a blank box, no recording) has nothing to mark, and gets 0 now.
@@ -119,8 +124,8 @@ async function handlePOST(
       ? Math.min(Math.round(Number(body.durationMs)), 24 * 60 * 60 * 1000)
       : null
 
-    // Out of the marks available — 1 a question, up to 3 for a written answer.
-    const { earned: correct, total, score } = attemptScore(test.questions, gradedAnswers)
+    // Out of the marks available — 1 a question, more for a written answer.
+    const { earned: correct, total, score } = attemptScore(test.questions, gradedAnswers, test)
     // Until the student has marked their written and signed answers it cannot pass.
     const selfMarked = gradedAnswers.every((a) => !("marks" in a) || a.marks !== null)
     const passed = selfMarked && score >= test.passMark
@@ -177,7 +182,7 @@ async function handlePOST(
       include: { options: { orderBy: { order: "asc" } } },
     })
     const questions = isSignTest(kind)
-      ? signQuestionsForStudent(kind, fullQuestions, reveal)
+      ? signQuestionsForStudent({ testKind: kind, vocabularyMode: test.vocabularyMode }, fullQuestions, reveal, true)
       : questionsForStudent(fullQuestions, reveal, true)
 
     return NextResponse.json({

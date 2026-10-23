@@ -56,7 +56,7 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
         signPlays: rules.signPlays,
       },
       // Only members play, and only while it runs.
-      questions: joined && open ? signQuestionsForStudent("FINGERSPELLING", words, false) : [],
+      questions: joined && open ? signQuestionsForStudent({ testKind: "FINGERSPELLING" }, words, false, false) : [],
       standings: standings.map((s) => ({
         rank: s.rank,
         name: s.userId === session.sub ? "You" : shortName(s.name),

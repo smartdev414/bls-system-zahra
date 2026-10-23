@@ -45,6 +45,7 @@ async function handlePOST(
         questionAfterVideo: body.questionAfterVideo === true && !!body.imageUrl,
         type: body.type ?? "MULTIPLE_CHOICE",
         modelAnswer: body.type === "WRITTEN" ? body.modelAnswer?.trim() ?? null : null,
+        maxMarks: body.type === "WRITTEN" ? body.maxMarks ?? null : null,
         answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
         order: (last._max.order ?? 0) + 1,
         options: {

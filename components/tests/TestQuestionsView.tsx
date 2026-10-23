@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Circle } from "lucide-react"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { isSignTest, isVideoMedia } from "@/lib/quiz"
+import { isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 export type ViewQuestion = {
@@ -13,6 +13,8 @@ export type ViewQuestion = {
   type?: string
   /** WRITTEN: what a full-marks answer says. */
   modelAnswer?: string | null
+  /** WRITTEN: what it is worth; null = 3. */
+  maxMarks?: number | null
   /** SIGN: the sign done right. */
   answerVideoUrl?: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
@@ -66,13 +68,13 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
           </p>
           {questions.map((q, i) => (
             <div key={q.id} className="flex flex-col gap-2">
-              <p className="text-sm font-medium">{i + 1}. {q.question}</p>
+              <p className="text-sm font-medium">{i + 1}. {q.question}{q.type === "WRITTEN" && ` (${marksLabel(maxMarks(q))})`}</p>
               {q.imageUrl && (
                 <Media url={q.imageUrl} type={q.mediaType} alt="question" className="rounded-lg max-h-48 border self-start" />
               )}
               {q.type === "WRITTEN" && (
                 <div className="ml-6 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Model answer · students mark themselves 0–3</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Model answer · students mark themselves 0–{maxMarks(q)}</p>
                   <p className="whitespace-pre-wrap mt-0.5">{q.modelAnswer}</p>
                 </div>
               )}

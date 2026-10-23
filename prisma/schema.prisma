@@ -56,7 +56,15 @@ enum TestKind {
   STANDARD // questions, each with or without a video
   STORY // one signed story, then questions about it
   FINGERSPELLING // watch a word being spelled and type it, against the clock
-  VOCABULARY // watch a sign and pick its word, against the clock
+  VOCABULARY // watch a sign and pick its word, and/or read a word and sign it
+}
+
+// How a vocabulary test is practised: from the sign to the word, from the word
+// to the sign, or both ways round.
+enum VocabularyMode {
+  PICK_WORD // watch the sign, pick its word against the clock
+  SIGN_IT // read the word, film yourself signing it, mark it against the sign
+  BOTH // sign each word first, then watch the signs and pick the words
 }
 
 enum QuestionType {
@@ -66,7 +74,9 @@ enum QuestionType {
   // answer and give themselves 0-3 marks.
   WRITTEN
   // The student films themselves signing; after submitting the sign's video
-  // plays next to theirs and they give themselves a tick or a cross.
+  // plays next to theirs and they give themselves a tick or a cross. No longer
+  // offered for new questions — vocabulary tests do this now (VocabularyMode)
+  // — but the questions made before still work.
   SIGN
 }
 
@@ -936,6 +946,8 @@ model Test {
   // FINGERSPELLING / VOCABULARY: how many times each sign's video plays — 1 or
   // 2 for a harder test, null to keep it repeating until the time is up.
   signPlays     Int?
+  // VOCABULARY: which way round it is practised.
+  vocabularyMode VocabularyMode @default(PICK_WORD)
   // The score, out of 100, a student needs to pass, and how many times they may
   // sit it. Null attempts = as often as they like.
   passMark      Int          @default(70)
@@ -971,6 +983,9 @@ model QuizQuestion {
   type     QuestionType @default(MULTIPLE_CHOICE)
   // WRITTEN: the answer students compare theirs with once they have submitted.
   modelAnswer   String?
+  // WRITTEN: what the question is worth; students see "(2 marks)" after it and
+  // give themselves 0 up to this. Null = 3, as before it could be chosen.
+  maxMarks      Int?
   // SIGN: the video of the sign done right, shown next to the student's own
   // recording once they have submitted — never before.
   answerVideoUrl String?
@@ -1047,8 +1062,11 @@ model QuizAttemptAnswer {
   optionIds  String[] @default([])
   // Fingerspelling / vocabulary: the word the student typed or picked.
   // WRITTEN: what the student wrote.
+  // A vocabulary test signed one way or both ways keeps the student's
+  // recording in videoUrl and their tick or cross in marks; isCorrect is then
+  // only the word picked.
   answerText String?
-  // SIGN: the student's recording of themselves. Deleted a week after the
+  // SIGN (and vocabulary signed): the student's recording of themselves. Deleted a week after the
   // course is archived or the student leaves it (lib/test-recordings.ts), when
   // this goes back to null.
   videoUrl   String?

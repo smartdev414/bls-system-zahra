@@ -66,7 +66,7 @@ async function handleGET(
     // Model answers of written and signed questions are seen once the student
     // has submitted — they mark themselves against them.
     const questions = isSignTest(kind)
-      ? signQuestionsForStudent(kind, fullQuestions, reveal)
+      ? signQuestionsForStudent({ testKind: kind, vocabularyMode: test.vocabularyMode }, fullQuestions, reveal, attempts.length > 0)
       : questionsForStudent(fullQuestions, reveal, attempts.length > 0)
 
     const answersOf = (attemptId: string) => prisma.quizAttemptAnswer.findMany({
@@ -98,6 +98,7 @@ async function handleGET(
         signPlays: test.signPlays,
         storyUrl: kind === "STORY" ? test.storyUrl : null,
         storyControls: test.storyControls,
+        vocabularyMode: test.vocabularyMode,
       },
       attempts,
       attemptsLeft: attemptsLeft(test.maxAttempts, attempts.length),

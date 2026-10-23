@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { ANSWER_SECONDS, TEST_KINDS, TEST_KIND_INFO, type TestKind } from "@/lib/quiz"
+import {
+  ANSWER_SECONDS, TEST_KINDS, TEST_KIND_INFO, VOCABULARY_MODES, VOCABULARY_MODE_INFO, type TestKind, type VocabularyMode,
+} from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 import { MediaUploadButton, uploadMedia } from "./QuizBuilder"
 
@@ -104,6 +106,36 @@ export function SignPlaysField({ value, onChange }: { value: number | null; onCh
           ? "The video repeats until the time is up."
           : `Students see each sign ${value === 1 ? "once" : "twice"} — a harder challenge.`}
       </p>
+    </div>
+  )
+}
+
+/**
+ * Vocabulary: which way round it is practised — from the sign to the word,
+ * from the word to the sign (the student films themselves), or both.
+ */
+export function VocabularyModeField({ value, onChange }: { value: VocabularyMode; onChange: (mode: VocabularyMode) => void }) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:max-w-md">
+      <Label>Students practise</Label>
+      <div role="radiogroup" aria-label="Students practise" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
+        {VOCABULARY_MODES.map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            role="radio"
+            aria-checked={value === mode}
+            onClick={() => onChange(mode)}
+            className={cn(
+              "rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+              value === mode ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {VOCABULARY_MODE_INFO[mode].label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">{VOCABULARY_MODE_INFO[value].hint}</p>
     </div>
   )
 }

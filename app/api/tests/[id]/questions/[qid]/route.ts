@@ -60,6 +60,7 @@ async function handlePUT(
           questionAfterVideo: body.questionAfterVideo === true && !!body.imageUrl,
           type: body.type,
           modelAnswer: body.type === "WRITTEN" ? body.modelAnswer?.trim() ?? null : null,
+          maxMarks: body.type === "WRITTEN" ? body.maxMarks ?? null : null,
           answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
           options: {
             update: body.options.flatMap((opt, i) =>

@@ -44,6 +44,7 @@ type LessonFull = {
   test: {
     id: string
     testKind: TestKind
+    vocabularyMode: string
     passMark: number
     maxAttempts: number | null
     /** Story tests: the video the questions are about. */
@@ -167,7 +168,7 @@ export default function ViewLessonPage({
           </TabsList>
 
           <TabsContent value="results">
-            <QuizResults lessonId={lesson.id} questions={test.questions} />
+            <QuizResults lessonId={lesson.id} questions={test.questions} marking={test} />
           </TabsContent>
 
           <TabsContent value="questions">

@@ -3,12 +3,12 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseTeachScope } from "@/lib/permissions"
-import { isSelfMarked, maxMarks } from "@/lib/quiz"
+import { questionMarking } from "@/lib/quiz"
 import { rescoreAttempt } from "@/lib/test-marking"
 
 // PATCH /api/tutor/lessons/[id]/results/answers/[answerId] — { marks: number }
 // A teacher changes the marks a student gave themselves on a written or
-// signed answer (or gives them, if the student never did). The attempt's score
+// signed answer, or a word signed in a vocabulary test (or gives them, if the student never did). The attempt's score
 // and pass follow.
 async function handlePATCH(
   req: NextRequest,
@@ -28,22 +28,25 @@ async function handlePATCH(
         id: answerId,
         attempt: { lessonId: id, lesson: { type: "QUIZ", section: { course: courseTeachScope(session) } } },
       },
-      select: { id: true, attemptId: true, question: { select: { type: true } } },
+      select: {
+        id: true, attemptId: true,
+        question: { select: { type: true, maxMarks: true, test: { select: { testKind: true, vocabularyMode: true } } } },
+      },
     })
     if (!answer) return NextResponse.json({ message: "Answer not found" }, { status: 404 })
-    if (!isSelfMarked(answer.question.type)) {
+    const { picked, self: max } = questionMarking(answer.question, answer.question.test)
+    if (max === 0) {
       return NextResponse.json({ message: "Only written and signed answers are marked by hand" }, { status: 400 })
     }
 
     const { marks } = await req.json() as { marks?: unknown }
-    const max = maxMarks(answer.question.type)
     if (!Number.isInteger(marks) || (marks as number) < 0 || (marks as number) > max) {
       return NextResponse.json({ message: `Marks must be from 0 to ${max}` }, { status: 400 })
     }
 
     await prisma.quizAttemptAnswer.update({
       where: { id: answerId },
-      data: { marks: marks as number, markedByTutor: true, isCorrect: marks === max },
+      data: { marks: marks as number, markedByTutor: true, ...(!picked && { isCorrect: marks === max }) },
     })
     const result = await rescoreAttempt(answer.attemptId)
 

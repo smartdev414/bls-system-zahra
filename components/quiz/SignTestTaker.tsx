@@ -3,21 +3,32 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, RotateCcw, Trophy, Loader2, Timer, Keyboard, Hand,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, RotateCcw, Trophy, Loader2, Timer, Keyboard, Hand, PenLine,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import type { SignQuestion } from "@/lib/quiz"
+import { attemptScore, picksWords, signsWords, type MarkingTest, type SignQuestion, type VocabularyMode } from "@/lib/quiz"
 import type { HighScore } from "@/lib/quiz-high-scores"
 import { cn } from "@/lib/utils"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
+import { SignAnswerRecorder } from "./SignAnswerRecorder"
+import { MarkAnswers, type MarkQuestion } from "./SelfMarking"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type SignAnswer = { questionId: string; answerText: string | null; isCorrect: boolean }
+export type SignAnswer = {
+  questionId: string
+  answerText: string | null
+  /** The word picked, or typed, was right. */
+  isCorrect: boolean
+  /** Vocabulary signed: the student's recording of the word, and the tick (1) or cross (0) it got. */
+  videoUrl?: string | null
+  marks?: number | null
+  markedByTutor?: boolean
+}
 
 export type SignTestData = {
   questions: SignQuestion[]
@@ -28,17 +39,24 @@ export type SignTestData = {
     answerSeconds: number
     /** How many times each sign plays; null (or absent) = repeats until the time is up. */
     signPlays?: number | null
+    /** Vocabulary: sign → word, word → sign, or both. */
+    vocabularyMode?: VocabularyMode
   }
   /** Newest first. */
   attempts: AttemptSummary[]
   attemptsLeft: number | null
   answersRevealed: boolean
   bestAttempt: (AttemptSummary & { answers: SignAnswer[] }) | null
+  /** Submitted, with the words signed still to be marked by the student. */
+  pendingAttempt?: (AttemptSummary & { answers: SignAnswer[] }) | null
   /** Fingerspelling only. */
   highScores?: HighScore[]
 }
 
 type Result = {
+  attemptId: string
+  /** False until the student has marked the words they signed. */
+  selfMarked: boolean
   score: number
   passed: boolean
   correct: number
@@ -312,7 +330,7 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
 
 // ─── 3, 2, 1 — so the first sign does not catch anyone out ────────────────────
 
-export function GetReady({ onDone }: { onDone: () => void }) {
+export function GetReady({ onDone, label = "Get ready" }: { onDone: () => void; label?: string }) {
   const [count, setCount] = useState(3)
   useEffect(() => {
     const tick = setTimeout(() => (count > 1 ? setCount(count - 1) : onDone()), 800)
@@ -321,35 +339,103 @@ export function GetReady({ onDone }: { onDone: () => void }) {
   }, [count])
   return (
     <div className="flex flex-col items-center gap-2 py-16 text-center" aria-live="assertive">
-      <p className="text-sm font-medium text-muted-foreground">Get ready</p>
+      <p className="text-sm font-medium text-muted-foreground">{label}</p>
       <p key={count} className="text-7xl font-black text-primary tabular-nums animate-in zoom-in-50 duration-300">{count}</p>
     </div>
   )
 }
 
+// ─── One word to sign — not against the clock ─────────────────────────────────
+
+/**
+ * Vocabulary, word → sign: the word, and the camera to film yourself signing
+ * it. The student moves on once they have a recording, or skips the word.
+ */
+function SignItRound({ lessonId, sign, number, total, videoUrl, onVideo, onNext }: {
+  lessonId: string
+  sign: SignQuestion
+  number: number
+  total: number
+  videoUrl?: string
+  onVideo: (videoUrl: string | undefined) => void
+  onNext: () => void
+}) {
+  const last = number === total
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      <div className="flex flex-col gap-1.5">
+        <p className="text-xs text-muted-foreground">Word {number} of {total}</p>
+        <Progress value={((number - 1) / total) * 100} className="h-1.5" />
+      </div>
+
+      <div className="rounded-xl border bg-muted/20 px-4 py-6 text-center">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sign this word</p>
+        <p className="mt-1 text-4xl font-black break-words">{sign.word}</p>
+      </div>
+
+      <SignAnswerRecorder key={sign.id} lessonId={lessonId} videoUrl={videoUrl} onChange={onVideo} />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={onNext} disabled={!videoUrl}>
+          {last ? "Done" : "Next word"} <ChevronRight className="size-4 ml-1" />
+        </Button>
+        {!videoUrl && (
+          <button type="button" className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground" onClick={onNext}>
+            Skip this word
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** The words signed, as the marking screen takes them: the word is the question, its sign the model. */
+function toMark(questions: SignQuestion[]): MarkQuestion[] {
+  return questions.map((q) => ({
+    id: q.id, question: q.word ?? "", type: "SIGN", answerVideoUrl: q.imageUrl, answerMediaType: q.mediaType,
+  }))
+}
+
 // ─── Review — what was answered for each sign ─────────────────────────────────
 
-export function Review({ questions, answers, answersRevealed, onBack }: {
+/** A sign's clip, or its picture. */
+function SignMedia({ sign }: { sign: SignQuestion }) {
+  if (!sign.imageUrl) return null
+  return sign.mediaType === "image"
+    // eslint-disable-next-line @next/next/no-img-element
+    ? <img src={sign.imageUrl} alt="" className="w-full aspect-video rounded-lg bg-black object-contain" draggable={false} />
+    : <ProtectedVideo src={sign.imageUrl} muted loop playsInline controls className="w-full aspect-video rounded-lg bg-black object-contain" />
+}
+
+export function Review({ questions, answers, answersRevealed, onBack, test }: {
   questions: SignQuestion[]
   answers: SignAnswer[]
   /** False while the test can still be retaken: the words that were missed stay hidden. */
   answersRevealed: boolean
   onBack: () => void
+  /** A vocabulary test: which way round it went. Left out, words were picked or typed. */
+  test?: MarkingTest
 }) {
+  const signs = !!test && signsWords(test)
+  const picks = !test || !signs || picksWords(test)
   const right = answers.filter((a) => a.isCorrect).length
+  // Signing a word earns a mark too, so the score is in marks.
+  const marks = test && signs ? attemptScore(questions.map((q) => ({ id: q.id, type: "SIGN" })), answers, test) : null
   return (
     <div className="flex flex-col gap-5 py-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="font-bold">Review Answers</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">{right} of {questions.length} correct</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {marks ? `${marks.earned} of ${marks.total} marks` : `${right} of ${questions.length} correct`}
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={onBack}>
           <ChevronLeft className="size-4 mr-1" /> Back
         </Button>
       </div>
 
-      {!answersRevealed && (
+      {picks && !answersRevealed && (
         <p className="text-xs text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">
           You can see which of your answers were right. The words you missed are shown once you pass or have no attempts left.
         </p>
@@ -360,33 +446,51 @@ export function Review({ questions, answers, answersRevealed, onBack }: {
           const answer = answers.find((a) => a.questionId === q.id)
           // A sign added after this attempt was never put to the student.
           if (!answer) return null
+          const allRight = (!picks || answer.isCorrect) && (!signs || answer.marks === 1)
+          // Picking is the test of which word a sign is: the word shows once it may.
+          const word = picks ? q.answer : q.word
           return (
             <div
               key={q.id}
               className={cn(
                 "flex flex-col gap-2 rounded-xl border p-3",
-                answer.isCorrect ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/50"
+                allRight ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/50"
               )}
             >
-              {q.imageUrl && q.mediaType === "image" ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={q.imageUrl} alt="" className="w-full aspect-video rounded-lg bg-black object-contain" draggable={false} />
-              ) : q.imageUrl && (
-                <ProtectedVideo src={q.imageUrl} muted loop playsInline controls className="w-full aspect-video rounded-lg bg-black object-contain" />
+              {signs && word && <p className="font-semibold break-words">{word}</p>}
+              {signs && <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">The sign</p>}
+              <SignMedia sign={q} />
+              {picks && (
+                <div className="flex items-start gap-2 text-sm">
+                  {answer.isCorrect
+                    ? <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
+                    : <XCircle className="size-4 text-rose-500 shrink-0 mt-0.5" />}
+                  <div className="min-w-0">
+                    <p className="font-medium break-words">
+                      {answer.answerText ? `You answered: ${answer.answerText}` : "Ran out of time"}
+                    </p>
+                    {!answer.isCorrect && q.answer && (
+                      <p className="text-emerald-700 break-words">The word: {q.answer}</p>
+                    )}
+                  </div>
+                </div>
               )}
-              <div className="flex items-start gap-2 text-sm">
-                {answer.isCorrect
-                  ? <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
-                  : <XCircle className="size-4 text-rose-500 shrink-0 mt-0.5" />}
-                <div className="min-w-0">
-                  <p className="font-medium break-words">
-                    {answer.answerText ? `You answered: ${answer.answerText}` : "Ran out of time"}
+              {signs && (
+                <div className="flex flex-col gap-1.5">
+                  <p className="flex items-start gap-2 text-sm font-medium">
+                    {answer.marks === 1
+                      ? <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
+                      : <XCircle className="size-4 text-rose-500 shrink-0 mt-0.5" />}
+                    <span>
+                      {answer.marks === 1 ? "Your signing matched" : answer.marks === 0 ? (answer.videoUrl ? "Your signing didn't match" : "Not signed") : "Not marked yet"}
+                      {answer.markedByTutor && <span className="font-normal text-muted-foreground"> · marked by your teacher</span>}
+                    </span>
                   </p>
-                  {!answer.isCorrect && q.answer && (
-                    <p className="text-emerald-700 break-words">The word: {q.answer}</p>
+                  {answer.videoUrl && (
+                    <ProtectedVideo src={answer.videoUrl} controls playsInline muted className="w-full aspect-video rounded-lg border bg-black" />
                   )}
                 </div>
-              </div>
+              )}
             </div>
           )
         })}
@@ -403,15 +507,27 @@ export function Review({ questions, answers, answersRevealed, onBack }: {
  * A fingerspelling or vocabulary test as the student plays it: a start screen,
  * the signs one at a time against the clock, then the result. A sign moves on
  * as soon as it is answered or its time is up, and there is no going back.
+ *
+ * A vocabulary test can also go word → sign: each word comes up to film
+ * yourself signing, with no clock. Done both ways round, the words are signed
+ * first, then the signs are played to pick the words. The signing is marked by
+ * the student once they have sent it, against each sign, before their score.
  */
 export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onCompleted, nextHref }: Props) {
   const { questions, settings, attempts, bestAttempt, highScores } = data
   const fingerspelling = settings.kind === "FINGERSPELLING"
+  const test: MarkingTest = { testKind: settings.kind, vocabularyMode: settings.vocabularyMode }
+  const signs = signsWords(test)
+  const picks = fingerspelling || picksWords(test)
 
-  const [view, setView] = useState<"start" | "ready" | "playing" | "sending" | "result" | "review-result" | "review-best">("start")
+  const [view, setView] = useState<
+    "start" | "signing" | "ready" | "playing" | "sending" | "marking" | "result" | "review-result" | "review-best"
+  >("start")
   // The signs of this go, in the order they come up — a new order each time.
   const [round, setRound] = useState<SignQuestion[]>([])
   const [index, setIndex] = useState(0)
+  // Vocabulary signed: the recording made of each word.
+  const [videos, setVideos] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Result | null>(null)
   const answersRef = useRef<Record<string, string>>({})
@@ -430,14 +546,17 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
 
   const hasPassed = attempts.some((a) => a.passed)
   const canAttempt = data.attemptsLeft !== 0
+  const pending = data.pendingAttempt ?? null
 
   function start() {
     answersRef.current = {}
+    tookMsRef.current = 0
+    setVideos({})
     setRound(shuffled(questions))
     setIndex(0)
     setResult(null)
     setError(null)
-    setView("ready")
+    setView(signs ? "signing" : "ready")
   }
 
   async function send() {
@@ -448,14 +567,15 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          answers: round.map((q) => ({ questionId: q.id, text: answersRef.current[q.id] ?? "" })),
-          durationMs: tookMsRef.current,
+          answers: round.map((q) => ({ questionId: q.id, text: answersRef.current[q.id] ?? "", videoUrl: videos[q.id] })),
+          durationMs: tookMsRef.current || undefined,
         }),
       })
-      const body = await res.json() as Omit<Result, "answers"> & { attempt: { answers: SignAnswer[] }; message?: string }
+      const body = await res.json() as Omit<Result, "answers" | "attemptId"> & { attempt: { id: string; answers: SignAnswer[] }; message?: string }
       if (!res.ok) throw new Error(body.message ?? "Could not send your answers")
-      setResult({ ...body, answers: body.attempt.answers })
-      setView("result")
+      setResult({ ...body, attemptId: body.attempt.id, answers: body.attempt.answers })
+      // The words signed are marked by the student before the score.
+      setView(body.selfMarked ? "result" : "marking")
       if (body.passed) onCompleted()
       // Pick up the new attempt and the high scores.
       void refetch()
@@ -477,8 +597,47 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
     void send()
   }
 
+  // The last word signed: on to picking the words, both ways round, or done.
+  function signed() {
+    if (index + 1 < round.length) {
+      setIndex(index + 1)
+      return
+    }
+    if (picks) {
+      setRound(shuffled(round))
+      setIndex(0)
+      setView("ready")
+    } else {
+      void send()
+    }
+  }
+
+  if (view === "signing" && round[index]) {
+    return (
+      <SignItRound
+        lessonId={lessonId}
+        sign={round[index]}
+        number={index + 1}
+        total={round.length}
+        videoUrl={videos[round[index].id]}
+        onVideo={(url) => setVideos((v) => {
+          const next = { ...v }
+          if (url) next[round[index].id] = url
+          else delete next[round[index].id]
+          return next
+        })}
+        onNext={signed}
+      />
+    )
+  }
+
   if (view === "ready") {
-    return <GetReady onDone={() => { startedAtRef.current = Date.now(); setView("playing") }} />
+    return (
+      <GetReady
+        label={signs ? "Now watch each sign and pick its word" : undefined}
+        onDone={() => { startedAtRef.current = Date.now(); setView("playing") }}
+      />
+    )
   }
 
   // ── Playing ───────────────────────────────────────────────────────────────
@@ -517,6 +676,41 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
     )
   }
 
+  // ── Marking the words signed — straight after sending, or coming back to it ──
+  if (view === "marking") {
+    const marking = result && !result.selfMarked
+      ? { attemptId: result.attemptId, questions: result.questions, answers: result.answers }
+      : pending && { attemptId: pending.id, questions, answers: pending.answers }
+    if (marking) {
+      return (
+        <MarkAnswers
+          lessonId={lessonId}
+          attemptId={marking.attemptId}
+          questions={toMark(marking.questions)}
+          answers={marking.answers}
+          onMarked={(marked, marks) => {
+            setResult({
+              attemptId: marking.attemptId,
+              selfMarked: true,
+              score: marked.score,
+              passed: marked.passed,
+              correct: marked.earned,
+              total: marked.total,
+              passMark: result?.passMark ?? settings.passMark,
+              attemptsLeft: marked.attemptsLeft,
+              answersRevealed: result?.answersRevealed ?? data.answersRevealed,
+              questions: marking.questions,
+              answers: marking.answers.map((a) => (a.questionId in marks ? { ...a, marks: marks[a.questionId] } : a)),
+            })
+            setView("result")
+            if (marked.passed) onCompleted()
+            void refetch()
+          }}
+        />
+      )
+    }
+  }
+
   // ── Result ────────────────────────────────────────────────────────────────
   if (view === "result" && result) {
     const left = attemptsLeftText(result.attemptsLeft)
@@ -529,7 +723,8 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
         <div>
           <p className="text-3xl font-black">{result.score}%</p>
           <p className="text-muted-foreground mt-1">
-            {result.correct} / {result.total} correct · {seconds(tookMsRef.current)}
+            {result.correct} / {result.total} {signs ? "marks" : "correct"}
+            {tookMsRef.current > 0 && ` · ${seconds(tookMsRef.current)}`}
           </p>
         </div>
 
@@ -577,6 +772,7 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
         answers={result.answers}
         answersRevealed={result.answersRevealed}
         onBack={() => setView("result")}
+        test={test}
       />
     )
   }
@@ -588,6 +784,7 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
         answers={bestAttempt.answers}
         answersRevealed={data.answersRevealed}
         onBack={() => setView("start")}
+        test={test}
       />
     )
   }
@@ -595,6 +792,8 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
   // ── Start screen — how it is played, and how previous goes went ────────────
   const left = attemptsLeftText(data.attemptsLeft)
   const Icon = fingerspelling ? Keyboard : Hand
+  const timed = ` When each one finishes you have ${settings.answerSeconds} seconds, then the next comes up.`
+    + (settings.signPlays === 1 ? " Each one is shown once only — watch closely!" : settings.signPlays === 2 ? " Each one is shown twice." : "")
   return (
     <div className="flex flex-col gap-6 py-2">
       <div className="flex flex-col items-center gap-3 text-center">
@@ -611,18 +810,19 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
         )}
         <p className="text-sm text-muted-foreground max-w-sm">
           {fingerspelling
-            ? "Watch each word being fingerspelled and type it."
-            : "Watch each sign and pick the right word."}
-          {" "}When each one finishes you have {settings.answerSeconds} seconds, then the next comes up.
-          {settings.signPlays === 1 && " Each one is shown once only — watch closely!"}
-          {settings.signPlays === 2 && " Each one is shown twice."}
+            ? `Watch each word being fingerspelled and type it.${timed}`
+            : !signs
+            ? `Watch each sign and pick the right word.${timed}`
+            : !picks
+            ? "Read each word and film yourself signing it. Then each sign plays next to yours, and you mark whether yours matches."
+            : `First read each word and film yourself signing it. Then watch each sign and pick the right word.${timed} At the end you mark your signing against the signs.`}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-center">
+      <div className={cn("grid grid-cols-2 gap-2 sm:gap-3 text-center", picks ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
         {[
-          { label: "Signs", value: questions.length },
-          { label: "Time each", value: `${settings.answerSeconds} sec` },
+          { label: signs && !picks ? "Words" : "Signs", value: questions.length },
+          ...(picks ? [{ label: "Time each", value: `${settings.answerSeconds} sec` }] : []),
           { label: "Pass mark", value: `${settings.passMark}%` },
           {
             label: "Attempts",
@@ -636,22 +836,33 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        {canAttempt ? (
-          <Button onClick={start} disabled={!enrollmentId} size="lg">
-            {attempts.length === 0 ? "Start" : <><RotateCcw className="size-4 mr-1.5" /> Play again</>}
-          </Button>
-        ) : !hasPassed && (
-          <p className="text-sm text-muted-foreground">
-            You have no attempts left. Speak to your teacher if you need another go.
+      {pending ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-center">
+          <p className="text-sm text-amber-900">
+            You sent this test but haven&apos;t marked your signing yet. Mark it to get your score.
           </p>
-        )}
-        {bestAttempt && (
-          <Button variant="outline" size="lg" onClick={() => setView("review-best")}>Review answers</Button>
-        )}
-      </div>
+          <Button onClick={() => setView("marking")}>
+            <PenLine className="size-4 mr-1.5" /> Mark your signing
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {canAttempt ? (
+            <Button onClick={start} disabled={!enrollmentId} size="lg">
+              {attempts.length === 0 ? "Start" : <><RotateCcw className="size-4 mr-1.5" /> Play again</>}
+            </Button>
+          ) : !hasPassed && (
+            <p className="text-sm text-muted-foreground">
+              You have no attempts left. Speak to your teacher if you need another go.
+            </p>
+          )}
+          {bestAttempt && (
+            <Button variant="outline" size="lg" onClick={() => setView("review-best")}>Review answers</Button>
+          )}
+        </div>
+      )}
 
-      {canAttempt && left && (
+      {canAttempt && !pending && left && (
         <p className="text-xs text-muted-foreground text-center">{left}.</p>
       )}
 

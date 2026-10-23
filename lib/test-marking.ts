@@ -4,7 +4,7 @@
  * one place so both arrive at the same score, pass and lesson progress.
  */
 import prisma from "@/lib/prisma"
-import { attemptScore, isSelfMarked } from "@/lib/quiz"
+import { attemptScore, awaitsMarks } from "@/lib/quiz"
 
 /**
  * Recalculates the attempt from its answers as stored now, saves the score and
@@ -16,16 +16,19 @@ export async function rescoreAttempt(attemptId: string) {
     where: { id: attemptId },
     select: {
       id: true, userId: true, lessonId: true, passed: true,
-      lesson: { select: { section: { select: { courseId: true } }, test: { select: { passMark: true } } } },
-      answers: { select: { questionId: true, isCorrect: true, marks: true, question: { select: { id: true, type: true } } } },
+      lesson: { select: { section: { select: { courseId: true } }, test: { select: { passMark: true, testKind: true, vocabularyMode: true } } } },
+      answers: { select: { questionId: true, isCorrect: true, marks: true, question: { select: { id: true, type: true, maxMarks: true } } } },
     },
   })
 
   const questions = attempt.answers.map((a) => a.question)
-  const { earned, total, score } = attemptScore(questions, attempt.answers)
+  // Deleting a test deletes its questions, and these answers with them: the
+  // test is always here. The fallback only satisfies the types.
+  const test = attempt.lesson.test ?? { passMark: 100, testKind: "STANDARD", vocabularyMode: null }
+  const { earned, total, score } = attemptScore(questions, attempt.answers, test)
   // Still waiting on the student: it cannot pass until every mark is in.
-  const selfMarked = attempt.answers.every((a) => !isSelfMarked(a.question.type) || a.marks !== null)
-  const passed = selfMarked && score >= (attempt.lesson.test?.passMark ?? 100)
+  const selfMarked = attempt.answers.every((a) => !awaitsMarks(a.question, a, test))
+  const passed = selfMarked && score >= test.passMark
 
   await prisma.quizAttempt.update({ where: { id: attemptId }, data: { score, passed, selfMarked } })
 
