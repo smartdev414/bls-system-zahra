@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, RotateCcw, Trophy, Loader2, Timer, Keyboard, Hand, PenLine,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, RotateCcw, Trophy, Loader2, Timer, Keyboard, Hand, PenLine, Play,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -145,6 +145,10 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
   // whether they are used up (the video is then hidden).
   const [play, setPlay] = useState(1)
   const [playsUsed, setPlaysUsed] = useState(false)
+  // A phone can refuse to start the video by itself (battery or data saver,
+  // a browser setting), leaving it stuck on its first frame. A tap starts it.
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [blocked, setBlocked] = useState(false)
   const [leftMs, setLeftMs] = useState(totalMs)
   const [typed, setTyped] = useState("")
   const typedRef = useRef("")
@@ -162,6 +166,21 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
     const wait = setTimeout(() => setReady(true), VIDEO_WAIT_MS)
     return () => clearTimeout(wait)
   }, [])
+
+  function startVideo() {
+    const v = videoRef.current
+    if (!v) return
+    v.play().then(
+      () => setBlocked(false),
+      (err: unknown) => {
+        // AbortError only means the load was restarted; that play is retried.
+        if (err instanceof DOMException && err.name === "NotAllowedError") setBlocked(true)
+      }
+    )
+  }
+
+  // `autoPlay` alone is not enough on some phones: ask for it, and hear back.
+  useEffect(startVideo, [])
 
   useEffect(() => {
     if (!ready) return
@@ -218,15 +237,17 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
   ) : sign.imageUrl && (
     <div className="relative">
       <ProtectedVideo
+        ref={videoRef}
         src={sign.imageUrl}
         autoPlay muted playsInline
+        onPlaying={() => setBlocked(false)}
         onError={() => setReady(true)}
         // Not looped with the attribute: a looping video never says it has ended.
         onEnded={(e) => {
           const v = e.currentTarget
           const replay = () => {
             v.currentTime = 0
-            void v.play().catch(() => { /* muted autoplay is allowed; nothing to do */ })
+            startVideo()
           }
           if (!plays) {
             setReady(true)
@@ -243,6 +264,18 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
         controls={false}
         className="w-full aspect-video rounded-xl border bg-black object-contain"
       />
+      {blocked && !playsUsed && (
+        <button
+          type="button"
+          onClick={startVideo}
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-black/50 text-white"
+        >
+          <span className="flex size-16 items-center justify-center rounded-full bg-primary shadow-lg">
+            <Play className="size-8 fill-current" />
+          </span>
+          <span className="text-base font-semibold">Tap to play</span>
+        </button>
+      )}
       {plays && !playsUsed && (
         <span className="absolute top-2 right-2 rounded-full bg-black/70 px-2.5 py-1 text-xs font-semibold text-white">
           {plays === 1 ? "Once only" : `Play ${play} of ${plays}`}
