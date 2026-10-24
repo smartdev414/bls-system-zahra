@@ -12,7 +12,7 @@ import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
-import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, maxMarks, type TestKind } from "@/lib/quiz"
+import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
@@ -183,6 +183,20 @@ function StoryVideo({ src, controls, autoPlay, className }: { src: string; contr
       className={className}
     />
   )
+}
+
+/**
+ * What the student reads above the question. A signed question keeps its
+ * English to itself — that is the tutor's script for filming — and says what to
+ * do instead; the English shows again in the results.
+ */
+function questionPrompt(q: Question): string {
+  if (!isVideoMedia(q.imageUrl, q.mediaType)) return questionText(q)
+  if (q.type === "WRITTEN") return `Watch the question, then type your answer below. (${marksLabel(maxMarks(q))})`
+  if (q.type === "SIGN") return "Watch the question, then film your answer below."
+  return q.options.some((o) => isVideoMedia(o.imageUrl, o.mediaType))
+    ? "Watch the question, then pick the video answer below."
+    : "Watch the question, then pick the answer below."
 }
 
 /** Answers side by side when they are pictures; one per row on a phone when they are videos, to keep them watchable. */
@@ -683,7 +697,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
           <div className="rounded-xl border bg-muted/20 p-4 sm:p-5 flex flex-col gap-4">
             <div>
               <p id={`question-${q.id}`} className="font-semibold text-base leading-snug">
-                {currentIndex + 1}. {waitingForVideo ? "Watch the video — the question and answers appear when it ends." : questionText(q)}
+                {currentIndex + 1}. {waitingForVideo ? "Watch the video — the question and answers appear when it ends." : questionPrompt(q)}
               </p>
               {q.multiple && !waitingForVideo && (
                 <p className="text-sm text-primary font-medium mt-1">More than one answer is correct — tick them all.</p>
@@ -742,7 +756,8 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                   const name = opt.text || `Answer ${n + 1}`
 
                   if (opt.imageUrl && isVideo) {
-                    // ── Video option card — video is for watching only; text label selects
+                    // ── Video option card — video is for watching only; the button selects.
+                    // Its English stays hidden: the sign is the answer.
                     return (
                       <div
                         key={opt.id}
@@ -771,6 +786,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                           type="button"
                           role={role}
                           aria-checked={isSelected}
+                          aria-label={`Answer ${n + 1}`}
                           onClick={() => choose(q, opt.id)}
                           className={cn(
                             "px-3 py-3 text-sm font-medium text-center w-full transition-colors",
@@ -779,7 +795,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                               : "bg-background text-foreground hover:bg-muted"
                           )}
                         >
-                          {isSelected ? `✓ ${opt.text || "Selected"}` : opt.text || "Select this answer"}
+                          {isSelected ? "✓ Selected" : "Select this answer"}
                         </button>
                       </div>
                     )

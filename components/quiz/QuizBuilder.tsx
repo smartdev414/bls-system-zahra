@@ -4,7 +4,7 @@ import { useState } from "react"
 import {
   Plus, Trash2, CheckCircle2, Circle, ArrowUp, ArrowDown,
   ChevronDown, ChevronUp, Loader2, Save, FlaskConical,
-  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2, ListPlus, PenLine,
+  ImageIcon, X, VideoIcon, Copy, Library, Camera, Sparkles, Undo2, ListPlus, PenLine, Play,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ProtectedVideo } from "@/components/ui/protected-video"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { DEFAULT_WRITTEN_MARKS, MAX_WRITTEN_MARKS, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
@@ -231,15 +232,40 @@ export function MediaUploadButton({
     ? "image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
     : "image/jpeg,image/png,image/webp"
 
+  const [playing, setPlaying] = useState(false)
+
   if (mediaUrl) {
+    const isVideo = isVideoMedia(mediaUrl, mediaType)
     return (
       <div className={cn(
         "relative rounded-lg overflow-hidden border bg-muted group",
         size === "question" ? "w-full max-w-xs aspect-video" : "size-16 shrink-0"
       )}>
-        {isVideoMedia(mediaUrl, mediaType)
+        {isVideo
           ? <ProtectedVideo src={mediaUrl} className="w-full h-full object-cover" muted controls={size === "question"} />
           : <img src={mediaUrl} alt="" className="w-full h-full object-cover" />}
+        {/* An answer's thumbnail is too small for controls: tap it to watch the clip full size. */}
+        {isVideo && size === "option" && (
+          <>
+            <button
+              type="button"
+              onClick={() => setPlaying(true)}
+              aria-label="Play video"
+              title="Play video"
+              className="absolute inset-0 flex items-center justify-center bg-black/10 hover:bg-black/25 transition-colors"
+            >
+              <span className="size-7 rounded-full bg-black/60 text-white flex items-center justify-center">
+                <Play className="size-3.5 fill-current ml-0.5" />
+              </span>
+            </button>
+            <Dialog open={playing} onOpenChange={setPlaying}>
+              <DialogContent className="sm:max-w-2xl p-3">
+                <DialogTitle className="sr-only">Answer video</DialogTitle>
+                {playing && <ProtectedVideo src={mediaUrl} className="w-full max-h-[75vh] rounded-lg bg-black" controls autoPlay playsInline />}
+              </DialogContent>
+            </Dialog>
+          </>
+        )}
         <button
           type="button"
           onClick={onRemove}
@@ -616,6 +642,11 @@ function QuestionCard({
               autoFocus={!q.id && !q.question}
               onChange={(e) => { setBeforeFix(null); edit((cur) => ({ ...cur, question: e.target.value })) }}
             />
+            {isVideoMedia(q.imageUrl, q.mediaType) && (
+              <p className="text-xs text-muted-foreground">
+                Students don&apos;t see this while they take the test — they watch your video. It shows in their results.
+              </p>
+            )}
           </div>
 
           {/* Optional question image or video */}

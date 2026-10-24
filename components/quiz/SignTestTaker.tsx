@@ -344,7 +344,8 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
             </>
           ) : (
             // The sign in the middle with the words around it; on a phone, the words below.
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_2fr_1fr] sm:items-center">
+            // On a computer the sign takes most of the width so it is easy to read.
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)_minmax(0,1fr)] sm:items-center">
               <div className="col-span-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">{video}</div>
               <div className="flex flex-col gap-3 sm:col-start-1 sm:row-start-1">{choices.slice(0, half).map(choiceButton)}</div>
               <div className="flex flex-col gap-3 sm:col-start-3 sm:row-start-1">{choices.slice(half).map(choiceButton)}</div>
