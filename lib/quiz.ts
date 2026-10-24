@@ -243,6 +243,9 @@ export function isVideoMedia(url: string | null | undefined, mediaType?: string 
   return /\.(mp4|webm|mov|ogg|m4v)(\?|$)/i.test(url)
 }
 
+/** What students read for a question the tutor signed on video instead of typing. */
+export const SIGNED_QUESTION_TEXT = "Watch the video and answer the question"
+
 /**
  * Whether a question has more than one correct answer. The student is then
  * asked to tick every one of them, and gets the question right only when they

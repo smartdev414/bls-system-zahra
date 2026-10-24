@@ -143,8 +143,9 @@ export function questionProblem(q: QuestionDraft, testKind?: string): string | n
     if (!q.imageUrl) return "Add the video of this sign"
     return q.question.trim() ? null : "Type the word"
   }
-  if (!q.question.trim()) return "Type the question"
   if (q.questionImageUploading || q.answerVideoUploading) return "Wait for the upload to finish"
+  // A question signed on video needs no typed text.
+  if (!q.question.trim() && !isVideoMedia(q.imageUrl, q.mediaType)) return "Type the question, or add a video of you signing it"
   if (q.type === "WRITTEN") return q.modelAnswer?.trim() ? null : "Type the model answer"
   if (q.type === "SIGN") return q.answerVideoUrl ? null : "Add the video of the sign done right"
   if (q.options.some((o) => !o.text.trim() && !o.imageUrl)) return "Each answer needs text, an image or a video"
@@ -409,6 +410,17 @@ function QuestionCard({
     edit((cur) => ({ ...cur, options: [...cur.options, { text: "", isCorrect: false }] }))
   }
 
+  /** A copy sits right below the original — same text and media, not ticked — ready to tweak. */
+  function duplicateOption(i: number) {
+    edit((cur) => {
+      if (cur.options.length >= 6) return cur
+      const { text, imageUrl, mediaType } = cur.options[i]
+      const options = [...cur.options]
+      options.splice(i + 1, 0, { text, imageUrl, mediaType, isCorrect: false })
+      return { ...cur, options }
+    })
+  }
+
   function removeOption(i: number) {
     edit((cur) => (cur.options.length <= 2 ? cur : { ...cur, options: cur.options.filter((_, idx) => idx !== i) }))
   }
@@ -592,7 +604,9 @@ function QuestionCard({
               id={`question-${q.uid}`}
               rows={2}
               className="min-h-10"
-              placeholder={q.type === "SIGN"
+              placeholder={isVideoMedia(q.imageUrl, q.mediaType)
+                ? "Optional — your video asks the question"
+                : q.type === "SIGN"
                 ? "e.g. Sign the word: bus"
                 : q.type === "WRITTEN"
                 ? "e.g. Describe how BSL uses facial expression"
@@ -769,6 +783,15 @@ function QuestionCard({
                   disabled={q.type === "TRUE_FALSE"}
                   onChange={(e) => { setBeforeFix(null); setOption(i, { text: e.target.value }) }}
                 />
+
+                {/* Duplicate option */}
+                {q.type === "MULTIPLE_CHOICE" && q.options.length < 6 && !opt.uploading && (
+                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0"
+                    title="Duplicate answer" aria-label={`Duplicate answer ${i + 1}`}
+                    onClick={() => duplicateOption(i)}>
+                    <Copy className="size-3.5 text-muted-foreground" />
+                  </Button>
+                )}
 
                 {/* Remove option */}
                 {q.type === "MULTIPLE_CHOICE" && q.options.length > 2 && (

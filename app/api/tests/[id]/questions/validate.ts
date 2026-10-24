@@ -1,4 +1,4 @@
-import { MAX_WRITTEN_MARKS, isSelfMarked, isSignTest } from "@/lib/quiz"
+import { MAX_WRITTEN_MARKS, SIGNED_QUESTION_TEXT, isSelfMarked, isSignTest, isVideoMedia } from "@/lib/quiz"
 
 export type QuestionBody = {
   question: string
@@ -35,7 +35,11 @@ export function validateQuestion(body: QuestionBody, testKind?: string): string 
     if (!body.question?.trim()) return "Each sign needs its word"
     return null
   }
-  if (!body.question?.trim()) return "Question text is required"
+  // A question signed on video needs no typed text — it gets a default line.
+  if (!body.question?.trim()) {
+    if (!isVideoMedia(body.imageUrl, body.mediaType)) return "Question text is required"
+    body.question = SIGNED_QUESTION_TEXT
+  }
   if (body.type === "WRITTEN") {
     if (body.maxMarks != null && (!Number.isInteger(body.maxMarks) || body.maxMarks < 1 || body.maxMarks > MAX_WRITTEN_MARKS)) {
       return `A written answer is worth 1 to ${MAX_WRITTEN_MARKS} marks`
