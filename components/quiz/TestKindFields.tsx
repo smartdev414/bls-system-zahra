@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { BookOpen, Camera, FolderOpen, Hand, Keyboard, ListChecks, type LucideIcon } from "lucide-react"
+import { useRef, useState } from "react"
+import { BookOpen, Camera, FolderOpen, Hand, Keyboard, ListChecks, Upload, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
@@ -146,6 +146,7 @@ export function StoryVideoField({ value, onChange }: { value: string | null; onC
   const [error, setError] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   async function upload(file: File) {
     setUploading(true)
@@ -171,9 +172,21 @@ export function StoryVideoField({ value, onChange }: { value: string | null; onC
         size="question"
         videoOnly
       />
-      {/* The same three ways in as a video lesson: upload (above), film it here, or reuse one. */}
+      {/* The same three ways in as a video lesson: upload a file, film it here, or reuse one. */}
       {!value && (
         <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={uploading} onClick={() => fileInput.current?.click()}>
+            <Upload className="size-3.5 mr-1.5" /> Upload video file
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime"
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = "" }}
+          />
           <Button type="button" size="sm" variant={recording ? "default" : "outline"} aria-pressed={recording} onClick={() => setRecording((on) => !on)}>
             <Camera className="size-3.5 mr-1.5" /> {recording ? "Close camera" : "Record"}
           </Button>
