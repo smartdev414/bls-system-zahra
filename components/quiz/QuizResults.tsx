@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { chosenOptionIds, isVideoMedia, marksLabel, maxMarks, questionMarking, type MarkingTest } from "@/lib/quiz"
+import { chosenOptionIds, isAssessment, isVideoMedia, marksLabel, maxMarks, questionMarking, type MarkingTest } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +78,8 @@ export type ResultsQuestion = {
   mediaType?: string | null
   /** "image" when the sign done right is only a picture. */
   answerMediaType?: string | null
+  /** An assessment's part: the answers are filmed, marked against the answer sheet. */
+  filmed?: boolean
   options: Array<{ id: string; text: string; isCorrect?: boolean }>
 }
 
@@ -141,10 +143,12 @@ const COLUMNS = "grid-cols-[minmax(0,1fr)_6.5rem_2rem] sm:grid-cols-[minmax(0,1f
  * gave themselves, and buttons to change them. A change is saved straight away
  * and the attempt's score follows.
  */
-function MarkedAnswer({ lessonId, question, answer, onChanged }: {
+function MarkedAnswer({ lessonId, question, answer, tutorMarks, onChanged }: {
   lessonId: string
   question: ResultsQuestion
   answer: AttemptAnswer
+  /** An assessment the teacher marks: nobody else will. */
+  tutorMarks?: boolean
   onChanged: () => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -191,6 +195,22 @@ function MarkedAnswer({ lessonId, question, answer, onChanged }: {
               : <img src={question.answerVideoUrl} alt="The sign" className="w-full aspect-video rounded-md border border-emerald-300 bg-black object-contain" />)}
           </div>
         </div>
+      ) : question.filmed ? (
+        // An assessment's part: the answers filmed, against the answer sheet.
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-3xl">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student&apos;s answers</span>
+            {answer.videoUrl
+              ? <ProtectedVideo src={answer.videoUrl} controls playsInline className="w-full aspect-video rounded-md border bg-black" />
+              : <p className="rounded-md border px-2 py-4 text-center text-muted-foreground">
+                  {answer.marks === 0 && !answer.markedByTutor ? "Nothing filmed" : "Video deleted"}
+                </p>}
+          </div>
+          <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-emerald-900 self-start">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Answer sheet</span>
+            <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
+          </div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
           <div className="rounded-md border bg-background px-2 py-1.5">
@@ -207,7 +227,7 @@ function MarkedAnswer({ lessonId, question, answer, onChanged }: {
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-muted-foreground mr-1">
           {answer.marks === null || answer.marks === undefined
-            ? "Not marked by the student yet."
+            ? tutorMarks ? "Give the marks:" : "Not marked by the student yet."
             : answer.markedByTutor ? "Marked by a teacher:" : "Student's mark:"}
         </span>
         {(isSign ? [1, 0] : Array.from({ length: max + 1 }, (_, n) => n)).map((n) => (
@@ -288,7 +308,9 @@ function StudentAttempts({ lessonId, student, questions, marking, onReset, onMar
             </span>
             <span className="flex items-center gap-2">
               {attempt.selfMarked === false && (
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">Student hasn&apos;t marked it yet</Badge>
+                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                  {marking.tutorMarks ? "To mark" : <>Student hasn&apos;t marked it yet</>}
+                </Badge>
               )}
               <span className="font-semibold">{attempt.score}%</span>
               {attempt.passed
@@ -313,7 +335,9 @@ function StudentAttempts({ lessonId, student, questions, marking, onReset, onMar
                   // Both ways round, right only when the word picked was right too.
                   const full = answer.marks === self && (!picked || answer.isCorrect)
                   // A word signed in a vocabulary test is marked as a signed answer, against the sign.
-                  const marked = q.type === "WRITTEN" || q.type === "SIGN" ? q : { ...q, type: "SIGN", answerVideoUrl: q.imageUrl, answerMediaType: q.mediaType }
+                  const marked = isAssessment(marking.testKind) ? { ...q, filmed: true }
+                    : q.type === "WRITTEN" || q.type === "SIGN" ? q
+                    : { ...q, type: "SIGN", answerVideoUrl: q.imageUrl, answerMediaType: q.mediaType }
                   return (
                     <li key={q.id} className="flex items-start gap-2 px-3 py-2 text-xs">
                       {answer.marks === null || answer.marks === undefined
@@ -322,9 +346,16 @@ function StudentAttempts({ lessonId, student, questions, marking, onReset, onMar
                         ? <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0 mt-0.5" />
                         : <XCircle className={cn("size-3.5 shrink-0 mt-0.5", answer.marks > 0 ? "text-amber-500" : "text-rose-500")} />}
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">
-                          {n + 1}. {q.question}{q.type === "WRITTEN" && ` (${marksLabel(self)})`}
-                        </p>
+                        {isAssessment(marking.testKind) ? (
+                          <p className="font-medium">
+                            Part {n + 1} ({marksLabel(self)})
+                            {q.question && <span className="block font-normal text-muted-foreground whitespace-pre-wrap">{q.question}</span>}
+                          </p>
+                        ) : (
+                          <p className="font-medium">
+                            {n + 1}. {q.question}{q.type === "WRITTEN" && ` (${marksLabel(self)})`}
+                          </p>
+                        )}
                         {/* Both ways round: the word picked as well as the sign filmed. */}
                         {picked && (
                           <p className={answer.isCorrect ? "text-emerald-700" : "text-rose-700"}>
@@ -335,6 +366,7 @@ function StudentAttempts({ lessonId, student, questions, marking, onReset, onMar
                           lessonId={lessonId}
                           question={marked}
                           answer={answer}
+                          tutorMarks={marking.tutorMarks}
                           onChanged={() => { void refetch(); onMarksChanged() }}
                         />
                       </div>
@@ -451,6 +483,14 @@ export function QuizResults({ lessonId, questions, marking }: {
         ))}
       </div>
 
+      {/* An assessment the teacher marks: who is waiting for it */}
+      {marking.tutorMarks && students.some((s) => s.awaitingMarks) && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {(() => { const n = students.filter((s) => s.awaitingMarks).length; return n === 1 ? "1 student is" : `${n} students are` })()} waiting
+          for you to mark their answers. Open a student marked &ldquo;To mark&rdquo;, watch their videos and give the marks for each part.
+        </p>
+      )}
+
       {/* Who to show, and a copy to keep */}
       <div className="flex flex-wrap items-center gap-2">
         {filters.length > 2 && (
@@ -546,7 +586,7 @@ export function QuizResults({ lessonId, questions, marking }: {
                   </span>
 
                   <Badge variant="outline" className={cn("text-[10px] justify-self-start", STATUS[student.status].className)}>
-                    {student.awaitingMarks ? "Not marked yet" : STATUS[student.status].label}
+                    {student.awaitingMarks ? (marking.tutorMarks ? "To mark" : "Not marked yet") : STATUS[student.status].label}
                     {/* On a phone the score columns are hidden, so it rides along here. */}
                     {student.bestScore !== null && <span className="sm:hidden ml-1">· {student.bestScore}%</span>}
                   </Badge>
@@ -595,7 +635,9 @@ export function QuizResults({ lessonId, questions, marking }: {
               const pct = Math.round((q.correct / q.answered) * 100)
               return (
                 <div key={q.id} className="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-4 px-4 py-2.5">
-                  <p className="text-sm truncate" title={q.question}>{q.number}. {q.question}</p>
+                  <p className="text-sm truncate" title={q.question}>
+                    {isAssessment(marking.testKind) ? `Part ${q.number}` : `${q.number}. ${q.question}`}
+                  </p>
                   <div className="flex flex-col gap-1">
                     <span className="text-xs">{pct}% correct <span className="text-muted-foreground">({q.correct}/{q.answered})</span></span>
                     <Progress value={pct} className="h-1.5" />

@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { requireCapability } from "@/lib/permissions"
-import { isSelfMarked, isSignTest } from "@/lib/quiz"
+import { isAssessment, isSelfMarked, isSignTest } from "@/lib/quiz"
 import { testEditScope } from "@/lib/tests"
 import { validateQuestion, type QuestionBody } from "../validate"
 
@@ -62,6 +62,7 @@ async function handlePUT(
           modelAnswer: body.type === "WRITTEN" ? body.modelAnswer?.trim() ?? null : null,
           maxMarks: body.type === "WRITTEN" ? body.maxMarks ?? null : null,
           answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
+        questionsVideoUrl: isAssessment(existing.test.testKind) ? body.questionsVideoUrl ?? null : null,
           options: {
             update: body.options.flatMap((opt, i) =>
               opt.id && kept.has(opt.id) ? [{ where: { id: opt.id }, data: optionData(opt, i) }] : []

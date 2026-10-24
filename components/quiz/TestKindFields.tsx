@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { BookOpen, Camera, FolderOpen, Hand, Keyboard, ListChecks, Upload, type LucideIcon } from "lucide-react"
+import { BookOpen, Camera, Clapperboard, FolderOpen, Hand, Keyboard, ListChecks, Upload, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import {
-  ANSWER_SECONDS, TEST_KINDS, TEST_KIND_INFO, VOCABULARY_MODES, VOCABULARY_MODE_INFO, type TestKind, type VocabularyMode,
+  ANSWER_MINUTES, ANSWER_SECONDS, TEST_KINDS, TEST_KIND_INFO, VOCABULARY_MODES, VOCABULARY_MODE_INFO, type TestKind, type VocabularyMode,
 } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 import { MediaUploadButton, uploadMedia } from "./QuizBuilder"
@@ -20,6 +20,7 @@ const ICONS: Record<TestKind, LucideIcon> = {
   STORY: BookOpen,
   FINGERSPELLING: Keyboard,
   VOCABULARY: Hand,
+  ASSESSMENT: Clapperboard,
 }
 
 /** Which kind of test to make. Chosen once, when the test is added. */
@@ -27,7 +28,7 @@ export function TestKindPicker({ value, onChange }: { value: TestKind; onChange:
   return (
     <div className="flex flex-col gap-1.5">
       <Label>Kind of test</Label>
-      <div role="radiogroup" aria-label="Kind of test" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+      <div role="radiogroup" aria-label="Kind of test" className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {TEST_KINDS.map((kind) => {
           const Icon = ICONS[kind]
           const selected = kind === value
@@ -140,8 +141,64 @@ export function VocabularyModeField({ value, onChange }: { value: VocabularyMode
   )
 }
 
-/** Story tests: the video the questions are about. */
-export function StoryVideoField({ value, onChange }: { value: string | null; onChange: (url: string | null) => void }) {
+/** Assessments: how long a student has to film their answers to each part. */
+export function AnswerMinutesField({ value, onChange }: { value: number; onChange: (minutes: number) => void }) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:max-w-xs">
+      <Label>Time to answer each part</Label>
+      <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {ANSWER_MINUTES.map((m) => <SelectItem key={m} value={String(m)}>{m} minutes</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">Students film their answers in this time. The recording stops by itself when it is up.</p>
+    </div>
+  )
+}
+
+/** Assessments: whether students mark themselves against the answer sheet, or a teacher marks. */
+export function TutorMarksField({ value, onChange }: { value: boolean; onChange: (tutorMarks: boolean) => void }) {
+  const choices = [
+    { value: false, label: "Students mark themselves" },
+    { value: true, label: "A teacher marks" },
+  ]
+  return (
+    <div className="flex flex-col gap-1.5 sm:max-w-md">
+      <Label>Who marks the answers</Label>
+      <div role="radiogroup" aria-label="Who marks the answers" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/40 p-1">
+        {choices.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            role="radio"
+            aria-checked={value === c.value}
+            onClick={() => onChange(c.value)}
+            className={cn(
+              "rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+              value === c.value ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {value
+          ? "The course's teachers are told when answers come in, and mark them in Results. Students see the answer sheet once marked."
+          : "After sending their answers in, students see the answer sheet and mark their own videos. Teachers can change the marks in Results."}
+      </p>
+    </div>
+  )
+}
+
+/** Story tests: the video the questions are about. Assessments: the synopsis, watched first. */
+export function StoryVideoField({ value, onChange, label = "Story video", hint }: {
+  value: string | null
+  onChange: (url: string | null) => void
+  label?: string
+  hint?: string
+}) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
@@ -162,7 +219,7 @@ export function StoryVideoField({ value, onChange }: { value: string | null; onC
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label>Story video</Label>
+      <Label>{label}</Label>
       <MediaUploadButton
         mediaUrl={value ?? undefined}
         mediaType="video"
@@ -205,7 +262,7 @@ export function StoryVideoField({ value, onChange }: { value: string | null; onC
         onPick={(picked) => { if (picked[0]) onChange(picked[0].fileUrl) }}
       />
       <p className="text-xs text-muted-foreground">
-        Students watch the story, then answer the questions below. They can watch it again while they answer.
+        {hint ?? "Students watch the story, then answer the questions below. They can watch it again while they answer."}
       </p>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>

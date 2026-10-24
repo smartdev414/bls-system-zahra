@@ -25,6 +25,11 @@ export type MarkQuestion = {
   answerVideoUrl?: string | null
   /** SIGN: "image" when the sign is only a picture (a dictionary sign with no clip). */
   answerMediaType?: string | null
+  /**
+   * An assessment's part: the answers were filmed (videoUrl), and are marked
+   * against the written answer sheet (modelAnswer), 0 up to its marks.
+   */
+  filmed?: boolean
 }
 
 export type MarkAnswer = {
@@ -43,26 +48,48 @@ export function questionText(q: Pick<MarkQuestion, "question" | "type" | "maxMar
   return q.type === "WRITTEN" ? `${q.question} (${marksLabel(maxMarks(q))})` : q.question
 }
 
+/** The student's own recording, with a way to keep it — or why it is not there. */
+function OwnVideo({ answer, loop = false }: { answer?: MarkAnswer; loop?: boolean }) {
+  return answer?.videoUrl
+    ? <>
+        {/* A sign of a few seconds loops beside the model; minutes of answers wait to be played. */}
+        <ProtectedVideo src={answer.videoUrl} controls playsInline autoPlay={loop} muted={loop} loop={loop} className="w-full aspect-video rounded-lg border bg-black" />
+        <a href={mediaDownloadHref(answer.videoUrl)} download className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline">
+          <Download className="size-3.5" /> Download my video
+        </a>
+      </>
+    : <p className="text-xs text-muted-foreground rounded-lg border px-3 py-6 text-center">
+        {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : "Your video has been deleted (the course has ended)"}
+      </p>
+}
+
 /** What the student wrote or signed, side by side with the model answer. */
 export function AnswerAndModel({ question, answer }: { question: MarkQuestion; answer?: MarkAnswer }) {
   const box = "rounded-lg border px-3 py-2 text-sm flex flex-col gap-1"
   const label = "text-[10px] font-semibold uppercase tracking-wide"
+  if (question.filmed) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <p className={cn(label, "text-muted-foreground")}>Your answers</p>
+          <OwnVideo answer={answer} />
+        </div>
+        {question.modelAnswer
+          ? <div className={cn(box, "border-emerald-300 bg-emerald-50 text-emerald-900 self-start")}>
+              <p className={cn(label, "text-emerald-600")}>Answer sheet</p>
+              <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
+            </div>
+          : <p className={cn(box, "text-muted-foreground self-start")}>The answer sheet is shown once your teacher has marked your answers.</p>}
+      </div>
+    )
+  }
   if (question.type === "SIGN") {
     const model = question.answerVideoUrl
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <p className={cn(label, "text-muted-foreground")}>You</p>
-          {answer?.videoUrl
-            ? <>
-                <ProtectedVideo src={answer.videoUrl} controls playsInline autoPlay muted loop className="w-full aspect-video rounded-lg border bg-black" />
-                <a href={mediaDownloadHref(answer.videoUrl)} download className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline">
-                  <Download className="size-3.5" /> Download my video
-                </a>
-              </>
-            : <p className="text-xs text-muted-foreground rounded-lg border px-3 py-6 text-center">
-                {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : "Your video has been deleted (the course has ended)"}
-              </p>}
+          <OwnVideo answer={answer} loop />
         </div>
         <div className="flex flex-col gap-1">
           <p className={cn(label, "text-emerald-600")}>The sign done right</p>
@@ -159,14 +186,23 @@ export function MarkAnswers({ lessonId, attemptId, questions, answers, onMarked 
         const max = maxMarks(q)
         return (
           <div key={q.id} className="rounded-xl border p-4 flex flex-col gap-3">
-            <p className="text-sm font-medium">{questions.indexOf(q) + 1}. {questionText(q)}</p>
+            {q.filmed
+              ? <div>
+                  <p className="text-sm font-semibold">Part {questions.indexOf(q) + 1} ({marksLabel(max)})</p>
+                  {q.question && <p className="text-xs text-muted-foreground whitespace-pre-wrap mt-1">{q.question}</p>}
+                </div>
+              : <p className="text-sm font-medium">{questions.indexOf(q) + 1}. {questionText(q)}</p>}
             <AnswerAndModel question={q} answer={answer} />
             {blank ? (
               <p className="text-xs text-muted-foreground">Not answered — 0 marks.</p>
             ) : (
               <div className="flex flex-col gap-1.5">
                 <p className="text-xs font-medium">
-                  {q.type === "SIGN" ? "Does your signing match?" : "How many marks did you get? More detail that matches the model answer earns more."}
+                  {q.type === "SIGN"
+                    ? "Does your signing match?"
+                    : q.filmed
+                    ? "Watch your video and check it against the answer sheet. How many marks did you get?"
+                    : "How many marks did you get? More detail that matches the model answer earns more."}
                 </p>
                 <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={`Marks for question ${questions.indexOf(q) + 1}`}>
                   {(q.type === "SIGN" ? [1, 0] : Array.from({ length: max + 1 }, (_, n) => n)).map((n) => (

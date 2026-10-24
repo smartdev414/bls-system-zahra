@@ -18,12 +18,16 @@ export type TestSettings = {
   storyControls: boolean
   /** Vocabulary tests: which way round the signs are practised. */
   vocabularyMode: VocabularyMode
+  /** Assessments: minutes to film the answers to each part. */
+  answerMinutes: number
+  /** Assessments: a teacher marks the answers instead of the student. */
+  tutorMarks: boolean
 }
 
 
 // ─── Kinds of test ────────────────────────────────────────────────────────────
 
-export const TEST_KINDS = ["STANDARD", "STORY", "FINGERSPELLING", "VOCABULARY"] as const
+export const TEST_KINDS = ["STANDARD", "STORY", "FINGERSPELLING", "VOCABULARY", "ASSESSMENT"] as const
 export type TestKind = (typeof TEST_KINDS)[number]
 
 export const TEST_KIND_INFO: Record<TestKind, { label: string; hint: string }> = {
@@ -31,6 +35,7 @@ export const TEST_KIND_INFO: Record<TestKind, { label: string; hint: string }> =
   STORY: { label: "Story", hint: "One signed story, then questions about it." },
   FINGERSPELLING: { label: "Fingerspelling", hint: "Students watch a word being spelled and type it." },
   VOCABULARY: { label: "Vocabulary", hint: "Students pick the word for a sign, or read a word and sign it." },
+  ASSESSMENT: { label: "Assessment", hint: "A signed story in parts. Students watch each part's questions and the part, then film their answers." },
 }
 
 export function parseTestKind(value: unknown): TestKind | null {
@@ -143,6 +148,25 @@ export function signQuestionsForStudent(
   })
 }
 
+// ─── Assessments ──────────────────────────────────────────────────────────────
+// Each question of an assessment is one part of the story: its questions
+// signed on video (questionsVideoUrl), the part itself (imageUrl), and the
+// answer sheet (modelAnswer) with what the part is worth (maxMarks). It is
+// stored as a WRITTEN question, so it is marked like one — 0 up to its marks —
+// but the student films their answers instead of typing them.
+
+/** Minutes a student can be given to film their answers to a part. */
+export const ANSWER_MINUTES = [5, 10, 15, 20, 30] as const
+export const DEFAULT_ANSWER_MINUTES = 15
+/** What a part is worth unless the teacher chose otherwise, and the most it can be. */
+export const DEFAULT_PART_MARKS = 10
+export const MAX_PART_MARKS = 30
+
+/** Whether the student's answer to this test is filmed, part by part. */
+export function isAssessment(kind: string | null | undefined): kind is "ASSESSMENT" {
+  return kind === "ASSESSMENT"
+}
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 /**
@@ -151,7 +175,10 @@ export function signQuestionsForStudent(
  * instead when a value makes no sense, for the caller to answer 400 with.
  */
 export function parseTestSettings(
-  body: { passMark?: unknown; maxAttempts?: unknown; answerSeconds?: unknown; signPlays?: unknown; storyUrl?: unknown; storyControls?: unknown; vocabularyMode?: unknown },
+  body: {
+    passMark?: unknown; maxAttempts?: unknown; answerSeconds?: unknown; signPlays?: unknown; storyUrl?: unknown
+    storyControls?: unknown; vocabularyMode?: unknown; answerMinutes?: unknown; tutorMarks?: unknown
+  },
 ): Partial<TestSettings> | string {
   const settings: Partial<TestSettings> = {}
 
@@ -204,6 +231,16 @@ export function parseTestSettings(
     if (!mode) return "Choose how the vocabulary is practised"
     settings.vocabularyMode = mode
   }
+
+  if (body.answerMinutes !== undefined) {
+    const answerMinutes = Number(body.answerMinutes)
+    if (!ANSWER_MINUTES.includes(answerMinutes as (typeof ANSWER_MINUTES)[number])) {
+      return `Time to answer each part must be ${ANSWER_MINUTES.join(", ")} minutes`
+    }
+    settings.answerMinutes = answerMinutes
+  }
+
+  if (body.tutorMarks !== undefined) settings.tutorMarks = body.tutorMarks === true
 
   return settings
 }
@@ -284,7 +321,10 @@ export const DEFAULT_WRITTEN_MARKS = 3
 /** The most a written answer can be worth. */
 export const MAX_WRITTEN_MARKS = 10
 
-/** What a question is worth: a written answer as many marks as it was given (3 unless chosen), anything else 1. */
+/**
+ * What a question is worth: a written answer (or an assessment's part) as many
+ * marks as it was given (3 unless chosen), anything else 1.
+ */
 export function maxMarks(question: { type?: string | null; maxMarks?: number | null } | null | undefined): number {
   return question?.type === "WRITTEN" ? question.maxMarks ?? DEFAULT_WRITTEN_MARKS : 1
 }
@@ -295,7 +335,7 @@ export function marksLabel(marks: number): string {
 }
 
 /** The question's test, as far as marking goes. */
-export type MarkingTest = { testKind: string; vocabularyMode?: string | null }
+export type MarkingTest = { testKind: string; vocabularyMode?: string | null; tutorMarks?: boolean }
 
 /**
  * How a question is marked in its test: whether it has an answer the server
@@ -364,5 +404,29 @@ export function questionsForStudent<
     multiple: hasMultipleAnswers(q.options),
     options: q.options.map(({ isCorrect, ...option }) => (reveal ? { ...option, isCorrect } : option)),
     ...(showModel && isSelfMarked(q.type) && { modelAnswer, answerVideoUrl }),
+  }))
+}
+
+/**
+ * An assessment's parts as the student is sent them. The answer sheet only
+ * once `showModel` allows: after they have sent their answers in, to mark them
+ * against — or, when a teacher marks, once the teacher has.
+ */
+export function partsForStudent<
+  Q extends {
+    id: string; question: string; imageUrl: string | null; mediaType: string | null
+    questionsVideoUrl: string | null; modelAnswer: string | null; maxMarks: number | null
+  },
+>(parts: readonly Q[], showModel: boolean) {
+  return parts.map((p) => ({
+    id: p.id,
+    question: p.question,
+    type: "WRITTEN" as const,
+    imageUrl: p.imageUrl,
+    mediaType: p.mediaType,
+    questionsVideoUrl: p.questionsVideoUrl,
+    maxMarks: p.maxMarks,
+    options: [],
+    ...(showModel && { modelAnswer: p.modelAnswer }),
   }))
 }

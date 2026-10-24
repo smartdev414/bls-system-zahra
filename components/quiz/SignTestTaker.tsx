@@ -379,6 +379,47 @@ export function GetReady({ onDone, label = "Get ready" }: { onDone: () => void; 
   )
 }
 
+// ─── Word → sign: how it works, before starting ──────────────────────────────
+
+function SignItInstructions({ picks, timed }: { picks: boolean; timed: string }) {
+  const steps = [
+    { title: "Read the word", text: "Look carefully at the word shown on the screen." },
+    { title: "Record your answer", text: "Sign the word clearly and accurately before moving on to the next question." },
+    ...(picks ? [{ title: "Pick the words", text: `Then watch each sign and pick the right word.${timed}` }] : []),
+    { title: "Mark your own test", text: "After completing the test, you will see the correct answers to check your work." },
+    { title: "Check your signs", text: "Compare your recorded signs with the video answers." },
+  ]
+  return (
+    <div className="mx-auto w-full max-w-md flex flex-col gap-3 text-left">
+      <ol className="flex flex-col gap-2.5">
+        {steps.map((s, i) => (
+          <li key={s.title} className="flex gap-3 text-sm">
+            <span className="size-6 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">{i + 1}</span>
+            <span><span className="font-semibold">{s.title}:</span> <span className="text-muted-foreground">{s.text}</span></span>
+          </li>
+        ))}
+      </ol>
+      <div className="ml-9 flex flex-col gap-1 text-sm">
+        <p className="flex items-center gap-2">
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+          <span><span className="font-semibold">Correct:</span> <span className="text-muted-foreground">tick it if your sign matches the correct answer.</span></span>
+        </p>
+        <p className="flex items-center gap-2">
+          <XCircle className="size-4 shrink-0 text-rose-500" />
+          <span><span className="font-semibold">Incorrect:</span> <span className="text-muted-foreground">put a cross if it does not match.</span></span>
+        </p>
+      </div>
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p className="font-semibold">Important reminder</p>
+        <p className="mt-0.5">
+          Please be honest when marking your own work. Do not give yourself a mark if your sign is incorrect.
+          Your teacher can see your recordings and marks.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ─── One word to sign — not against the clock ─────────────────────────────────
 
 /**
@@ -842,16 +883,16 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
             </p>
           </div>
         )}
-        <p className="text-sm text-muted-foreground max-w-sm">
-          {fingerspelling
-            ? `Watch each word being fingerspelled and type it.${timed}`
-            : !signs
-            ? `Watch each sign and pick the right word.${timed}`
-            : !picks
-            ? "Read each word and film yourself signing it. Then each sign plays next to yours, and you mark whether yours matches."
-            : `First read each word and film yourself signing it. Then watch each sign and pick the right word.${timed} At the end you mark your signing against the signs.`}
-        </p>
+        {!signs && (
+          <p className="text-sm text-muted-foreground max-w-sm">
+            {fingerspelling
+              ? `Watch each word being fingerspelled and type it.${timed}`
+              : `Watch each sign and pick the right word.${timed}`}
+          </p>
+        )}
       </div>
+
+      {signs && <SignItInstructions picks={picks} timed={timed} />}
 
       <div className={cn("grid grid-cols-2 gap-2 sm:gap-3 text-center", picks ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
         {[

@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
-import { attemptsLeft, awaitsMarks, questionMarking } from "@/lib/quiz"
+import { attemptsLeft, awaitsMarks, isAssessment, questionMarking } from "@/lib/quiz"
 import { rescoreAttempt } from "@/lib/test-marking"
 
 // PATCH /api/student/lessons/[id]/quiz/attempt/[attemptId]
@@ -24,13 +24,16 @@ async function handlePATCH(
       where: { id: attemptId, lessonId: id, userId: session.sub },
       select: {
         id: true, selfMarked: true,
-        lesson: { select: { title: true, test: { select: { maxAttempts: true, testKind: true, vocabularyMode: true } } } },
+        lesson: { select: { title: true, test: { select: { maxAttempts: true, testKind: true, vocabularyMode: true, tutorMarks: true } } } },
         answers: { select: { id: true, questionId: true, marks: true, question: { select: { type: true, maxMarks: true } } } },
       },
     })
     if (!attempt) return NextResponse.json({ message: "Attempt not found" }, { status: 404 })
     if (attempt.selfMarked || !attempt.lesson.test) return NextResponse.json({ message: "This attempt has been marked already" }, { status: 409 })
     const test = attempt.lesson.test
+    if (isAssessment(test.testKind) && test.tutorMarks) {
+      return NextResponse.json({ message: "Your teacher marks this test" }, { status: 403 })
+    }
 
     const { marks } = await req.json() as { marks?: Record<string, unknown> }
     const toMark = attempt.answers.filter((a) => awaitsMarks(a.question, a, test))

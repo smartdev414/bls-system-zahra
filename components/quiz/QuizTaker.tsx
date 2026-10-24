@@ -15,6 +15,7 @@ import { useFetch } from "@/hooks/use-fetch"
 import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
+import { AssessmentTaker, type AssessmentData } from "./AssessmentTaker"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
 import { AnswerAndModel, MarkAnswers, MarksBadge, questionText } from "./SelfMarking"
 import { cn } from "@/lib/utils"
@@ -371,6 +372,20 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   }
 
   const { questions, settings, attempts, bestAttempt } = data
+
+  // An assessment is sat step by step, its answers filmed part by part.
+  if (settings.kind === "ASSESSMENT") {
+    return (
+      <AssessmentTaker
+        lessonId={lessonId}
+        enrollmentId={enrollmentId}
+        data={data as unknown as AssessmentData}
+        refetch={refetch}
+        onCompleted={onCompleted}
+        nextHref={nextHref}
+      />
+    )
+  }
 
   // Fingerspelling and vocabulary are played against the clock, one sign at a
   // time, and are sent in their own shape — the word is the answer.

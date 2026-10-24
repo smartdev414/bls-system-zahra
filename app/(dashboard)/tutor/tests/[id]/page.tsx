@@ -23,15 +23,16 @@ import {
 } from "@/components/quiz/QuizBuilder"
 import { SignListBuilder } from "@/components/quiz/SignListBuilder"
 import {
-  AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker, VocabularyModeField,
+  AnswerMinutesField, AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker, TutorMarksField, VocabularyModeField,
 } from "@/components/quiz/TestKindFields"
+import { AssessmentPartsBuilder } from "@/components/quiz/AssessmentPartsBuilder"
 import { TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
 import { AddToCourseDialog } from "@/components/tests/AddToCourseDialog"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { TestQuestionsView } from "@/components/tests/TestQuestionsView"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_SECONDS, TEST_KIND_INFO, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, TEST_KIND_INFO, isAssessment, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ type ApiQuestion = {
   modelAnswer: string | null
   maxMarks: number | null
   answerVideoUrl: string | null
+  questionsVideoUrl: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
 
@@ -71,6 +73,8 @@ type TestFull = {
   answerSeconds: number | null
   signPlays: number | null
   vocabularyMode: VocabularyMode
+  answerMinutes: number | null
+  tutorMarks: boolean
   passMark: number
   maxAttempts: number | null
   createdByName: string | null
@@ -89,6 +93,8 @@ type Details = {
   vocabularyMode: VocabularyMode
   storyUrl: string | null
   storyControls: boolean
+  answerMinutes: number
+  tutorMarks: boolean
 }
 
 function toDraft(q: ApiQuestion): QuestionDraft {
@@ -104,6 +110,7 @@ function toDraft(q: ApiQuestion): QuestionDraft {
     modelAnswer: q.modelAnswer ?? undefined,
     maxMarks: q.maxMarks ?? undefined,
     answerVideoUrl: q.answerVideoUrl ?? undefined,
+    questionsVideoUrl: q.questionsVideoUrl ?? undefined,
     options: q.options.map((o) => ({
       id: o.id,
       text: o.text,
@@ -129,6 +136,8 @@ function detailsOf(test: TestFull): Details {
     vocabularyMode: test.vocabularyMode,
     storyUrl: test.storyUrl,
     storyControls: test.storyControls,
+    answerMinutes: test.answerMinutes ?? DEFAULT_ANSWER_MINUTES,
+    tutorMarks: test.tutorMarks,
   }
 }
 
@@ -213,7 +222,8 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
 
   const kind = details.kind
   const signTest = isSignTest(kind)
-  const itemName = signTest ? "Sign" : "Question"
+  const assessment = isAssessment(kind)
+  const itemName = signTest ? "Sign" : assessment ? "Part" : "Question"
   const savedCount = questions.filter((q) => q.id).length
   const takenSomewhere = test.placements.some((p) => p.studentsTaken > 0)
   const patch = (change: Partial<Details>) => { setDetails((d) => (d ? { ...d, ...change } : d)); setError(null) }
@@ -261,6 +271,10 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
           ...(signTest && { answerSeconds: details.answerSeconds, signPlays: details.signPlays }),
           ...(kind === "VOCABULARY" && { vocabularyMode: details.vocabularyMode }),
           ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls }),
+          ...(assessment && {
+            storyUrl: details.storyUrl, storyControls: details.storyControls,
+            answerMinutes: details.answerMinutes, tutorMarks: details.tutorMarks,
+          }),
         }),
       })
       const d = await res.json().catch(() => ({})) as { message?: string }
@@ -481,9 +495,16 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               {kind === "VOCABULARY" && (
                 <VocabularyModeField value={details.vocabularyMode} onChange={(vocabularyMode) => patch({ vocabularyMode })} />
               )}
-              {kind === "STORY" && (
+              {(kind === "STORY" || assessment) && (
                 <>
-                  <StoryVideoField value={details.storyUrl} onChange={(url) => patch({ storyUrl: url })} />
+                  {kind === "STORY"
+                    ? <StoryVideoField value={details.storyUrl} onChange={(url) => patch({ storyUrl: url })} />
+                    : <StoryVideoField
+                        label="Short synopsis (optional)"
+                        hint="Students watch this before part 1."
+                        value={details.storyUrl}
+                        onChange={(url) => patch({ storyUrl: url })}
+                      />}
                   <label className="flex cursor-pointer items-start gap-2 text-sm">
                     <Checkbox
                       className="mt-0.5"
@@ -491,9 +512,11 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                       onCheckedChange={(v) => patch({ storyControls: v === true })}
                     />
                     <span>
-                      Students can control the story video
+                      {assessment ? "Students can control the videos" : "Students can control the story video"}
                       <span className="block text-xs text-muted-foreground">
-                        Pause, rewind and skip. Untick to have it just play through, like an assessment.
+                        {assessment
+                          ? "Pause, rewind and watch again. Untick to have each video play through once, like the real assessment."
+                          : "Pause, rewind and skip. Untick to have it just play through, like an assessment."}
                       </span>
                     </span>
                   </label>
@@ -504,7 +527,13 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                   <Loader2 className="size-4 animate-spin" /> Adding signs from the dictionary…
                 </p>
               )}
-              {isSignTest(kind) ? (
+              {assessment ? (
+                <AssessmentPartsBuilder
+                  testId={id}
+                  parts={questions}
+                  onChange={(next) => { setQuestions(next); setError(null) }}
+                />
+              ) : isSignTest(kind) ? (
                 <SignListBuilder
                   kind={kind}
                   testId={id}
@@ -574,6 +603,13 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               <div className="flex flex-col sm:flex-row gap-4">
                 <AnswerSecondsField value={details.answerSeconds} onChange={(answerSeconds) => patch({ answerSeconds })} />
                 <SignPlaysField value={details.signPlays} onChange={(signPlays) => patch({ signPlays })} />
+              </div>
+            )}
+
+            {assessment && (
+              <div className="flex flex-col sm:flex-row gap-4">
+                <AnswerMinutesField value={details.answerMinutes} onChange={(answerMinutes) => patch({ answerMinutes })} />
+                <TutorMarksField value={details.tutorMarks} onChange={(tutorMarks) => patch({ tutorMarks })} />
               </div>
             )}
 

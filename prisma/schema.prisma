@@ -57,6 +57,9 @@ enum TestKind {
   STORY // one signed story, then questions about it
   FINGERSPELLING // watch a word being spelled and type it, against the clock
   VOCABULARY // watch a sign and pick its word, and/or read a word and sign it
+  // A signed story in parts, as on the old assessment DVDs: for each part the
+  // student watches its questions, then the part, then films their answers.
+  ASSESSMENT
 }
 
 // How a vocabulary test is practised: from the sign to the word, from the word
@@ -125,6 +128,8 @@ enum NotificationType {
   // Quiz results (for students)
   QUIZ_PASSED
   QUIZ_FAILED
+  // An assessment a teacher marks has been sent in (for the course's teachers)
+  TEST_TO_MARK
   // Messaging
   NEW_MESSAGE
   // Session join requests
@@ -948,6 +953,11 @@ model Test {
   signPlays     Int?
   // VOCABULARY: which way round it is practised.
   vocabularyMode VocabularyMode @default(PICK_WORD)
+  // ASSESSMENT: minutes a student has to film their answers to each part.
+  answerMinutes Int?
+  // ASSESSMENT: a teacher marks the filmed answers, instead of the student
+  // marking them against the answer sheet.
+  tutorMarks    Boolean      @default(false)
   // The score, out of 100, a student needs to pass, and how many times they may
   // sit it. Null attempts = as often as they like.
   passMark      Int          @default(70)
@@ -989,6 +999,9 @@ model QuizQuestion {
   // SIGN: the video of the sign done right, shown next to the student's own
   // recording once they have submitted — never before.
   answerVideoUrl String?
+  // ASSESSMENT: a part's questions, signed — watched before the part itself
+  // (imageUrl). The answer sheet is modelAnswer, its marks maxMarks.
+  questionsVideoUrl String?
   order    Int
 
   test    Test                @relation(fields: [testId], references: [id], onDelete: Cascade)

@@ -29,6 +29,8 @@ export const ANSWER_VIDEO_TYPES: Record<string, string> = {
 
 /** A short signed answer is a few MB; this only stops something absurd. */
 export const ANSWER_VIDEO_MAX_BYTES = 150 * 1024 * 1024
+/** An assessment's answers to one part run to many minutes, filmed in one go. */
+export const ASSESSMENT_VIDEO_MAX_BYTES = 2 * 1024 * 1024 * 1024
 
 export function answerVideoKey(lessonId: string, userId: string, contentType: string): string {
   const ext = ANSWER_VIDEO_TYPES[contentType.split(";")[0]] ?? "webm"

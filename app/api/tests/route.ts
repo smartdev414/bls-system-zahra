@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { requireCapability } from "@/lib/permissions"
 import { parseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_SECONDS, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, isAssessment, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
 import { canEditTest } from "@/lib/tests"
 
 // GET /api/tests?q=&level=&kind=&mine=1 — the test bank, newest change first.
@@ -106,7 +106,8 @@ async function handlePOST(req: NextRequest) {
         testKind,
         ...settings,
         ...(isSignTest(testKind) && { answerSeconds: settings.answerSeconds ?? DEFAULT_ANSWER_SECONDS }),
-        ...(testKind !== "STORY" && { storyUrl: null }),
+        ...(isAssessment(testKind) && { answerMinutes: settings.answerMinutes ?? DEFAULT_ANSWER_MINUTES }),
+        ...(testKind !== "STORY" && !isAssessment(testKind) && { storyUrl: null }),
         createdById: session!.sub,
       },
     })

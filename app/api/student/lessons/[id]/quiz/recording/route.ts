@@ -5,8 +5,8 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
 import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
-import { signsWords } from "@/lib/quiz"
-import { ANSWER_VIDEO_MAX_BYTES, ANSWER_VIDEO_TYPES, answerVideoKey } from "@/lib/test-recordings"
+import { isAssessment, signsWords } from "@/lib/quiz"
+import { ANSWER_VIDEO_MAX_BYTES, ANSWER_VIDEO_TYPES, ASSESSMENT_VIDEO_MAX_BYTES, answerVideoKey } from "@/lib/test-recordings"
 
 // POST /api/student/lessons/[id]/quiz/recording — { contentType, fileSize }
 // Somewhere to upload the student's recording of a signed answer, or of a
@@ -34,7 +34,8 @@ async function handlePOST(
     if (!lesson?.test || lesson.type !== "QUIZ" || !isReleased(lesson)) {
       return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
     }
-    if (lesson.test.questions.length === 0 && !signsWords(lesson.test)) {
+    const assessment = isAssessment(lesson.test.testKind)
+    if (lesson.test.questions.length === 0 && !signsWords(lesson.test) && !assessment) {
       return NextResponse.json({ message: "This test has nothing to film" }, { status: 400 })
     }
 
@@ -51,8 +52,11 @@ async function handlePOST(
     if (!ANSWER_VIDEO_TYPES[type]) {
       return NextResponse.json({ message: "That video format is not supported" }, { status: 400 })
     }
-    if (!Number.isFinite(fileSize) || Number(fileSize) <= 0 || Number(fileSize) > ANSWER_VIDEO_MAX_BYTES) {
-      return NextResponse.json({ message: "The video is too long — keep it to the one sign" }, { status: 400 })
+    const maxBytes = assessment ? ASSESSMENT_VIDEO_MAX_BYTES : ANSWER_VIDEO_MAX_BYTES
+    if (!Number.isFinite(fileSize) || Number(fileSize) <= 0 || Number(fileSize) > maxBytes) {
+      return NextResponse.json({
+        message: assessment ? "The video is too big to upload" : "The video is too long — keep it to the one sign",
+      }, { status: 400 })
     }
 
     const key = answerVideoKey(id, session.sub, type)

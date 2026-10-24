@@ -421,6 +421,7 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.SESSION_REQUEST_REJECTED,
   NotificationType.QUIZ_PASSED,
   NotificationType.QUIZ_FAILED,
+  NotificationType.TEST_TO_MARK,
   NotificationType.NEW_MESSAGE,
   NotificationType.COURSE_PUBLISHED,
   NotificationType.NEW_LESSON,
@@ -473,6 +474,7 @@ export function renderEmailTemplate(
     [NotificationType.SESSION_REQUEST_REJECTED]: `❌ Request declined — ${title}`,
     [NotificationType.QUIZ_PASSED]:        `✅ Quiz passed — ${title}`,
     [NotificationType.QUIZ_FAILED]:        `📝 Quiz result — ${title}`,
+    [NotificationType.TEST_TO_MARK]:       `📝 ${title}`,
     [NotificationType.NEW_MESSAGE]:        `💬 ${title}`,
     [NotificationType.COURSE_PUBLISHED]:   `🚀 ${title}`,
     [NotificationType.NEW_LESSON]:         `📖 ${title}`,
@@ -512,6 +514,7 @@ export function renderEmailTemplate(
     case NotificationType.SESSION_REQUEST_REJECTED: html = generic(recipientName, title, body, link);   break
     case NotificationType.QUIZ_PASSED:       html = quizResult(recipientName, body, true, link); break
     case NotificationType.QUIZ_FAILED:       html = quizResult(recipientName, body, false, link);break
+    case NotificationType.TEST_TO_MARK:      html = generic(recipientName, title, body, link);   break
     case NotificationType.NEW_MESSAGE:       html = newMessage(recipientName, body, link);       break
     case NotificationType.COURSE_PUBLISHED:  html = coursePublished(recipientName, body, link);  break
     case NotificationType.NEW_LESSON:        html = newLesson(recipientName, body, link);        break

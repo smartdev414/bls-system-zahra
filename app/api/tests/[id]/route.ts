@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { courseTeachScope, requireCapability } from "@/lib/permissions"
 import { parseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_SECONDS, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, isAssessment, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
 import { canEditTest, syncTestLessons, testEditScope } from "@/lib/tests"
 
 // GET /api/tests/[id] — the test with its questions (correct answers marked),
@@ -102,6 +102,8 @@ async function handlePUT(
       maxAttempts?: number | null
       answerSeconds?: number
       storyUrl?: string | null
+      answerMinutes?: number
+      tutorMarks?: boolean
     }
 
     if (body.title !== undefined && !body.title.trim()) {
@@ -138,7 +140,9 @@ async function handlePUT(
         testKind,
         ...settings,
         ...(isSignTest(testKind) && !settings.answerSeconds && !test.answerSeconds && { answerSeconds: DEFAULT_ANSWER_SECONDS }),
-        ...(testKind !== "STORY" && { storyUrl: null }),
+        ...(isAssessment(testKind) && !settings.answerMinutes && !test.answerMinutes && { answerMinutes: DEFAULT_ANSWER_MINUTES }),
+        // An assessment's story video is its synopsis, watched first.
+        ...(testKind !== "STORY" && !isAssessment(testKind) && { storyUrl: null }),
       },
     })
     await syncTestLessons(id, { title, description })

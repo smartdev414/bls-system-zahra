@@ -5,7 +5,8 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
 import {
-  DEFAULT_ANSWER_SECONDS, attemptsLeft, isSignTest, questionsForStudent, revealsAnswers, signQuestionsForStudent,
+  DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, attemptsLeft, isAssessment, isSignTest, partsForStudent, questionsForStudent,
+  revealsAnswers, signQuestionsForStudent,
 } from "@/lib/quiz"
 import { highScores } from "@/lib/quiz-high-scores"
 
@@ -65,9 +66,13 @@ async function handleGET(
     const kind = test.testKind
     // Model answers of written and signed questions are seen once the student
     // has submitted — they mark themselves against them.
+    // An assessment a teacher marks shows its answer sheet once they have.
+    const showModel = isAssessment(kind) && test.tutorMarks ? attempts.some((a) => a.selfMarked) : attempts.length > 0
     const questions = isSignTest(kind)
-      ? signQuestionsForStudent({ testKind: kind, vocabularyMode: test.vocabularyMode }, fullQuestions, reveal, attempts.length > 0)
-      : questionsForStudent(fullQuestions, reveal, attempts.length > 0)
+      ? signQuestionsForStudent({ testKind: kind, vocabularyMode: test.vocabularyMode }, fullQuestions, reveal, showModel)
+      : isAssessment(kind)
+      ? partsForStudent(fullQuestions, showModel)
+      : questionsForStudent(fullQuestions, reveal, showModel)
 
     const answersOf = (attemptId: string) => prisma.quizAttemptAnswer.findMany({
       where: { attemptId },
@@ -96,9 +101,11 @@ async function handleGET(
         kind,
         answerSeconds: test.answerSeconds ?? DEFAULT_ANSWER_SECONDS,
         signPlays: test.signPlays,
-        storyUrl: kind === "STORY" ? test.storyUrl : null,
+        storyUrl: kind === "STORY" || isAssessment(kind) ? test.storyUrl : null,
         storyControls: test.storyControls,
         vocabularyMode: test.vocabularyMode,
+        answerMinutes: test.answerMinutes ?? DEFAULT_ANSWER_MINUTES,
+        tutorMarks: test.tutorMarks,
       },
       attempts,
       attemptsLeft: attemptsLeft(test.maxAttempts, attempts.length),

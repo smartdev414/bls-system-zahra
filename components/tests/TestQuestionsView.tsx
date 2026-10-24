@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Circle } from "lucide-react"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
+import { isAssessment, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 export type ViewQuestion = {
@@ -17,6 +17,8 @@ export type ViewQuestion = {
   maxMarks?: number | null
   /** SIGN: the sign done right. */
   answerVideoUrl?: string | null
+  /** An assessment's part: its questions, signed. */
+  questionsVideoUrl?: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
 
@@ -33,19 +35,43 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
   questions: ViewQuestion[]
 }) {
   const signTest = isSignTest(kind)
-  const noun = signTest ? "sign" : "question"
+  const noun = signTest ? "sign" : isAssessment(kind) ? "part" : "question"
 
   return (
     <div className="flex flex-col gap-6">
       {storyUrl && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">The story</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{isAssessment(kind) ? "Synopsis" : "The story"}</p>
           <ProtectedVideo src={storyUrl} playsInline controls className="rounded-lg max-h-72 border bg-black self-start" />
         </div>
       )}
 
       {questions.length === 0 ? (
         <p className="text-sm text-muted-foreground">No {noun}s have been added to this test yet.</p>
+      ) : isAssessment(kind) ? (
+        // An assessment: each part's questions, the part, and its answer sheet.
+        <div className="flex flex-col gap-3">
+          {questions.map((q, i) => (
+            <div key={q.id} className="rounded-xl border p-4 flex flex-col gap-3">
+              <p className="font-semibold">Part {i + 1} <span className="font-normal text-muted-foreground">· {marksLabel(maxMarks(q))}</span></p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">The questions</p>
+                  {q.questionsVideoUrl && <Media url={q.questionsVideoUrl} type="video" alt="" className="w-full aspect-video rounded-lg border" />}
+                  {q.question && <p className="text-sm whitespace-pre-wrap">{q.question}</p>}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">The part</p>
+                  {q.imageUrl && <Media url={q.imageUrl} type={q.mediaType} alt="" className="w-full aspect-video rounded-lg border" />}
+                </div>
+              </div>
+              <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Answer sheet</p>
+                <p className="whitespace-pre-wrap">{q.modelAnswer}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : signTest ? (
         // A fingerspelling or vocabulary test: each sign and the word it is.
         <div className="flex flex-col gap-3">

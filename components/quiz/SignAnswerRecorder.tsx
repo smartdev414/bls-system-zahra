@@ -80,11 +80,20 @@ async function uploadAnswerVideo(lessonId: string, file: Blob): Promise<string> 
  * they like before submitting. Where the browser cannot record (older phones)
  * the phone's own camera is offered instead.
  */
-export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
+export function SignAnswerRecorder({ lessonId, videoUrl, onChange, deadline, timeUp = false, filmLabel = "Film yourself signing" }: {
   lessonId: string
   /** The recording already made for this question, if any. */
   videoUrl?: string
   onChange: (videoUrl: string | undefined) => void
+  /**
+   * An assessment's answers run to minutes: recording stops by itself at this
+   * time (ms since the epoch) instead of after half a minute, and cannot start
+   * once it has passed.
+   */
+  deadline?: number
+  /** The deadline has passed (the parent keeps the clock): no new recording. */
+  timeUp?: boolean
+  filmLabel?: string
 }) {
   const liveRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -117,8 +126,9 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
   }, [state])
 
   useEffect(() => {
-    if (state === "recording" && seconds >= MAX_SECONDS) recorderRef.current?.stop()
-  }, [state, seconds])
+    if (state !== "recording") return
+    if (deadline ? Date.now() >= deadline : seconds >= MAX_SECONDS) recorderRef.current?.stop()
+  }, [state, seconds, deadline])
 
   async function startCamera() {
     if (!logoRef.current) {
@@ -168,14 +178,15 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
     const stamped = stampedStream(video, logoRef.current!)
     stampRef.current = stamped
     const chunks: Blob[] = []
-    const recorder = new MediaRecorder(stamped.stream, { mimeType: type, videoBitsPerSecond: 1_500_000 })
+    // Minutes of answers are kept smaller, so they upload on a home connection.
+    const recorder = new MediaRecorder(stamped.stream, { mimeType: type, videoBitsPerSecond: deadline ? 1_000_000 : 1_500_000 })
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
     recorder.onstop = () => {
       stamped.stop()
       void save(new Blob(chunks, { type: type.split(";")[0] }))
     }
     recorderRef.current = recorder
-    recorder.start()
+    recorder.start(deadline ? 1000 : undefined)
     setSeconds(0)
     setState("recording")
   }
@@ -185,7 +196,7 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
     return (
       <div className="flex flex-col gap-2">
         <ProtectedVideo src={videoUrl} controls playsInline className="w-full max-h-72 rounded-xl border bg-black" />
-        {canRecord ? (
+        {timeUp ? null : canRecord ? (
           <Button type="button" variant="outline" size="sm" className="self-start" onClick={startCamera}>
             <RotateCcw className="size-4 mr-1.5" /> Record again
           </Button>
@@ -202,11 +213,11 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
   if (!canRecord) {
     return (
       <div className="flex flex-col gap-2">
-        <Button type="button" className="self-start" asChild disabled={state === "uploading"}>
+        <Button type="button" className="self-start" asChild disabled={state === "uploading" || timeUp}>
           <label className="cursor-pointer">
             {state === "uploading"
               ? <><Loader2 className="size-4 mr-1.5 animate-spin" /> Uploading…</>
-              : <><Upload className="size-4 mr-1.5" /> Film yourself signing</>}
+              : <><Upload className="size-4 mr-1.5" /> {filmLabel}</>}
             <PhoneCameraInput onFile={save} />
           </label>
         </Button>
@@ -218,7 +229,7 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
   if (state === "idle" || state === "starting") {
     return (
       <div className="flex flex-col gap-2">
-        <Button type="button" className="self-start" onClick={startCamera} disabled={state === "starting"}>
+        <Button type="button" className="self-start" onClick={startCamera} disabled={state === "starting" || timeUp}>
           {state === "starting" ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Camera className="size-4 mr-1.5" />}
           Turn on camera
         </Button>
@@ -234,7 +245,7 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
         <video ref={liveRef} muted playsInline className="w-full max-h-72 rounded-xl border bg-black -scale-x-100" />
         {state === "recording" && (
           <span className="absolute top-2 left-2 flex items-center gap-1.5 rounded-full bg-rose-600 px-2 py-0.5 text-xs font-semibold text-white">
-            <Circle className="size-2 fill-current animate-pulse" /> {seconds}s
+            <Circle className="size-2 fill-current animate-pulse" /> {deadline ? clock(seconds) : `${seconds}s`}
           </span>
         )}
         {state === "uploading" && (
@@ -249,7 +260,7 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
             <Square className="size-4 mr-1.5 fill-current" /> Stop
           </Button>
         ) : (
-          <Button type="button" onClick={record} disabled={state === "uploading"} className={cn(state === "uploading" && "opacity-50")}>
+          <Button type="button" onClick={record} disabled={state === "uploading" || timeUp} className={cn(state === "uploading" && "opacity-50")}>
             <Circle className="size-4 mr-1.5 fill-rose-500 text-rose-500" /> Record
           </Button>
         )}
@@ -260,6 +271,11 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange }: {
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
   )
+}
+
+/** 75 → "1:15". */
+function clock(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
 }
 
 /** The phone's own camera, where the browser cannot record in the page. */

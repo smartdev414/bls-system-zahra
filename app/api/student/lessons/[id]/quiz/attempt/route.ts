@@ -6,10 +6,11 @@ import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
 import {
-  attemptScore, attemptsLeft, hasMultipleAnswers, isSignTest, questionMarking, questionsForStudent, revealsAnswers, sameWord,
-  signQuestionsForStudent,
+  attemptScore, attemptsLeft, hasMultipleAnswers, isAssessment, isSignTest, partsForStudent, questionMarking, questionsForStudent,
+  revealsAnswers, sameWord, signQuestionsForStudent,
 } from "@/lib/quiz"
 import { isOwnAnswerVideo } from "@/lib/test-recordings"
+import { notifyTeachersToMark } from "@/lib/test-marking"
 
 // POST /api/student/lessons/[id]/quiz/attempt
 // body: { answers: { questionId: string; optionId?: string; optionIds?: string[]; text?: string; videoUrl?: string }[]; durationMs?: number }
@@ -75,7 +76,11 @@ async function handlePOST(
       return NextResponse.json({ message: "You have used all your attempts for this test" }, { status: 409 })
     }
     if (previous.some((a) => !a.selfMarked)) {
-      return NextResponse.json({ message: "Mark your answers from last time first" }, { status: 409 })
+      return NextResponse.json({
+        message: isAssessment(test.testKind) && test.tutorMarks
+          ? "Your teacher is still marking your answers from last time"
+          : "Mark your answers from last time first",
+      }, { status: 409 })
     }
 
     // Grade the attempt
@@ -93,6 +98,12 @@ async function handlePOST(
         // The word signed: marked by the student against the sign, like a signed answer.
         const videoUrl = isOwnAnswerVideo(given?.videoUrl, id, session.sub) ? given.videoUrl : null
         return { ...graded, videoUrl, marks: videoUrl ? null : 0 }
+      }
+      // An assessment's part: the answers filmed, marked against the answer
+      // sheet by the student or a teacher. No recording is 0 straight away.
+      if (isAssessment(kind)) {
+        const videoUrl = isOwnAnswerVideo(given?.videoUrl, id, session.sub) ? given.videoUrl : null
+        return { questionId: q.id, optionId: null, videoUrl, marks: videoUrl ? null : 0, isCorrect: false }
       }
       // Marked by the student once they see the model answer. Nothing given
       // (a blank box, no recording) has nothing to mark, and gets 0 now.
@@ -159,6 +170,9 @@ async function handlePOST(
     const attempts = [...previous, { passed }]
     const left = attemptsLeft(test.maxAttempts, attempts.length)
 
+    // A teacher marks this one: tell the course's teachers it is in.
+    if (!selfMarked && isAssessment(kind) && test.tutorMarks) void notifyTeachersToMark(attempt.id)
+
     // Notify the student of their quiz result — once they have marked it, if
     // there is marking to do.
     if (selfMarked) void createNotification(
@@ -183,6 +197,8 @@ async function handlePOST(
     })
     const questions = isSignTest(kind)
       ? signQuestionsForStudent({ testKind: kind, vocabularyMode: test.vocabularyMode }, fullQuestions, reveal, true)
+      : isAssessment(kind)
+      ? partsForStudent(fullQuestions, !test.tutorMarks || selfMarked)
       : questionsForStudent(fullQuestions, reveal, true)
 
     return NextResponse.json({

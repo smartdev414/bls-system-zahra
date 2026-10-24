@@ -3,8 +3,8 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseTeachScope } from "@/lib/permissions"
-import { questionMarking } from "@/lib/quiz"
-import { rescoreAttempt } from "@/lib/test-marking"
+import { isAssessment, questionMarking } from "@/lib/quiz"
+import { notifyStudentMarked, rescoreAttempt } from "@/lib/test-marking"
 
 // PATCH /api/tutor/lessons/[id]/results/answers/[answerId] — { marks: number }
 // A teacher changes the marks a student gave themselves on a written or
@@ -30,7 +30,8 @@ async function handlePATCH(
       },
       select: {
         id: true, attemptId: true,
-        question: { select: { type: true, maxMarks: true, test: { select: { testKind: true, vocabularyMode: true } } } },
+        attempt: { select: { selfMarked: true } },
+        question: { select: { type: true, maxMarks: true, test: { select: { testKind: true, vocabularyMode: true, tutorMarks: true } } } },
       },
     })
     if (!answer) return NextResponse.json({ message: "Answer not found" }, { status: 404 })
@@ -49,6 +50,10 @@ async function handlePATCH(
       data: { marks: marks as number, markedByTutor: true, ...(!picked && { isCorrect: marks === max }) },
     })
     const result = await rescoreAttempt(answer.attemptId)
+    // The last mark of an assessment a teacher marks: the student gets their result.
+    if (isAssessment(answer.question.test.testKind) && answer.question.test.tutorMarks && !answer.attempt.selfMarked && result.selfMarked) {
+      void notifyStudentMarked(answer.attemptId)
+    }
 
     return NextResponse.json(result)
   } catch (err) {

@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { requireCapability } from "@/lib/permissions"
-import { isSelfMarked, isSignTest } from "@/lib/quiz"
+import { isAssessment, isSelfMarked, isSignTest } from "@/lib/quiz"
 import { testEditScope } from "@/lib/tests"
 import { validateQuestion, type QuestionBody } from "./validate"
 
@@ -47,6 +47,7 @@ async function handlePOST(
         modelAnswer: body.type === "WRITTEN" ? body.modelAnswer?.trim() ?? null : null,
         maxMarks: body.type === "WRITTEN" ? body.maxMarks ?? null : null,
         answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
+        questionsVideoUrl: isAssessment(test.testKind) ? body.questionsVideoUrl ?? null : null,
         order: (last._max.order ?? 0) + 1,
         options: {
           create: options.map((opt, i) => ({

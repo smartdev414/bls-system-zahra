@@ -34,6 +34,8 @@ async function handlePOST(
         answerSeconds: source.answerSeconds,
         signPlays: source.signPlays,
         vocabularyMode: source.vocabularyMode,
+        answerMinutes: source.answerMinutes,
+        tutorMarks: source.tutorMarks,
         passMark: source.passMark,
         maxAttempts: source.maxAttempts,
         createdById: session!.sub,
@@ -48,6 +50,7 @@ async function handlePOST(
             modelAnswer: q.modelAnswer,
             maxMarks: q.maxMarks,
             answerVideoUrl: q.answerVideoUrl,
+            questionsVideoUrl: q.questionsVideoUrl,
             order: q.order,
             options: {
               create: q.options.map((o) => ({

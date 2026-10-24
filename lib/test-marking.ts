@@ -4,6 +4,8 @@
  * one place so both arrive at the same score, pass and lesson progress.
  */
 import prisma from "@/lib/prisma"
+import { createNotification } from "@/lib/notifications"
+import { isStaff } from "@/lib/permissions"
 import { attemptScore, awaitsMarks } from "@/lib/quiz"
 
 /**
@@ -56,4 +58,62 @@ export async function rescoreAttempt(attemptId: string) {
   }
 
   return { score, passed, selfMarked, earned, total }
+}
+
+/**
+ * An assessment a teacher marks has been sent in: the course's teachers are
+ * told, with a link to its results, where they mark it.
+ */
+export async function notifyTeachersToMark(attemptId: string) {
+  const attempt = await prisma.quizAttempt.findUnique({
+    where: { id: attemptId },
+    select: {
+      lessonId: true,
+      user: { select: { name: true } },
+      lesson: {
+        select: {
+          title: true,
+          section: {
+            select: {
+              course: {
+                select: {
+                  id: true, title: true,
+                  tutor: { select: { id: true, role: true } },
+                  teachers: { select: { tutor: { select: { id: true, role: true } } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  if (!attempt) return
+  const course = attempt.lesson.section.course
+  const teachers = new Map([course.tutor, ...course.teachers.map((t) => t.tutor)].map((t) => [t.id, t.role]))
+  await Promise.all([...teachers].map(([id, role]) => createNotification(
+    id,
+    "TEST_TO_MARK",
+    `Answers to mark — ${attempt.lesson.title}`,
+    `${attempt.user.name} has sent in their answers to "${attempt.lesson.title}" on ${course.title}. Watch their videos and mark them.`,
+    `${isStaff(role) ? "/admin" : "/tutor"}/courses/${course.id}/lessons/${attempt.lessonId}`,
+  )))
+}
+
+/** A teacher has finished marking an assessment: the student hears how it went. */
+export async function notifyStudentMarked(attemptId: string) {
+  const attempt = await prisma.quizAttempt.findUnique({
+    where: { id: attemptId },
+    select: { userId: true, lessonId: true, score: true, passed: true, lesson: { select: { title: true } } },
+  })
+  if (!attempt) return
+  await createNotification(
+    attempt.userId,
+    attempt.passed ? "QUIZ_PASSED" : "QUIZ_FAILED",
+    `Your teacher has marked "${attempt.lesson.title}" — ${attempt.score}%`,
+    attempt.passed
+      ? "You passed. See your marks and the answer sheet."
+      : "Not passed this time. See your marks and the answer sheet.",
+    `/student/lessons/${attempt.lessonId}`,
+  )
 }

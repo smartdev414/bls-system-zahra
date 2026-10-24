@@ -54,6 +54,7 @@ type NotificationType =
   | "SESSION_REQUEST_REJECTED"
   | "QUIZ_PASSED"
   | "QUIZ_FAILED"
+  | "TEST_TO_MARK"
   | "HOMEWORK_REMINDER"
   | "SESSION_REMINDER"
   | "LESSONS_UNLOCKED"
@@ -96,6 +97,7 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   SESSION_REQUEST_REJECTED: XCircle,
   QUIZ_PASSED: Award,
   QUIZ_FAILED: Award,
+  TEST_TO_MARK: Award,
   HOMEWORK_REMINDER: CalendarPlus,
   SESSION_REMINDER: CalendarPlus,
   LESSONS_UNLOCKED: BookOpen,
@@ -129,6 +131,7 @@ const typeColor: Record<NotificationType, string> = {
   SESSION_REQUEST_REJECTED: "text-destructive",
   QUIZ_PASSED: "text-green-500",
   QUIZ_FAILED: "text-destructive",
+  TEST_TO_MARK: "text-yellow-500",
   HOMEWORK_REMINDER: "text-yellow-500",
   SESSION_REMINDER: "text-blue-500",
   LESSONS_UNLOCKED: "text-primary",

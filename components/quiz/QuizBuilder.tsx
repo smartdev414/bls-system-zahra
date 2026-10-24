@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { DEFAULT_WRITTEN_MARKS, MAX_WRITTEN_MARKS, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
+import { DEFAULT_WRITTEN_MARKS, MAX_WRITTEN_MARKS, isAssessment, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { FilmOverlay } from "./FilmOverlay"
@@ -61,6 +61,8 @@ export type QuestionDraft = {
   /** SIGN: the video of the sign done right, shown next to the student's own. */
   answerVideoUrl?: string
   answerVideoUploading?: boolean
+  /** An assessment's part: its questions, signed. */
+  questionsVideoUrl?: string
   options: QuizOptionDraft[]
   isOpen: boolean
   isSaving: boolean
@@ -131,13 +133,19 @@ function blankTrueFalse(): QuestionDraft {
 
 /** A question nobody has typed anything into — left out rather than reported as unfinished. */
 export function isBlankQuestion(q: QuestionDraft): boolean {
-  if (q.id || q.question.trim() || q.imageUrl || q.questionImageUploading) return false
+  if (q.id || q.question.trim() || q.imageUrl || q.questionImageUploading || q.questionsVideoUrl) return false
   if (isSelfMarked(q.type)) return !q.modelAnswer?.trim() && !q.answerVideoUrl && !q.answerVideoUploading
   return q.type === "TRUE_FALSE" || q.options.every((o) => !o.text.trim() && !o.imageUrl && !o.uploading)
 }
 
 /** What still has to be done before a question can be saved, or null when it is ready. */
 export function questionProblem(q: QuestionDraft, testKind?: string): string | null {
+  // A part of an assessment: its questions, the part, and the answer sheet.
+  if (isAssessment(testKind)) {
+    if (!q.questionsVideoUrl && !q.question.trim()) return "Add the video of the part's questions"
+    if (!q.imageUrl) return "Add the video of the part"
+    return q.modelAnswer?.trim() ? null : "Type the answer sheet"
+  }
   // A sign in a fingerspelling or vocabulary test is a video and its word.
   if (isSignTest(testKind)) {
     if (q.questionImageUploading) return "Wait for the upload to finish"
@@ -176,6 +184,7 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
       modelAnswer: q.type === "WRITTEN" ? q.modelAnswer ?? null : null,
       maxMarks: q.type === "WRITTEN" ? maxMarks(q) : null,
       answerVideoUrl: q.type === "SIGN" ? q.answerVideoUrl ?? null : null,
+      questionsVideoUrl: q.questionsVideoUrl ?? null,
       options: q.options.map((o) => ({
         id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
       })),
