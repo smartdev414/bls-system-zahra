@@ -46,7 +46,7 @@ type CourseItem = {
   format: CourseFormat
   venue: string | null
   tutor: { id: string; name: string }
-  // Teachers the school has put on the course, besides its lead.
+  // Who teaches the course: its lead (when a tutor) and those the school put on it.
   teachers: Array<{ id: string; name: string }>
   category: { id: string; name: string } | null
   enrollmentCount: number

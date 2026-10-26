@@ -33,7 +33,7 @@ async function handleGET(req: NextRequest) {
         take: limit,
         skip,
         include: {
-          tutor: { select: { id: true, name: true } },
+          tutor: { select: { id: true, name: true, role: true } },
           teachers: {
             orderBy: { assignedAt: "asc" },
             select: { tutor: { select: { id: true, name: true } } },
@@ -54,8 +54,13 @@ async function handleGET(req: NextRequest) {
         level: c.level,
         format: c.format,
         venue: c.venue,
-        tutor: c.tutor,
-        teachers: c.teachers.map((t) => t.tutor),
+        tutor: { id: c.tutor.id, name: c.tutor.name },
+        // The lead counts as a teacher when they are one — not when the course
+        // still sits with the admin who built it.
+        teachers: [
+          ...(c.tutor.role === "TUTOR" ? [{ id: c.tutor.id, name: c.tutor.name }] : []),
+          ...c.teachers.map((t) => t.tutor),
+        ],
         category: c.category,
         enrollmentCount: c._count.enrollments,
         sectionCount: c._count.sections,
