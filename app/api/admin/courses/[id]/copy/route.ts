@@ -98,6 +98,8 @@ async function handlePOST(req: NextRequest, { params }: RouteContext) {
       timeZone?: string
       /** Put this group on the copy straight away, enrolling its students. */
       groupId?: string
+      /** The tutor who leads the copy. Left out, it stays with whoever copied it. */
+      tutorId?: string
     }
 
     const title = body.title?.trim()
@@ -121,15 +123,20 @@ async function handlePOST(req: NextRequest, { params }: RouteContext) {
       : null
     if (body.groupId && !group) return NextResponse.json({ message: "Group not found" }, { status: 404 })
 
+    const tutor = body.tutorId
+      ? await prisma.user.findFirst({ where: { id: body.tutorId, role: "TUTOR" }, select: { id: true } })
+      : null
+    if (body.tutorId && !tutor) return NextResponse.json({ message: "Tutor not found" }, { status: 400 })
+
     const move = (releaseAt: Date | null) =>
       releaseAt && shiftDays !== 0 ? shiftReleaseAt(releaseAt, shiftDays, timeZone) : releaseAt
 
     // One nested create, so the copy either arrives whole or not at all.
     const copy = await prisma.course.create({
       data: {
-        // The person copying leads the copy; its teachers are chosen afresh,
-        // since another group usually means another teacher.
-        tutorId: session.sub,
+        // Its teachers are chosen afresh, since another group usually means
+        // another teacher — the one picked in the form, else the person copying.
+        tutorId: tutor?.id ?? session.sub,
         categoryId: source.categoryId,
         title,
         slug: await uniqueCourseSlug(title),

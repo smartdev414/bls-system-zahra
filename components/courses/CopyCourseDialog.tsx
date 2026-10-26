@@ -26,6 +26,8 @@ type Summary = {
 
 type Group = { id: string; name: string; tutorName?: string; members: Array<{ id: string }> }
 
+type TutorOption = { id: string; name: string; email: string }
+
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
 
@@ -66,10 +68,13 @@ export function CopyCourseDialog({
     errorMessage: "Could not load the course",
   })
   const { data: groupData } = useFetch<{ groups: Group[] }>("/api/tutor/groups", { errorMessage: false })
+  const { data: tutorData } = useFetch<{ tutors: TutorOption[] }>("/api/tutor/colleagues", { errorMessage: false })
 
   // Left untouched, the name follows the group that is picked.
   const [name, setName] = useState<string | null>(null)
   const [groupId, setGroupId] = useState("")
+  // Empty = no tutor yet: the copy stays with whoever made it, as a new course does.
+  const [tutorId, setTutorId] = useState("")
   // The date the copy's first scheduled lesson should release. Unset = same dates.
   const [start, setStart] = useState<Date | undefined>(undefined)
   const [saving, setSaving] = useState(false)
@@ -102,6 +107,7 @@ export function CopyCourseDialog({
           // So 09:00 stays 09:00 on the wall, even across a clock change.
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           ...(groupId ? { groupId } : {}),
+          ...(tutorId ? { tutorId } : {}),
         }),
       })
       const body = await res.json().catch(() => ({})) as {
@@ -149,7 +155,7 @@ export function CopyCourseDialog({
                 plural(summary.files, "file"),
               ].join(", ")}.
               <span className="block text-xs text-muted-foreground mt-0.5">
-                Students, classes and teachers are not copied — the new group gets its own.
+                Students, classes and teachers are not copied — pick the new group and its teacher below.
               </span>
             </p>
 
@@ -168,6 +174,16 @@ export function CopyCourseDialog({
                   Its {plural(group.members.length, "student")} will be put on the new course.
                 </p>
               )}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cc-tutor">Lead teacher <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <select id="cc-tutor" value={tutorId} onChange={(e) => setTutorId(e.target.value)} className={selectClass}>
+                <option value="">No tutor yet</option>
+                {(tutorData?.tutors ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name} — {t.email}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex flex-col gap-1.5">
