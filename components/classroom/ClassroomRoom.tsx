@@ -131,6 +131,9 @@ const deckPositionsStorageKey = (sessionId: string) => `classroom:deck-positions
 // a student double-checks the stored stage against what they're showing, and how
 // often that check runs. Slow on purpose: it's a safety net for a lost packet,
 // not the primary sync path.
+/** An API call came back 401: the login cookie is gone, though the class isn't. */
+class SignedOutError extends Error {}
+
 const STAGE_QUIET_MS = 15_000
 const STAGE_RECONCILE_MS = 20_000
 
@@ -2785,6 +2788,18 @@ export function ClassroomRoom({
     try { sendRecorder(enc.encode(JSON.stringify(msg)), { reliable: true }) } catch { /* the next sync carries it */ }
   }, [studentsPopout, connectionState, sendRecorder])
 
+  // The class runs over LiveKit, so it carries on even when the login cookie
+  // has gone (expired, or signed out in another tab) — only our API calls fail.
+  // Signing in again in a new tab restores the cookie without leaving class.
+  const toastSignedOut = useCallback(() => {
+    toast.error("You've been signed out", {
+      id: "signed-out",
+      description: "The class is still running. Sign in again in a new tab, then come back and press the button again.",
+      duration: 30_000,
+      action: { label: "Sign in", onClick: () => window.open("/login", "_blank", "noopener") },
+    })
+  }, [])
+
   // Tutor starts, pauses, or resumes recording. Each pause/resume creates a
   // separate MP4 segment in S3.
   const handleToggleRecording = useCallback(async () => {
@@ -2809,6 +2824,7 @@ export function ClassroomRoom({
           ? `/api/sessions/${sessionId}/recording/resume`
           : `/api/sessions/${sessionId}/recording/pause`
       const res = await fetch(endpoint, { method: "POST" })
+      if (res.status === 401) throw new SignedOutError()
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body?.message || "Recording control failed")
@@ -2825,11 +2841,12 @@ export function ClassroomRoom({
       console.error("[recording] toggle failed", err)
       setRecordingStarted(prevStarted)
       setRecordingPaused(prevPaused)
-      toast.error("Couldn't change recording state")
+      if (err instanceof SignedOutError) toastSignedOut()
+      else toast.error("Couldn't change recording state")
     } finally {
       setRecordingBusy(false)
     }
-  }, [isTutor, recordingBusy, recordingActive, recordingPaused, sessionId, syncRecorder])
+  }, [isTutor, recordingBusy, recordingActive, recordingPaused, sessionId, syncRecorder, toastSignedOut])
 
   // Breakout rooms are never recorded: opening them pauses a running
   // recording, and closing them carries on — but only if it was this that
@@ -2852,14 +2869,16 @@ export function ClassroomRoom({
     pausedForBreakoutsRef.current = false
     try {
       const res = await fetch(`/api/sessions/${sessionId}/recording/resume`, { method: "POST" })
+      if (res.status === 401) throw new SignedOutError()
       if (!res.ok) throw new Error()
       setRecordingPaused(false)
       toast.success("Recording resumed")
       syncRecorder()
-    } catch {
-      toast.error("Couldn't resume the recording — press Resume to carry on")
+    } catch (err) {
+      if (err instanceof SignedOutError) toastSignedOut()
+      else toast.error("Couldn't resume the recording — press Resume to carry on")
     }
-  }, [sessionId, syncRecorder])
+  }, [sessionId, syncRecorder, toastSignedOut])
 
   // Students hear once, as recording starts, that they are not in it.
   const toldStudentAboutRecording = useRef(false)
