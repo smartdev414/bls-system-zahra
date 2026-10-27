@@ -6,6 +6,14 @@ import { courseTeachScope } from "@/lib/permissions"
 import { isSignTest, sameWord, type TestKind } from "@/lib/quiz"
 
 /**
+ * The questions students are given. A word typed into a fingerspelling or
+ * vocabulary test waits there, unseen, until its sign is filmed.
+ */
+export const READY_QUESTION = {
+  NOT: { imageUrl: null, test: { testKind: { in: ["FINGERSPELLING", "VOCABULARY"] } } },
+} satisfies Prisma.QuizQuestionWhereInput
+
+/**
  * The test bank (the Tests menu).
  *
  * A test is made once and put in any number of courses — one per level, say —

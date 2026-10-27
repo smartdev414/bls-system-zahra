@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { LEAGUE_DIFFICULTIES, isLeagueOpen, shortName } from "@/lib/leagues"
@@ -17,7 +18,7 @@ async function handleGET() {
       orderBy: { createdAt: "desc" },
       select: {
         id: true, title: true, difficulty: true, endsAt: true,
-        test: { select: { _count: { select: { questions: true } } } },
+        test: { select: { _count: { select: { questions: { where: READY_QUESTION } } } } },
         _count: { select: { members: true } },
         members: { where: { userId: session.sub }, select: { id: true } },
       },

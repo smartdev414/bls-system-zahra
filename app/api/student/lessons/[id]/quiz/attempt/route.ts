@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { freePreviewOpen } from "@/lib/course-visibility"
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
@@ -38,7 +39,7 @@ async function handlePOST(
         section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } },
         test: {
           include: {
-            questions: { include: { options: { select: { id: true, isCorrect: true } } } },
+            questions: { where: READY_QUESTION, include: { options: { select: { id: true, isCorrect: true } } } },
           },
         },
       },
@@ -191,7 +192,7 @@ async function handlePOST(
     // student may see them.
     const reveal = revealsAnswers(test.maxAttempts, attempts)
     const fullQuestions = await prisma.quizQuestion.findMany({
-      where: { testId: test.id },
+      where: { testId: test.id, ...READY_QUESTION },
       orderBy: { order: "asc" },
       include: { options: { orderBy: { order: "asc" } } },
     })

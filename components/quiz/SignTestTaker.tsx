@@ -136,12 +136,13 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
   total: number
   /** Called once: with the word given, or whatever was typed when the time ran out. */
   onAnswer: (text: string) => void
-  /** Shown under the timer on a wide screen. */
+  /** Shown under the sign on a wide screen. */
   aside?: React.ReactNode
 }) {
   const totalMs = answerSeconds * 1000
-  // Whether the clock is running: from the end of the sign (see VIDEO_WAIT_MS).
-  const [ready, setReady] = useState(false)
+  // Whether the clock is running. Vocabulary: straight away, the words are already there to pick.
+  // Fingerspelling: from the end of the sign (see VIDEO_WAIT_MS), since the word is still being spelled.
+  const [ready, setReady] = useState(kind === "VOCABULARY")
   // A test set to play each sign once or twice: which play this is, and
   // whether they are used up (the video is then hidden).
   const [play, setPlay] = useState(1)
@@ -231,7 +232,7 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
       alt="The sign"
       onLoad={() => setReady(true)}
       onError={() => setReady(true)}
-      className="w-full aspect-video rounded-xl border bg-black object-contain select-none pointer-events-none"
+      className="w-full aspect-video max-h-[60vh] rounded-xl border bg-black object-contain select-none pointer-events-none"
       draggable={false}
       onContextMenu={(e) => e.preventDefault()}
     />
@@ -263,7 +264,7 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
         }}
         // No scrubbing back when the plays are limited — that would be a replay.
         controls={false}
-        className="w-full aspect-video rounded-xl border bg-black object-contain"
+        className="w-full aspect-video max-h-[60vh] rounded-xl border bg-black object-contain"
       />
       {blocked && !playsUsed && (
         <button
@@ -308,56 +309,52 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
 
   return (
     <div className="flex flex-col gap-4 py-2">
-      <div className="flex flex-col gap-1.5">
-        <p className="text-xs text-muted-foreground">Sign {number} of {total}</p>
-        <Progress value={((number - 1) / total) * 100} className="h-1.5" />
+      {/* The timer sits beside the progress, above the sign, so the sign gets the full width. */}
+      <div className="flex items-end gap-4">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <p className="text-xs text-muted-foreground">Sign {number} of {total}</p>
+          <Progress value={((number - 1) / total) * 100} className="h-1.5" />
+        </div>
+        <div className="w-36 shrink-0 sm:w-44">{timer}</div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_13rem]">
-        <div className="flex flex-col gap-4">
-          {/* On a phone the timer sits above the video, where it can be seen while answering. */}
-          <div className="lg:hidden">{timer}</div>
+      <div className="flex flex-col gap-4">
+        {kind === "FINGERSPELLING" ? (
+          <>
+            {video}
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => { e.preventDefault(); finish(typed) }}
+            >
+              <Input
+                autoFocus
+                value={typed}
+                onChange={(e) => { setTyped(e.target.value); typedRef.current = e.target.value }}
+                placeholder="Type here"
+                aria-label="Type the word being fingerspelled"
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={100}
+                className="h-14 text-center text-xl font-semibold uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal"
+              />
+              <Button type="submit" className="h-14 px-5">
+                Next <ChevronRight className="size-4 ml-1" />
+              </Button>
+            </form>
+          </>
+        ) : (
+          // The sign in the middle with the words around it; on a phone, the words below.
+          // On a computer the sign takes most of the width so it is easy to read.
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] lg:grid-cols-[minmax(8rem,11rem)_minmax(0,1fr)_minmax(8rem,11rem)] sm:items-center">
+            <div className="col-span-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">{video}</div>
+            <div className="flex flex-col gap-3 sm:col-start-1 sm:row-start-1">{choices.slice(0, half).map(choiceButton)}</div>
+            <div className="flex flex-col gap-3 sm:col-start-3 sm:row-start-1">{choices.slice(half).map(choiceButton)}</div>
+          </div>
+        )}
 
-          {kind === "FINGERSPELLING" ? (
-            <>
-              {video}
-              <form
-                className="flex gap-2"
-                onSubmit={(e) => { e.preventDefault(); finish(typed) }}
-              >
-                <Input
-                  autoFocus
-                  value={typed}
-                  onChange={(e) => { setTyped(e.target.value); typedRef.current = e.target.value }}
-                  placeholder="Type here"
-                  aria-label="Type the word being fingerspelled"
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  maxLength={100}
-                  className="h-14 text-center text-xl font-semibold uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal"
-                />
-                <Button type="submit" className="h-14 px-5">
-                  Next <ChevronRight className="size-4 ml-1" />
-                </Button>
-              </form>
-            </>
-          ) : (
-            // The sign in the middle with the words around it; on a phone, the words below.
-            // On a computer the sign takes most of the width so it is easy to read.
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)_minmax(0,1fr)] sm:items-center">
-              <div className="col-span-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">{video}</div>
-              <div className="flex flex-col gap-3 sm:col-start-1 sm:row-start-1">{choices.slice(0, half).map(choiceButton)}</div>
-              <div className="flex flex-col gap-3 sm:col-start-3 sm:row-start-1">{choices.slice(half).map(choiceButton)}</div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <div className="hidden lg:block">{timer}</div>
-          {aside}
-        </div>
+        {aside}
       </div>
     </div>
   )

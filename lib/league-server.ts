@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 
 // Fingerspelling leagues on the server — the rules shared with the screens are
 // in lib/leagues.ts.
@@ -11,11 +12,11 @@ export async function checkLeagueWords(testId: unknown): Promise<string | null> 
   if (typeof testId !== "string" || !testId) return "Choose the words — a fingerspelling test"
   const test = await prisma.test.findUnique({
     where: { id: testId },
-    select: { testKind: true, _count: { select: { questions: true } } },
+    select: { testKind: true, _count: { select: { questions: { where: READY_QUESTION } } } },
   })
   if (!test) return "That test no longer exists"
   if (test.testKind !== "FINGERSPELLING") return "Choose a fingerspelling test"
-  if (test._count.questions === 0) return "That test has no words yet — add some first"
+  if (test._count.questions === 0) return "That test has no filmed words yet — film some first"
   return null
 }
 

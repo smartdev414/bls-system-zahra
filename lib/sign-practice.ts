@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { urlsHiddenFromStudents } from "@/lib/background-clean"
 import { VOCABULARY_CHOICES, sameWord, type SignQuestion } from "@/lib/quiz"
 
@@ -74,7 +75,7 @@ async function weekSignIds(studentId: string, allSigns: { id: string; word: stri
     select: {
       title: true,
       type: true,
-      test: { select: { testKind: true, questions: { select: { question: true } } } },
+      test: { select: { testKind: true, questions: { where: READY_QUESTION, select: { question: true } } } },
     },
   })
 

@@ -13,6 +13,7 @@ import {
   ANSWER_MINUTES, ANSWER_SECONDS, TEST_KINDS, TEST_KIND_INFO, VOCABULARY_MODES, VOCABULARY_MODE_INFO, type TestKind, type VocabularyMode,
 } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
+import { FilmOverlay } from "./FilmOverlay"
 import { MediaUploadButton, uploadMedia } from "./QuizBuilder"
 
 const ICONS: Record<TestKind, LucideIcon> = {
@@ -192,12 +193,20 @@ export function TutorMarksField({ value, onChange }: { value: boolean; onChange:
   )
 }
 
+/** How long an assessment part's signed questions may run when filmed here. */
+const SIGNED_QUESTIONS_MAX_SECONDS = 5 * 60
+
 /** Story tests: the video the questions are about. Assessments: the synopsis, watched first. */
-export function StoryVideoField({ value, onChange, label = "Story video", hint }: {
+export function StoryVideoField({ value, onChange, label = "Story video", hint, signed = false }: {
   value: string | null
   onChange: (url: string | null) => void
   label?: string
   hint?: string
+  /**
+   * Signed to camera, like a test's questions: "Record" opens the same recorder
+   * as they do, which stops by itself when the hands come back to rest.
+   */
+  signed?: boolean
 }) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -244,15 +253,30 @@ export function StoryVideoField({ value, onChange, label = "Story video", hint }
             aria-hidden
             onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = "" }}
           />
-          <Button type="button" size="sm" variant={recording ? "default" : "outline"} aria-pressed={recording} onClick={() => setRecording((on) => !on)}>
-            <Camera className="size-3.5 mr-1.5" /> {recording ? "Close camera" : "Record"}
-          </Button>
+          {signed ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => setRecording(true)}
+              title="Stops by itself when your hands come back to rest">
+              <Camera className="size-3.5 mr-1.5" /> Record
+            </Button>
+          ) : (
+            <Button type="button" size="sm" variant={recording ? "default" : "outline"} aria-pressed={recording} onClick={() => setRecording((on) => !on)}>
+              <Camera className="size-3.5 mr-1.5" /> {recording ? "Close camera" : "Record"}
+            </Button>
+          )}
           <Button type="button" size="sm" variant="outline" onClick={() => setPickerOpen(true)}>
             <FolderOpen className="size-3.5 mr-1.5" /> Choose from library
           </Button>
         </div>
       )}
-      {recording && !value && (
+      {signed && (
+        <FilmOverlay
+          items={recording ? [{ id: "questions", word: label.replace(/^\d+\.\s*/, "") }] : null}
+          onRecorded={(_, fileUrl) => onChange(fileUrl)}
+          onClose={() => setRecording(false)}
+          maxTakeSeconds={SIGNED_QUESTIONS_MAX_SECONDS}
+        />
+      )}
+      {recording && !value && !signed && (
         <CameraRecorder uploaded={null} onUploaded={(file) => { onChange(file.fileUrl); setRecording(false) }} />
       )}
       <LibraryPicker

@@ -16,17 +16,18 @@ const SignRecordingStudio = dynamic(
  * camera far larger than the tutor wanted to sign into. It only closes from
  * its Done button, so a take still uploading is never lost to a stray click.
  */
-export function FilmOverlay({ items, onRecorded, onClose }: {
+export function FilmOverlay({ items, onRecorded, onClose, maxTakeSeconds }: {
   items: { id: string; word: string }[] | null
   onRecorded: (id: string, fileUrl: string) => void
   onClose: () => void
+  maxTakeSeconds?: number
 }) {
   if (!items) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-6">
       <div role="dialog" aria-modal="true" aria-label="Film your signs"
         className="max-h-full w-full max-w-4xl overflow-y-auto rounded-2xl border bg-background p-4 shadow-2xl sm:p-6">
-        <SignRecordingStudio words={items} onRecorded={onRecorded} onClose={onClose} />
+        <SignRecordingStudio words={items} onRecorded={onRecorded} onClose={onClose} maxTakeSeconds={maxTakeSeconds} />
       </div>
     </div>
   )

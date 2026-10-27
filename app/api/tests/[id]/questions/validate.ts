@@ -31,9 +31,9 @@ export type QuestionBody = {
 
 /** What is wrong with a question sent by the builder, or null when it can be saved. */
 export function validateQuestion(body: QuestionBody, testKind?: string): string | null {
-  // A sign to spell or name: its video and its word, nothing else.
+  // A sign to spell or name: its video and its word, nothing else. A word may
+  // come first, to be filmed later — students are not given it until then.
   if (isSignTest(testKind)) {
-    if (!body.imageUrl) return "Each sign needs its video"
     if (!body.question?.trim()) return "Each sign needs its word"
     return null
   }

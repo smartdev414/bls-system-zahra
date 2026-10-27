@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
@@ -29,7 +30,7 @@ async function handleGET() {
           test: {
             select: {
               testKind: true, vocabularyMode: true, passMark: true, maxAttempts: true, answerSeconds: true,
-              _count: { select: { questions: true } },
+              _count: { select: { questions: { where: READY_QUESTION } } },
             },
           },
           section: { select: { title: true, course: { select: { id: true, title: true, tutor: { select: { name: true } } } } } },

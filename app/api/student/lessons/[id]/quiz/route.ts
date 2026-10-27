@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { freePreviewOpen } from "@/lib/course-visibility"
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
@@ -46,7 +47,7 @@ async function handleGET(
 
     const [fullQuestions, attempts] = await Promise.all([
       prisma.quizQuestion.findMany({
-        where: { testId: test.id },
+        where: { testId: test.id, ...READY_QUESTION },
         orderBy: { order: "asc" },
         include: {
           options: {

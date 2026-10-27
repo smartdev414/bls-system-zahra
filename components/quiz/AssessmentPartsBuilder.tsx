@@ -55,13 +55,18 @@ export function AssessmentPartsBuilder({ testId, parts, onChange }: {
         </Badge>
       </div>
 
-      {parts.length === 0 && (
+      {parts.length === 0 ? (
         <div className="rounded-xl border border-dashed py-10 flex flex-col items-center gap-2 text-center px-4">
           <Clapperboard className="size-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground max-w-md">
             Add the first part. For each part, students watch its questions, then the part, then film their answers.
           </p>
         </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          In each part, students watch <b>1</b> the questions, then <b>2</b> the part of the story, then film their answers.
+          The <b>3</b> answer sheet is for marking — it is only shown once the answers are filmed.
+        </p>
       )}
 
       {parts.map((part, i) => (
@@ -86,6 +91,7 @@ export function AssessmentPartsBuilder({ testId, parts, onChange }: {
           <div className="flex flex-col gap-2">
             <StoryVideoField
               label="1. The questions, signed"
+              signed
               hint="Students watch this first, so they know what to look for in the part."
               value={part.questionsVideoUrl ?? null}
               onChange={(url) => patch(part.uid, { questionsVideoUrl: url ?? undefined })}
@@ -96,7 +102,7 @@ export function AssessmentPartsBuilder({ testId, parts, onChange }: {
             <Textarea
               id={`part-questions-${part.uid}`}
               rows={3}
-              placeholder={"1. Where did they go?\n2. Why was she upset?"}
+              placeholder={"For example:\n1. Where did they go?\n2. Why was she upset?"}
               value={part.question}
               onChange={(e) => patch(part.uid, { question: e.target.value })}
             />
@@ -114,7 +120,7 @@ export function AssessmentPartsBuilder({ testId, parts, onChange }: {
             <Textarea
               id={`part-answers-${part.uid}`}
               rows={4}
-              placeholder={"1. To the beach (1 mark)\n2. She lost her bag (2 marks)"}
+              placeholder={"For example:\n1. To the beach (1 mark)\n2. She lost her bag (2 marks)"}
               value={part.modelAnswer ?? ""}
               onChange={(e) => patch(part.uid, { modelAnswer: e.target.value })}
             />

@@ -294,7 +294,11 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
       }
       // Blank questions nobody typed into are left out rather than kept as "unsaved".
       setQuestions((current) => current.filter((q) => q.id || !isBlankQuestion(q)))
-      toast.success("Test saved")
+      // Words kept without a video are not given to students yet.
+      const unfilmed = signTest ? questions.filter((q) => !q.imageUrl && q.question.trim()).length : 0
+      toast.success(unfilmed
+        ? `Test saved. ${unfilmed} word${unfilmed > 1 ? "s" : ""} still need${unfilmed > 1 ? "" : "s"} a video — students get ${unfilmed > 1 ? "them" : "it"} once filmed.`
+        : "Test saved")
       void load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong")

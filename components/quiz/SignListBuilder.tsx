@@ -270,7 +270,7 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
             rows={5}
             value={listText}
             onChange={(e) => setListText(e.target.value)}
-            placeholder={"Hello\nThank you\nPlease"}
+            placeholder={"For example:\nHello\nThank you\nPlease"}
           />
           <p className="text-xs text-muted-foreground">
             {typedWords.length} word{typedWords.length !== 1 ? "s" : ""} · words already in this test are left as they are

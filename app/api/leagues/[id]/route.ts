@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { requireCapability } from "@/lib/permissions"
@@ -22,7 +23,7 @@ async function handleGET(_req: NextRequest, { params }: Params) {
       select: {
         id: true, title: true, difficulty: true, endsAt: true, createdById: true, createdAt: true,
         createdBy: { select: { name: true } },
-        test: { select: { id: true, title: true, _count: { select: { questions: true } } } },
+        test: { select: { id: true, title: true, _count: { select: { questions: { where: READY_QUESTION } } } } },
         members: { select: { userId: true, joinedAt: true, user: { select: { name: true } } }, orderBy: { joinedAt: "asc" } },
       },
     })

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseTeachScope } from "@/lib/permissions"
@@ -34,7 +35,7 @@ async function handleGET(
         id: true,
         title: true,
         section: { select: { courseId: true } },
-        test: { select: { id: true, passMark: true, maxAttempts: true, _count: { select: { questions: true } } } },
+        test: { select: { id: true, passMark: true, maxAttempts: true, _count: { select: { questions: { where: READY_QUESTION } } } } },
       },
     })
     if (!lesson?.test) return NextResponse.json({ message: "Test not found" }, { status: 404 })
@@ -120,7 +121,7 @@ async function handleGET(
     if (seesAnswers) {
       const [list, tallies] = await Promise.all([
         prisma.quizQuestion.findMany({
-          where: { testId: test.id },
+          where: { testId: test.id, ...READY_QUESTION },
           orderBy: { order: "asc" },
           select: { id: true, order: true, question: true },
         }),

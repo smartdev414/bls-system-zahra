@@ -146,10 +146,10 @@ export function questionProblem(q: QuestionDraft, testKind?: string): string | n
     if (!q.imageUrl) return "Add the video of the part"
     return q.modelAnswer?.trim() ? null : "Type the answer sheet"
   }
-  // A sign in a fingerspelling or vocabulary test is a video and its word.
+  // A sign in a fingerspelling or vocabulary test is a video and its word. The
+  // word can be kept before it is filmed; students get it once it has its video.
   if (isSignTest(testKind)) {
     if (q.questionImageUploading) return "Wait for the upload to finish"
-    if (!q.imageUrl) return "Add the video of this sign"
     return q.question.trim() ? null : "Type the word"
   }
   if (q.questionImageUploading || q.answerVideoUploading) return "Wait for the upload to finish"
@@ -416,12 +416,19 @@ function QuestionCard({
 
   // ── Film with the camera ── which slot the clip is for: the question (undefined) or an answer.
   // The recorder shows what is being filmed, so it is named by its text where it has some.
-  const [filming, setFilming] = useState<{ option?: number | "model" } | null>(null)
-  const filmingItem = filming && (filming.option === undefined
-    ? { id: "question", word: q.question.trim() || `Question ${index + 1}` }
+  // A list of answers films them one after another in one sitting; it is fixed when the recorder opens.
+  const [filming, setFilming] = useState<{ option?: number | "model" | number[] } | null>(null)
+  const answerItem = (i: number) => ({ id: String(i), word: q.options[i]?.text.trim() || `Answer ${i + 1}` })
+  const unfilmedAnswers = q.type === "TRUE_FALSE" || isSelfMarked(q.type)
+    ? []
+    : q.options.flatMap((o, i) => (o.imageUrl || o.uploading ? [] : [i]))
+  const filmingItems = filming && (filming.option === undefined
+    ? [{ id: "question", word: q.question.trim() || `Question ${index + 1}` }]
     : filming.option === "model"
-    ? { id: "model", word: q.question.trim() || `Question ${index + 1}` }
-    : { id: String(filming.option), word: q.options[filming.option]?.text.trim() || `Answer ${filming.option + 1}` })
+    ? [{ id: "model", word: q.question.trim() || `Question ${index + 1}` }]
+    : Array.isArray(filming.option)
+    ? filming.option.map(answerItem)
+    : [answerItem(filming.option)])
 
   function applyFilmed(id: string, fileUrl: string) {
     const media = { imageUrl: fileUrl, mediaType: "video" as const }
@@ -844,10 +851,20 @@ function QuestionCard({
               </div>
             ))}
 
-            {q.type === "MULTIPLE_CHOICE" && q.options.length < 6 && (
-              <Button type="button" variant="outline" size="sm" className="self-start mt-1" onClick={addOption}>
-                <Plus className="size-3.5 mr-1" /> Add answer
-              </Button>
+            {(unfilmedAnswers.length > 1 || (q.type === "MULTIPLE_CHOICE" && q.options.length < 6)) && (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {q.type === "MULTIPLE_CHOICE" && q.options.length < 6 && (
+                  <Button type="button" variant="outline" size="sm" onClick={addOption}>
+                    <Plus className="size-3.5 mr-1" /> Add answer
+                  </Button>
+                )}
+                {unfilmedAnswers.length > 1 && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setFilming({ option: unfilmedAnswers })}
+                    title="Film them one after another — each stops by itself when your hands come back to rest">
+                    <Camera className="size-3.5 mr-1" /> Film all {unfilmedAnswers.length} answers
+                  </Button>
+                )}
+              </div>
             )}
           </div>}
 
@@ -901,7 +918,7 @@ function QuestionCard({
         </div>
       )}
 
-      <FilmOverlay items={filmingItem && [filmingItem]} onRecorded={applyFilmed} onClose={() => setFilming(null)} />
+      <FilmOverlay items={filmingItems} onRecorded={applyFilmed} onClose={() => setFilming(null)} />
     </div>
   )
 }

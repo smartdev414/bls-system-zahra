@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { sameWord } from "@/lib/quiz"
@@ -21,7 +22,7 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
       where: { id },
       select: {
         endsAt: true,
-        test: { select: { questions: { select: { id: true, question: true } } } },
+        test: { select: { questions: { where: READY_QUESTION, select: { id: true, question: true } } } },
         members: { where: { userId: session.sub }, select: { id: true } },
       },
     })

@@ -229,9 +229,11 @@ type Props = {
   onRecorded?: (id: string, fileUrl: string) => void
   /** Leaves the recorder when it was opened over a test. */
   onClose?: () => void
+  /** The longest a take may run. A single sign needs a minute at most; an assessment's questions need more. */
+  maxTakeSeconds?: number
 }
 
-export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) {
+export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds = MAX_TAKE_SECONDS }: Props = {}) {
   const listMode = words !== undefined
   // ── Queue ──────────────────────────────────────────────────────────────────
   const [category, setCategory] = useState("all")
@@ -582,7 +584,7 @@ export function SignRecordingStudio({ words, onRecorded, onClose }: Props = {}) 
     durationTimerRef.current = setInterval(() => {
       elapsed += 1
       setDuration(elapsed)
-      if (elapsed >= MAX_TAKE_SECONDS) stopRecording()
+      if (elapsed >= maxTakeSeconds) stopRecording()
     }, 1000)
   }
 

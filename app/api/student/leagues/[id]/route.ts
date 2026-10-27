@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { signQuestionsForStudent } from "@/lib/quiz"
@@ -32,7 +33,7 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
       leagueStandings(id),
       league.testId
         ? prisma.quizQuestion.findMany({
-            where: { testId: league.testId },
+            where: { testId: league.testId, ...READY_QUESTION },
             orderBy: { order: "asc" },
             select: { id: true, question: true, imageUrl: true, mediaType: true },
           })
