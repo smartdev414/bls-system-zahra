@@ -13,6 +13,7 @@ import { correctNeeded, marksLabel, maxMarks } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { AnswerAndModel, MarkAnswers, MarksBadge, type MarkAnswer, type MarkQuestion } from "./SelfMarking"
+import { useTopOnNewScreen } from "./TestTop"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
 
 // An assessment, sat the way the old DVDs ran it: a short synopsis, then for
@@ -159,6 +160,7 @@ export function AssessmentTaker({ lessonId, enrollmentId, data, refetch, onCompl
   const [justSent, setJustSent] = useState<{ attemptId: string; parts: Part[]; answers: MarkAnswer[] } | null>(null)
   const [result, setResult] = useState<{ score: number; passed: boolean; earned: number; total: number; attemptsLeft: number | null; answers: MarkAnswer[]; parts: Part[] } | null>(null)
   const topRef = useRef<HTMLDivElement>(null)
+  useTopOnNewScreen(view)
 
   const { questions: parts, settings, attempts } = data
   const steps = stepsOf(data)

@@ -20,6 +20,7 @@ import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { releaseLabel } from "@/lib/lesson-release"
 import { QuizTaker } from "@/components/quiz/QuizTaker"
+import { TestTop } from "@/components/quiz/TestTop"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
 
@@ -589,13 +590,15 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
           ) : lesson.type === "QUIZ" ? (
             <div className="mx-6 mt-6 rounded-xl border bg-background p-6">
               {/* Keyed by lesson so moving to the next test starts it afresh. */}
-              <QuizTaker
-                key={id}
-                lessonId={id}
-                enrollmentId={data.enrollmentId}
-                onCompleted={() => { setIsCompleted(true); completedRef.current = true }}
-                nextHref={navigation.next ? `/student/lessons/${navigation.next.id}` : undefined}
-              />
+              <TestTop>
+                <QuizTaker
+                  key={id}
+                  lessonId={id}
+                  enrollmentId={data.enrollmentId}
+                  onCompleted={() => { setIsCompleted(true); completedRef.current = true }}
+                  nextHref={navigation.next ? `/student/lessons/${navigation.next.id}` : undefined}
+                />
+              </TestTop>
             </div>
           ) : (
             <div className="mx-6 mt-6 rounded-xl border bg-primary/5 p-6 text-center">

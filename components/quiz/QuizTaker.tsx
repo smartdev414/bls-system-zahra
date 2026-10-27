@@ -18,6 +18,7 @@ import { SignTestTaker, type SignTestData } from "./SignTestTaker"
 import { AssessmentTaker, type AssessmentData } from "./AssessmentTaker"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
 import { AnswerAndModel, MarkAnswers, MarksBadge, questionText } from "./SelfMarking"
+import { useTopOnNewScreen } from "./TestTop"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -360,6 +361,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   // Questions whose video has played to the end, for those shown after it.
   const [watched, setWatched] = useState<Set<string>>(() => new Set())
   const topRef = useRef<HTMLDivElement>(null)
+  useTopOnNewScreen(view)
 
   useEffect(() => {
     if (view === "taking") writeDraft(storageKey, { selected: rawSelected, texts, videos, currentIndex })

@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
 import { MarkAnswers, type MarkQuestion } from "./SelfMarking"
+import { useTopOnNewScreen } from "./TestTop"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -608,6 +609,7 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
   const answersRef = useRef<Record<string, string>>({})
   const startedAtRef = useRef(0)
   const tookMsRef = useRef(0)
+  useTopOnNewScreen(view)
 
   if (questions.length === 0) {
     return (
