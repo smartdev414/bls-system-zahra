@@ -242,6 +242,9 @@ export function ClassroomRoom({
   const allCameraTracks  = useTracks([Track.Source.Camera],      { onlySubscribed: false })
   const tutorScreenTrack = allScreenTracks.find((t) => t.participant.metadata === "tutor") ?? null
   const screenSharing    = !!tutorScreenTrack
+  // The teacher whose screen is up — their camera goes beside it, not simply the
+  // first teacher's (see TutorCameraInset).
+  const sharingTutorIdentity = tutorScreenTrack?.participant.identity ?? null
 
   // Is *this* client the one sharing, and is their camera live? Drives the
   // self-view inset so a teacher never loses sight of themselves while sharing.
@@ -911,21 +914,21 @@ export function ClassroomRoom({
   // The stage already leans toward the shared screen while one is running (see
   // `screenSplit`), which is as far as it goes while the signer still needs a
   // panel to sign in. Wide mode is the step past that: the whole stage to the
-  // share, signer down to a corner inset. Everyone chooses for themselves — a
-  // student squinting at a spreadsheet can widen it without changing what
-  // anyone else sees — and the choice is remembered for next lesson.
+  // share, signer down to a corner inset. A teacher's choice is the class's:
+  // widening it widens it for every student (see `handleToggleScreenWide`
+  // below). A student can still widen or narrow their own view, and everyone's
+  // last choice is remembered for next lesson.
   const [screenWide, setScreenWide] = useState(false)
+  const screenWideRef = useRef(false)
+  useEffect(() => { screenWideRef.current = screenWide }, [screenWide])
   useEffect(() => {
     try {
       if (window.localStorage.getItem("classroom:screenWide") === "1") setScreenWide(true)
     } catch { /* ignore — private mode or quota */ }
   }, [])
-  const handleToggleScreenWide = useCallback(() => {
-    setScreenWide((prev) => {
-      const next = !prev
-      try { window.localStorage.setItem("classroom:screenWide", next ? "1" : "0") } catch { /* ignore */ }
-      return next
-    })
+  const setOwnScreenWide = useCallback((next: boolean) => {
+    setScreenWide(next)
+    try { window.localStorage.setItem("classroom:screenWide", next ? "1" : "0") } catch { /* ignore */ }
   }, [])
 
   // ── Spotlight state (tutor-initiated, seen by everyone) ───────────────────
@@ -1938,8 +1941,18 @@ export function ClassroomRoom({
         if (!isTutor) setScreenPrivate(data.private)
         return
       }
+      // Only teachers send this, so everyone else in the room — the co-teacher
+      // included — follows it, keeping the teachers' view the class's view.
+      if (data.action === "wide") {
+        setScreenWide(data.wide)
+        return
+      }
       if (data.action === "sync_request" && isTutor) {
-        const response: ScreenAction = { action: "sync_response", private: screenPrivateRef.current }
+        const response: ScreenAction = {
+          action: "sync_response",
+          private: screenPrivateRef.current,
+          wide: screenWideRef.current,
+        }
         try {
           sendScreen(enc.encode(JSON.stringify(response)), { reliable: true })
         } catch { /* ignore */ }
@@ -1947,6 +1960,7 @@ export function ClassroomRoom({
       }
       if (data.action === "sync_response" && !isTutor) {
         setScreenPrivate(data.private)
+        if (typeof data.wide === "boolean") setScreenWide(data.wide)
         return
       }
     } catch { /* ignore malformed */ }
@@ -3836,6 +3850,21 @@ export function ClassroomRoom({
     )
   }, [isTutor, screenPrivate, safeSendScreen])
 
+  // A teacher's wide toggle goes to the whole class; a student's stays theirs.
+  const handleToggleScreenWide = useCallback(() => {
+    const next = !screenWideRef.current
+    setOwnScreenWide(next)
+    if (!isTutor) return
+    safeSendScreen({ action: "wide", wide: next })
+    toast.info(next ? "Shared screen is now big for everyone." : "Shared screen is back beside the camera for everyone.")
+  }, [isTutor, setOwnScreenWide, safeSendScreen])
+
+  // The teacher who starts sharing brings their wide choice with them, so a
+  // class that joined before the share sees what the teacher sees.
+  useEffect(() => {
+    if (isTutor && localScreenSharing) safeSendScreen({ action: "wide", wide: screenWideRef.current })
+  }, [isTutor, localScreenSharing, safeSendScreen])
+
   // Student: ask for current privacy state when joining while screen share is live
   const hasSentScreenSync = useRef(false)
   useEffect(() => {
@@ -4205,7 +4234,7 @@ export function ClassroomRoom({
   const splitCameraPanel = pairWithTutor(splitStageId) ? (
     <StagePair
       containerRef={videoContainerRef}
-      first={<TutorCameraInset />}
+      first={<TutorCameraInset preferIdentity={sharingTutorIdentity} />}
       second={stageCameraTile(splitStageId, { fit: "contain", paired: true })}
     />
   ) : splitStageId ? (
@@ -4217,6 +4246,7 @@ export function ClassroomRoom({
   ) : (
     <TutorCameraInset
       hidden={!tutorCameraVisible}
+      preferIdentity={sharingTutorIdentity}
       breakoutGroupName={!isTutor && breakoutsActive ? ownBreakoutGroup?.name ?? null : null}
     />
   )
@@ -4228,9 +4258,10 @@ export function ClassroomRoom({
   // share over the camera.
   const insetTutorCameraIdentity = useMemo(() => {
     const tutorCams = allCameraTracks.filter((t) => t.participant.metadata === "tutor")
+    const sharer = tutorCams.find((t) => t.participant.identity === sharingTutorIdentity)
     const own = tutorCams.find((t) => t.participant.identity === localParticipant.identity)
-    return (own ?? tutorCams[0])?.participant.identity ?? null
-  }, [allCameraTracks, localParticipant.identity])
+    return (sharer ?? own ?? tutorCams[0])?.participant.identity ?? null
+  }, [allCameraTracks, localParticipant.identity, sharingTutorIdentity])
 
   // A pinned tile used to take the panel away outright; paired with the teacher
   // it no longer does, so a sharing teacher already has their own feed on stage.
@@ -4798,6 +4829,7 @@ export function ClassroomRoom({
                   <div className="absolute top-3 left-3 z-30 w-40 sm:w-52 md:w-64 aspect-video rounded-xl overflow-hidden ring-2 ring-zinc-600 shadow-2xl bg-zinc-900">
                     <TutorCameraInset
                       hidden={!tutorCameraVisible}
+                      preferIdentity={sharingTutorIdentity}
                       breakoutGroupName={!isTutor && breakoutsActive ? ownBreakoutGroup?.name ?? null : null}
                     />
                   </div>
@@ -4821,7 +4853,7 @@ export function ClassroomRoom({
                     return (
                       <StagePair
                         containerRef={videoContainerRef}
-                        first={<TutorCameraInset />}
+                        first={<TutorCameraInset preferIdentity={sharingTutorIdentity} />}
                         second={stageCameraTile(mainStageId, { fit: "contain", paired: true })}
                       />
                     )

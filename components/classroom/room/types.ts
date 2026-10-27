@@ -261,14 +261,16 @@ export type BreakoutAction =
       closingAt: number | null
     }
 
-// ─── Screen share privacy ─────────────────────────────────────────────────────
+// ─── Screen share privacy + wide ──────────────────────────────────────────────
 // Tutor can mark their shared screen as private; students see a placeholder
 // instead of the live feed. Privacy state resets when screen sharing stops.
+// A teacher widening the share widens it for the whole class.
 
 export type ScreenAction =
   | { action: "privacy"; private: boolean }
+  | { action: "wide"; wide: boolean }
   | { action: "sync_request" }
-  | { action: "sync_response"; private: boolean }
+  | { action: "sync_response"; private: boolean; wide?: boolean }
 
 /** What the tutor's tab tells the class recorder. See RECORDER_TOPIC. */
 export type RecorderStateAction =
