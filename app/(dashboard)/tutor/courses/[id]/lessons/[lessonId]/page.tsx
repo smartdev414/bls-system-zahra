@@ -166,7 +166,7 @@ export default function ViewLessonPage({
         <Tabs defaultValue="results">
           <TabsList className="mb-4">
             <TabsTrigger value="results">Results</TabsTrigger>
-            <TabsTrigger value="questions">{test.testKind === "ASSESSMENT" ? "Parts" : "Questions"} ({test.questions.length})</TabsTrigger>
+            <TabsTrigger value="questions">{test.testKind === "PRESENTATION" ? "Task" : test.testKind === "ASSESSMENT" ? "Parts" : "Questions"} ({test.questions.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="results">

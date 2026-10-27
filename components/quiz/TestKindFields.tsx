@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { BookOpen, Camera, Clapperboard, FolderOpen, Hand, Keyboard, ListChecks, Upload, type LucideIcon } from "lucide-react"
+import { BookOpen, Camera, Clapperboard, FolderOpen, Hand, Keyboard, ListChecks, Presentation, Upload, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import {
-  ANSWER_MINUTES, ANSWER_SECONDS, TEST_KINDS, TEST_KIND_INFO, VOCABULARY_MODES, VOCABULARY_MODE_INFO, type TestKind, type VocabularyMode,
+  ANSWER_MINUTES, ANSWER_SECONDS, PRESENTATION_MINUTES, TEST_KINDS, TEST_KIND_INFO, VOCABULARY_MODES, VOCABULARY_MODE_INFO, type TestKind, type VocabularyMode,
 } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 import { FilmOverlay } from "./FilmOverlay"
@@ -22,6 +22,7 @@ const ICONS: Record<TestKind, LucideIcon> = {
   FINGERSPELLING: Keyboard,
   VOCABULARY: Hand,
   ASSESSMENT: Clapperboard,
+  PRESENTATION: Presentation,
 }
 
 /** Which kind of test to make. Chosen once, when the test is added. */
@@ -142,18 +143,26 @@ export function VocabularyModeField({ value, onChange }: { value: VocabularyMode
   )
 }
 
-/** Assessments: how long a student has to film their answers to each part. */
-export function AnswerMinutesField({ value, onChange }: { value: number; onChange: (minutes: number) => void }) {
+/** Assessments: how long a student has to film their answers to each part. Presentations: how long it may last. */
+export function AnswerMinutesField({ value, onChange, presentation = false }: {
+  value: number
+  onChange: (minutes: number) => void
+  presentation?: boolean
+}) {
   return (
     <div className="flex flex-col gap-1.5 sm:max-w-xs">
-      <Label>Time to answer each part</Label>
+      <Label>{presentation ? "Time to present" : "Time to answer each part"}</Label>
       <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
         <SelectTrigger><SelectValue /></SelectTrigger>
         <SelectContent>
-          {ANSWER_MINUTES.map((m) => <SelectItem key={m} value={String(m)}>{m} minutes</SelectItem>)}
+          {(presentation ? PRESENTATION_MINUTES : ANSWER_MINUTES).map((m) => <SelectItem key={m} value={String(m)}>{m === 1 ? "1 minute" : `${m} minutes`}</SelectItem>)}
         </SelectContent>
       </Select>
-      <p className="text-xs text-muted-foreground">Students film their answers in this time. The recording stops by itself when it is up.</p>
+      <p className="text-xs text-muted-foreground">
+        {presentation
+          ? "Students must finish within this time — the recording stops by itself when it is up. They can record again before sending it."
+          : "Students film their answers in this time. The recording stops by itself when it is up."}
+      </p>
     </div>
   )
 }

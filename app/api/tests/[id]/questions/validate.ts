@@ -1,4 +1,4 @@
-import { MAX_PART_MARKS, MAX_WRITTEN_MARKS, SIGNED_QUESTION_TEXT, isAssessment, isSelfMarked, isSignTest, isVideoMedia } from "@/lib/quiz"
+import { MAX_PART_MARKS, MAX_WRITTEN_MARKS, SIGNED_QUESTION_TEXT, isAssessment, isPresentation, isSelfMarked, isSignTest, isVideoMedia } from "@/lib/quiz"
 
 export type QuestionBody = {
   question: string
@@ -35,6 +35,18 @@ export function validateQuestion(body: QuestionBody, testKind?: string): string 
   // come first, to be filmed later — students are not given it until then.
   if (isSignTest(testKind)) {
     if (!body.question?.trim()) return "Each sign needs its word"
+    return null
+  }
+  // A presentation's task: what to present, written or signed, and its marks.
+  // Marked like a written answer, by a teacher.
+  if (isPresentation(testKind)) {
+    body.type = "WRITTEN"
+    body.question = body.question?.trim() ?? ""
+    if (!body.question && !isVideoMedia(body.imageUrl, body.mediaType)) return "Type the task, or add a video of you signing it"
+    if (body.maxMarks != null && (!Number.isInteger(body.maxMarks) || body.maxMarks < 1 || body.maxMarks > MAX_PART_MARKS)) {
+      return `A presentation is worth 1 to ${MAX_PART_MARKS} marks`
+    }
+    body.questionsVideoUrl = null
     return null
   }
   // A part of an assessment: its questions (signed, or written out), the part

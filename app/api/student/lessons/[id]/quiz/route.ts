@@ -79,7 +79,7 @@ async function handleGET(
       where: { attemptId },
       select: {
         questionId: true, optionId: true, optionIds: true, answerText: true, videoUrl: true,
-        marks: true, markedByTutor: true, isCorrect: true,
+        marks: true, markedByTutor: true, feedbackVideoUrl: true, isCorrect: true,
       },
     })
 

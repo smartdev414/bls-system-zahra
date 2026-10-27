@@ -5,11 +5,15 @@ import { withAudit } from "@/lib/audit"
 import { can, courseTeachScope } from "@/lib/permissions"
 import { isAssessment, questionMarking } from "@/lib/quiz"
 import { notifyStudentMarked, rescoreAttempt } from "@/lib/test-marking"
+import { isOwnAnswerVideo, keyOfUrl } from "@/lib/test-recordings"
+import { deleteObject } from "@/lib/s3"
 
-// PATCH /api/tutor/lessons/[id]/results/answers/[answerId] — { marks: number }
+// PATCH /api/tutor/lessons/[id]/results/answers/[answerId] — { marks: number } or { feedbackVideoUrl: string | null }
 // A teacher changes the marks a student gave themselves on a written or
 // signed answer, or a word signed in a vocabulary test (or gives them, if the student never did). The attempt's score
-// and pass follow.
+// and pass follow. On a filmed answer (an assessment's part, a presentation)
+// they can also keep, replace or remove the feedback they recorded over it
+// (uploaded via ./feedback).
 async function handlePATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; answerId: string }> }
@@ -29,8 +33,8 @@ async function handlePATCH(
         attempt: { lessonId: id, lesson: { type: "QUIZ", section: { course: courseTeachScope(session) } } },
       },
       select: {
-        id: true, attemptId: true,
-        attempt: { select: { selfMarked: true } },
+        id: true, attemptId: true, feedbackVideoUrl: true,
+        attempt: { select: { selfMarked: true, userId: true } },
         question: { select: { type: true, maxMarks: true, test: { select: { testKind: true, vocabularyMode: true, tutorMarks: true } } } },
       },
     })
@@ -40,7 +44,22 @@ async function handlePATCH(
       return NextResponse.json({ message: "Only written and signed answers are marked by hand" }, { status: 400 })
     }
 
-    const { marks } = await req.json() as { marks?: unknown }
+    const { marks, feedbackVideoUrl } = await req.json() as { marks?: unknown; feedbackVideoUrl?: unknown }
+
+    if (feedbackVideoUrl !== undefined) {
+      if (!isAssessment(answer.question.test.testKind)) {
+        return NextResponse.json({ message: "Feedback is recorded on filmed answers only" }, { status: 400 })
+      }
+      if (feedbackVideoUrl !== null && !isOwnAnswerVideo(feedbackVideoUrl, id, answer.attempt.userId)) {
+        return NextResponse.json({ message: "That is not a feedback video for this student" }, { status: 400 })
+      }
+      await prisma.quizAttemptAnswer.update({ where: { id: answerId }, data: { feedbackVideoUrl } })
+      // The one it replaces is not kept.
+      const old = answer.feedbackVideoUrl && answer.feedbackVideoUrl !== feedbackVideoUrl ? keyOfUrl(answer.feedbackVideoUrl) : null
+      if (old) void deleteObject(old).catch((err) => console.error("[feedback] deleting the old video", old, err))
+      return NextResponse.json({ feedbackVideoUrl })
+    }
+
     if (!Number.isInteger(marks) || (marks as number) < 0 || (marks as number) > max) {
       return NextResponse.json({ message: `Marks must be from 0 to ${max}` }, { status: 400 })
     }

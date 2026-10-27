@@ -12,7 +12,7 @@ import { GetReady, SignRound } from "@/components/quiz/SignTestTaker"
 import { DifficultyBadge, LeagueTable, leagueWhen, seconds, type TableRow } from "@/components/leagues/league-bits"
 import { useFetch } from "@/hooks/use-fetch"
 import { DIFFICULTY_INFO, ordinal, type LeagueDifficulty } from "@/lib/leagues"
-import type { SignQuestion } from "@/lib/quiz"
+import { newOrder, type SignQuestion } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 type LeagueData = {
@@ -42,15 +42,6 @@ type Result = {
   players: number
   personalBest: boolean
   firstGo: boolean
-}
-
-function shuffled<T>(items: readonly T[]): T[] {
-  const list = [...items]
-  for (let i = list.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[list[i], list[j]] = [list[j], list[i]]
-  }
-  return list
 }
 
 export default function StudentLeaguePage({ params }: { params: Promise<{ id: string }> }) {
@@ -103,7 +94,7 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
 
   function start() {
     answersRef.current = {}
-    setRound(shuffled(questions))
+    setRound(newOrder(questions, round))
     setIndex(0)
     setResult(null)
     setError(null)

@@ -60,6 +60,9 @@ enum TestKind {
   // A signed story in parts, as on the old assessment DVDs: for each part the
   // student watches its questions, then the part, then films their answers.
   ASSESSMENT
+  // The student films a presentation on a set task, in one go, and sends it to
+  // their teacher, who marks it and can record feedback over it.
+  PRESENTATION
 }
 
 // How a vocabulary test is practised: from the sign to the word, from the word
@@ -1087,6 +1090,10 @@ model QuizAttemptAnswer {
   // changed them. Null until the student has marked the question.
   marks      Int?
   markedByTutor Boolean @default(false)
+  // A filmed answer a teacher marks: the teacher's feedback, recorded as they
+  // share their screen with the student's video on it. Kept with the
+  // student's recordings (lib/test-recordings.ts) and deleted with them.
+  feedbackVideoUrl String?
   isCorrect  Boolean
 
   attempt  QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)

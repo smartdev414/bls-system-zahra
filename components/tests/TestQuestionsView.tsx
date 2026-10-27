@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Circle } from "lucide-react"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { isAssessment, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
+import { isAssessment, isPresentation, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 export type ViewQuestion = {
@@ -35,7 +35,7 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
   questions: ViewQuestion[]
 }) {
   const signTest = isSignTest(kind)
-  const noun = signTest ? "sign" : isAssessment(kind) ? "part" : "question"
+  const noun = signTest ? "sign" : isPresentation(kind) ? "task" : isAssessment(kind) ? "part" : "question"
 
   return (
     <div className="flex flex-col gap-6">
@@ -48,6 +48,16 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
 
       {questions.length === 0 ? (
         <p className="text-sm text-muted-foreground">No {noun}s have been added to this test yet.</p>
+      ) : isPresentation(kind) ? (
+        // A presentation: its one task.
+        questions.map((q) => (
+          <div key={q.id} className="rounded-xl border p-4 flex flex-col gap-3">
+            <p className="font-semibold">The task <span className="font-normal text-muted-foreground">· {marksLabel(maxMarks(q))}</span></p>
+            {q.question && <p className="text-sm whitespace-pre-wrap">{q.question}</p>}
+            {q.imageUrl && <Media url={q.imageUrl} type={q.mediaType} alt="" className="w-full max-w-md aspect-video rounded-lg border" />}
+            <p className="text-xs text-muted-foreground">Students film themselves presenting it. A teacher marks it in Results.</p>
+          </div>
+        ))
       ) : isAssessment(kind) ? (
         // An assessment: each part's questions, the part, and its answer sheet.
         <div className="flex flex-col gap-3">

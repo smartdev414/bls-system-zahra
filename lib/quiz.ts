@@ -27,7 +27,7 @@ export type TestSettings = {
 
 // ─── Kinds of test ────────────────────────────────────────────────────────────
 
-export const TEST_KINDS = ["STANDARD", "STORY", "FINGERSPELLING", "VOCABULARY", "ASSESSMENT"] as const
+export const TEST_KINDS = ["STANDARD", "STORY", "FINGERSPELLING", "VOCABULARY", "ASSESSMENT", "PRESENTATION"] as const
 export type TestKind = (typeof TEST_KINDS)[number]
 
 export const TEST_KIND_INFO: Record<TestKind, { label: string; hint: string }> = {
@@ -36,6 +36,7 @@ export const TEST_KIND_INFO: Record<TestKind, { label: string; hint: string }> =
   FINGERSPELLING: { label: "Fingerspelling", hint: "Students watch a word being spelled and type it." },
   VOCABULARY: { label: "Vocabulary", hint: "Students pick the word for a sign, or read a word and sign it." },
   ASSESSMENT: { label: "Assessment", hint: "A signed story in parts. Students watch each part's questions and the part, then film their answers." },
+  PRESENTATION: { label: "Presentation", hint: "Students film themselves presenting. It goes to you to mark, and you can record your feedback." },
 }
 
 export function parseTestKind(value: unknown): TestKind | null {
@@ -100,6 +101,21 @@ function shuffled<T>(items: readonly T[]): T[] {
   return list
 }
 
+/**
+ * The signs of a fingerspelling or vocabulary test (or league) for one go, in
+ * a random order — never the order they were added in, nor the order of the
+ * student's `last` go, so even a short test does not come round the same way
+ * twice. With only two signs, it is the other way round from last time.
+ */
+export function newOrder<T extends { id: string }>(items: readonly T[], last?: readonly T[]): T[] {
+  const same = (a: readonly T[], b?: readonly T[]) => !!b && a.length === b.length && a.every((x, i) => x.id === b[i].id)
+  for (let tries = 0; tries < 20; tries++) {
+    const order = shuffled(items)
+    if (items.length < 2 || (!same(order, last) && (items.length < 3 || !same(order, items)))) return order
+  }
+  return shuffled(items)
+}
+
 export type SignQuestion = {
   id: string
   imageUrl: string | null
@@ -162,10 +178,27 @@ export const DEFAULT_ANSWER_MINUTES = 15
 export const DEFAULT_PART_MARKS = 10
 export const MAX_PART_MARKS = 30
 
-/** Whether the student's answer to this test is filmed, part by part. */
-export function isAssessment(kind: string | null | undefined): kind is "ASSESSMENT" {
-  return kind === "ASSESSMENT"
+/**
+ * Whether the student's answer to this test is filmed, part by part. A
+ * presentation is filmed the same way: one part (the task), with nothing to
+ * watch first, always marked by a teacher.
+ */
+export function isAssessment(kind: string | null | undefined): kind is "ASSESSMENT" | "PRESENTATION" {
+  return kind === "ASSESSMENT" || kind === "PRESENTATION"
 }
+
+// ─── Presentations ────────────────────────────────────────────────────────────
+// The test's one question is the task: what to present (question), an
+// optional video of it signed (imageUrl), and what it is worth (maxMarks).
+// The student films themselves presenting and sends it in; a teacher marks it.
+
+export function isPresentation(kind: string | null | undefined): kind is "PRESENTATION" {
+  return kind === "PRESENTATION"
+}
+
+/** Minutes a presentation can last, 1 to 20; recording stops by itself at the limit. */
+export const PRESENTATION_MINUTES = Array.from({ length: 20 }, (_, n) => n + 1)
+export const DEFAULT_PRESENTATION_MINUTES = 5
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
@@ -234,8 +267,9 @@ export function parseTestSettings(
 
   if (body.answerMinutes !== undefined) {
     const answerMinutes = Number(body.answerMinutes)
-    if (!ANSWER_MINUTES.includes(answerMinutes as (typeof ANSWER_MINUTES)[number])) {
-      return `Time to answer each part must be ${ANSWER_MINUTES.join(", ")} minutes`
+    if (!ANSWER_MINUTES.includes(answerMinutes as (typeof ANSWER_MINUTES)[number])
+      && !PRESENTATION_MINUTES.includes(answerMinutes)) {
+      return "Time must be 1 to 20 minutes, or 30 for an assessment"
     }
     settings.answerMinutes = answerMinutes
   }

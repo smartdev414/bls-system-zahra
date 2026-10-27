@@ -70,6 +70,8 @@ async function deleteUnder(prefixes: string[], answers: Prisma.QuizAttemptAnswer
     }
   }
   await prisma.quizAttemptAnswer.updateMany({ where: { ...answers, videoUrl: { not: null } }, data: { videoUrl: null } })
+  // A teacher's feedback is kept in the same folder, and went with it.
+  await prisma.quizAttemptAnswer.updateMany({ where: { ...answers, feedbackVideoUrl: { not: null } }, data: { feedbackVideoUrl: null } })
   return deleted
 }
 

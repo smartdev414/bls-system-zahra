@@ -203,7 +203,7 @@ export default function EditLessonPage({
           <div className="min-w-0">
             <p className="font-semibold truncate">{title}</p>
             <p className="text-xs text-muted-foreground">
-              {TEST_KIND_INFO[test.testKind].label} · {test.questions.length} {test.testKind === "FINGERSPELLING" || test.testKind === "VOCABULARY" ? "sign" : "question"}{test.questions.length !== 1 ? "s" : ""}.
+              {TEST_KIND_INFO[test.testKind].label} · {test.questions.length} {test.testKind === "FINGERSPELLING" || test.testKind === "VOCABULARY" ? "sign" : test.testKind === "PRESENTATION" ? "task" : test.testKind === "ASSESSMENT" ? "part" : "question"}{test.questions.length !== 1 ? "s" : ""}.
               {" "}Its questions and pass mark are changed in Tests, for every course that uses it.
             </p>
           </div>

@@ -73,6 +73,7 @@ export async function notifyTeachersToMark(attemptId: string) {
       lesson: {
         select: {
           title: true,
+          test: { select: { testKind: true } },
           section: {
             select: {
               course: {
@@ -95,7 +96,9 @@ export async function notifyTeachersToMark(attemptId: string) {
     id,
     "TEST_TO_MARK",
     `Answers to mark — ${attempt.lesson.title}`,
-    `${attempt.user.name} has sent in their answers to "${attempt.lesson.title}" on ${course.title}. Watch their videos and mark them.`,
+    attempt.lesson.test?.testKind === "PRESENTATION"
+      ? `${attempt.user.name} has sent in their presentation for "${attempt.lesson.title}" on ${course.title}. Watch it, mark it, and record your feedback if you like.`
+      : `${attempt.user.name} has sent in their answers to "${attempt.lesson.title}" on ${course.title}. Watch their videos and mark them.`,
     `${isStaff(role) ? "/admin" : "/tutor"}/courses/${course.id}/lessons/${attempt.lessonId}`,
   )))
 }
@@ -104,16 +107,20 @@ export async function notifyTeachersToMark(attemptId: string) {
 export async function notifyStudentMarked(attemptId: string) {
   const attempt = await prisma.quizAttempt.findUnique({
     where: { id: attemptId },
-    select: { userId: true, lessonId: true, score: true, passed: true, lesson: { select: { title: true } } },
+    select: {
+      userId: true, lessonId: true, score: true, passed: true,
+      lesson: { select: { title: true, test: { select: { testKind: true } } } },
+    },
   })
   if (!attempt) return
+  const seeWhat = attempt.lesson.test?.testKind === "PRESENTATION" ? "your marks and your teacher's feedback" : "your marks and the answer sheet"
   await createNotification(
     attempt.userId,
     attempt.passed ? "QUIZ_PASSED" : "QUIZ_FAILED",
     `Your teacher has marked "${attempt.lesson.title}" — ${attempt.score}%`,
     attempt.passed
-      ? "You passed. See your marks and the answer sheet."
-      : "Not passed this time. See your marks and the answer sheet.",
+      ? `You passed. See ${seeWhat}.`
+      : `Not passed this time. See ${seeWhat}.`,
     `/student/lessons/${attempt.lessonId}`,
   )
 }

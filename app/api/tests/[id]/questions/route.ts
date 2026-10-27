@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { requireCapability } from "@/lib/permissions"
-import { isAssessment, isSelfMarked, isSignTest } from "@/lib/quiz"
+import { isAssessment, isPresentation, isSelfMarked, isSignTest } from "@/lib/quiz"
 import { testEditScope } from "@/lib/tests"
 import { validateQuestion, type QuestionBody } from "./validate"
 
@@ -30,6 +30,11 @@ async function handlePOST(
     const invalid = validateQuestion(body, test.testKind)
     if (invalid) return NextResponse.json({ message: invalid }, { status: 400 })
     const options = isSignTest(test.testKind) || isSelfMarked(body.type) ? [] : body.options
+
+    // A presentation has the one task.
+    if (isPresentation(test.testKind) && await prisma.quizQuestion.count({ where: { testId: id } }) > 0) {
+      return NextResponse.json({ message: "A presentation has one task — change the one it has" }, { status: 409 })
+    }
 
     // After the last question — not `count + 1`, which repeats a number once a
     // question in the middle has been deleted.

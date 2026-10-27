@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { courseTeachScope, requireCapability } from "@/lib/permissions"
 import { parseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, isAssessment, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PRESENTATION_MINUTES, isAssessment, isPresentation, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
 import { canEditTest, syncTestLessons, testEditScope } from "@/lib/tests"
 
 // GET /api/tests/[id] — the test with its questions (correct answers marked),
@@ -140,9 +140,13 @@ async function handlePUT(
         testKind,
         ...settings,
         ...(isSignTest(testKind) && !settings.answerSeconds && !test.answerSeconds && { answerSeconds: DEFAULT_ANSWER_SECONDS }),
-        ...(isAssessment(testKind) && !settings.answerMinutes && !test.answerMinutes && { answerMinutes: DEFAULT_ANSWER_MINUTES }),
+        ...(isAssessment(testKind) && !settings.answerMinutes && !test.answerMinutes && {
+          answerMinutes: isPresentation(testKind) ? DEFAULT_PRESENTATION_MINUTES : DEFAULT_ANSWER_MINUTES,
+        }),
         // An assessment's story video is its synopsis, watched first.
-        ...(testKind !== "STORY" && !isAssessment(testKind) && { storyUrl: null }),
+        ...(testKind !== "STORY" && (!isAssessment(testKind) || isPresentation(testKind)) && { storyUrl: null }),
+        // A presentation is always marked by a teacher.
+        ...(isPresentation(testKind) && { tutorMarks: true }),
       },
     })
     await syncTestLessons(id, { title, description })

@@ -26,13 +26,14 @@ import {
   AnswerMinutesField, AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker, TutorMarksField, VocabularyModeField,
 } from "@/components/quiz/TestKindFields"
 import { AssessmentPartsBuilder } from "@/components/quiz/AssessmentPartsBuilder"
+import { PresentationTaskBuilder } from "@/components/quiz/PresentationTaskBuilder"
 import { TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
 import { AddToCourseDialog } from "@/components/tests/AddToCourseDialog"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { TestQuestionsView } from "@/components/tests/TestQuestionsView"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, TEST_KIND_INFO, isAssessment, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, TEST_KIND_INFO, isAssessment, isPresentation, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -222,8 +223,10 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
 
   const kind = details.kind
   const signTest = isSignTest(kind)
-  const assessment = isAssessment(kind)
-  const itemName = signTest ? "Sign" : assessment ? "Part" : "Question"
+  const presentation = isPresentation(kind)
+  // A presentation is filmed like an assessment, as one part: its task.
+  const assessment = isAssessment(kind) && !presentation
+  const itemName = signTest ? "Sign" : presentation ? "Task" : assessment ? "Part" : "Question"
   const savedCount = questions.filter((q) => q.id).length
   const takenSomewhere = test.placements.some((p) => p.studentsTaken > 0)
   const patch = (change: Partial<Details>) => { setDetails((d) => (d ? { ...d, ...change } : d)); setError(null) }
@@ -275,6 +278,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
             storyUrl: details.storyUrl, storyControls: details.storyControls,
             answerMinutes: details.answerMinutes, tutorMarks: details.tutorMarks,
           }),
+          ...(presentation && { answerMinutes: details.answerMinutes }),
         }),
       })
       const d = await res.json().catch(() => ({})) as { message?: string }
@@ -480,7 +484,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4">
-          <TabsTrigger value="questions">{itemName}s ({canEdit ? questions.filter((q) => !isBlankQuestion(q)).length : test.questions.length})</TabsTrigger>
+          <TabsTrigger value="questions">
+            {presentation ? "The task" : <>{itemName}s ({canEdit ? questions.filter((q) => !isBlankQuestion(q)).length : test.questions.length})</>}
+          </TabsTrigger>
           {canEdit && <TabsTrigger value="settings">Settings</TabsTrigger>}
           <TabsTrigger value="courses">Courses ({courseCount})</TabsTrigger>
         </TabsList>
@@ -531,7 +537,12 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                   <Loader2 className="size-4 animate-spin" /> Adding signs from the dictionary…
                 </p>
               )}
-              {assessment ? (
+              {presentation ? (
+                <PresentationTaskBuilder
+                  tasks={questions}
+                  onChange={(next) => { setQuestions(next); setError(null) }}
+                />
+              ) : assessment ? (
                 <AssessmentPartsBuilder
                   testId={id}
                   parts={questions}
@@ -608,6 +619,14 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                 <AnswerSecondsField value={details.answerSeconds} onChange={(answerSeconds) => patch({ answerSeconds })} />
                 <SignPlaysField value={details.signPlays} onChange={(signPlays) => patch({ signPlays })} />
               </div>
+            )}
+
+            {presentation && (
+              <AnswerMinutesField
+                presentation
+                value={details.answerMinutes}
+                onChange={(answerMinutes) => patch({ answerMinutes })}
+              />
             )}
 
             {assessment && (

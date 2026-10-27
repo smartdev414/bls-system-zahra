@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { attemptScore, picksWords, signsWords, type MarkingTest, type SignQuestion, type VocabularyMode } from "@/lib/quiz"
+import { attemptScore, newOrder, picksWords, signsWords, type MarkingTest, type SignQuestion, type VocabularyMode } from "@/lib/quiz"
 import type { HighScore } from "@/lib/quiz-high-scores"
 import { cn } from "@/lib/utils"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
@@ -84,15 +84,6 @@ type Props = {
 // connection nor the length of the word eats into the time. This starts it
 // anyway if the video never gets there (it stalls, or autoplay is blocked).
 const VIDEO_WAIT_MS = 45_000
-
-function shuffled<T>(items: readonly T[]): T[] {
-  const list = [...items]
-  for (let i = list.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[list[i], list[j]] = [list[j], list[i]]
-  }
-  return list
-}
 
 function seconds(ms: number) {
   return `${(ms / 1000).toFixed(1)}s`
@@ -626,7 +617,7 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
     answersRef.current = {}
     tookMsRef.current = 0
     setVideos({})
-    setRound(shuffled(questions))
+    setRound(newOrder(questions, round))
     setIndex(0)
     setResult(null)
     setError(null)
@@ -678,7 +669,8 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
       return
     }
     if (picks) {
-      setRound(shuffled(round))
+      // Picking the words, in a different order from signing them.
+      setRound(newOrder(round, round))
       setIndex(0)
       setView("ready")
     } else {

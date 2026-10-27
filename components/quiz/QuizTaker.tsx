@@ -14,6 +14,7 @@ import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
 import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
+import { PresentationTaker } from "./PresentationTaker"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
 import { AssessmentTaker, type AssessmentData } from "./AssessmentTaker"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
@@ -374,6 +375,19 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   }
 
   const { questions, settings, attempts, bestAttempt } = data
+
+  // A presentation: the task, filmed in one go and sent to the teacher.
+  if (settings.kind === "PRESENTATION") {
+    return (
+      <PresentationTaker
+        lessonId={lessonId}
+        enrollmentId={enrollmentId}
+        data={data as unknown as AssessmentData}
+        refetch={refetch}
+        nextHref={nextHref}
+      />
+    )
+  }
 
   // An assessment is sat step by step, its answers filmed part by part.
   if (settings.kind === "ASSESSMENT") {

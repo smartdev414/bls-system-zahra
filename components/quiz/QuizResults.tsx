@@ -13,7 +13,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFetch } from "@/hooks/use-fetch"
 import { cn } from "@/lib/utils"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { chosenOptionIds, isAssessment, isVideoMedia, marksLabel, maxMarks, questionMarking, type MarkingTest } from "@/lib/quiz"
+import { FeedbackRecorder } from "./FeedbackRecorder"
+import { chosenOptionIds, isAssessment, isPresentation, isVideoMedia, marksLabel, maxMarks, questionMarking, type MarkingTest } from "@/lib/quiz"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ type AttemptAnswer = {
   videoUrl?: string | null
   marks?: number | null
   markedByTutor?: boolean
+  feedbackVideoUrl?: string | null
   isCorrect: boolean
 }
 
@@ -143,10 +145,11 @@ const COLUMNS = "grid-cols-[minmax(0,1fr)_6.5rem_2rem] sm:grid-cols-[minmax(0,1f
  * gave themselves, and buttons to change them. A change is saved straight away
  * and the attempt's score follows.
  */
-function MarkedAnswer({ lessonId, question, answer, tutorMarks, onChanged }: {
+function MarkedAnswer({ lessonId, question, answer, tutorMarks, studentName, onChanged }: {
   lessonId: string
   question: ResultsQuestion
   answer: AttemptAnswer
+  studentName?: string
   /** An assessment the teacher marks: nobody else will. */
   tutorMarks?: boolean
   onChanged: () => void
@@ -206,10 +209,24 @@ function MarkedAnswer({ lessonId, question, answer, tutorMarks, onChanged }: {
                   {answer.marks === 0 && !answer.markedByTutor ? "Nothing filmed" : "Video deleted"}
                 </p>}
           </div>
-          <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-emerald-900 self-start">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Answer sheet</span>
-            <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
-          </div>
+          {question.modelAnswer ? (
+            <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-emerald-900 self-start">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Answer sheet</span>
+              <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
+            </div>
+          ) : <div />}
+          {answer.videoUrl && (
+            <div className="sm:col-span-2 mt-1">
+              <FeedbackRecorder
+                lessonId={lessonId}
+                answerId={answer.id}
+                studentVideoUrl={answer.videoUrl}
+                feedbackVideoUrl={answer.feedbackVideoUrl}
+                studentName={studentName}
+                onChanged={onChanged}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
@@ -346,7 +363,12 @@ function StudentAttempts({ lessonId, student, questions, marking, onReset, onMar
                         ? <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0 mt-0.5" />
                         : <XCircle className={cn("size-3.5 shrink-0 mt-0.5", answer.marks > 0 ? "text-amber-500" : "text-rose-500")} />}
                       <div className="min-w-0 flex-1">
-                        {isAssessment(marking.testKind) ? (
+                        {isPresentation(marking.testKind) ? (
+                          <p className="font-medium">
+                            Presentation ({marksLabel(self)})
+                            {q.question && <span className="block font-normal text-muted-foreground whitespace-pre-wrap">{q.question}</span>}
+                          </p>
+                        ) : isAssessment(marking.testKind) ? (
                           <p className="font-medium">
                             Part {n + 1} ({marksLabel(self)})
                             {q.question && <span className="block font-normal text-muted-foreground whitespace-pre-wrap">{q.question}</span>}
@@ -367,6 +389,7 @@ function StudentAttempts({ lessonId, student, questions, marking, onReset, onMar
                           question={marked}
                           answer={answer}
                           tutorMarks={marking.tutorMarks}
+                          studentName={student.name}
                           onChanged={() => { void refetch(); onMarksChanged() }}
                         />
                       </div>
@@ -622,7 +645,7 @@ export function QuizResults({ lessonId, questions, marking }: {
       </div>
 
       {/* Question by question */}
-      {hardestFirst.length > 0 && (
+      {hardestFirst.length > 0 && !isPresentation(marking.testKind) && (
         <div className="flex flex-col gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Question by question</p>

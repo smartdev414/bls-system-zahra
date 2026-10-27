@@ -41,6 +41,8 @@ export type MarkAnswer = {
   /** The marks given; null until the student has marked it. */
   marks?: number | null
   markedByTutor?: boolean
+  /** A filmed answer a teacher marked: their feedback, recorded over the student's video. */
+  feedbackVideoUrl?: string | null
 }
 
 /** The question as students read it — a written one says what it is worth: "… (2 marks)". */
@@ -49,7 +51,7 @@ export function questionText(q: Pick<MarkQuestion, "question" | "type" | "maxMar
 }
 
 /** The student's own recording, with a way to keep it — or why it is not there. */
-function OwnVideo({ answer, loop = false }: { answer?: MarkAnswer; loop?: boolean }) {
+export function OwnVideo({ answer, loop = false }: { answer?: MarkAnswer; loop?: boolean }) {
   return answer?.videoUrl
     ? <>
         {/* A sign of a few seconds loops beside the model; minutes of answers wait to be played. */}
@@ -61,6 +63,17 @@ function OwnVideo({ answer, loop = false }: { answer?: MarkAnswer; loop?: boolea
     : <p className="text-xs text-muted-foreground rounded-lg border px-3 py-6 text-center">
         {answer?.marks === 0 && !answer.markedByTutor ? "No video recorded" : "Your video has been deleted (the course has ended)"}
       </p>
+}
+
+/** The teacher's feedback on a filmed answer, if they recorded any. */
+export function TeacherFeedback({ answer }: { answer?: MarkAnswer }) {
+  if (!answer?.feedbackVideoUrl) return null
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Your teacher&apos;s feedback</p>
+      <ProtectedVideo src={answer.feedbackVideoUrl} controls playsInline className="w-full aspect-video rounded-lg border border-primary/40 bg-black" />
+    </div>
+  )
 }
 
 /** What the student wrote or signed, side by side with the model answer. */
@@ -80,6 +93,7 @@ export function AnswerAndModel({ question, answer }: { question: MarkQuestion; a
               <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
             </div>
           : <p className={cn(box, "text-muted-foreground self-start")}>The answer sheet is shown once your teacher has marked your answers.</p>}
+        <div className="sm:col-span-2"><TeacherFeedback answer={answer} /></div>
       </div>
     )
   }

@@ -80,7 +80,9 @@ async function uploadAnswerVideo(lessonId: string, file: Blob): Promise<string> 
  * they like before submitting. Where the browser cannot record (older phones)
  * the phone's own camera is offered instead.
  */
-export function SignAnswerRecorder({ lessonId, videoUrl, onChange, deadline, timeUp = false, filmLabel = "Film yourself signing" }: {
+export function SignAnswerRecorder({
+  lessonId, videoUrl, onChange, deadline, maxSeconds = MAX_SECONDS, timeUp = false, filmLabel = "Film yourself signing",
+}: {
   lessonId: string
   /** The recording already made for this question, if any. */
   videoUrl?: string
@@ -91,6 +93,8 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange, deadline, tim
    * once it has passed.
    */
   deadline?: number
+  /** A presentation runs to minutes: each recording stops by itself at this length. */
+  maxSeconds?: number
   /** The deadline has passed (the parent keeps the clock): no new recording. */
   timeUp?: boolean
   filmLabel?: string
@@ -127,8 +131,8 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange, deadline, tim
 
   useEffect(() => {
     if (state !== "recording") return
-    if (deadline ? Date.now() >= deadline : seconds >= MAX_SECONDS) recorderRef.current?.stop()
-  }, [state, seconds, deadline])
+    if (deadline ? Date.now() >= deadline : seconds >= maxSeconds) recorderRef.current?.stop()
+  }, [state, seconds, deadline, maxSeconds])
 
   async function startCamera() {
     if (!logoRef.current) {
@@ -179,14 +183,15 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange, deadline, tim
     stampRef.current = stamped
     const chunks: Blob[] = []
     // Minutes of answers are kept smaller, so they upload on a home connection.
-    const recorder = new MediaRecorder(stamped.stream, { mimeType: type, videoBitsPerSecond: deadline ? 1_000_000 : 1_500_000 })
+    const long = !!deadline || maxSeconds > MAX_SECONDS
+    const recorder = new MediaRecorder(stamped.stream, { mimeType: type, videoBitsPerSecond: long ? 1_000_000 : 1_500_000 })
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
     recorder.onstop = () => {
       stamped.stop()
       void save(new Blob(chunks, { type: type.split(";")[0] }))
     }
     recorderRef.current = recorder
-    recorder.start(deadline ? 1000 : undefined)
+    recorder.start(long ? 1000 : undefined)
     setSeconds(0)
     setState("recording")
   }
@@ -245,7 +250,7 @@ export function SignAnswerRecorder({ lessonId, videoUrl, onChange, deadline, tim
         <video ref={liveRef} muted playsInline className="w-full max-h-72 rounded-xl border bg-black -scale-x-100" />
         {state === "recording" && (
           <span className="absolute top-2 left-2 flex items-center gap-1.5 rounded-full bg-rose-600 px-2 py-0.5 text-xs font-semibold text-white">
-            <Circle className="size-2 fill-current animate-pulse" /> {deadline ? clock(seconds) : `${seconds}s`}
+            <Circle className="size-2 fill-current animate-pulse" /> {deadline ? clock(seconds) : maxSeconds > MAX_SECONDS ? `${clock(seconds)} / ${clock(maxSeconds)}` : `${seconds}s`}
           </span>
         )}
         {state === "uploading" && (

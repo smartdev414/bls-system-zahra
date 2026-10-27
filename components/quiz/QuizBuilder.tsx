@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { DEFAULT_WRITTEN_MARKS, MAX_WRITTEN_MARKS, isAssessment, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
+import { DEFAULT_WRITTEN_MARKS, MAX_WRITTEN_MARKS, isAssessment, isPresentation, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { FilmOverlay } from "./FilmOverlay"
@@ -140,6 +140,11 @@ export function isBlankQuestion(q: QuestionDraft): boolean {
 
 /** What still has to be done before a question can be saved, or null when it is ready. */
 export function questionProblem(q: QuestionDraft, testKind?: string): string | null {
+  // A presentation's task: written out, or signed on video.
+  if (isPresentation(testKind)) {
+    if (q.questionImageUploading) return "Wait for the upload to finish"
+    return q.question.trim() || q.imageUrl ? null : "Type the task, or add a video of you signing it"
+  }
   // A part of an assessment: its questions, the part, and the answer sheet.
   if (isAssessment(testKind)) {
     if (!q.questionsVideoUrl && !q.question.trim()) return "Add the video of the part's questions"
