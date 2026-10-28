@@ -384,7 +384,9 @@ function UserRow({
         />
       )}
       {accessOpen && user.access && (
-        <AccessDialog user={user} access={user.access} onSaved={onMutated} onClose={() => setAccessOpen(false)} />
+        // The list reloads once the dialog closes; reloading after each switch
+        // would unmount this row and close the dialog mid-way.
+        <AccessDialog user={user} access={user.access} onClose={() => { setAccessOpen(false); onMutated() }} />
       )}
     </Card>
   )
@@ -474,10 +476,9 @@ function ApproveDialog({ user, saving, onApprove, onClose }: {
 
 // ─── Access — what one teacher may change ────────────────────────────────────
 
-function AccessDialog({ user, access, onSaved, onClose }: {
+function AccessDialog({ user, access, onClose }: {
   user: UserItem
   access: TutorAccess
-  onSaved: () => void
   onClose: () => void
 }) {
   // Each switch saves as it is tapped; the list shows the saved state.
@@ -488,7 +489,7 @@ function AccessDialog({ user, access, onSaved, onClose }: {
   >(`/api/admin/users/${user.id}`, {
     errorMessage: "Could not save",
     successMessage: false,
-    onSuccess: (d) => { if (d.user.access) setCurrent(d.user.access); onSaved() },
+    onSuccess: (d) => { if (d.user.access) setCurrent(d.user.access) },
     // Put the switch back the way it was saved.
     onError: (_e, body) => setCurrent((c) => {
       const next = { ...c }
