@@ -285,11 +285,17 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
     // menu never moves the video.
     <div className="flex gap-0 -mx-6 -mt-8 min-h-[calc(100vh-4rem)] md:min-h-0 md:h-[calc(100dvh-4rem)] md:-mb-8">
 
+      {/* On a phone the menu slides over the lesson instead of squeezing it. */}
+      {sidebarOpen && (
+        <div className="md:hidden fixed inset-x-0 top-16 bottom-0 z-30 bg-black/40" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* ── Left sidebar — syllabus ───────────────────────────────────────── */}
       <aside
         className={cn(
           "shrink-0 border-r bg-background flex flex-col transition-all duration-200 overflow-hidden",
-          sidebarOpen ? "w-72" : "w-0"
+          "max-md:fixed max-md:left-0 max-md:top-16 max-md:bottom-0 max-md:z-40 max-md:shadow-xl",
+          sidebarOpen ? "w-72 max-md:w-[85vw] max-md:max-w-80" : "w-0 border-r-0"
         )}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
@@ -345,6 +351,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                   <Link
                     key={l.id}
                     href={`/student/lessons/${l.id}`}
+                    onClick={() => { if (window.innerWidth < 768) setSidebarOpen(false) }}
                     className={cn(
                       "flex items-center gap-3 px-4 py-2.5 border-b text-sm transition-colors",
                       l.isCurrent
