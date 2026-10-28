@@ -7,7 +7,7 @@ import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare, Clapperboard,
   Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
-  CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy,
+  CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy, MessageSquarePlus,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -28,6 +28,7 @@ import { useDeleteCallback } from "@/hooks/use-fetch"
 import { NotificationBell } from "@/components/ui/notification-bell"
 import { MessagesBadge } from "@/components/layout/messages-badge"
 import { RunpodCredit } from "@/components/layout/runpod-credit"
+import { OPEN_FEEDBACK_EVENT } from "@/components/feedback/feedback-button"
 import { roleLabel } from "@/lib/permissions"
 
 type Role = "STUDENT" | "TUTOR" | "SUPPORT" | "ADMIN"
@@ -436,6 +437,15 @@ export function Header({ role, user }: HeaderProps) {
                 </Link>
               )
             })}
+            {/* The floating Feedback button is hidden on phones; it lives here instead. */}
+            <button
+              type="button"
+              onClick={() => { setMobileNavOpen(false); window.dispatchEvent(new Event(OPEN_FEEDBACK_EVENT)) }}
+              className="sm:hidden flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted text-left"
+            >
+              <MessageSquarePlus className="size-4 shrink-0" />
+              Send feedback
+            </button>
           </nav>
         </div>
       )}

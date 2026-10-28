@@ -1,7 +1,6 @@
 "use client"
 
-import { usePathname } from "next/navigation"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import {
   MessageSquarePlus, X, Bug, Lightbulb, Sparkles, HelpCircle,
   Paperclip, Loader2, CheckCircle2, Image, Video, FileText, Trash2,
@@ -309,13 +308,17 @@ function FeedbackModal({ onClose }: { onClose: () => void }) {
 
 // ─── FeedbackButton ────────────────────────────────────────────────────────────
 
+/** Opens the feedback form from elsewhere, e.g. the phone menu. */
+export const OPEN_FEEDBACK_EVENT = "app:open-feedback"
+
 export function FeedbackButton() {
   const [open, setOpen] = useState(false)
-  // On a phone the floating button sat on top of the classroom lobby's
-  // "Join Session" — the one thing the page is for. Keep it off those pages
-  // below `sm`; it is still there on every other page and on larger screens.
-  // Same on Messages, where it would cover the Send button.
-  const inClassroom = /^\/(student|tutor)\/(classroom\/[^/]+|messages)/.test(usePathname() ?? "")
+
+  useEffect(() => {
+    const show = () => setOpen(true)
+    window.addEventListener(OPEN_FEEDBACK_EVENT, show)
+    return () => window.removeEventListener(OPEN_FEEDBACK_EVENT, show)
+  }, [])
 
   return (
     <>
@@ -324,8 +327,10 @@ export function FeedbackButton() {
         data-app-feedback
         onClick={() => setOpen(true)}
         title="Send feedback"
+        // On a phone it covered page buttons (Join Session, Send, Schedule…), so
+        // there it lives in the menu instead.
         className={cn(
-          inClassroom && "max-sm:hidden",
+          "max-sm:hidden",
           "fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-primary-foreground shadow-lg hover:bg-primary/90 transition-all hover:scale-105 active:scale-95 text-sm font-semibold",
         )}
       >
