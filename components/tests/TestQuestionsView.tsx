@@ -4,6 +4,7 @@ import { CheckCircle2, Circle } from "lucide-react"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { isAssessment, isPresentation, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
+import { TaskFileLink } from "@/components/quiz/TaskFile"
 
 export type ViewQuestion = {
   id: string
@@ -19,6 +20,8 @@ export type ViewQuestion = {
   answerVideoUrl?: string | null
   /** An assessment's part: its questions, signed. */
   questionsVideoUrl?: string | null
+  /** A presentation's task: a file that goes with it. */
+  attachmentUrl?: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
 
@@ -55,6 +58,7 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
             <p className="font-semibold">The task <span className="font-normal text-muted-foreground">· {marksLabel(maxMarks(q))}</span></p>
             {q.question && <p className="text-sm whitespace-pre-wrap">{q.question}</p>}
             {q.imageUrl && <Media url={q.imageUrl} type={q.mediaType} alt="" className="w-full max-w-md aspect-video rounded-lg border" />}
+            {q.attachmentUrl && <TaskFileLink url={q.attachmentUrl} />}
             <p className="text-xs text-muted-foreground">Students film themselves presenting it. A teacher marks it in Results.</p>
           </div>
         ))

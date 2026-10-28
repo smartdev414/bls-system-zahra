@@ -3,12 +3,13 @@
 //
 // Images go through the server for WebP conversion, PowerPoint is converted to a
 // PDF for the classroom, and everything else is a presigned S3 PUT.
+// `convertPowerPoint: false` keeps a deck as it is, for files students just open.
 
 import type { UploadedFile } from "@/components/ui/file-upload"
 import { isPowerPointMime, uploadPowerPointFile } from "@/lib/upload-powerpoint"
 
-export async function uploadFile(file: File): Promise<UploadedFile> {
-  if (isPowerPointMime(file.type)) {
+export async function uploadFile(file: File, { convertPowerPoint = true } = {}): Promise<UploadedFile> {
+  if (convertPowerPoint && isPowerPointMime(file.type)) {
     const result = await uploadPowerPointFile(file)
     return {
       fileUrl: result.fileUrl,

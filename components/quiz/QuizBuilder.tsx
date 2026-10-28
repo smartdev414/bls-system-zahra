@@ -63,6 +63,9 @@ export type QuestionDraft = {
   answerVideoUploading?: boolean
   /** An assessment's part: its questions, signed. */
   questionsVideoUrl?: string
+  /** A presentation's task: a file that goes with it (PDF, picture, Word, PowerPoint). */
+  attachmentUrl?: string
+  attachmentUploading?: boolean
   options: QuizOptionDraft[]
   isOpen: boolean
   isSaving: boolean
@@ -133,17 +136,17 @@ function blankTrueFalse(): QuestionDraft {
 
 /** A question nobody has typed anything into — left out rather than reported as unfinished. */
 export function isBlankQuestion(q: QuestionDraft): boolean {
-  if (q.id || q.question.trim() || q.imageUrl || q.questionImageUploading || q.questionsVideoUrl) return false
+  if (q.id || q.question.trim() || q.imageUrl || q.questionImageUploading || q.questionsVideoUrl || q.attachmentUrl) return false
   if (isSelfMarked(q.type)) return !q.modelAnswer?.trim() && !q.answerVideoUrl && !q.answerVideoUploading
   return q.type === "TRUE_FALSE" || q.options.every((o) => !o.text.trim() && !o.imageUrl && !o.uploading)
 }
 
 /** What still has to be done before a question can be saved, or null when it is ready. */
 export function questionProblem(q: QuestionDraft, testKind?: string): string | null {
-  // A presentation's task: written out, or signed on video.
+  // A presentation's task: written out, signed on video, or in a file.
   if (isPresentation(testKind)) {
-    if (q.questionImageUploading) return "Wait for the upload to finish"
-    return q.question.trim() || q.imageUrl ? null : "Type the task, or add a video of you signing it"
+    if (q.questionImageUploading || q.attachmentUploading) return "Wait for the upload to finish"
+    return q.question.trim() || q.imageUrl || q.attachmentUrl ? null : "Type the task, add a video of you signing it, or add a file"
   }
   // A part of an assessment: its questions, the part, and the answer sheet.
   if (isAssessment(testKind)) {
@@ -190,6 +193,7 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
       maxMarks: q.type === "WRITTEN" ? maxMarks(q) : null,
       answerVideoUrl: q.type === "SIGN" ? q.answerVideoUrl ?? null : null,
       questionsVideoUrl: q.questionsVideoUrl ?? null,
+      attachmentUrl: q.attachmentUrl ?? null,
       options: q.options.map((o) => ({
         id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
       })),

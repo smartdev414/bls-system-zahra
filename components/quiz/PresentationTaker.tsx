@@ -11,6 +11,7 @@ import { AttemptHistory, attemptsLeftText } from "./AttemptHistory"
 import type { AssessmentData } from "./AssessmentTaker"
 import { MarksBadge, OwnVideo, TeacherFeedback, type MarkQuestion } from "./SelfMarking"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
+import { TaskFileLink } from "./TaskFile"
 import { useTopOnNewScreen } from "./TestTop"
 
 // A presentation: the student reads (or watches) the task, films themselves
@@ -168,6 +169,7 @@ export function PresentationTaker({ lessonId, enrollmentId, data, refetch, nextH
         {task.imageUrl && (
           <ProtectedVideo src={task.imageUrl} controls playsInline className="w-full max-h-[50vh] rounded-lg border bg-black" />
         )}
+        {task.attachmentUrl && <TaskFileLink url={task.attachmentUrl} />}
       </div>
 
       {pending && (

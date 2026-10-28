@@ -28,24 +28,31 @@ export function testSettingsBody(draft: TestSettingsDraft): { passMark: number; 
   }
 }
 
-/** "at least 7 of 10 questions" — what the pass mark means for a test of this length. */
-function neededToPass(passMark: string, questionCount: number, noun: string): string | null {
+/** "at least 7 of 10 questions right" (or "7 of 10 marks") — what the pass mark means for a test of this length. */
+function neededToPass(passMark: string, questionCount: number, noun: string, totalMarks?: number): string | null {
   const mark = Number(passMark)
-  if (questionCount < 1 || !Number.isInteger(mark) || mark < 1 || mark > 100) return null
+  if (!Number.isInteger(mark) || mark < 1 || mark > 100) return null
+  if (totalMarks !== undefined) {
+    if (totalMarks < 1) return null
+    return `at least ${correctNeeded(mark, totalMarks)} of ${totalMarks} mark${totalMarks !== 1 ? "s" : ""}`
+  }
+  if (questionCount < 1) return null
   const needed = correctNeeded(mark, questionCount)
   return `at least ${needed} of ${questionCount} ${noun}${questionCount !== 1 ? "s" : ""} right`
 }
 
-export function TestSettingsFields({ value, onChange, questionCount = 0, noun = "question" }: {
+export function TestSettingsFields({ value, onChange, questionCount = 0, noun = "question", totalMarks }: {
   value: TestSettingsDraft
   onChange: (value: TestSettingsDraft) => void
   /** Questions on the test so far, to say what the pass mark comes to. */
   questionCount?: number
   /** What the test is made of: "question", or "sign" in a fingerspelling or vocabulary test. */
   noun?: string
+  /** Tests scored in marks (assessments, presentations): the marks it is out of. */
+  totalMarks?: number
 }) {
   const limited = value.maxAttempts !== null
-  const needed = neededToPass(value.passMark, questionCount, noun)
+  const needed = neededToPass(value.passMark, questionCount, noun, totalMarks)
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="flex flex-col gap-1.5">

@@ -450,6 +450,7 @@ export function partsForStudent<
   Q extends {
     id: string; question: string; imageUrl: string | null; mediaType: string | null
     questionsVideoUrl: string | null; modelAnswer: string | null; maxMarks: number | null
+    attachmentUrl: string | null
   },
 >(parts: readonly Q[], showModel: boolean) {
   return parts.map((p) => ({
@@ -459,6 +460,7 @@ export function partsForStudent<
     imageUrl: p.imageUrl,
     mediaType: p.mediaType,
     questionsVideoUrl: p.questionsVideoUrl,
+    attachmentUrl: p.attachmentUrl,
     maxMarks: p.maxMarks,
     options: [],
     ...(showModel && { modelAnswer: p.modelAnswer }),

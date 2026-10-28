@@ -53,6 +53,7 @@ async function handlePOST(
         maxMarks: body.type === "WRITTEN" ? body.maxMarks ?? null : null,
         answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
         questionsVideoUrl: isAssessment(test.testKind) ? body.questionsVideoUrl ?? null : null,
+        attachmentUrl: isPresentation(test.testKind) ? body.attachmentUrl ?? null : null,
         order: (last._max.order ?? 0) + 1,
         options: {
           create: options.map((opt, i) => ({

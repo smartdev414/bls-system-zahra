@@ -30,6 +30,8 @@ type Part = {
   imageUrl: string | null
   mediaType: string | null
   questionsVideoUrl: string | null
+  /** A presentation's task: a file that goes with it. */
+  attachmentUrl?: string | null
   maxMarks: number | null
   /** The answer sheet — only once the student may mark against it (or has been marked). */
   modelAnswer?: string | null

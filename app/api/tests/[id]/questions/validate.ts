@@ -18,6 +18,8 @@ export type QuestionBody = {
   answerVideoUrl?: string | null
   /** An assessment's part: its questions, signed. */
   questionsVideoUrl?: string | null
+  /** A presentation's task: a file that goes with it. */
+  attachmentUrl?: string | null
   /** Left out for a sign in a fingerspelling or vocabulary test, and for a written or signed answer. */
   options: Array<{
     /** Present when the option already exists, so it is updated rather than replaced. */
@@ -42,7 +44,9 @@ export function validateQuestion(body: QuestionBody, testKind?: string): string 
   if (isPresentation(testKind)) {
     body.type = "WRITTEN"
     body.question = body.question?.trim() ?? ""
-    if (!body.question && !isVideoMedia(body.imageUrl, body.mediaType)) return "Type the task, or add a video of you signing it"
+    if (!body.question && !isVideoMedia(body.imageUrl, body.mediaType) && !body.attachmentUrl) {
+      return "Type the task, add a video of you signing it, or add a file"
+    }
     if (body.maxMarks != null && (!Number.isInteger(body.maxMarks) || body.maxMarks < 1 || body.maxMarks > MAX_PART_MARKS)) {
       return `A presentation is worth 1 to ${MAX_PART_MARKS} marks`
     }

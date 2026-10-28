@@ -8,10 +8,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { DEFAULT_PART_MARKS, MAX_PART_MARKS, marksLabel } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 import type { QuestionDraft } from "./QuizBuilder"
+import { TaskFileField } from "./TaskFile"
 import { StoryVideoField } from "./TestKindFields"
 
-// A presentation's one task: what students present, written out and/or signed
-// on video, and what it is worth. Saved with the test's "Save changes", like
+// A presentation's one task: what students present — written out, signed on
+// video and/or in a file — and what it is worth. Saved with the test's "Save changes", like
 // questions are.
 
 function blankTask(): QuestionDraft {
@@ -68,6 +69,13 @@ export function PresentationTaskBuilder({ tasks, onChange }: {
         onChange={(url) => patch({ imageUrl: url ?? undefined, mediaType: url ? "video" : undefined })}
       />
 
+      <TaskFileField
+        value={task.attachmentUrl ?? null}
+        onChange={(url) => patch({ attachmentUrl: url ?? undefined })}
+        onUploadingChange={(uploading) =>
+          onChange((current) => current.map((t) => (t.uid === task.uid ? { ...t, attachmentUploading: uploading } : t)))}
+      />
+
       <div className="flex items-center gap-2">
         <Label htmlFor={`task-marks-${task.uid}`} className="text-sm font-normal">It is worth</Label>
         <select
@@ -78,6 +86,7 @@ export function PresentationTaskBuilder({ tasks, onChange }: {
         >
           {Array.from({ length: MAX_PART_MARKS }, (_, n) => n + 1).map((n) => <option key={n} value={n}>{marksLabel(n)}</option>)}
         </select>
+        <span className="text-xs text-muted-foreground">— the pass mark (%) is in Settings.</span>
       </div>
 
       {task.error && <p role="alert" className="text-sm text-destructive">{task.error}</p>}

@@ -51,6 +51,7 @@ async function handlePOST(
             maxMarks: q.maxMarks,
             answerVideoUrl: q.answerVideoUrl,
             questionsVideoUrl: q.questionsVideoUrl,
+            attachmentUrl: q.attachmentUrl,
             order: q.order,
             options: {
               create: q.options.map((o) => ({

@@ -33,7 +33,7 @@ import { DictionaryPicker, type DictionarySign } from "@/components/tests/Dictio
 import { TestQuestionsView } from "@/components/tests/TestQuestionsView"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, TEST_KIND_INFO, isAssessment, isPresentation, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PART_MARKS, TEST_KIND_INFO, isAssessment, isPresentation, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -50,6 +50,7 @@ type ApiQuestion = {
   maxMarks: number | null
   answerVideoUrl: string | null
   questionsVideoUrl: string | null
+  attachmentUrl: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
 
@@ -112,6 +113,7 @@ function toDraft(q: ApiQuestion): QuestionDraft {
     maxMarks: q.maxMarks ?? undefined,
     answerVideoUrl: q.answerVideoUrl ?? undefined,
     questionsVideoUrl: q.questionsVideoUrl ?? undefined,
+    attachmentUrl: q.attachmentUrl ?? undefined,
     options: q.options.map((o) => ({
       id: o.id,
       text: o.text,
@@ -611,6 +613,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               onChange={(settings) => patch({ settings })}
               questionCount={questions.filter((q) => !isBlankQuestion(q)).length}
               noun={itemName.toLowerCase()}
+              totalMarks={isAssessment(kind)
+                ? questions.filter((q) => !isBlankQuestion(q)).reduce((sum, q) => sum + (q.maxMarks ?? DEFAULT_PART_MARKS), 0)
+                : undefined}
             />
 
             {/* The clock is for picking the word; signing a word is not timed. */}

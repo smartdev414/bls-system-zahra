@@ -1005,6 +1005,9 @@ model QuizQuestion {
   // ASSESSMENT: a part's questions, signed — watched before the part itself
   // (imageUrl). The answer sheet is modelAnswer, its marks maxMarks.
   questionsVideoUrl String?
+  // PRESENTATION: a file that goes with the task — a PDF, a picture, a Word
+  // document or PowerPoint — for students to open before they present.
+  attachmentUrl String?
   order    Int
 
   test    Test                @relation(fields: [testId], references: [id], onDelete: Cascade)
