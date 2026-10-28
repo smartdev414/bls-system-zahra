@@ -313,14 +313,14 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
 
         {/* Sections + lessons */}
         <div className="overflow-y-auto flex-1">
-          {sections.map((sec) => (
+          {sections.map((sec, si) => (
             <div key={sec.id}>
               <div className="px-4 py-2 bg-muted/30 border-b">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {sec.order}. {sec.title}
+                  {si + 1}. {sec.title}
                 </p>
               </div>
-              {sec.lessons.map((l) => {
+              {sec.lessons.map((l, li) => {
                 const Icon = typeIcon[l.type as keyof typeof typeIcon] ?? PlayCircle
                 if (l.locked) {
                   return (
@@ -333,7 +333,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                       <div className="shrink-0 size-4 rounded-full border-2 border-dashed border-muted-foreground/30" />
                       <Lock className="size-3.5 shrink-0" />
                       <span className="flex-1 min-w-0">
-                        <span className="block leading-snug truncate">{l.order}. {l.title}</span>
+                        <span className="block leading-snug truncate">{li + 1}. {l.title}</span>
                         {l.releaseAt && (
                           <span className="block text-[10px] leading-tight">Unlocks {releaseLabel(l.releaseAt)}</span>
                         )}
@@ -364,7 +364,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                     </div>
                     <Icon className={cn("size-3.5 shrink-0", l.isCurrent ? "text-primary" : "text-muted-foreground")} />
                     <span className={cn("flex-1 leading-snug", l.isCurrent && "font-semibold text-primary")}>
-                      {l.order}. {l.title}
+                      {li + 1}. {l.title}
                     </span>
                   </Link>
                 )

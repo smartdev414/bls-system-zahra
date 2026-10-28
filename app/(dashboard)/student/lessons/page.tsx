@@ -200,14 +200,14 @@ export default function LessonsPage() {
                 {/* Section header */}
                 <div className="px-4 sm:px-6 py-3 bg-muted/10 flex items-center justify-between gap-3">
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Section {section.order}: {section.title}
+                    Section {si + 1}: {section.title}
                   </p>
                   <span className="text-xs text-muted-foreground shrink-0">
                     {section.lessons.filter((l) => l.isCompleted).length}/{section.lessons.length}
                   </span>
                 </div>
                 {/* Lesson rows */}
-                {section.lessons.map((lesson) => {
+                {section.lessons.map((lesson, li) => {
                   const Icon = typeIcon[lesson.type]
                   if (lesson.locked) {
                     // Not a link: the student can see what is coming and when,
@@ -226,7 +226,7 @@ export default function LessonsPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium leading-snug">
-                            {lesson.order}. {lesson.title}
+                            {li + 1}. {lesson.title}
                           </p>
                           <div className="flex items-center gap-1 mt-0.5 text-xs">
                             <CalendarClock className="size-3" />
@@ -265,7 +265,7 @@ export default function LessonsPage() {
                       {/* Lesson info */}
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium leading-snug ${lesson.isCompleted ? "text-muted-foreground" : ""}`}>
-                          {lesson.order}. {lesson.title}
+                          {li + 1}. {lesson.title}
                         </p>
                         <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
                           {typeLabel[lesson.type]}

@@ -463,11 +463,12 @@ return (
           </Card>
         ) : (
           <div className="flex flex-col gap-3">
-            {course.sections.map((section) => (
+            {course.sections.map((section, si) => (
               <SectionBlock
                 key={section.id}
                 courseId={id}
                 section={section}
+                number={si + 1}
                 laterLocked={course.sections.filter(
                   (s) => s.order > section.order && s.lessons.some((l) => l.releaseAt && new Date(l.releaseAt) > new Date()),
                 ).length}
@@ -622,6 +623,7 @@ return (
 function SectionBlock({
   courseId,
   section,
+  number,
   laterLocked,
   canEdit,
   isCollapsed,
@@ -633,6 +635,8 @@ function SectionBlock({
 }: {
   courseId: string
   section: SectionItem
+  /** Its position in the course; `order` can have gaps after a delete. */
+  number: number
   /** Sections after this one that are still locked — moved along when its date changes. */
   laterLocked: number
   canEdit: boolean
@@ -720,7 +724,7 @@ function SectionBlock({
               className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3.5 text-left"
               onClick={onToggle}
             >
-              <span className="text-xs font-bold text-muted-foreground shrink-0">Section {section.order}</span>
+              <span className="text-xs font-bold text-muted-foreground shrink-0">Section {number}</span>
               <span className="font-semibold text-sm truncate">{section.title}</span>
               <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">{section.lessons.length} lesson{section.lessons.length === 1 ? "" : "s"}</Badge>
               <Badge variant="outline" className="text-[10px] shrink-0 sm:hidden">{section.lessons.length}</Badge>
@@ -765,6 +769,7 @@ function SectionBlock({
             <LessonRow
               key={lesson.id}
               lesson={lesson}
+              number={index + 1}
               courseId={courseId}
               canEdit={canEdit}
               hideRelease={sharedRelease(section) !== null}
@@ -794,8 +799,10 @@ function SectionBlock({
 
 // ─── Lesson row — edit (admins) or view (teachers) on a dedicated page ────────
 
-function LessonRow({ lesson, courseId, canEdit, hideRelease, onMoveUp, onMoveDown, moving, onMutated }: {
+function LessonRow({ lesson, number, courseId, canEdit, hideRelease, onMoveUp, onMoveDown, moving, onMutated }: {
   lesson: LessonItem
+  /** Its position in the section; `order` can have gaps after a delete. */
+  number: number
   courseId: string
   canEdit: boolean
   /** The section header already shows the date this lesson shares with the rest. */
@@ -825,7 +832,7 @@ function LessonRow({ lesson, courseId, canEdit, hideRelease, onMoveUp, onMoveDow
         <Icon className="size-4 text-primary" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{lesson.order}. {lesson.title}</p>
+        <p className="text-sm font-medium truncate">{number}. {lesson.title}</p>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
           <span>{label}</span>
           {lesson.isFree && <Badge variant="outline" className="text-[10px] h-4 px-1">Free</Badge>}
