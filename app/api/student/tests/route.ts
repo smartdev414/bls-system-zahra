@@ -38,13 +38,15 @@ async function handleGET() {
       }),
       prisma.quizAttempt.findMany({
         where: { userId: session.sub },
-        select: { lessonId: true, score: true, passed: true, createdAt: true },
+        select: { lessonId: true, score: true, passed: true, selfMarked: true, createdAt: true },
       }),
     ])
 
     const tests = lessons.flatMap(({ test, ...lesson }) => {
       if (!test) return []
       const mine = attempts.filter((a) => a.lessonId === lesson.id)
+      // An attempt still waiting for marks has no real score yet (it is stored as 0).
+      const marked = mine.filter((a) => a.selfMarked)
       const passed = mine.some((a) => a.passed)
       const left = attemptsLeft(test.maxAttempts, mine.length)
       return [{
@@ -63,7 +65,7 @@ async function handleGET() {
         maxAttempts: test.maxAttempts,
         attempts: mine.length,
         attemptsLeft: left,
-        bestScore: mine.length > 0 ? Math.max(...mine.map((a) => a.score)) : null,
+        bestScore: marked.length > 0 ? Math.max(...marked.map((a) => a.score)) : null,
         lastAttemptAt: mine.length > 0
           ? new Date(Math.max(...mine.map((a) => a.createdAt.getTime()))).toISOString()
           : null,

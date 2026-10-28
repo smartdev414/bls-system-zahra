@@ -329,10 +329,14 @@ function StudentAttempts({ lessonId, student, questions, marking, onReset, onMar
                   {marking.tutorMarks ? "To mark" : <>Student hasn&apos;t marked it yet</>}
                 </Badge>
               )}
-              <span className="font-semibold">{attempt.score}%</span>
-              {attempt.passed
-                ? <CheckCircle2 className="size-3.5 text-emerald-500" />
-                : <XCircle className="size-3.5 text-rose-500" />}
+              {attempt.selfMarked !== false && (
+                <>
+                  <span className="font-semibold">{attempt.score}%</span>
+                  {attempt.passed
+                    ? <CheckCircle2 className="size-3.5 text-emerald-500" />
+                    : <XCircle className="size-3.5 text-rose-500" />}
+                </>
+              )}
               {open === attempt.id ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
             </span>
           </button>
@@ -509,7 +513,7 @@ export function QuizResults({ lessonId, questions, marking }: {
       {/* An assessment the teacher marks: who is waiting for it */}
       {marking.tutorMarks && students.some((s) => s.awaitingMarks) && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {(() => { const n = students.filter((s) => s.awaitingMarks).length; return n === 1 ? "1 student is" : `${n} students are` })()} waiting
+          {(() => { const n = students.filter((s) => s.awaitingMarks).length; return n === 1 ? "1 student is waiting" : `${n} students are waiting` })()}{" "}
           for you to mark their answers. Open a student marked &ldquo;To mark&rdquo;, watch their videos and give the marks for each part.
         </p>
       )}

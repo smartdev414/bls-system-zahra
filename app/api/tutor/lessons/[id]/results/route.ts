@@ -87,6 +87,8 @@ async function handleGET(
 
     const students = enrolments.map(({ student }) => {
       const mine = attempts.filter((a) => a.userId === student.id)
+      // An attempt still waiting for marks has no real score yet (it is stored as 0).
+      const marked = mine.filter((a) => a.selfMarked)
       const latest = mine[mine.length - 1]
       const passed = mine.some((a) => a.passed)
       const left = attemptsLeft(test.maxAttempts, mine.length)
@@ -94,8 +96,8 @@ async function handleGET(
         ...student,
         attempts: mine.length,
         attemptsLeft: left,
-        bestScore: mine.length > 0 ? Math.max(...mine.map((a) => a.score)) : null,
-        latestScore: latest?.score ?? null,
+        bestScore: marked.length > 0 ? Math.max(...marked.map((a) => a.score)) : null,
+        latestScore: latest?.selfMarked ? latest.score : null,
         lastAttemptAt: latest?.createdAt.toISOString() ?? null,
         // Submitted, but the student has not marked their written or signed answers yet.
         awaitingMarks: mine.some((a) => !a.selfMarked),
@@ -103,14 +105,15 @@ async function handleGET(
       }
     })
 
-    const taken = students.filter((s) => s.bestScore !== null)
+    const taken = students.filter((s) => s.attempts > 0)
+    const scored = students.filter((s) => s.bestScore !== null)
     const summary = {
       students: students.length,
       taken: taken.length,
       passed: students.filter((s) => s.status === "PASSED").length,
       // Each student counts once, by their best score.
-      averageScore: taken.length > 0
-        ? Math.round(taken.reduce((sum, s) => sum + (s.bestScore ?? 0), 0) / taken.length)
+      averageScore: scored.length > 0
+        ? Math.round(scored.reduce((sum, s) => sum + (s.bestScore ?? 0), 0) / scored.length)
         : null,
       attempts: attempts.length,
     }
