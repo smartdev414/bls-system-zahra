@@ -23,7 +23,6 @@ import { usePoll } from "@/hooks/use-poll"
 import { netFetch, netJson, POLL_TIMEOUT_MS } from "@/lib/net-fetch"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import {
   Popover,
@@ -239,7 +238,7 @@ export function NotificationBell() {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-[380px] p-0">
+      <PopoverContent align="end" className="w-[380px] max-w-[calc(100vw-1rem)] p-0">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <div className="flex items-center gap-2">
@@ -265,7 +264,7 @@ export function NotificationBell() {
         </div>
 
         {/* List */}
-        <ScrollArea className="max-h-[420px]">
+        <div className="max-h-[min(420px,calc(100dvh-12rem))] overflow-y-auto overscroll-contain">
           {notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
               <BellOff className="size-8 opacity-30" />
@@ -327,7 +326,7 @@ export function NotificationBell() {
               })}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         {notifications.length > 0 && (
           <>
