@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { can, ownerScope } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { notifySessionStatusChange } from "@/lib/live-session-status"
 
 // Students need to know which days are off, in the school's time.
@@ -74,4 +75,4 @@ async function handlePOST(req: NextRequest) {
   }
 }
 
-export const POST = withAudit(handlePOST)
+export const POST = withAudit(tutorWrite("calendar", handlePOST))

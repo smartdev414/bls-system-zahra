@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { requireCapability } from "@/lib/permissions"
 import { isSignTest, sameWord } from "@/lib/quiz"
 import { questionsFromSigns, signMedia, testEditScope } from "@/lib/tests"
@@ -83,4 +84,4 @@ async function handlePOST(
   }
 }
 
-export const POST = withAudit(handlePOST)
+export const POST = withAudit(tutorWrite("tests", handlePOST))

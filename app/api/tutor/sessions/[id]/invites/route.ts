@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { can, ownerScope } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 
 async function handlePOST(
   req: NextRequest,
@@ -126,5 +127,5 @@ async function handleDELETE(
 }
 
 export const GET = withAudit(handleGET)
-export const POST = withAudit(handlePOST)
-export const DELETE = withAudit(handleDELETE)
+export const POST = withAudit(tutorWrite("calendar", handlePOST))
+export const DELETE = withAudit(tutorWrite("calendar", handleDELETE))

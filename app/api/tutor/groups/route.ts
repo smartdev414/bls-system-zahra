@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, isStaff, STAFF_ROLES } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 
 async function handleGET() {
   try {
@@ -80,4 +81,4 @@ async function handlePOST(req: NextRequest) {
 }
 
 export const GET = withAudit(handleGET)
-export const POST = withAudit(handlePOST)
+export const POST = withAudit(tutorWrite("groups", handlePOST))

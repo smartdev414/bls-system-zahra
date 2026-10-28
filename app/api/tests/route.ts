@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { requireCapability } from "@/lib/permissions"
 import { parseLevel } from "@/lib/levels"
 import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PRESENTATION_MINUTES, isAssessment, isPresentation, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
@@ -124,4 +125,4 @@ async function handlePOST(req: NextRequest) {
 }
 
 export const GET = withAudit(handleGET)
-export const POST = withAudit(handlePOST)
+export const POST = withAudit(tutorWrite("tests", handlePOST))

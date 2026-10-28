@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession, type SessionPayload } from "@/lib/auth"
 import { getPresignedDownloadUrl, objectExists } from "@/lib/s3"
+import { requireTutorAccess } from "@/lib/tutor-access"
 import { cleanKeyFor, isRawRecordingKey } from "@/lib/background-clean-keys"
 import { assertCanAccessSession, recordingViewers } from "@/lib/session-access"
 import { isProtectedMediaKey } from "@/lib/protected-media"
@@ -112,6 +113,10 @@ async function handleGET(
     const download = req.nextUrl.searchParams.has("download")
     if (download && session.role !== "TUTOR" && session.role !== "ADMIN" && !key.startsWith("test-answers/")) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+    if (download) {
+      const off = await requireTutorAccess(session, "download")
+      if (off) return off
     }
 
     // A recording sent for background replacement (lib/background-clean.ts)

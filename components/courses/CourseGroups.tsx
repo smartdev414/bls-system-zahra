@@ -17,6 +17,8 @@ import { useCourseRoster } from "@/components/courses/use-course-roster"
 import { ScheduleClassDialog, WHOLE_COURSE, type ClassDefaults } from "@/components/courses/ScheduleClassDialog"
 import { timeOf } from "@/components/courses/time-options"
 import { AddGroupDialog } from "@/components/courses/AddGroupDialog"
+import { useTutorAccess } from "@/components/tutor-access-provider"
+import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,7 +106,9 @@ function ClassList({
   // Classes ticked to cancel together; null when not choosing.
   const [picked, setPicked] = useState<Set<string> | null>(null)
   const [cancellingMany, setCancellingMany] = useState(false)
-  const cancellable = sessions.filter((s) => s.status === "SCHEDULED" && s.canManage)
+  // A teacher with a view-only calendar sees the classes but cancels none.
+  const { calendar } = useTutorAccess()
+  const cancellable = sessions.filter((s) => s.status === "SCHEDULED" && s.canManage && calendar)
   const shown = showAll || picked ? sessions : sessions.slice(0, CLASSES_SHOWN)
   const allPicked = picked !== null && cancellable.length > 0 && cancellable.every((s) => picked.has(s.id))
 
@@ -224,7 +228,7 @@ function ClassList({
           </span>
           {s.status === "LIVE" ? (
             <Badge variant="outline" className="text-[10px] shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200">Live now</Badge>
-          ) : s.canManage && !picked ? (
+          ) : s.canManage && calendar && !picked ? (
             <Button
               variant="ghost"
               size="sm"
@@ -270,6 +274,8 @@ export function CourseGroups({
   onTotalChange?: (total: number) => void
 }) {
   const roster = useCourseRoster(courseId, onTotalChange)
+  // An admin may have made groups or students view only for this teacher.
+  const access = useTutorAccess()
   const { data: groupData, loading: groupsLoading, refetch: refetchGroups } = useFetch<GroupsData>(
     `/api/tutor/courses/${courseId}/groups`,
     { errorMessage: "Could not load groups" },
@@ -416,7 +422,7 @@ export function CourseGroups({
       remindingIds={roster.remindingIds}
       removingId={roster.removingId}
       onRemind={(s) => roster.remind([s])}
-      onRemove={async (s) => { if (await roster.remove(s)) void refetchGroups() }}
+      onRemove={access.students ? async (s) => { if (await roster.remove(s)) void refetchGroups() } : undefined}
     />
   )
 
@@ -440,17 +446,29 @@ export function CourseGroups({
                 (behindTotal > 0 ? ` · ${behindTotal} behind on homework` : "")}
           </p>
         </div>
-        {!empty && (
+        {!empty && (access.students || access.groups) && (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
-              <UserPlus className="size-4 mr-1.5" /> Add Students
-            </Button>
-            <Button size="sm" onClick={() => setAddGroupOpen(true)}>
-              <Plus className="size-4 mr-1.5" /> Add Group
-            </Button>
+            {access.students && (
+              <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
+                <UserPlus className="size-4 mr-1.5" /> Add Students
+              </Button>
+            )}
+            {access.groups && (
+              <Button size="sm" onClick={() => setAddGroupOpen(true)}>
+                <Plus className="size-4 mr-1.5" /> Add Group
+              </Button>
+            )}
           </div>
         )}
       </div>
+
+      {(!access.groups || !access.students) && (
+        <p className="-mt-2 mb-3 text-xs text-muted-foreground">
+          {!access.groups && !access.students
+            ? "Groups and students are view only for you. Ask an admin if you need to change them."
+            : VIEW_ONLY_MESSAGE[access.groups ? "students" : "groups"]}
+        </p>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-10">
@@ -476,15 +494,21 @@ export function CourseGroups({
               ))}
             </ol>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => setAddGroupOpen(true)}>
-                <Plus className="size-4 mr-1.5" /> Add Group
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
-                <UserPlus className="size-4 mr-1.5" /> Add Students without a group
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setScheduleFor(WHOLE_COURSE)}>
-                <CalendarPlus className="size-4 mr-1.5" /> Schedule class for the whole course
-              </Button>
+              {access.groups && (
+                <Button size="sm" onClick={() => setAddGroupOpen(true)}>
+                  <Plus className="size-4 mr-1.5" /> Add Group
+                </Button>
+              )}
+              {access.students && (
+                <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
+                  <UserPlus className="size-4 mr-1.5" /> Add Students without a group
+                </Button>
+              )}
+              {access.calendar && (
+                <Button size="sm" variant="outline" onClick={() => setScheduleFor(WHOLE_COURSE)}>
+                  <CalendarPlus className="size-4 mr-1.5" /> Schedule class for the whole course
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -526,12 +550,12 @@ export function CourseGroups({
                     </span>
                   </button>
                   {/* Lead with the next thing this group needs. */}
-                  {list.length === 0 && group.canEdit ? (
+                  {list.length === 0 && group.canEdit && access.groups ? (
                     <Button size="sm" className="shrink-0" title="Add students" onClick={() => setAddStudentsTo(group.id)}>
                       <UserPlus className="size-4 @lg:mr-1.5" />
                       <span className="hidden @lg:inline">Add students</span>
                     </Button>
-                  ) : (
+                  ) : access.calendar && (
                     <Button
                       size="sm"
                       variant={summary ? "outline" : "default"}
@@ -565,14 +589,16 @@ export function CourseGroups({
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap border-t bg-muted/20 px-4 py-2.5">
-                      {group.canEdit && (
+                      {group.canEdit && access.groups && (
                         <Button size="sm" variant="outline" className="h-8" onClick={() => setAddStudentsTo(group.id)}>
                           <UserPlus className="size-3.5 mr-1.5" /> Add students to group
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" className="h-8" onClick={() => setScheduleFor(group.id)}>
-                        <CalendarPlus className="size-3.5 mr-1.5" /> Schedule class
-                      </Button>
+                      {access.calendar && (
+                        <Button size="sm" variant="outline" className="h-8" onClick={() => setScheduleFor(group.id)}>
+                          <CalendarPlus className="size-3.5 mr-1.5" /> Schedule class
+                        </Button>
+                      )}
                       {behind.length > 0 && (
                         <Button
                           size="sm"
@@ -584,18 +610,20 @@ export function CourseGroups({
                           <BellRing className="size-3.5 mr-1.5" /> Remind {behind.length} behind
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 ml-auto text-muted-foreground hover:text-destructive"
-                        disabled={removingGroup === group.id}
-                        onClick={() => removeGroup(group)}
-                      >
-                        {removingGroup === group.id
-                          ? <Loader2 className="size-3.5 mr-1.5 animate-spin" />
-                          : <X className="size-3.5 mr-1.5" />}
-                        Remove group from course
-                      </Button>
+                      {access.groups && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 ml-auto text-muted-foreground hover:text-destructive"
+                          disabled={removingGroup === group.id}
+                          onClick={() => removeGroup(group)}
+                        >
+                          {removingGroup === group.id
+                            ? <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                            : <X className="size-3.5 mr-1.5" />}
+                          Remove group from course
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -630,7 +658,7 @@ export function CourseGroups({
                     </span>
                   </span>
                 </button>
-                {groups.length === 0 && (
+                {groups.length === 0 && access.calendar && (
                   <Button size="sm" variant="outline" className="shrink-0" title="Schedule class" onClick={() => setScheduleFor(WHOLE_COURSE)}>
                     <CalendarPlus className="size-4 @lg:mr-1.5" />
                     <span className="hidden @lg:inline">Schedule class</span>
@@ -651,10 +679,12 @@ export function CourseGroups({
                     Everyone on the course can join these, whichever group they are in, unless marked otherwise.
                   </p>
                 </div>
-                <Button size="sm" variant="outline" className="shrink-0" title="Schedule class" onClick={() => setScheduleFor(WHOLE_COURSE)}>
-                  <CalendarPlus className="size-4 @lg:mr-1.5" />
-                  <span className="hidden @lg:inline">Schedule class</span>
-                </Button>
+                {access.calendar && (
+                  <Button size="sm" variant="outline" className="shrink-0" title="Schedule class" onClick={() => setScheduleFor(WHOLE_COURSE)}>
+                    <CalendarPlus className="size-4 @lg:mr-1.5" />
+                    <span className="hidden @lg:inline">Schedule class</span>
+                  </Button>
+                )}
               </div>
               <div className="border-t">
                 <ClassList sessions={courseSessions} onChanged={() => void refetchGroups()} showInviteOnly />

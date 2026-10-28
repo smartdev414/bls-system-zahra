@@ -5,6 +5,7 @@ import { can } from "@/lib/permissions"
 import { sendEmail } from "@/lib/email"
 import { tutorInviteEmail } from "@/lib/email-templates"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 
 const INVITE_EXPIRY_DAYS = 365
 
@@ -118,4 +119,4 @@ async function handleGET(_req: NextRequest) {
 }
 
 export const GET = withAudit(handleGET)
-export const POST = withAudit(handlePOST)
+export const POST = withAudit(tutorWrite("students", handlePOST))

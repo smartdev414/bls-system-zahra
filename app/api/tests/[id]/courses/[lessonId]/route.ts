@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { courseTeachScope, requireCapability } from "@/lib/permissions"
 
 // DELETE /api/tests/[id]/courses/[lessonId] — takes the test out of one course.
@@ -30,4 +31,4 @@ async function handleDELETE(
   }
 }
 
-export const DELETE = withAudit(handleDELETE)
+export const DELETE = withAudit(tutorWrite("tests", handleDELETE))

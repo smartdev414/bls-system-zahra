@@ -6,6 +6,7 @@ import { randomBytes } from "crypto"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { reconcilePendingRecordings } from "@/lib/recording"
 import { completeOverdueLiveSessions } from "@/lib/live-session-status"
 import { usableGroups } from "@/lib/course-groups"
@@ -350,4 +351,4 @@ async function handlePOST(req: NextRequest) {
 }
 
 export const GET = withAudit(handleGET)
-export const POST = withAudit(handlePOST)
+export const POST = withAudit(tutorWrite("calendar", handlePOST))

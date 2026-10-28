@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { mediaDownloadHref } from "@/lib/protected-media"
@@ -187,7 +188,9 @@ export default function ViewLessonPage({
 function AssetView({ asset }: { asset: Asset }) {
   // A tablet shows an embedded PDF's first page only, so it gets every page drawn instead.
   const device = useDeviceKind()
-  const download = (
+  // Off, a teacher watches and reads here but gets no copy of any file.
+  const canDownload = useTutorAccess().download
+  const download = canDownload && (
     <a
       href={mediaDownloadHref(asset.fileUrl)}
       download={asset.fileName}
@@ -201,7 +204,7 @@ function AssetView({ asset }: { asset: Asset }) {
     return (
       <div className="flex flex-col gap-2">
         <div className="rounded-xl overflow-hidden border bg-black">
-          <ProtectedVideo src={asset.fileUrl} controls muted allowDownload className="w-full aspect-video" />
+          <ProtectedVideo src={asset.fileUrl} controls muted allowDownload={canDownload} className="w-full aspect-video" />
         </div>
         <VideoCleanBadge url={asset.fileUrl} />
         {download}

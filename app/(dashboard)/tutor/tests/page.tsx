@@ -17,6 +17,7 @@ import {
 import { Pagination } from "@/components/ui/pagination"
 import { AddToCourseDialog } from "@/components/tests/AddToCourseDialog"
 import { bankTestFacts, type BankTest } from "@/components/tests/TestBankPicker"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 import { useFetch } from "@/hooks/use-fetch"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
@@ -40,6 +41,8 @@ const selectClass =
 export default function TestsPage() {
   const router = useRouter()
   const testsBase = useTestsBase()
+  // A teacher an admin keeps to view only browses the bank but changes nothing.
+  const canChange = useTutorAccess().tests
   const [query, setQuery] = useState("")
   const [search, setSearch] = useState("")
   const [level, setLevel] = useState<CourseLevel | "">("")
@@ -109,10 +112,15 @@ export default function TestsPage() {
             Tests
           </h1>
           <p className="text-muted-foreground mt-1">Make a test once, then add it to any course.</p>
+          {!canChange && (
+            <p className="text-xs text-muted-foreground mt-1">View only — ask an admin if you need to change tests.</p>
+          )}
         </div>
-        <Button asChild>
-          <Link href={`${testsBase}/new`}><Plus className="size-4 mr-1.5" /> New test</Link>
-        </Button>
+        {canChange && (
+          <Button asChild>
+            <Link href={`${testsBase}/new`}><Plus className="size-4 mr-1.5" /> New test</Link>
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -169,9 +177,11 @@ export default function TestsPage() {
                     Make a test, add questions or signs from the dictionary, then put it in as many courses as you like.
                   </p>
                 </div>
-                <Button asChild>
-                  <Link href={`${testsBase}/new`}><Plus className="size-4 mr-1.5" /> Make your first test</Link>
-                </Button>
+                {canChange && (
+                  <Button asChild>
+                    <Link href={`${testsBase}/new`}><Plus className="size-4 mr-1.5" /> Make your first test</Link>
+                  </Button>
+                )}
               </>
             )}
           </CardContent>
@@ -196,29 +206,31 @@ export default function TestsPage() {
                       {test.level && (
                         <Badge variant="outline" className={cn("text-[10px]", levelColor[test.level])}>{levelLabel[test.level]}</Badge>
                       )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${test.title}`} disabled={busy === test.id}>
-                            <MoreHorizontal className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => setPlacing(test)}>
-                            <BookOpen className="size-4" /> Add to a course
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => duplicate(test)}>
-                            <Copy className="size-4" /> Make a copy
-                          </DropdownMenuItem>
-                          {test.canEdit && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => remove(test)}>
-                                <Trash2 className="size-4" /> Delete
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {canChange && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${test.title}`} disabled={busy === test.id}>
+                              <MoreHorizontal className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => setPlacing(test)}>
+                              <BookOpen className="size-4" /> Add to a course
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => duplicate(test)}>
+                              <Copy className="size-4" /> Make a copy
+                            </DropdownMenuItem>
+                            {test.canEdit && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => remove(test)}>
+                                  <Trash2 className="size-4" /> Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </div>
 
@@ -230,11 +242,11 @@ export default function TestsPage() {
                       {test.createdByName && ` · by ${test.createdByName}`}
                     </p>
                     <div className="flex gap-2">
-                      {test.courses.length === 0 && (
+                      {canChange && test.courses.length === 0 && (
                         <Button size="sm" variant="outline" onClick={() => setPlacing(test)}>Add to course</Button>
                       )}
-                      <Button asChild size="sm" variant={test.canEdit ? "default" : "outline"}>
-                        <Link href={`${testsBase}/${test.id}`}>{test.canEdit ? "Edit" : "View"}</Link>
+                      <Button asChild size="sm" variant={canChange && test.canEdit ? "default" : "outline"}>
+                        <Link href={`${testsBase}/${test.id}`}>{canChange && test.canEdit ? "Edit" : "View"}</Link>
                       </Button>
                     </div>
                   </div>

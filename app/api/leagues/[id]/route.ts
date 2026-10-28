@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { requireCapability } from "@/lib/permissions"
 import { canEditTest } from "@/lib/tests"
 import { parseDifficulty, parseEndsAt } from "@/lib/leagues"
@@ -124,5 +125,5 @@ async function handleDELETE(_req: NextRequest, { params }: Params) {
 }
 
 export const GET = withAudit(handleGET)
-export const PATCH = withAudit(handlePATCH)
-export const DELETE = withAudit(handleDELETE)
+export const PATCH = withAudit(tutorWrite("tests", handlePATCH))
+export const DELETE = withAudit(tutorWrite("tests", handleDELETE))

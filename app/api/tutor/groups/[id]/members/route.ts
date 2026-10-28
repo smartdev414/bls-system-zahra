@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, ownerScope } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { onGroupMembersAdded, onGroupMembersRemoved } from "@/lib/course-groups"
 
 // Add members to group
@@ -82,5 +83,5 @@ async function handleDELETE(
   }
 }
 
-export const POST = withAudit(handlePOST)
-export const DELETE = withAudit(handleDELETE)
+export const POST = withAudit(tutorWrite("groups", handlePOST))
+export const DELETE = withAudit(tutorWrite("groups", handleDELETE))

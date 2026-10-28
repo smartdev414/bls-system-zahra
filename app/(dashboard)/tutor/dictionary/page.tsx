@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 import { Search, Library, PlayCircle, BookOpen, Loader2, Filter, Image as ImageIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -81,6 +82,7 @@ function SignThumbnail({ sign }: { sign: Sign }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TutorDictionaryPage() {
+  const canDownload = useTutorAccess().download
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState("all")
   const [level, setLevel] = useState("all")
@@ -260,7 +262,7 @@ export default function TutorDictionaryPage() {
                     // Signs have no sound; this also silences any older upload that has some.
                     // (Muted is also what lets the browser start it by itself.)
                     muted
-                    allowDownload
+                    allowDownload={canDownload}
                     className="w-full rounded-xl max-h-[45vh] object-contain bg-black"
                     poster={selectedSign.imageUrl ?? undefined}
                   />

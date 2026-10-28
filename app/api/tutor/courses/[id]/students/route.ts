@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, courseTeachScope } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { releasedLessons } from "@/lib/lesson-release"
 import { BEHIND_AFTER_DAYS, reminderLink } from "@/lib/homework"
 import { enrolStudents, onStudentRemovedFromCourse } from "@/lib/course-groups"
@@ -175,5 +176,5 @@ async function handleDELETE(req: NextRequest, { params }: RouteContext) {
 }
 
 export const GET = withAudit(handleGET)
-export const POST = withAudit(handlePOST)
-export const DELETE = withAudit(handleDELETE)
+export const POST = withAudit(tutorWrite("students", handlePOST))
+export const DELETE = withAudit(tutorWrite("students", handleDELETE))

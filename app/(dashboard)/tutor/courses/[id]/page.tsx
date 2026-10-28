@@ -37,6 +37,7 @@ import { SectionLock } from "@/components/courses/SectionLock"
 import { CourseVisibilityButton } from "@/components/admin/course-visibility-button"
 import type { CourseVisibility } from "@/lib/course-visibility"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -197,6 +198,7 @@ function ThumbnailEditor({
 export default function CourseEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const access = useTutorAccess()
   const coursesBase = useCoursesBase()
   const { data, loading, refetch, mutate } = useFetch<CourseData>(`/api/tutor/courses/${id}`, {
     errorMessage: "Could not load course",
@@ -407,7 +409,8 @@ return (
 
       {!canEdit && (
         <p className="text-sm text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">
-          This course is set up by the school, so its lessons are view-only for you. You can still manage its groups, students and class times.
+          This course is set up by the school, so its lessons are view-only for you.
+          {access.groups && access.students && access.calendar && " You can still manage its groups, students and class times."}
         </p>
       )}
 

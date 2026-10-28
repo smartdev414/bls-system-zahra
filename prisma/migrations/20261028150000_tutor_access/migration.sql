@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "TutorProfile" ADD COLUMN "canEditTests" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "canEditCalendar" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "canEditLibrary" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "canEditGroups" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "canEditStudents" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "canDownload" BOOLEAN NOT NULL DEFAULT false;

@@ -4,7 +4,7 @@ import { useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Users, Search, Filter, Loader2, ShieldCheck,
-  UserCheck, Trash2, ChevronDown, Clock, Check, X, BookOpen,
+  UserCheck, Trash2, ChevronDown, Clock, Check, X, BookOpen, SlidersHorizontal,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,7 @@ import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
 import { can, roleLabel, type AppRole } from "@/lib/permissions"
+import { TUTOR_AREAS, type TutorAccess, type TutorArea } from "@/lib/tutor-areas"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,8 @@ type UserItem = {
   bslLevel: string | null
   createdAt: string
   isVerified: boolean | null
+  /** A teacher's switches (what they may change); null for everyone else. */
+  access: TutorAccess | null
   enrollmentCount: number
   courseCount: number
 }
@@ -68,6 +71,7 @@ const ASSIGNABLE_ROLES: Record<"admin" | "support", AppRole[]> = {
 export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } = {}) {
   const assignableRoles = viewerRole === "ADMIN" ? ASSIGNABLE_ROLES.admin : ASSIGNABLE_ROLES.support
   const canDelete = can(viewerRole, "users.delete")
+  const canSetAccess = can(viewerRole, "users.tutorAccess")
   const [query, setQuery] = useState("")
   const [roleFilter, setRoleFilter] = useState("all")
   const [page, setPage] = useState(1)
@@ -166,6 +170,7 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
               onMutated={refetch}
               assignableRoles={assignableRoles}
               canDelete={canDelete}
+              canSetAccess={canSetAccess}
             />
           ))}
         </div>
@@ -192,14 +197,17 @@ function UserRow({
   onMutated,
   assignableRoles,
   canDelete,
+  canSetAccess,
 }: {
   user: UserItem
   onMutated: () => void
   assignableRoles: AppRole[]
   canDelete: boolean
+  canSetAccess: boolean
 }) {
   const initials = user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
   const [approving, setApproving] = useState(false)
+  const [accessOpen, setAccessOpen] = useState(false)
 
   const { execute: updateRole } = usePatchCallback<
     { user: UserItem },
@@ -319,6 +327,12 @@ function UserRow({
               </Button>
             )}
 
+            {user.role === "TUTOR" && user.access && canSetAccess && (
+              <Button variant="outline" size="sm" onClick={() => setAccessOpen(true)}>
+                <SlidersHorizontal className="size-3.5 mr-1" /> Access
+              </Button>
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -368,6 +382,9 @@ function UserRow({
           onApprove={(courseIds) => setStatus({ status: "ACTIVE", courseIds })}
           onClose={() => setApproving(false)}
         />
+      )}
+      {accessOpen && user.access && (
+        <AccessDialog user={user} access={user.access} onSaved={onMutated} onClose={() => setAccessOpen(false)} />
       )}
     </Card>
   )
@@ -449,6 +466,79 @@ function ApproveDialog({ user, saving, onApprove, onClose }: {
               ? "Approve"
               : `Approve & add to ${picked.length === 1 ? "course" : `${picked.length} courses`}`}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Access — what one teacher may change ────────────────────────────────────
+
+function AccessDialog({ user, access, onSaved, onClose }: {
+  user: UserItem
+  access: TutorAccess
+  onSaved: () => void
+  onClose: () => void
+}) {
+  // Each switch saves as it is tapped; the list shows the saved state.
+  const [current, setCurrent] = useState(access)
+  const { execute: save, loading: saving } = usePatchCallback<
+    { user: { access: TutorAccess | null } },
+    { access: Partial<TutorAccess> }
+  >(`/api/admin/users/${user.id}`, {
+    errorMessage: "Could not save",
+    successMessage: false,
+    onSuccess: (d) => { if (d.user.access) setCurrent(d.user.access); onSaved() },
+    // Put the switch back the way it was saved.
+    onError: (_e, body) => setCurrent((c) => {
+      const next = { ...c }
+      for (const a of Object.keys(body.access) as TutorArea[]) next[a] = !body.access[a]
+      return next
+    }),
+  })
+
+  function toggle(area: TutorArea) {
+    setCurrent((c) => ({ ...c, [area]: !c[area] }))
+    save({ access: { [area]: !current[area] } })
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>What {user.name} can change</DialogTitle>
+          <DialogDescription>
+            Off means view only. They can always teach their classes, upload and record their own videos, and write captions.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-1.5">
+          {TUTOR_AREAS.map(({ area, label, hint }) => {
+            const on = current[area]
+            return (
+              <button
+                key={area}
+                type="button"
+                role="switch"
+                aria-checked={on}
+                disabled={saving}
+                onClick={() => toggle(area)}
+                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                  on ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                }`}
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium">{label}</span>
+                  <span className="block text-xs text-muted-foreground">{hint}</span>
+                </span>
+                <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${on ? "bg-primary" : "bg-input"}`}>
+                  <span className={`absolute top-0.5 size-4 rounded-full bg-background shadow transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <DialogFooter>
+          <Button onClick={onClose}>Done</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

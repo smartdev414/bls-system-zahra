@@ -7,6 +7,8 @@ import { TutorPendingApproval } from "@/components/tutor-pending-approval"
 import { getSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import prisma from "@/lib/prisma"
+import { TutorAccessProvider } from "@/components/tutor-access-provider"
+import { ACCESS_SELECT, accessFromProfile } from "@/lib/tutor-access"
 
 export default async function TutorLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -14,14 +16,15 @@ export default async function TutorLayout({ children }: { children: React.ReactN
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.sub },
-    select: { avatarUrl: true, tutorProfile: { select: { isVerified: true } } },
+    select: { avatarUrl: true, tutorProfile: { select: { isVerified: true, ...ACCESS_SELECT } } },
   })
 
   const user = { id: session.sub, name: session.name, email: session.email, avatarUrl: dbUser?.avatarUrl ?? undefined }
   const isVerified = dbUser?.tutorProfile?.isVerified ?? false
+  const access = accessFromProfile(dbUser?.tutorProfile)
 
   return (
-    <>
+    <TutorAccessProvider access={access}>
       <UserIdSeeder userId={user.id} />
       <CoTutorInviteListener userId={user.id} />
       <SessionStatusListener userId={user.id} />
@@ -30,6 +33,6 @@ export default async function TutorLayout({ children }: { children: React.ReactN
         {isVerified ? children : <TutorPendingApproval userName={session.name} />}
       </main>
       <Footer />
-    </>
+    </TutorAccessProvider>
   )
 }

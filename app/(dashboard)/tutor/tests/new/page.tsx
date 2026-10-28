@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { TestKindPicker } from "@/components/quiz/TestKindFields"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelLabel, type CourseLevel } from "@/lib/levels"
 import type { TestKind } from "@/lib/quiz"
+import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 
 // A new test: just its name, kind and level. The questions are added on the
 // next screen, where everything saves as it goes. Opened from a course's
@@ -21,6 +23,7 @@ export default function NewTestPage() {
   const router = useRouter()
   const testsBase = useTestsBase()
   const coursesBase = useCoursesBase()
+  const canChange = useTutorAccess().tests
   const searchParams = useSearchParams()
   const courseId = searchParams.get("courseId")
   const sectionId = searchParams.get("sectionId")
@@ -72,50 +75,54 @@ export default function NewTestPage() {
 
       <div>
         <h1 className="text-2xl font-black tracking-tight">New test</h1>
-        <p className="text-muted-foreground mt-1">Name it and choose its kind. You add the questions next.</p>
+        {canChange && <p className="text-muted-foreground mt-1">Name it and choose its kind. You add the questions next.</p>}
       </div>
 
-      <form
-        className="flex flex-col gap-6"
-        onSubmit={(e) => { e.preventDefault(); void create() }}
-      >
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="test-title">Title</Label>
-          <Input
-            id="test-title"
-            className="h-11"
-            placeholder="e.g. Colours — end of unit test"
-            value={title}
-            autoFocus
-            maxLength={150}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
+      {!canChange ? (
+        <p className="text-sm text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">{VIEW_ONLY_MESSAGE.tests}</p>
+      ) : (
+        <form
+          className="flex flex-col gap-6"
+          onSubmit={(e) => { e.preventDefault(); void create() }}
+        >
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="test-title">Title</Label>
+            <Input
+              id="test-title"
+              className="h-11"
+              placeholder="e.g. Colours — end of unit test"
+              value={title}
+              autoFocus
+              maxLength={150}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
 
-        <TestKindPicker value={kind} onChange={setKind} />
+          <TestKindPicker value={kind} onChange={setKind} />
 
-        <div className="flex flex-col gap-1.5 sm:max-w-xs">
-          <Label htmlFor="test-level">Level <span className="font-normal text-muted-foreground">(optional)</span></Label>
-          <select
-            id="test-level"
-            value={level}
-            onChange={(e) => setLevel(e.target.value as CourseLevel | "")}
-            className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="">Any level</option>
-            {COURSE_LEVELS.map((l) => <option key={l} value={l}>{levelLabel[l]}</option>)}
-          </select>
-          <p className="text-xs text-muted-foreground">Helps find the test later. It can still go in a course of any level.</p>
-        </div>
+          <div className="flex flex-col gap-1.5 sm:max-w-xs">
+            <Label htmlFor="test-level">Level <span className="font-normal text-muted-foreground">(optional)</span></Label>
+            <select
+              id="test-level"
+              value={level}
+              onChange={(e) => setLevel(e.target.value as CourseLevel | "")}
+              className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">Any level</option>
+              {COURSE_LEVELS.map((l) => <option key={l} value={l}>{levelLabel[l]}</option>)}
+            </select>
+            <p className="text-xs text-muted-foreground">Helps find the test later. It can still go in a course of any level.</p>
+          </div>
 
-        {error && (
-          <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">{error}</p>
-        )}
+          {error && (
+            <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">{error}</p>
+          )}
 
-        <Button type="submit" className="self-start" disabled={!title.trim() || saving}>
-          {saving ? <><Loader2 className="size-4 mr-1.5 animate-spin" /> Creating…</> : "Create and add questions"}
-        </Button>
-      </form>
+          <Button type="submit" className="self-start" disabled={!title.trim() || saving}>
+            {saving ? <><Loader2 className="size-4 mr-1.5 animate-spin" /> Creating…</> : "Create and add questions"}
+          </Button>
+        </form>
+      )}
     </div>
   )
 }

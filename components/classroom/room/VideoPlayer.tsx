@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, PlayCircle } from "lucide-react"
 import { ProtectedVideo } from "@/components/ui/protected-video"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 
 interface VideoPlayerProps {
   isTutor: boolean
@@ -48,6 +49,7 @@ export function VideoPlayer({
   onContentElement,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const canDownload = useTutorAccess().download
   const [needsUnblock, setNeedsUnblock] = useState(false)
   /**
    * Set when this browser cannot play the file at all. The usual cause is a
@@ -152,7 +154,7 @@ export function VideoPlayer({
         // Tutor gets full controls (scrubbing seeks broadcasts). Students are
         // read-only; playsInline keeps mobile Safari from going full-screen.
         controls={isTutor}
-        allowDownload={isTutor}
+        allowDownload={isTutor && canDownload}
         playsInline
         preload="auto"
         className="max-w-full max-h-full"

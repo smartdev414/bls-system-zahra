@@ -6,6 +6,7 @@ import { withAudit } from "@/lib/audit"
 import { createNotification } from "@/lib/notifications"
 import { enrolStudents } from "@/lib/course-groups"
 import { deleteStudentAnswerVideos } from "@/lib/test-recordings"
+import { ACCESS_SELECT, accessFromProfile, accessToProfileData, type TutorAccess } from "@/lib/tutor-access"
 
 async function handlePATCH(
   req: NextRequest,
@@ -28,6 +29,8 @@ async function handlePATCH(
       status?: "ACTIVE" | "REJECTED"
       /** Courses to put a student on as they are approved, so staff don't have to do it after. */
       courseIds?: string[]
+      /** What this teacher may change; only the switches sent are saved. */
+      access?: Partial<TutorAccess>
     }
 
     const user = await prisma.user.findUnique({ where: { id } })
@@ -63,6 +66,17 @@ async function handlePATCH(
         where: { userId: id },
         data: { isVerified: body.isVerified },
       })
+    }
+
+    if (body.access && typeof body.access === "object") {
+      if (!can(session.role, "users.tutorAccess")) {
+        return NextResponse.json({ message: "Only an administrator can change what a teacher may do" }, { status: 403 })
+      }
+      if (user.role !== "TUTOR") {
+        return NextResponse.json({ message: "Only teachers have these settings" }, { status: 400 })
+      }
+      const data = accessToProfileData(body.access)
+      await prisma.tutorProfile.upsert({ where: { userId: id }, create: { userId: id, ...data }, update: data })
     }
 
     if ((body.status === "ACTIVE" || body.status === "REJECTED") && body.status !== user.status) {
@@ -112,11 +126,13 @@ async function handlePATCH(
       where: { id },
       select: {
         id: true, name: true, email: true, role: true, status: true,
-        tutorProfile: { select: { isVerified: true } },
+        tutorProfile: { select: { isVerified: true, ...ACCESS_SELECT } },
       },
     })
 
-    return NextResponse.json({ user: updated })
+    return NextResponse.json({
+      user: updated && { ...updated, access: updated.role === "TUTOR" ? accessFromProfile(updated.tutorProfile) : null },
+    })
   } catch (err) {
     console.error("[PATCH /api/admin/users/[id]]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

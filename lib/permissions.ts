@@ -21,6 +21,8 @@ export type Capability =
   /** Promote/demote someone into a staff role (ADMIN, SUPPORT). Admin only —
    *  without this, support staff could grant themselves full access. */
   | "users.assignStaffRole"
+  /** Choose what each teacher may change (lib/tutor-areas.ts). Admin only. */
+  | "users.tutorAccess"
 
   // ─── Courses / classes ─────────────────────────────────────────────────────
   | "courses.view"
@@ -147,6 +149,7 @@ const ADMIN_CAPABILITIES: Capability[] = [
     "lessons.manage",
     "users.delete",
     "users.assignStaffRole",
+    "users.tutorAccess",
     "dictionary.manage",
     "auditLogs.view",
     "settings.manage",

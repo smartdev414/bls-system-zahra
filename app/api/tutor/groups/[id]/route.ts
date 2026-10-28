@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, ownerScope } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 
 async function handlePATCH(
   req: NextRequest,
@@ -57,5 +58,5 @@ async function handleDELETE(
   }
 }
 
-export const PATCH = withAudit(handlePATCH)
-export const DELETE = withAudit(handleDELETE)
+export const PATCH = withAudit(tutorWrite("groups", handlePATCH))
+export const DELETE = withAudit(tutorWrite("groups", handleDELETE))

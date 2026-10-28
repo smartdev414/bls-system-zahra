@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { requireCapability } from "@/lib/permissions"
 import { canEditTest } from "@/lib/tests"
 import { DIFFICULTY_INFO, LEAGUE_DIFFICULTIES, parseDifficulty, parseEndsAt } from "@/lib/leagues"
@@ -79,4 +80,4 @@ async function handlePOST(req: NextRequest) {
 }
 
 export const GET = withAudit(handleGET)
-export const POST = withAudit(handlePOST)
+export const POST = withAudit(tutorWrite("tests", handlePOST))

@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils"
 import type { UploadedFile } from "@/components/ui/file-upload"
 import type { LibraryAssetType, LibraryItem } from "@/lib/library"
 import { COURSE_LEVELS, levelLabel, type CourseLevel } from "@/lib/levels"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 
 type Props = {
   open: boolean
@@ -80,18 +81,21 @@ function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: O
   const [query, setQuery] = useState("")
   const [level, setLevel] = useState<CourseLevel | "">("")
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // A view-only library: the teacher picks only from their own videos.
+  const ownOnly = !useTutorAccess().library
 
   const attached = useMemo(() => new Set(attachedUrls), [attachedUrls])
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase()
     return (data?.items ?? []).filter((item) =>
+      (!ownOnly || (item.source === "library" && !item.shared)) &&
       (!allowedTypes || allowedTypes.includes(item.assetType)) &&
       // "Used" files carry no level, so a level filter narrows to the library.
       (!level || item.level === level) &&
       (!q || item.title.toLowerCase().includes(q) || item.fileName.toLowerCase().includes(q)),
     )
-  }, [data, query, level, allowedTypes])
+  }, [data, query, level, allowedTypes, ownOnly])
 
   const libraryItems = items.filter((i) => i.source === "library")
   const usedItems = items.filter((i) => i.source === "used")
@@ -165,7 +169,9 @@ function PickerBody({ onOpenChange, onPick, allowedTypes, attachedUrls = [] }: O
         <DialogHeader>
           <DialogTitle>Choose from library</DialogTitle>
           <DialogDescription>
-Pick files from the school&apos;s library. They&apos;re added without uploading again.
+            {ownOnly
+              ? "Pick from your own videos. The school library is view only for you."
+              : <>Pick files from the school&apos;s library. They&apos;re added without uploading again.</>}
           </DialogDescription>
         </DialogHeader>
 
@@ -198,7 +204,11 @@ Pick files from the school&apos;s library. They&apos;re added without uploading 
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
               <FolderOpen className="size-8" />
-              {query || level ? "No files match your search." : "No files here yet."}
+              {query || level
+                ? "No files match your search."
+                : ownOnly
+                ? "You have no videos of your own yet."
+                : "No files here yet."}
               <Link href={libraryHref} className="text-primary font-medium hover:underline">
                 {data?.canManage ? "Upload files to the library" : "Open the library"}
               </Link>
@@ -207,7 +217,9 @@ Pick files from the school&apos;s library. They&apos;re added without uploading 
             <>
               {libraryItems.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Library</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    {ownOnly ? "Your videos" : "Library"}
+                  </p>
                   {libraryItems.map(renderItem)}
                 </div>
               )}

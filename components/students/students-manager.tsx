@@ -32,6 +32,8 @@ import { ManageGroupsModal } from "@/components/classroom/ManageGroupsModal"
 import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
 import { toast } from "sonner"
 import { levelColor, type CourseLevel } from "@/lib/levels"
+import { useTutorAccess } from "@/components/tutor-access-provider"
+import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 
 type CourseProgress = {
   id: string
@@ -173,6 +175,7 @@ function InviteModal({
 
 export function StudentsManager() {
   const router = useRouter()
+  const access = useTutorAccess()
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -251,11 +254,13 @@ export function StudentsManager() {
         {/* Controls */}
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowGroups(true)}>
-            <FolderOpen className="size-3.5" /> Manage Groups
+            <FolderOpen className="size-3.5" /> {access.groups ? "Manage Groups" : "Groups"}
           </Button>
-          <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowEmailInvite(true)}>
-            <UserPlus className="size-3.5" /> Invite Students
-          </Button>
+          {access.students && (
+            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowEmailInvite(true)}>
+              <UserPlus className="size-3.5" /> Invite Students
+            </Button>
+          )}
 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
@@ -305,6 +310,8 @@ export function StudentsManager() {
           </DropdownMenu>
         </div>
       </div>
+
+      {!access.students && <p className="text-xs text-muted-foreground -mt-2">{VIEW_ONLY_MESSAGE.students}</p>}
 
       {/* List */}
       {loading ? (
@@ -386,7 +393,8 @@ export function StudentsManager() {
                     </div>
 
                     <div className="flex items-center gap-1 justify-end">
-                      <Button
+                      {/* Inviting to a class changes the calendar. */}
+                      {access.calendar && <Button
                         variant="ghost"
                         size="icon"
                         className="size-7 text-muted-foreground hover:text-foreground"
@@ -394,7 +402,7 @@ export function StudentsManager() {
                         onClick={() => setInviteStudent(student)}
                       >
                         <CalendarPlus className="size-3.5" />
-                      </Button>
+                      </Button>}
                     </div>
                   </div>
 

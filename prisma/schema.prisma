@@ -361,6 +361,14 @@ model TutorProfile {
   bio            String?
   qualifications String[] // e.g. ["CACDP Level 3", "Signature BSL"]
   isVerified     Boolean  @default(false)
+  // What an admin lets this teacher change (see lib/tutor-access.ts). Off means
+  // view only; downloads off means watch only. Everything starts off.
+  canEditTests    Boolean @default(false)
+  canEditCalendar Boolean @default(false)
+  canEditLibrary  Boolean @default(false)
+  canEditGroups   Boolean @default(false)
+  canEditStudents Boolean @default(false)
+  canDownload     Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

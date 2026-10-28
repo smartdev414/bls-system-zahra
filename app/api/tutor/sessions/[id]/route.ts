@@ -6,6 +6,7 @@ import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
+import { requireTutorAccess, tutorWrite } from "@/lib/tutor-access"
 import { reconcileSessionRecording, scheduleRecordingReconcile } from "@/lib/recording"
 import { closeLiveKitRoom, notifySessionStatusChange } from "@/lib/live-session-status"
 
@@ -112,6 +113,15 @@ async function handlePATCH(
       visibility?: "PUBLIC" | "INVITE_ONLY"
       invitedStudentIds?: string[]
       invitedTutorIds?: string[]
+    }
+
+    // Starting and ending a class is teaching, which every tutor does. Anything
+    // else changes the timetable, which an admin may have made view only.
+    const teachingOnly = (body.status === "LIVE" || body.status === "COMPLETED")
+      && Object.keys(body).every((k) => k === "status")
+    if (!teachingOnly) {
+      const denied = await requireTutorAccess(session, "calendar")
+      if (denied) return denied
     }
 
     const data: Record<string, unknown> = {}
@@ -349,4 +359,4 @@ async function handleDELETE(
 
 export const GET = withAudit(handleGET)
 export const PATCH = withAudit(handlePATCH)
-export const DELETE = withAudit(handleDELETE)
+export const DELETE = withAudit(tutorWrite("calendar", handleDELETE))

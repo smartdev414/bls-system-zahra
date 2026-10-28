@@ -14,6 +14,7 @@ import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
 
 type DashboardData = {
@@ -72,6 +73,8 @@ export default function TutorDashboardPage() {
     errorMessage: "Could not load dashboard",
   })
   const [showInviteModal, setShowInviteModal] = useState(false)
+  // A view-only calendar can't schedule, so its shortcuts go.
+  const { calendar: canSchedule, students: canInvite } = useTutorAccess()
 
   const firstName = data?.tutorName?.split(" ")[0] ?? "there"
   const stats = data?.stats
@@ -81,7 +84,7 @@ export default function TutorDashboardPage() {
     <div className="flex flex-col gap-8">
 
       {/* Quick-start strip — shown only when no courses and no students */}
-      {isEmpty && (
+      {isEmpty && canInvite && (
         <div className="grid grid-cols-1 gap-3">
 
           {/* Invite students */}
@@ -123,15 +126,19 @@ export default function TutorDashboardPage() {
               <p className="text-primary-foreground/80 mb-6">
                 {stats && stats.upcomingSessionCount > 0
                   ? `You have ${stats.upcomingSessionCount} session${stats.upcomingSessionCount !== 1 ? "s" : ""} coming up and ${stats.totalStudents} student${stats.totalStudents !== 1 ? "s" : ""} enrolled.`
-                  : "Schedule a session for one of your courses to get started."}
+                  : canSchedule
+                  ? "Schedule a session for one of your courses to get started."
+                  : "No sessions coming up yet."}
               </p>
               <div className="flex gap-3">
-                <Button asChild variant="secondary" size="sm">
-                  <Link href="/tutor/sessions">
-                    <CalendarPlus className="size-4 mr-1.5" />
-                    Schedule Session
-                  </Link>
-                </Button>
+                {canSchedule && (
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href="/tutor/sessions">
+                      <CalendarPlus className="size-4 mr-1.5" />
+                      Schedule Session
+                    </Link>
+                  </Button>
+                )}
                 <Button asChild size="sm" className="bg-white/15 hover:bg-white/25 text-primary-foreground border-0">
                   <Link href="/tutor/courses">
                     <BookOpen className="size-4 mr-1.5" />
@@ -382,12 +389,14 @@ export default function TutorDashboardPage() {
                 <p className="text-sm text-muted-foreground text-center py-4">No upcoming sessions.</p>
               )}
 
-              <Separator />
-              <Button asChild className="w-full" size="sm">
-                <Link href="/tutor/sessions">
-                  <CalendarPlus className="size-4 mr-1.5" /> Schedule Session
-                </Link>
-              </Button>
+              {canSchedule && <>
+                <Separator />
+                <Button asChild className="w-full" size="sm">
+                  <Link href="/tutor/sessions">
+                    <CalendarPlus className="size-4 mr-1.5" /> Schedule Session
+                  </Link>
+                </Button>
+              </>}
             </CardContent>
           </Card>
         </div>

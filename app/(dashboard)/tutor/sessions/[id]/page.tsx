@@ -18,6 +18,8 @@ import { useFetch, usePatchCallback, useDeleteCallback } from "@/hooks/use-fetch
 import { InviteStudentsModal } from "@/components/classroom/InviteStudentsModal"
 import { SlidePrepCard } from "@/components/classroom/SlidePrepCard"
 import { toast } from "sonner"
+import { useTutorAccess } from "@/components/tutor-access-provider"
+import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 
 type Invite = {
   studentId: string
@@ -83,6 +85,8 @@ function formatDuration(startIso: string, endIso: string) {
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  // View-only calendar: start/end and the classroom stay, changes go.
+  const { calendar: canChange } = useTutorAccess()
   const [showInviteModal, setShowInviteModal] = useState(false)
 
   const { data, loading, refetch } = useFetch<SessionData>(`/api/tutor/sessions/${id}`, {
@@ -185,6 +189,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             <div className="flex-1 min-w-0">
               <Badge variant="outline" className={`mb-3 ${cfg.className}`}>{cfg.label}</Badge>
               <h1 className="text-2xl font-black">{session.title}</h1>
+              {!canChange && (
+                <p className="text-xs text-muted-foreground mt-1">{VIEW_ONLY_MESSAGE.calendar}</p>
+              )}
               {session.description && (
                 <p className="text-muted-foreground mt-2">{session.description}</p>
               )}
@@ -217,7 +224,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                   <CheckCircle2 className="size-4 mr-1.5" /> End Session
                 </Button>
               )}
-              {!isDone && (
+              {!isDone && canChange && (
                 <Button
                   variant="outline"
                   className="text-destructive hover:text-destructive"
@@ -298,18 +305,23 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                   <Badge variant="secondary" className="ml-1">{invitesData!.invites.length}</Badge>
                 )}
               </CardTitle>
-              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowInviteModal(true)}>
-                <UserPlus className="size-3" /> Invite
-              </Button>
+              {canChange && (
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowInviteModal(true)}>
+                  <UserPlus className="size-3" /> Invite
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {!invitesData || invitesData.invites.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">
-                No students invited yet.{" "}
-                <button className="text-primary underline underline-offset-2" onClick={() => setShowInviteModal(true)}>
-                  Invite students
-                </button>
+                No students invited yet.
+                {canChange && <>
+                  {" "}
+                  <button className="text-primary underline underline-offset-2" onClick={() => setShowInviteModal(true)}>
+                    Invite students
+                  </button>
+                </>}
               </p>
             ) : (
               <div className="divide-y">
@@ -329,14 +341,16 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
                       <p className="text-xs text-muted-foreground shrink-0 hidden sm:block">
                         {new Date(inv.invitedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                       </p>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-7 opacity-0 group-hover/invite:opacity-100 text-destructive hover:text-destructive"
-                        onClick={() => removeInvite(inv.studentId)}
-                      >
-                        <X className="size-3.5" />
-                      </Button>
+                      {canChange && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 opacity-0 group-hover/invite:opacity-100 text-destructive hover:text-destructive"
+                          onClick={() => removeInvite(inv.studentId)}
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      )}
                     </div>
                   )
                 })}
@@ -413,7 +427,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         </CardContent>
       </Card>
 
-      {showInviteModal && (
+      {showInviteModal && canChange && (
         <InviteStudentsModal
           sessionId={id}
           sessionTitle={session.title}
@@ -422,7 +436,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {/* Danger zone */}
-      {!isDone && (
+      {!isDone && canChange && (
         <Card className="shadow-sm border-destructive/30">
           <CardHeader className="pb-3">
             <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { getTutorAccess, tutorWrite, VIEW_ONLY_MESSAGE } from "@/lib/tutor-access"
 
 async function handleGET(
   _req: Request,
@@ -65,6 +66,18 @@ async function handlePOST(
       return NextResponse.json({ message: "fileUrl and fileName are required" }, { status: 400 })
     }
 
+    // The school's files (its library and its lessons) are view only for a
+    // teacher an admin hasn't given the library to; their own uploads are fine.
+    if (session.role === "TUTOR" && !(await getTutorAccess(session)).library) {
+      const [schoolFile, lessonFile] = await Promise.all([
+        prisma.libraryFile.findFirst({ where: { fileUrl: body.fileUrl, tutorId: { not: session.sub } }, select: { id: true } }),
+        prisma.lessonAsset.findFirst({ where: { fileUrl: body.fileUrl }, select: { id: true } }),
+      ])
+      if (schoolFile || lessonFile) {
+        return NextResponse.json({ message: VIEW_ONLY_MESSAGE.library }, { status: 403 })
+      }
+    }
+
     const resource = await prisma.liveSessionResource.create({
       data: {
         sessionId: id,
@@ -86,4 +99,4 @@ async function handlePOST(
 }
 
 export const GET = withAudit(handleGET)
-export const POST = withAudit(handlePOST)
+export const POST = withAudit(tutorWrite("calendar", handlePOST))

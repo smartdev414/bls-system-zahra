@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { tutorWrite } from "@/lib/tutor-access"
 import { requireCapability } from "@/lib/permissions"
 import { isAssessment, isPresentation, isSelfMarked, isSignTest } from "@/lib/quiz"
 import { testEditScope } from "@/lib/tests"
@@ -106,5 +107,5 @@ async function handleDELETE(
   }
 }
 
-export const PUT = withAudit(handlePUT)
-export const DELETE = withAudit(handleDELETE)
+export const PUT = withAudit(tutorWrite("tests", handlePUT))
+export const DELETE = withAudit(tutorWrite("tests", handleDELETE))

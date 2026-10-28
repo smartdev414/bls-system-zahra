@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { can, type AppRole } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
+import { ACCESS_SELECT, accessFromProfile } from "@/lib/tutor-access"
 import { AWAITING_APPROVAL } from "@/lib/account-approval"
 
 async function handleGET(req: NextRequest) {
@@ -58,7 +59,7 @@ async function handleGET(req: NextRequest) {
           signupNote: true,
           bslLevel: true,
           createdAt: true,
-          tutorProfile: { select: { isVerified: true } },
+          tutorProfile: { select: { isVerified: true, ...ACCESS_SELECT } },
           _count: { select: { enrollments: true, courses: true } },
         },
       }),
@@ -75,6 +76,7 @@ async function handleGET(req: NextRequest) {
         bslLevel: u.bslLevel,
         createdAt: u.createdAt.toISOString(),
         isVerified: u.tutorProfile?.isVerified ?? null,
+        access: u.role === "TUTOR" ? accessFromProfile(u.tutorProfile) : null,
         enrollmentCount: u._count.enrollments,
         courseCount: u._count.courses,
       })),

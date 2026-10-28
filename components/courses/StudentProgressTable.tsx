@@ -59,7 +59,8 @@ export function StudentProgressTable({
   remindingIds: Set<string>
   removingId: string | null
   onRemind: (student: CourseStudent) => void
-  onRemove: (student: CourseStudent) => void
+  /** Left out for someone who may not take students off the course. */
+  onRemove?: (student: CourseStudent) => void
 }) {
   return (
     // Sized by its own width, not the screen's: in a narrow column the progress
@@ -138,7 +139,7 @@ export function StudentProgressTable({
                   {remindingIds.has(student.id) ? <Loader2 className="size-3.5 animate-spin" /> : <BellRing className="size-3.5" />}
                   Remind
                 </Button>
-                <Button
+                {onRemove && <Button
                   variant="ghost"
                   size="icon"
                   className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
@@ -148,7 +149,7 @@ export function StudentProgressTable({
                   title="Remove from this course"
                 >
                   {removingId === student.id ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
-                </Button>
+                </Button>}
               </div>
             </div>
           )

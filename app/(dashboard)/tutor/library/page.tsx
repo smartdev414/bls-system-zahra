@@ -35,6 +35,8 @@ import { UseInClassDialog } from "@/components/library/UseInClassDialog"
 import { ReplaceBackgroundDialog } from "@/components/library/ReplaceBackgroundDialog"
 import { parsePreparedCaptions, PREPARED_CAPTION_LIMIT, type LibraryItem } from "@/lib/library"
 import { COURSE_LEVELS, levelColorSolid, levelLabel, type CourseLevel } from "@/lib/levels"
+import { useTutorAccess } from "@/components/tutor-access-provider"
+import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 
 const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime"
 const ACCEPT =
@@ -132,6 +134,9 @@ export default function TutorLibraryPage() {
   // Only admins add to (and re-file) the school's library; teachers add
   // videos to their own.
   const canManage = data?.canManage ?? false
+  // A view-only library leaves the school's (and already-used) files to browse
+  // and play; a teacher's own videos stay fully theirs.
+  const access = useTutorAccess()
   const busy = uploads.some((u) => u.status === "uploading")
 
   useEffect(() => {
@@ -228,6 +233,9 @@ export default function TutorLibraryPage() {
 
   function renderRow(item: LibraryItem) {
     const Icon = itemIcon(item.assetType)
+    const canUse = access.library || (item.source === "library" && !item.shared)
+    // Adding to a class changes the class, which a view-only calendar can't.
+    const canAddToClass = access.calendar
     return (
       <div key={item.fileUrl} className="flex items-center gap-3 rounded-xl border bg-card p-3 overflow-hidden">
         <div className="rounded-lg bg-primary/10 p-2 shrink-0">
@@ -248,6 +256,7 @@ export default function TutorLibraryPage() {
           </p>
           <VideoCleanBadge url={item.fileUrl} className="mt-0.5" />
         </div>
+        {canUse && (canManage || canAddToClass || (item.assetType === "VIDEO" && cleanAvailable)) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 text-xs" aria-label={`Use ${item.title}`}>
@@ -262,12 +271,14 @@ export default function TutorLibraryPage() {
                 <BookOpen className="size-4" /> Add to a new lesson
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onSelect={() => setUse({ item, action: "class" })}>
-              <Presentation className="size-4" /> Add to a class
-            </DropdownMenuItem>
+            {canAddToClass && (
+              <DropdownMenuItem onSelect={() => setUse({ item, action: "class" })}>
+                <Presentation className="size-4" /> Add to a class
+              </DropdownMenuItem>
+            )}
             {item.assetType === "VIDEO" && cleanAvailable && (
               <>
-                <DropdownMenuSeparator />
+                {(canManage || canAddToClass) && <DropdownMenuSeparator />}
                 <DropdownMenuItem onSelect={() => setUse({ item, action: "background" })}>
                   <Wand2 className="size-4" /> Replace background (AI)
                 </DropdownMenuItem>
@@ -275,6 +286,7 @@ export default function TutorLibraryPage() {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
         {item.source === "library" && (
           canManage && item.shared ? (
             <select
@@ -307,7 +319,7 @@ export default function TutorLibraryPage() {
               {removing === item.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
             </Button>
           )
-        ) : canManage ? (
+        ) : canManage && canUse ? (
           <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => addUsedToLibrary(item)}>
             Add to library
           </Button>
@@ -324,7 +336,9 @@ export default function TutorLibraryPage() {
           <p className="text-muted-foreground mt-1">
             {canManage
               ? "Upload the school's materials once, filed by level. Every teacher can then pick them into a lesson or a class."
-              : "The school's materials, plus your own videos. Pick any file into a class — or record a new video here and use it in a lesson, a test or a class."}
+              : access.library
+              ? "The school's materials, plus your own videos. Pick any file into a class — or record a new video here and use it in a lesson, a test or a class."
+              : "The school's materials, plus your own videos. Record or upload a video here and use it in a lesson, a test or a class."}
           </p>
         </div>
         {data && !recording && (
@@ -463,6 +477,9 @@ export default function TutorLibraryPage() {
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                 School library ({schoolItems.length})
               </p>
+              {!access.library && (
+                <p className="text-xs text-muted-foreground -mt-1">{VIEW_ONLY_MESSAGE.library}</p>
+              )}
               {schoolItems.map(renderRow)}
             </section>
           )}
@@ -485,7 +502,9 @@ export default function TutorLibraryPage() {
               <p className="text-xs text-muted-foreground -mt-1">
                 {canManage
                   ? "These can be picked too. Add one to the library to keep it with the school's other materials."
-                  : "These can be picked too."}
+                  : access.library
+                  ? "These can be picked too."
+                  : "View only."}
               </p>
               {usedItems.map(renderRow)}
             </section>

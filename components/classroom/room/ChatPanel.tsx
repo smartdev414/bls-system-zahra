@@ -18,6 +18,7 @@ import {
 } from "@/lib/multipart-upload"
 import { mediaDownloadHref, mediaSrc } from "@/lib/protected-media"
 import { ProtectedVideo } from "@/components/ui/protected-video"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 
 // ─── Per-user appearance ────────────────────────────────────────────────────
 // Chat readability is personal — colour-blind and low-vision students need to
@@ -184,9 +185,12 @@ function formatBytes(bytes: number) {
 function AttachmentPreview({ attachment, isTutor }: { attachment: ChatAttachment; isTutor: boolean }) {
   const isImage = attachment.mimeType.startsWith("image/")
   const isVideo = attachment.mimeType.startsWith("video/")
-  // Video is watch-only for students: they get the inline player and nothing
-  // that hands them the file. Other attachments stay open to everyone.
-  const canTakeFile = isTutor || !isVideo
+  // Video is watch-only for students, and for a teacher an admin has turned
+  // downloads off for: they get the inline player and nothing that hands them
+  // the file. Other attachments stay open, but such a teacher gets no Download
+  // (the media route refuses it) — Open still shows the file.
+  const canDownload = useTutorAccess().download
+  const canTakeFile = (isTutor && canDownload) || !isVideo
 
   return (
     <div className="mt-1.5 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-white/10 bg-black/20">
@@ -202,7 +206,7 @@ function AttachmentPreview({ attachment, isTutor }: { attachment: ChatAttachment
         <ProtectedVideo
           src={attachment.fileUrl}
           controls
-          allowDownload={isTutor}
+          allowDownload={isTutor && canDownload}
           playsInline
           className="max-h-48 w-full max-w-full bg-zinc-950"
           preload="metadata"
@@ -223,7 +227,7 @@ function AttachmentPreview({ attachment, isTutor }: { attachment: ChatAttachment
           >
             Open
           </a>
-          <a
+          {canDownload && <a
             href={mediaDownloadHref(attachment.fileUrl)}
             download={attachment.fileName}
             target="_blank"
@@ -232,7 +236,7 @@ function AttachmentPreview({ attachment, isTutor }: { attachment: ChatAttachment
           >
             <Download className="size-3" />
             Download
-          </a>
+          </a>}
         </div>
       )}
     </div>

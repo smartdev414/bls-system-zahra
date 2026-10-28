@@ -38,6 +38,8 @@ import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
 import { ClassFormatBadge, VenueLink } from "@/components/sessions/face-to-face"
 import { mediaDownloadHref } from "@/lib/protected-media"
+import { useTutorAccess } from "@/components/tutor-access-provider"
+import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 import { isUpcomingClass, sortClasses } from "@/lib/session-order"
 import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
 
@@ -241,6 +243,7 @@ function ScheduleSessionDialog({
   const isEdit = !!editSession
   const isDuplicate = !!duplicateSession && !editSession
   const scope = useSessionsScope()
+  const access = useTutorAccess()
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const open = controlledOpen !== undefined ? controlledOpen : uncontrolledOpen
   const setOpen = controlledOnOpenChange ?? setUncontrolledOpen
@@ -464,6 +467,10 @@ function ScheduleSessionDialog({
   const today = new Date(); today.setHours(0, 0, 0, 0)
   // A face-to-face class takes its venue from its course, so it needs one.
   const canSubmit = title.trim() && date && time && (!faceToFace || courseId)
+
+  // A view-only calendar schedules, edits and duplicates nothing, so every
+  // Schedule button and form on the page goes with this one check.
+  if (!access.calendar) return null
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v && !isEdit) resetForm() }}>
@@ -995,6 +1002,7 @@ function SessionCard({
   const [attendeesOpen, setAttendeesOpen] = useState(false)
   const [addStudentsOpen, setAddStudentsOpen] = useState(false)
   const scope = useSessionsScope()
+  const access = useTutorAccess()
   const canWatch = scope.canTeach || !!scope.canWatchRecordings
   const [recordingOpen, setRecordingOpen] = useState(false)
   const [recordingSegments, setRecordingSegments] = useState<string[]>([])
@@ -1178,7 +1186,7 @@ function SessionCard({
               <CheckCircle2 className="size-3 mr-1.5" /> End Session
             </Button>
           )}
-          {session.status === "SCHEDULED" && !session.isCoTutor && (
+          {session.status === "SCHEDULED" && !session.isCoTutor && access.calendar && (
             <>
               {/* Adding students has its own button, so nobody opens Edit for
                   it and takes someone off the class by mistake. */}
@@ -1226,7 +1234,7 @@ function SessionCard({
           {session.status === "CANCELLED" && (
             <span className="text-xs text-muted-foreground">This session was cancelled</span>
           )}
-          {!session.isCoTutor && (
+          {!session.isCoTutor && access.calendar && (
             <Button
               size="sm"
               variant="ghost"
@@ -1247,7 +1255,7 @@ function SessionCard({
         onCreated={() => { setEditOpen(false); onMutated?.() }}
       />
 
-      {addStudentsOpen && (
+      {addStudentsOpen && access.calendar && (
         <InviteStudentsModal
           sessionId={session.id}
           sessionTitle={session.title}
@@ -1292,12 +1300,15 @@ function SessionCard({
                 const name = recordingSegments.length > 1 ? `part ${i + 1}` : "recording"
                 return (
                   <div key={segment} className="flex flex-wrap gap-2">
-                    <Button asChild variant="outline" size="sm">
-                      <a href={mediaDownloadHref(segment)}>
-                        <Download className="size-4 mr-1.5" />
-                        Download {name}
-                      </a>
-                    </Button>
+                    {/* Downloads off: watch only (the server refuses ?download too). */}
+                    {access.download && (
+                      <Button asChild variant="outline" size="sm">
+                        <a href={mediaDownloadHref(segment)}>
+                          <Download className="size-4 mr-1.5" />
+                          Download {name}
+                        </a>
+                      </Button>
+                    )}
                     <Button
                       variant="outline" size="sm"
                       className="text-destructive hover:text-destructive"
@@ -1740,7 +1751,8 @@ export function SessionsManager({
   // "Schedule Session" on a course page lands here with ?new=1&courseId=… —
   // open the form straight away with that course linked, then tidy the URL so
   // a refresh doesn't reopen it.
-  const startNew = searchParams.get("new") === "1"
+  const access = useTutorAccess()
+  const startNew = searchParams.get("new") === "1" && access.calendar
   const [scheduleOpen, setScheduleOpen] = useState(startNew)
   const [presetCourseId, setPresetCourseId] = useState(
     startNew ? searchParams.get("courseId") ?? "" : ""
@@ -1785,6 +1797,9 @@ export function SessionsManager({
           <div>
             <h1 className="text-2xl font-black tracking-tight">{heading}</h1>
             <p className="text-sm text-muted-foreground">{subheading}</p>
+            {!access.calendar && (
+              <p className="text-xs text-muted-foreground mt-0.5">{VIEW_ONLY_MESSAGE.calendar}</p>
+            )}
           </div>
         </div>
 

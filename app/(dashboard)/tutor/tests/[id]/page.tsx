@@ -31,9 +31,11 @@ import { TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/
 import { AddToCourseDialog } from "@/components/tests/AddToCourseDialog"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { TestQuestionsView } from "@/components/tests/TestQuestionsView"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
 import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PART_MARKS, TEST_KIND_INFO, isAssessment, isPresentation, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
+import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -153,6 +155,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
   const { id } = use(params)
   const router = useRouter()
   const testsBase = useTestsBase()
+  // Off, the teacher sees the test as read-only: no saving, copying, deleting
+  // or putting it in courses.
+  const canChange = useTutorAccess().tests
 
   const [test, setTest] = useState<TestFull | null>(null)
   const [canEdit, setCanEdit] = useState(false)
@@ -173,7 +178,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
       if (!res.ok) throw new Error()
       const d = await res.json() as { test: TestFull; canEdit: boolean }
       setTest(d.test)
-      setCanEdit(d.canEdit)
+      setCanEdit(d.canEdit && canChange)
       return d.test
     } catch {
       setTest(null)
@@ -389,7 +394,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
             ? "This test is not in any course yet, so students cannot take it."
             : `Students on ${courseCount === 1 ? "this course" : `these ${courseCount} courses`} take this test. Each course keeps its own results.`}
         </p>
-        <Button size="sm" onClick={() => setPlacing(true)}><Plus className="size-4 mr-1.5" /> Add to a course</Button>
+        {canChange && (
+          <Button size="sm" onClick={() => setPlacing(true)}><Plus className="size-4 mr-1.5" /> Add to a course</Button>
+        )}
       </div>
       {test.placements.map((p) => {
         const coursesBase = testsBase.startsWith("/admin") ? "/admin/courses" : "/tutor/courses"
@@ -413,10 +420,12 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                 <Button asChild size="sm" variant="outline">
                   <Link href={`${coursesBase}/${p.course.id}/lessons/${p.lessonId}`}><BarChart3 className="size-4 mr-1.5" /> Results</Link>
                 </Button>
-                <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" title="Take out of this course"
-                  aria-label={`Take out of ${p.course.title}`} onClick={() => takeOut(p)}>
-                  <X className="size-4" />
-                </Button>
+                {canChange && (
+                  <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" title="Take out of this course"
+                    aria-label={`Take out of ${p.course.title}`} onClick={() => takeOut(p)}>
+                    <X className="size-4" />
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -444,39 +453,43 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {canEdit ? (
-            <Button onClick={save} disabled={saving || !unsaved}>
-              {saving ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Save className="size-4 mr-1.5" />}
-              {saving ? "Saving…" : unsaved ? "Save changes" : "Saved"}
-            </Button>
-          ) : (
-            <Button onClick={duplicate}><Copy className="size-4 mr-1.5" /> Make a copy to change</Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" aria-label="More"><MoreHorizontal className="size-4" /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setPlacing(true)}><BookOpen className="size-4" /> Add to a course</DropdownMenuItem>
-              {canEdit && <DropdownMenuItem onSelect={duplicate}><Copy className="size-4" /> Make a copy</DropdownMenuItem>}
-              {canEdit && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={remove}>
-                    <Trash2 className="size-4" /> Delete test
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {canChange && (
+          <div className="flex items-center gap-2">
+            {canEdit ? (
+              <Button onClick={save} disabled={saving || !unsaved}>
+                {saving ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Save className="size-4 mr-1.5" />}
+                {saving ? "Saving…" : unsaved ? "Save changes" : "Saved"}
+              </Button>
+            ) : (
+              <Button onClick={duplicate}><Copy className="size-4 mr-1.5" /> Make a copy to change</Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label="More"><MoreHorizontal className="size-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setPlacing(true)}><BookOpen className="size-4" /> Add to a course</DropdownMenuItem>
+                {canEdit && <DropdownMenuItem onSelect={duplicate}><Copy className="size-4" /> Make a copy</DropdownMenuItem>}
+                {canEdit && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={remove}>
+                      <Trash2 className="size-4" /> Delete test
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
 
       {!canEdit && (
         <p className="flex items-start gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
           <Info className="size-4 shrink-0 mt-0.5" />
-          {test.createdByName ?? "Someone else"} made this test, so you can use it but not change it. Make a copy to change it.
+          {!canChange
+            ? VIEW_ONLY_MESSAGE.tests
+            : `${test.createdByName ?? "Someone else"} made this test, so you can use it but not change it. Make a copy to change it.`}
         </p>
       )}
 

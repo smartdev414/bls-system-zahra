@@ -15,6 +15,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
 import { toast } from "sonner"
+import { useTutorAccess } from "@/components/tutor-access-provider"
+import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 
 type StudentMember = {
   id: string
@@ -47,6 +49,8 @@ function initials(name: string) {
 }
 
 export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
+  // A teacher an admin has made view only for groups can look but not change.
+  const canEditGroups = useTutorAccess().groups
   const { data: groupsData, refetch: refetchGroups, loading: groupsLoading } = useFetch<GroupsData>("/api/tutor/groups")
   const { data: studentsData } = useFetch<StudentsData>("/api/tutor/students")
 
@@ -68,7 +72,8 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
   }, [groups, selectedGroup])
 
   const currentGroup = syncedGroup
-  const readOnly = currentGroup?.canEdit === false
+  const schoolGroup = currentGroup?.canEdit === false
+  const readOnly = !canEditGroups || schoolGroup
 
   const nonMembers = useMemo(() => {
     if (!currentGroup) return []
@@ -181,9 +186,11 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
       <DialogContent className="max-w-2xl h-[80vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
           <DialogTitle className="flex items-center gap-2">
-            <FolderOpen className="size-5 text-primary" /> Manage Student Groups
+            <FolderOpen className="size-5 text-primary" /> {canEditGroups ? "Manage Student Groups" : "Student Groups"}
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">Create groups to quickly invite multiple students at once.</p>
+          <p className="text-sm text-muted-foreground">
+            {canEditGroups ? "Create groups to quickly invite multiple students at once." : VIEW_ONLY_MESSAGE.groups}
+          </p>
         </DialogHeader>
 
         <Separator />
@@ -231,7 +238,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                         >
                           <span className="flex-1 truncate">{group.name}</span>
                           <Badge variant="secondary" className="shrink-0 text-[10px] h-4 px-1">{group.members.length}</Badge>
-                          <span className={group.canEdit === false ? "hidden" : "hidden group-hover/row:flex items-center gap-0.5 shrink-0"}>
+                          <span className={!canEditGroups || group.canEdit === false ? "hidden" : "hidden group-hover/row:flex items-center gap-0.5 shrink-0"}>
                             <span
                               role="button"
                               className="p-0.5 rounded hover:bg-muted cursor-pointer"
@@ -256,7 +263,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
             </ScrollArea>
 
             {/* Create group */}
-            <div className="border-t p-2">
+            {canEditGroups && <div className="border-t p-2">
               {creating ? (
                 <div className="flex flex-col gap-1.5">
                   <Input
@@ -284,7 +291,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                   <Plus className="size-3" /> New Group
                 </Button>
               )}
-            </div>
+            </div>}
           </div>
 
           {/* Right panel: group members */}
@@ -295,7 +302,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                   <Users className="size-8 text-muted-foreground" />
                 </div>
                 <p className="text-sm font-medium">Select a group</p>
-                <p className="text-xs text-muted-foreground">Choose a group from the left to manage its members.</p>
+                <p className="text-xs text-muted-foreground">Choose a group from the left to {canEditGroups ? "manage" : "see"} its members.</p>
               </div>
             ) : (
               <>
@@ -303,7 +310,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                   <p className="font-semibold text-sm">{currentGroup.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {currentGroup.members.length} member{currentGroup.members.length !== 1 ? "s" : ""}
-                    {readOnly && " · Set up by the school — you can invite this group to a class, but not change it"}
+                    {schoolGroup && " · Set up by the school — you can invite this group to a class, but not change it"}
                   </p>
                 </div>
 

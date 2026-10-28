@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { DifficultyBadge, LeagueTable, leagueWhen, type TableRow } from "@/components/leagues/league-bits"
 import { LeagueFormDialog, type EditableLeague } from "@/components/leagues/LeagueFormDialog"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 import { useFetch } from "@/hooks/use-fetch"
 import { DIFFICULTY_INFO, type LeagueDifficulty } from "@/lib/leagues"
 import { cn } from "@/lib/utils"
@@ -41,6 +42,8 @@ function isOpen(league: { endsAt: string | null }) {
 // Fingerspelling leagues — competitions students of any level choose to join.
 // Shared by the tutor and admin portals.
 export default function LeaguesPage() {
+  // Leagues follow the tests switch: off, a teacher only looks at the tables.
+  const canChange = useTutorAccess().tests
   const { data, loading, refetch } = useFetch<{ leagues: LeagueRow[] }>("/api/leagues", {
     errorMessage: "Could not load the leagues",
   })
@@ -94,8 +97,11 @@ export default function LeaguesPage() {
             Fingerspelling leagues
           </h1>
           <p className="text-muted-foreground mt-1">Competitions any student can join, whatever their level.</p>
+          {!canChange && (
+            <p className="text-xs text-muted-foreground mt-1">View only — ask an admin if you need to change leagues.</p>
+          )}
         </div>
-        <Button onClick={() => setCreating(true)}><Plus className="size-4 mr-1.5" /> New league</Button>
+        {canChange && <Button onClick={() => setCreating(true)}><Plus className="size-4 mr-1.5" /> New league</Button>}
       </div>
 
       {loading && !data ? (
@@ -110,7 +116,7 @@ export default function LeaguesPage() {
                 Start an Easy, a Medium and a Hard league, each with a fingerspelling test&apos;s words. Students choose which to join.
               </p>
             </div>
-            <Button onClick={() => setCreating(true)}><Plus className="size-4 mr-1.5" /> Start your first league</Button>
+            {canChange && <Button onClick={() => setCreating(true)}><Plus className="size-4 mr-1.5" /> Start your first league</Button>}
           </CardContent>
         </Card>
       ) : (
@@ -131,7 +137,7 @@ export default function LeaguesPage() {
                     </button>
                     <div className="flex items-center gap-1 shrink-0">
                       <DifficultyBadge difficulty={league.difficulty} />
-                      {league.canEdit && (
+                      {canChange && league.canEdit && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="size-8" aria-label={`More for ${league.title}`} disabled={busy === league.id}>
