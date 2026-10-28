@@ -117,6 +117,8 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   }
 
   async function removeInvite(studentId: string) {
+    const name = invitesData?.invites.find((i) => i.studentId === studentId)?.studentName ?? "this student"
+    if (!window.confirm(`Take ${name} off this class? They will no longer be invited.`)) return
     const res = await fetch(`/api/tutor/sessions/${id}/invites`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -434,7 +436,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               variant="destructive"
               size="sm"
               disabled={deleting}
-              onClick={() => deleteSession()}
+              onClick={() => { if (window.confirm("Delete this session? This cannot be undone.")) deleteSession() }}
             >
               <Trash2 className="size-4 mr-1.5" />
               {deleting ? "Deleting..." : "Delete Session"}

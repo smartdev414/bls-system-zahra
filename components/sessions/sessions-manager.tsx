@@ -8,7 +8,7 @@ import {
   Loader2, Radio, CheckCircle2, XCircle,
   CalendarDays, List, MonitorPlay,
   Sparkles, BookOpen, ChevronLeft, ChevronRight,
-  Globe, Lock, X, Pencil, Play, Copy,
+  Globe, Lock, X, Pencil, Play, Copy, UserPlus,
   Paperclip, FileText, Trash2, Repeat, FolderOpen, Download, MapPin,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -30,6 +30,7 @@ import {
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
 import { TutorPickerModal } from "@/components/classroom/TutorPickerModal"
+import { InviteStudentsModal } from "@/components/classroom/InviteStudentsModal"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { Pagination } from "@/components/ui/pagination"
@@ -254,6 +255,10 @@ function ScheduleSessionDialog({
   const [visibility, setVisibility] = useState<"PUBLIC" | "INVITE_ONLY">("INVITE_ONLY")
   const [invitedStudents, setInvitedStudents] = useState<StudentResult[]>([])
   const [invitedTutors, setInvitedTutors] = useState<TutorResult[]>([])
+  // Who was on the class when the edit form opened; null until loaded. Saving
+  // before they load leaves the lists alone instead of emptying them.
+  const [savedStudents, setSavedStudents] = useState<StudentResult[] | null>(null)
+  const [savedTutors, setSavedTutors] = useState<TutorResult[] | null>(null)
   const [showPicker, setShowPicker] = useState(false)
   const [showTutorPicker, setShowTutorPicker] = useState(false)
   const [repeatWeekly, setRepeatWeekly] = useState(false)
@@ -286,6 +291,8 @@ function ScheduleSessionDialog({
   useEffect(() => {
     if (!open) return
     if (isEdit && editSession?.id) {
+      setSavedStudents(null)
+      setSavedTutors(null)
       if (scope.canManageResources) {
         fetch(`/api/tutor/sessions/${editSession.id}/resources`)
           .then((r) => r.json())
@@ -293,15 +300,19 @@ function ScheduleSessionDialog({
           .catch(() => {})
       }
       fetch(`/api/tutor/sessions/${editSession.id}/invites`)
-        .then((r) => r.json())
+        .then((r) => { if (!r.ok) throw new Error(); return r.json() })
         .then((d: { invites: Array<{ studentId: string; studentName: string; studentEmail: string }> }) => {
-          setInvitedStudents(d.invites.map((i) => ({ id: i.studentId, name: i.studentName, email: i.studentEmail, avatarUrl: null })))
+          const list = d.invites.map((i) => ({ id: i.studentId, name: i.studentName, email: i.studentEmail, avatarUrl: null }))
+          setInvitedStudents(list)
+          setSavedStudents(list)
         })
         .catch(() => {})
       fetch(`/api/tutor/sessions/${editSession.id}/co-tutors`)
-        .then((r) => r.json())
+        .then((r) => { if (!r.ok) throw new Error(); return r.json() })
         .then((d: { coTutors: Array<{ tutorId: string; tutorName: string; tutorEmail: string }> }) => {
-          setInvitedTutors(d.coTutors.map((t) => ({ id: t.tutorId, name: t.tutorName, email: t.tutorEmail, avatarUrl: null })))
+          const list = d.coTutors.map((t) => ({ id: t.tutorId, name: t.tutorName, email: t.tutorEmail, avatarUrl: null }))
+          setInvitedTutors(list)
+          setSavedTutors(list)
         })
         .catch(() => {})
     } else if (isDuplicate && duplicateSession?.id) {
@@ -380,6 +391,16 @@ function ScheduleSessionDialog({
     const scheduledAt = new Date(date)
     scheduledAt.setHours(parseInt(hours), parseInt(minutes), 0, 0)
 
+    // Taking someone off a class is easy to do by accident in this form, so it
+    // is said out loud before saving.
+    const removed = isEdit ? [
+      ...(visibility === "INVITE_ONLY" ? savedStudents ?? [] : []).filter((s) => !invitedStudents.some((i) => i.id === s.id)),
+      ...(savedTutors ?? []).filter((t) => !invitedTutors.some((i) => i.id === t.id)),
+    ] : []
+    if (removed.length > 0 && !window.confirm(
+      `Take ${removed.map((p) => p.name).join(", ")} off this class? They will no longer be invited.`,
+    )) return
+
     setSubmitting(true)
     setSubmitError(null)
 
@@ -394,8 +415,8 @@ function ScheduleSessionDialog({
             maxStudents: maxStudents ? parseInt(maxStudents) : undefined,
             courseId: courseId || null,
             visibility,
-            invitedStudentIds: invitedStudents.map((s) => s.id),
-            invitedTutorIds: invitedTutors.map((t) => t.id),
+            ...(savedStudents ? { invitedStudentIds: invitedStudents.map((s) => s.id) } : {}),
+            ...(savedTutors ? { invitedTutorIds: invitedTutors.map((t) => t.id) } : {}),
             ...(scope.mustAssignTutor ? { tutorId: leadTutorId } : {}),
           }),
         })
@@ -972,6 +993,7 @@ function SessionCard({
   const [editOpen, setEditOpen] = useState(false)
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [attendeesOpen, setAttendeesOpen] = useState(false)
+  const [addStudentsOpen, setAddStudentsOpen] = useState(false)
   const scope = useSessionsScope()
   const canWatch = scope.canTeach || !!scope.canWatchRecordings
   const [recordingOpen, setRecordingOpen] = useState(false)
@@ -1158,6 +1180,15 @@ function SessionCard({
           )}
           {session.status === "SCHEDULED" && !session.isCoTutor && (
             <>
+              {/* Adding students has its own button, so nobody opens Edit for
+                  it and takes someone off the class by mistake. */}
+              {session.visibility === "INVITE_ONLY" && (
+                <Button size="sm" variant="outline" disabled={patching}
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setAddStudentsOpen(true)}>
+                  <UserPlus className="size-3" /> Add students
+                </Button>
+              )}
               <Button size="sm" variant="outline" disabled={patching}
                 className="h-7 text-xs gap-1.5"
                 onClick={() => setEditOpen(true)}>
@@ -1165,7 +1196,10 @@ function SessionCard({
               </Button>
               <Button size="sm" variant="outline" disabled={patching}
                 className="h-7 text-xs text-destructive hover:text-destructive"
-                onClick={() => patch({ status: "CANCELLED" })}>
+                onClick={() => {
+                  const on = scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+                  if (window.confirm(`Cancel the class on ${on}? The students are told it is cancelled.`)) patch({ status: "CANCELLED" })
+                }}>
                 <XCircle className="size-3 mr-1.5" /> Cancel
               </Button>
             </>
@@ -1212,6 +1246,14 @@ function SessionCard({
         onOpenChange={setEditOpen}
         onCreated={() => { setEditOpen(false); onMutated?.() }}
       />
+
+      {addStudentsOpen && (
+        <InviteStudentsModal
+          sessionId={session.id}
+          sessionTitle={session.title}
+          onClose={() => { setAddStudentsOpen(false); onMutated?.() }}
+        />
+      )}
 
       {/* Duplicate dialog */}
       <ScheduleSessionDialog
