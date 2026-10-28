@@ -268,7 +268,9 @@ function ScheduleSessionDialog({
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const { data: allCoursesData } = useFetch<CoursesData>("/api/tutor/courses", { errorMessage: false })
+  // Load only once opened: every class card holds a closed edit and a duplicate
+  // dialog, so loading on mount sent two requests per class on every visit.
+  const { data: allCoursesData } = useFetch<CoursesData>("/api/tutor/courses", { immediate: open, errorMessage: false })
   // Each calendar only offers its own kind of course: a class is face to face
   // exactly when its course is.
   const faceToFace = !!scope.faceToFace
@@ -277,7 +279,7 @@ function ScheduleSessionDialog({
   }
   const { data: leadTutorData } = useFetch<{ tutors: TutorResult[] }>(
     "/api/tutor/colleagues",
-    { immediate: scope.mustAssignTutor, errorMessage: false }
+    { immediate: open && !!scope.mustAssignTutor, errorMessage: false }
   )
 
   // Load existing resources, invites, and co-tutors when editing; load when duplicating
