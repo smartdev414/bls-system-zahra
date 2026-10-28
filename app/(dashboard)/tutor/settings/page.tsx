@@ -164,10 +164,10 @@ export default function TutorSettingsPage() {
         <p className="text-muted-foreground mt-1">Manage your tutor profile, qualifications and account security.</p>
       </div>
 
-      <div className="flex gap-8 items-start">
+      <div className="flex flex-col md:flex-row gap-5 md:gap-8 md:items-start">
 
         {/* ── Sidebar ── */}
-        <nav className="w-52 shrink-0 flex flex-col gap-1 sticky top-24">
+        <nav className="grid grid-cols-2 gap-1 md:w-52 md:shrink-0 md:flex md:flex-col md:sticky md:top-24">
           {NAV.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setSection(id)}
               className={cn(
@@ -179,7 +179,7 @@ export default function TutorSettingsPage() {
           ))}
 
           {/* Verification badge */}
-          <div className="mt-4 px-3">
+          <div className="hidden md:block mt-4 px-3">
             <div className={cn(
               "flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium border",
               isVerified
@@ -248,7 +248,7 @@ export default function TutorSettingsPage() {
                     </div>
                   </div>
                 </div>
-                <div className="bg-card border border-t-0 rounded-b-2xl px-6 py-3 flex items-center justify-between">
+                <div className="bg-card border border-t-0 rounded-b-2xl px-6 py-3 flex items-center justify-between gap-3">
                   <p className="text-[11px] text-muted-foreground">This is how students see your public profile.</p>
                   <Badge variant="outline" className="text-[10px]">Live Preview</Badge>
                 </div>
@@ -326,7 +326,7 @@ export default function TutorSettingsPage() {
                     <p className="text-xs text-muted-foreground">Press Enter or click Add. Shown as badges on your profile.</p>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1 border-t">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t">
                     <p className="text-xs text-muted-foreground">Changes are visible to students immediately.</p>
                     <Button type="submit" disabled={saving || !name.trim()} size="sm">
                       {saving ? <><Loader2 className="size-3.5 mr-1.5 animate-spin" />Saving…</> : <><Check className="size-3.5 mr-1.5" />Save Profile</>}

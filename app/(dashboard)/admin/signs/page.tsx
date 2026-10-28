@@ -108,7 +108,7 @@ export default function AdminSignsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
             <Library className="size-6 text-primary" /> BSL Dictionary
@@ -117,7 +117,7 @@ export default function AdminSignsPage() {
             {loading ? "\u00A0" : `${data?.total ?? 0} sign${data?.total !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {data?.total === 0 && (
             <Button variant="outline" disabled={seeding} onClick={() => seed({})}>
               <Database className="size-4 mr-1.5" />

@@ -99,13 +99,13 @@ export default function ViewLessonPage({
         </Link>
       </Button>
 
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground truncate">
             {lesson.section.course.title} · {lesson.section.title}
           </p>
           <h1 className="text-2xl font-black tracking-tight break-words mt-0.5">{lesson.title}</h1>
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex flex-wrap items-center gap-2 mt-2">
             <Badge variant="outline" className="gap-1">
               <Icon className="size-3" /> {label}
             </Badge>
@@ -124,7 +124,7 @@ export default function ViewLessonPage({
             )}
           </div>
         </div>
-        <div className="flex flex-wrap justify-end gap-2 shrink-0">
+        <div className="flex flex-wrap sm:justify-end gap-2 shrink-0">
           {test && (
             <Button asChild variant="outline" size="sm">
               <Link href={`${testsBase}/${test.id}`}>
