@@ -8,9 +8,6 @@ export const metadata: Metadata = {
   title: "BSL Learning Platform",
   description: "Learn British Sign Language Online",
   applicationName: APP_NAME,
-  // Added to the Home Screen on iOS: open full-screen, named "Teach Me Sign".
-  // The touch icon itself comes from app/apple-icon.png; the manifest link
-  // from app/manifest.ts.
   appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
 };
 
