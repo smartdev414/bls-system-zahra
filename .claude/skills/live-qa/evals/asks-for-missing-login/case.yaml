@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: asks-for-missing-login
+expected_outcome: |
+  Asks once, briefly, for the login details and which roles they belong to, before attempting any logged-in testing; may sweep public pages meanwhile.
