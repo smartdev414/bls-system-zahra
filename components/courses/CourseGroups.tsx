@@ -196,7 +196,7 @@ function ClassList({
           <div className="flex justify-end px-4 py-1">
             <button
               type="button"
-              className="text-xs text-primary hover:underline"
+              className="py-2 text-xs text-primary hover:underline"
               onClick={() => setPicked(new Set())}
             >
               Select classes to cancel

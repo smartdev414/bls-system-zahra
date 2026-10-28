@@ -6,6 +6,11 @@ import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { notifySessionStatusChange } from "@/lib/live-session-status"
 
+// Students need to know which days are off, in the school's time.
+const classDate = (d: Date) => d.toLocaleString("en-GB", {
+  weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London",
+})
+
 /**
  * Cancels several scheduled classes at once — e.g. a weekly run set up with the
  * wrong dates. Classes that are live or already over are left alone. Each
@@ -25,7 +30,8 @@ async function handlePOST(req: NextRequest) {
 
     const sessions = await prisma.liveSession.findMany({
       where: { id: { in: ids }, status: "SCHEDULED", ...ownerScope(session) },
-      select: { id: true, title: true, tutorId: true, courseId: true, visibility: true },
+      orderBy: { scheduledAt: "asc" },
+      select: { id: true, title: true, scheduledAt: true, tutorId: true, courseId: true, visibility: true },
     })
     if (sessions.length === 0) return NextResponse.json({ cancelled: 0 })
 
@@ -55,8 +61,8 @@ async function handlePOST(req: NextRequest) {
         "SESSION_CANCELLED",
         sessions.length === 1 ? "Live session cancelled" : `${sessions.length} live sessions cancelled`,
         sessions.length === 1
-          ? `"${sessions[0].title}" has been cancelled`
-          : `${sessions.length} classes of "${titles.join('", "')}" have been cancelled`,
+          ? `"${sessions[0].title}" on ${classDate(sessions[0].scheduledAt)} has been cancelled`
+          : `${sessions.length} classes of "${titles.join('", "')}" have been cancelled: ${sessions.map((s) => classDate(s.scheduledAt)).join("; ")}`,
         `/student/classroom`,
       )
     }
