@@ -42,7 +42,8 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
       <div className="flex items-center gap-1 mx-1">
         {pages.map((p, i) =>
           p === "..." ? (
-            <span key={i} className="px-1.5 text-muted-foreground text-sm select-none">…</span>
+            // Not `i`: on page 1 the first "…" sits at index 5, next to page 5.
+            <span key={`gap-${i}`} className="px-1.5 text-muted-foreground text-sm select-none">…</span>
           ) : (
             <Button
               key={p}
