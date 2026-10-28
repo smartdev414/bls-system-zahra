@@ -33,8 +33,10 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1}
         className="gap-1"
+        aria-label="Previous page"
       >
-        <ChevronLeft className="size-3.5" /> Previous
+        {/* Arrows only on a phone, so seven page numbers still fit. */}
+        <ChevronLeft className="size-3.5" /> <span className="hidden sm:inline">Previous</span>
       </Button>
 
       <div className="flex items-center gap-1 mx-1">
@@ -61,8 +63,9 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
         onClick={() => onPageChange(page + 1)}
         disabled={page >= totalPages}
         className="gap-1"
+        aria-label="Next page"
       >
-        Next <ChevronRight className="size-3.5" />
+        <span className="hidden sm:inline">Next</span> <ChevronRight className="size-3.5" />
       </Button>
     </div>
   )

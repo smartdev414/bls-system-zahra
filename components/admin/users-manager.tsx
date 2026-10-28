@@ -118,8 +118,8 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-48 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search name or email..."
@@ -240,7 +240,7 @@ function UserRow({
   return (
     <Card className="shadow-sm">
       <CardContent className="p-4">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <Avatar className="size-10 shrink-0">
             <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
               {initials}
@@ -280,8 +280,8 @@ function UserRow({
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Actions — on their own line on a phone */}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:shrink-0">
             {user.role === "STUDENT" && user.status !== "ACTIVE" && (
               <Button
                 size="sm"
