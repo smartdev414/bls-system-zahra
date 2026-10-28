@@ -382,8 +382,8 @@ export default function TutorSettingsPage() {
                   <div className="relative">
                     <Input type={showC ? "text" : "password"} value={currentPw}
                       onChange={(e) => setCurrentPw(e.target.value)} required className="pr-10" placeholder="••••••••" />
-                    <button type="button" onClick={() => setShowC((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <button type="button" aria-label={showC ? "Hide password" : "Show password"} onClick={() => setShowC((v) => !v)}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground">
                       {showC ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>
@@ -396,8 +396,8 @@ export default function TutorSettingsPage() {
                   <div className="relative">
                     <Input type={showN ? "text" : "password"} value={newPw}
                       onChange={(e) => setNewPw(e.target.value)} minLength={8} required className="pr-10" placeholder="Min. 8 characters" />
-                    <button type="button" onClick={() => setShowN((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <button type="button" aria-label={showN ? "Hide password" : "Show password"} onClick={() => setShowN((v) => !v)}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground">
                       {showN ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>

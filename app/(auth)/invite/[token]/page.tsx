@@ -196,9 +196,9 @@ export default function InvitePage() {
                       onChange={(e) => setPassword(e.target.value)}
                     />
                     <button
-                      type="button"
+                      type="button" aria-label={showPw ? "Hide password" : "Show password"}
                       onClick={() => setShowPw((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground"
                       tabIndex={-1}
                     >
                       {showPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -222,9 +222,9 @@ export default function InvitePage() {
                       onChange={(e) => setConfirm(e.target.value)}
                     />
                     <button
-                      type="button"
+                      type="button" aria-label={showCf ? "Hide password" : "Show password"}
                       onClick={() => setShowCf((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground"
                       tabIndex={-1}
                     >
                       {showCf ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

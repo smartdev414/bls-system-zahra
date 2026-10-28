@@ -61,8 +61,8 @@ export default function AdminSettingsPage() {
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   required className="pr-10"
                 />
-                <button type="button" onClick={() => setShowCurrent((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button type="button" aria-label={showCurrent ? "Hide password" : "Show password"} onClick={() => setShowCurrent((v) => !v)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground">
                   {showCurrent ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
@@ -76,8 +76,8 @@ export default function AdminSettingsPage() {
                   onChange={(e) => setNewPassword(e.target.value)}
                   minLength={8} required className="pr-10"
                 />
-                <button type="button" onClick={() => setShowNew((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button type="button" aria-label={showNew ? "Hide password" : "Show password"} onClick={() => setShowNew((v) => !v)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground">
                   {showNew ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>

@@ -168,7 +168,7 @@ export default function ResetPasswordPage() {
                     <button
                       type="button"
                       onClick={() => setShowPw((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground"
                       tabIndex={-1}
                       aria-label={
                         showPw ? "Hide password" : "Show password"
@@ -204,7 +204,7 @@ export default function ResetPasswordPage() {
                     <button
                       type="button"
                       onClick={() => setShowCf((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground"
                       tabIndex={-1}
                       aria-label={
                         showCf ? "Hide password" : "Show password"
