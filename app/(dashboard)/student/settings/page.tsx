@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import {
   User, Lock, Info, Bell, Camera, Eye, EyeOff, Check, X,
   Shield, Calendar, Mail, Loader2, CheckCircle2, BookOpen,
-  GraduationCap, Video, ArrowRight, Award, Copy, Share2,
+  GraduationCap, Video, VideoOff, ArrowRight, Award, Copy, Share2,
 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -32,6 +32,10 @@ type UserData = {
     avatarUrl: string | null
     bslLevel: CourseLevel | null
     createdAt: string
+    /** Leave this student's face out of class recordings. */
+    recordingOptOut: boolean
+    /** Staff turned it on, so only staff can turn it off. */
+    recordingOptOutByStaff: boolean
   }
 }
 
@@ -54,12 +58,13 @@ function pwStrength(p: string): PwStrength {
   ][c] }
 }
 
-type Section = "profile" | "security" | "notifications" | "account" | "certifications"
+type Section = "profile" | "security" | "notifications" | "privacy" | "account" | "certifications"
 const NAV: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: "profile",         label: "Profile",        icon: User  },
   { id: "certifications",  label: "Certifications", icon: Award },
   { id: "security",        label: "Security",       icon: Lock  },
   { id: "notifications",   label: "Notifications",  icon: Bell  },
+  { id: "privacy",         label: "Privacy",        icon: VideoOff },
   { id: "account",         label: "Account",        icon: Info  },
 ]
 
@@ -406,6 +411,15 @@ export default function StudentSettingsPage() {
           {/* ════ NOTIFICATIONS ════ */}
           {section === "notifications" && <PhoneNotificationsCard />}
 
+          {/* ════ PRIVACY ════ */}
+          {section === "privacy" && user && (
+            <RecordingPrivacyCard
+              optedOut={user.recordingOptOut}
+              byStaff={user.recordingOptOutByStaff}
+              onChanged={() => refetch()}
+            />
+          )}
+
           {/* ════ ACCOUNT ════ */}
           {section === "account" && (
             <div className="rounded-2xl border bg-card p-6">
@@ -431,6 +445,75 @@ export default function StudentSettingsPage() {
 
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Privacy — leave me out of class recordings ─────────────────────────────
+
+function RecordingPrivacyCard({ optedOut, byStaff, onChanged }: {
+  optedOut: boolean
+  byStaff: boolean
+  onChanged: () => void
+}) {
+  const [on, setOn] = useState(optedOut)
+  useEffect(() => { setOn(optedOut) }, [optedOut])
+  const { execute: save, loading: saving } = usePutCallback<UserData, { recordingOptOut: boolean }>(
+    "/api/user/settings",
+    {
+      successMessage: (d) => d.user.recordingOptOut
+        ? "You're left out of class recordings"
+        : "You'll be in class recordings again",
+      // No errorMessage: the server says why (e.g. the school turned it on).
+      onSuccess: () => onChanged(),
+      onError: (_e, body) => setOn(!body.recordingOptOut),
+    }
+  )
+  const locked = byStaff && on
+
+  return (
+    <div className="rounded-2xl border bg-card p-6">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="size-9 shrink-0 rounded-xl bg-primary/10 flex items-center justify-center">
+          <VideoOff className="size-4 text-primary" />
+        </div>
+        <div>
+          <h2 className="font-semibold">Class recordings</h2>
+          <p className="text-sm text-muted-foreground">
+            When your teacher records a class, the recording shows the teacher and the students&apos; faces — never names or voices.
+          </p>
+        </div>
+      </div>
+      <Separator className="my-5" />
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        disabled={saving || locked}
+        onClick={() => { setOn(!on); void save({ recordingOptOut: !on }) }}
+        className={cn(
+          "w-full flex items-center gap-3 rounded-xl border px-4 py-3.5 text-left transition-colors disabled:cursor-not-allowed",
+          on ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+        )}
+      >
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-medium">Leave me out of class recordings</span>
+          <span className="block text-xs text-muted-foreground mt-0.5">
+            {on
+              ? "Your face isn't recorded. If your teacher shows you to the whole class, the recording pauses until they stop."
+              : "Turn on and your face won't appear in any recording or download."}
+          </span>
+        </span>
+        <span className={cn("relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors", on ? "bg-primary" : "bg-input")}>
+          <span className={cn("absolute top-0.5 size-5 rounded-full bg-background shadow transition-all", on ? "left-[22px]" : "left-0.5")} />
+        </span>
+      </button>
+      {locked && (
+        <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+          <Lock className="size-3.5 shrink-0" />
+          Your school turned this on for you. Speak to them if you&apos;d like it changed.
+        </p>
+      )}
     </div>
   )
 }

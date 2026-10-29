@@ -8,7 +8,7 @@ import {
 } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import {
-  ArrowLeft, Megaphone, Info, Maximize2, Minimize2,
+  ArrowLeft, Megaphone, Info, Maximize2, Minimize2, VideoOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { localCameraClassName, isLiveVideo } from "@/components/classroom/localCameraView"
@@ -31,6 +31,7 @@ export function PinnedVideoArea({
   onLowerHand,
   fit = "cover",
   hideName = false,
+  notRecorded = false,
 }: {
   identity: string
   localIdentity: string
@@ -76,6 +77,11 @@ export function PinnedVideoArea({
    * signing without their name going up with them.
    */
   hideName?: boolean
+  /**
+   * Tutor only, while recording: this student opted out of recordings, so
+   * showing them to the class pauses the recording until they're off screen.
+   */
+  notRecorded?: boolean
 }) {
   const allParticipants = useParticipants()
   const camTracks       = useTracks([Track.Source.Camera])
@@ -168,8 +174,18 @@ export function PinnedVideoArea({
           </button>
         )}
 
+        {notRecorded && (
+          <span
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-black/70 text-white ring-1 ring-white/10 backdrop-blur-sm shadow-lg"
+            title="This student isn't recorded. Showing them to the class pauses the recording until you stop."
+          >
+            <VideoOff className="size-3.5" />
+            {spotlightActive ? "Recording paused" : "Not recorded"}
+          </span>
+        )}
+
         {/* Discoverability hint: only shown when spotlight is available but not active */}
-        {showSpotlight && !spotlightActive && (
+        {showSpotlight && !spotlightActive && !notRecorded && (
           <span
             className="hidden md:flex items-center gap-1 text-[10px] text-white/70 bg-black/40 px-2 py-1 rounded-full backdrop-blur-sm pointer-events-none"
             aria-hidden

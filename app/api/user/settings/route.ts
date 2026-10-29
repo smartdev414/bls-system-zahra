@@ -21,6 +21,8 @@ async function handleGET() {
         avatarUrl: true,
         bslLevel: true,
         createdAt: true,
+        recordingOptOut: true,
+        recordingOptOutByStaff: true,
         tutorProfile: { select: { bio: true, qualifications: true, isVerified: true } },
       },
     })
@@ -45,9 +47,27 @@ async function handlePUT(req: NextRequest) {
       bslLevel?: import("@/app/generated/prisma/client").CourseLevel | null
       bio?: string
       qualifications?: string[]
+      /** A student's "leave my face out of class recordings". */
+      recordingOptOut?: boolean
     }
 
-    const { name, avatarUrl, bslLevel, bio, qualifications } = body
+    const { name, avatarUrl, bslLevel, bio, qualifications, recordingOptOut } = body
+
+    if (typeof recordingOptOut === "boolean") {
+      if (session.role !== "STUDENT") {
+        return NextResponse.json({ message: "Only students are in class recordings" }, { status: 400 })
+      }
+      // Staff turned it on (usually a safeguarding case): only staff turn it off.
+      if (!recordingOptOut) {
+        const me = await prisma.user.findUnique({ where: { id: session.sub }, select: { recordingOptOutByStaff: true } })
+        if (me?.recordingOptOutByStaff) {
+          return NextResponse.json(
+            { message: "Your school has turned this on for you. Please speak to them to change it." },
+            { status: 403 },
+          )
+        }
+      }
+    }
 
     const user = await prisma.user.update({
       where: { id: session.sub },
@@ -55,8 +75,12 @@ async function handlePUT(req: NextRequest) {
         ...(name?.trim() && { name: name.trim() }),
         ...(avatarUrl !== undefined && { avatarUrl }),
         ...(bslLevel !== undefined && { bslLevel }),
+        ...(typeof recordingOptOut === "boolean" && { recordingOptOut }),
       },
-      select: { id: true, name: true, email: true, role: true, avatarUrl: true, bslLevel: true },
+      select: {
+        id: true, name: true, email: true, role: true, avatarUrl: true, bslLevel: true,
+        recordingOptOut: true, recordingOptOutByStaff: true,
+      },
     })
 
     // Update tutor profile if applicable

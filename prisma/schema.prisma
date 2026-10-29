@@ -212,6 +212,11 @@ model User {
   // What the student told us at sign-up ("which course or teacher?") so staff
   // can tell a real student from a stranger.
   signupNote   String?
+  // Leave this student's face out of class recordings (safeguarding). They can
+  // turn it on themselves; when staff turn it on (`ByStaff`), only staff can
+  // turn it off again. See app/egress/recorder-view.tsx.
+  recordingOptOut        Boolean @default(false)
+  recordingOptOutByStaff Boolean @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 

@@ -24,6 +24,12 @@
 //     agreement before starting a recording.
 //   • NOT a student's voice or screen, and NO names anywhere; captions (which
 //     can carry what a student said) are off.
+//   • NOT a student who opted out (User.recordingOptOut — often safeguarding):
+//     their camera is never subscribed. Only students the server has cleared
+//     (/api/sessions/:id/recording/privacy) are filmed, so a student who just
+//     joined stays out until they are. While the tutor shows an opted-out
+//     student to the whole class, the tutor's tab pauses the recording; until
+//     that lands (or if a co-teacher can't pause), this page goes blank.
 //   • NOT breakout rooms: the tutor's tab pauses the recording while they run,
 //     and should anything still be recording, this page shows a plain card
 //     with no sound instead.
@@ -49,6 +55,7 @@ import {
 import { ConnectionState, RemoteTrackPublication, Track, type RemoteParticipant } from "livekit-client"
 import { Pointer } from "lucide-react"
 import { LogoWatermark } from "@/components/layout/logo"
+import { participantBaseId } from "@/lib/participant-identity"
 import { PptSlideViewer } from "@/components/classroom/PptSlideViewer"
 import { VideoPlayer } from "@/components/classroom/room/VideoPlayer"
 import {
@@ -150,12 +157,47 @@ export function RecorderView({ pass }: { pass: string | null }) {
 /** How the tutor is showing the class: gallery, and the student they spotlight (shown first). */
 type Shown = { gallery: boolean; spotlight: string | null }
 
+/** Students the server says may be filmed (base user ids), or null until it has said. */
+type Recordable = Set<string> | null
+
 /**
- * Subscribes to the tutors' camera, voice and screen, and to the students'
- * cameras — nothing else of a student's, ever. During breakouts (`faces`
- * false), not even their cameras.
+ * Who may be filmed. Asked again every few seconds, and at once when a student
+ * turns up that the last answer didn't cover (they joined after it).
  */
-function Subscriptions({ faces }: { faces: boolean }) {
+function useRecordable(sessionId: string | null): Recordable {
+  const [answer, setAnswer] = useState<{ recorded: Set<string>; known: Set<string> } | null>(null)
+  const participants = useRemoteParticipants()
+  // Students in the room the last answer didn't mention: asking again at once
+  // lets them in (or keeps them out) without a 10-second wait.
+  const unknown = participants
+    .filter((p) => !isTutor(p) && !answer?.known.has(participantBaseId(p.identity)))
+    .map((p) => participantBaseId(p.identity))
+    .sort()
+    .join(",")
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/recording/privacy`, { cache: "no-store" })
+        if (!res.ok) return
+        const { recorded, hidden } = (await res.json()) as { recorded: string[]; hidden: string[] }
+        if (!cancelled) setAnswer({ recorded: new Set(recorded), known: new Set([...recorded, ...hidden]) })
+      } catch { /* keep the last answer; students not on it stay out */ }
+    }
+    const first = setTimeout(load, unknown ? 300 : 0)
+    const id = setInterval(load, 10_000)
+    return () => { cancelled = true; clearTimeout(first); clearInterval(id) }
+  }, [sessionId, unknown])
+  return answer?.recorded ?? null
+}
+
+/**
+ * Subscribes to the tutors' camera, voice and screen, and to the cameras of
+ * the students cleared for recording — nothing else of a student's, ever.
+ * During breakouts (`faces` false), not even their cameras.
+ */
+function Subscriptions({ faces, recordable }: { faces: boolean; recordable: Recordable }) {
   const participants = useRemoteParticipants()
   useEffect(() => {
     for (const p of participants as RemoteParticipant[]) {
@@ -163,7 +205,7 @@ function Subscriptions({ faces }: { faces: boolean }) {
         if (!(pub instanceof RemoteTrackPublication)) continue
         const wanted = isTutor(p)
           ? TUTOR_SOURCES.has(pub.source)
-          : faces && pub.source === Track.Source.Camera
+          : faces && pub.source === Track.Source.Camera && !!recordable?.has(participantBaseId(p.identity))
         if (pub.isSubscribed !== wanted) pub.setSubscribed(wanted)
       }
     }
@@ -190,12 +232,15 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
   const stageAreaRef = useRef<HTMLDivElement>(null)
   const [stageContentEl, setStageContentEl] = useState<HTMLElement | null>(null)
   const stageContentBox = useSlideContentBox(stageAreaRef, stageContentEl)
+  const recordable = useRecordable(sessionId)
+  const participants = useRemoteParticipants()
 
   // Only tracks we subscribed to are listed. Tutors first, as in the room, then
   // the student the tutor is spotlighting.
   const rank = (p: { identity: string; metadata?: string }) =>
     isTutor(p) ? 2 : shown.spotlight === p.identity ? 1 : 0
   const cameras = (useTracks([Track.Source.Camera], { onlySubscribed: true }) as TrackReference[])
+    .filter((t) => isTutor(t.participant) || !!recordable?.has(participantBaseId(t.participant.identity)))
     .sort((a, b) => rank(b.participant) - rank(a.participant))
   const screens = useTracks([Track.Source.ScreenShare], { onlySubscribed: true })
     .filter((t) => isTutor(t.participant)) as TrackReference[]
@@ -377,11 +422,24 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
   if (breakouts) {
     return (
       <>
-      <Subscriptions faces={false} />
+      <Subscriptions faces={false} recordable={recordable} />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-zinc-950 text-white">
         <p className="text-3xl font-bold">Breakout rooms</p>
         <p className="text-lg text-white/60">Not recorded — the class continues shortly.</p>
       </div>
+      </>
+    )
+  }
+
+  // The tutor is showing the whole class a student who isn't to be recorded.
+  // The tutor's tab pauses the recording; until then, nothing — not even the
+  // tutor's voice, which may well say the student's name.
+  const spotlit = shown.spotlight ? participants.find((p) => p.identity === shown.spotlight) : undefined
+  if (shown.spotlight && !isTutor(spotlit) && !recordable?.has(participantBaseId(shown.spotlight))) {
+    return (
+      <>
+      <Subscriptions faces={false} recordable={recordable} />
+      <div className="absolute inset-0 bg-black" />
       </>
     )
   }
@@ -394,7 +452,7 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
     const cols = Math.max(1, Math.ceil(Math.sqrt(cameras.length)))
     return (
       <>
-        <Subscriptions faces />
+        <Subscriptions faces recordable={recordable} />
         <div
           className="absolute inset-0 grid gap-2 p-3"
           style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridAutoRows: "minmax(0, 1fr)" }}
@@ -479,7 +537,7 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
 
   return (
     <>
-      <Subscriptions faces />
+      <Subscriptions faces recordable={recordable} />
       <div className="absolute inset-0 flex gap-3 p-3">
         {content && (
           <div ref={stageAreaRef} className="relative flex-[7] min-w-0 rounded-lg overflow-hidden bg-zinc-950">

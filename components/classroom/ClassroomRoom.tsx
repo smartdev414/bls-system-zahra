@@ -2845,7 +2845,7 @@ export function ClassroomRoom({
       }
       if (!prevStarted) {
         toast.success("Recording started", {
-          description: "You, any co-teacher and what you share are recorded. Students' faces only when you show them to the class or pop them out — never their voices or names.",
+          description: "You, any co-teacher, what you share and the students' faces are recorded — never their voices or names. Students who opted out are left out.",
         })
       } else {
         toast.success(prevPaused ? "Recording resumed" : "Recording paused")
@@ -2881,6 +2881,12 @@ export function ClassroomRoom({
   const resumeAfterBreakouts = useCallback(async () => {
     if (!pausedForBreakoutsRef.current) return
     pausedForBreakoutsRef.current = false
+    // Back from breakouts showing a student who isn't recorded: stay paused,
+    // and carry on once they're off screen (below).
+    if (spotlightHiddenRef.current) {
+      pausedForPrivacyRef.current = true
+      return
+    }
     try {
       const res = await fetch(`/api/sessions/${sessionId}/recording/resume`, { method: "POST" })
       if (res.status === 401) throw new SignedOutError()
@@ -2894,16 +2900,99 @@ export function ClassroomRoom({
     }
   }, [sessionId, syncRecorder, toastSignedOut])
 
-  // Students hear once, as recording starts, that they are not in it.
+  // ── Students left out of the recording (safeguarding) ─────────────────────
+  // A student can opt out of recordings (or staff do it for them): the
+  // recorder never films them. Showing one to the whole class pauses the
+  // recording, and it carries on when they're off screen — the same way
+  // breakouts do, so a recording the tutor paused by hand stays paused.
+  const [hiddenFromRecording, setHiddenFromRecording] = useState<ReadonlySet<string>>(() => new Set())
+  useEffect(() => {
+    if (!isTutor || connectionState !== ConnectionState.Connected) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/recording/privacy`, { cache: "no-store" })
+        if (!res.ok) return
+        const { hidden } = (await res.json()) as { hidden: string[] }
+        if (!cancelled) setHiddenFromRecording(new Set(hidden))
+      } catch { /* the recorder keeps them out regardless */ }
+    }
+    void load()
+    // Asked again when someone joins, and now and then for a change made mid-class.
+    const id = setInterval(load, 30_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [isTutor, connectionState, sessionId, participants.length])
+
+  const spotlightHidden = !!spotlightedId && hiddenFromRecording.has(participantBaseId(spotlightedId))
+  const spotlightHiddenRef = useRef(false)
+  spotlightHiddenRef.current = spotlightHidden
+  const pausedForPrivacyRef = useRef(false)
+  const privacyBusyRef = useRef(false)
+  const privacyCantPauseRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isTutor || privacyBusyRef.current || recordingBusy) return
+    const pause = spotlightHidden && recordingActive && !recordingPaused && privacyCantPauseRef.current !== spotlightedId
+    const resume = !spotlightHidden && pausedForPrivacyRef.current && recordingPaused && !breakoutStateRef.current.active
+    if (!pause && !resume) {
+      // Paused or stopped some other way meanwhile: nothing of ours to undo.
+      if (!spotlightHidden && !recordingPaused) pausedForPrivacyRef.current = false
+      return
+    }
+    privacyBusyRef.current = true
+    void (async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/recording/${pause ? "pause" : "resume"}`, { method: "POST" })
+        if (res.status === 401) throw new SignedOutError()
+        if (!res.ok) {
+          // A co-teacher can't pause; the recorder goes blank anyway.
+          if (resume) throw new Error()
+          privacyCantPauseRef.current = spotlightedId
+          return
+        }
+        if (pause) {
+          pausedForPrivacyRef.current = true
+          setRecordingStarted(true)
+          setRecordingPaused(true)
+          const name = participants.find((p) => p.identity === spotlightedId)?.name || "This student"
+          toast.info("Recording paused", {
+            id: "recording-privacy",
+            description: `${name} isn't recorded. It carries on when you stop showing them to the class.`,
+          })
+        } else {
+          pausedForPrivacyRef.current = false
+          setRecordingPaused(false)
+          toast.success("Recording resumed", { id: "recording-privacy" })
+          syncRecorder()
+        }
+      } catch (err) {
+        if (err instanceof SignedOutError) toastSignedOut()
+        else if (resume) toast.error("Couldn't resume the recording — press Resume to carry on", { id: "recording-privacy" })
+        pausedForPrivacyRef.current = false
+      } finally {
+        privacyBusyRef.current = false
+      }
+    })()
+  }, [isTutor, spotlightHidden, spotlightedId, recordingActive, recordingPaused, recordingBusy, sessionId, participants, syncRecorder, toastSignedOut])
+
+  // Students hear once, as recording starts, whether they are in it.
   const toldStudentAboutRecording = useRef(false)
   useEffect(() => {
     if (isTutor || !roomIsRecording || toldStudentAboutRecording.current) return
     toldStudentAboutRecording.current = true
-    toast.info("This class is being recorded", {
-      description: "Only the teacher and what they share are recorded — not you, your camera, voice or name.",
-      duration: 10_000,
-      closeButton: true,
-    })
+    void (async () => {
+      let optedOut = false
+      try {
+        const res = await fetch("/api/user/settings", { cache: "no-store" })
+        if (res.ok) optedOut = !!((await res.json()) as { user?: { recordingOptOut?: boolean } }).user?.recordingOptOut
+      } catch { /* say the general thing */ }
+      toast.info("This class is being recorded", {
+        description: optedOut
+          ? "You're not in the recording — you asked to be left out."
+          : "The recording shows the teacher and students' faces — never your voice or name. You can opt out in Settings → Privacy.",
+        duration: 10_000,
+        closeButton: true,
+      })
+    })()
   }, [isTutor, roomIsRecording])
 
   // Attach the processor to the local camera track. One effect handles three
@@ -4217,6 +4306,7 @@ export function ClassroomRoom({
       showSpotlight={isTutor && id !== localParticipant.identity}
       spotlightActive={spotlightedId === id}
       hideName={!isTutor && spotlightedId === id && id !== localParticipant.identity}
+      notRecorded={isTutor && recordingActive && hiddenFromRecording.has(participantBaseId(id))}
       onToggleSpotlight={handleToggleSpotlight}
       handRaised={raisedHandIds.has(id)}
       onLowerHand={isTutor ? handleLowerHand : undefined}

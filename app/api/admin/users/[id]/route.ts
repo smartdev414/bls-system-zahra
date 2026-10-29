@@ -31,6 +31,9 @@ async function handlePATCH(
       courseIds?: string[]
       /** What this teacher may change; only the switches sent are saved. */
       access?: Partial<TutorAccess>
+      /** Leave a student out of class recordings (safeguarding). Set by staff,
+       *  so the student can't turn it off themselves. */
+      recordingOptOut?: boolean
     }
 
     const user = await prisma.user.findUnique({ where: { id } })
@@ -79,6 +82,16 @@ async function handlePATCH(
       await prisma.tutorProfile.upsert({ where: { userId: id }, create: { userId: id, ...data }, update: data })
     }
 
+    if (typeof body.recordingOptOut === "boolean") {
+      if (user.role !== "STUDENT") {
+        return NextResponse.json({ message: "Only students are in class recordings" }, { status: 400 })
+      }
+      await prisma.user.update({
+        where: { id },
+        data: { recordingOptOut: body.recordingOptOut, recordingOptOutByStaff: body.recordingOptOut },
+      })
+    }
+
     if ((body.status === "ACTIVE" || body.status === "REJECTED") && body.status !== user.status) {
       if (user.role !== "STUDENT") {
         return NextResponse.json({ message: "Only student sign-ups are approved here" }, { status: 400 })
@@ -125,7 +138,7 @@ async function handlePATCH(
     const updated = await prisma.user.findUnique({
       where: { id },
       select: {
-        id: true, name: true, email: true, role: true, status: true,
+        id: true, name: true, email: true, role: true, status: true, recordingOptOut: true,
         tutorProfile: { select: { isVerified: true, ...ACCESS_SELECT } },
       },
     })

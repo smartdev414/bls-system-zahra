@@ -4,7 +4,7 @@ import { useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Users, Search, Filter, Loader2, ShieldCheck,
-  UserCheck, Trash2, ChevronDown, Clock, Check, X, BookOpen, SlidersHorizontal,
+  UserCheck, Trash2, ChevronDown, Clock, Check, X, BookOpen, SlidersHorizontal, VideoOff, Video,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -41,6 +41,8 @@ type UserItem = {
   isVerified: boolean | null
   /** A teacher's switches (what they may change); null for everyone else. */
   access: TutorAccess | null
+  /** A student left out of class recordings (safeguarding); null for staff. */
+  recordingOptOut: boolean | null
   enrollmentCount: number
   courseCount: number
 }
@@ -227,6 +229,17 @@ function UserRow({
     onSuccess: () => onMutated(),
   })
 
+  const { execute: setRecordingOptOut, loading: savingOptOut } = usePatchCallback<
+    { user: { recordingOptOut: boolean } },
+    { recordingOptOut: boolean }
+  >(`/api/admin/users/${user.id}`, {
+    successMessage: (d) => d.user.recordingOptOut
+      ? `${user.name} is left out of class recordings`
+      : `${user.name} can be in class recordings again`,
+    errorMessage: "Could not update",
+    onSuccess: () => onMutated(),
+  })
+
   const { execute: setStatus, loading: deciding } = usePatchCallback<
     { user: UserItem },
     { status: "ACTIVE" | "REJECTED"; courseIds?: string[] }
@@ -269,6 +282,11 @@ function UserRow({
               {isAwaiting(user) && (
                 <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
                   <Clock className="size-2.5 mr-1" /> Waiting for approval
+                </Badge>
+              )}
+              {user.recordingOptOut && (
+                <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-700 border-slate-300">
+                  <VideoOff className="size-2.5 mr-1" /> Not recorded
                 </Badge>
               )}
               {user.role === "STUDENT" && user.status === "REJECTED" && (
@@ -324,6 +342,22 @@ function UserRow({
               >
                 <ShieldCheck className="size-3.5 mr-1" />
                 {user.isVerified ? "Unverify" : "Approve"}
+              </Button>
+            )}
+
+            {user.role === "STUDENT" && user.recordingOptOut !== null && (
+              // Safeguarding: keeps this student's face out of every class
+              // recording. The student can't turn it back off themselves.
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={savingOptOut}
+                title={user.recordingOptOut ? "Let this student appear in class recordings again" : "Keep this student's face out of class recordings"}
+                onClick={() => setRecordingOptOut({ recordingOptOut: !user.recordingOptOut })}
+              >
+                {user.recordingOptOut
+                  ? <><Video className="size-3.5 mr-1" /> Allow recording</>
+                  : <><VideoOff className="size-3.5 mr-1" /> Don&apos;t record</>}
               </Button>
             )}
 
