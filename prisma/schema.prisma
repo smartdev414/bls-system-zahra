@@ -167,6 +167,8 @@ enum NotificationType {
   VIDEO_BACKGROUND_FAILED
   // A sign the student asked for is now in the dictionary
   DICTIONARY_SIGN_ADDED
+  // A class handout has opened for the student
+  CLASS_HANDOUT_READY
   // Ticket / feedback events
   TICKET_CREATED
   TICKET_UPDATED
@@ -644,6 +646,7 @@ model LiveSession {
   coTutors     LiveSessionCoTutor[]
   joinRequests SessionJoinRequest[]
   resources    LiveSessionResource[]
+  handouts     ClassHandout[]
   whiteboard   WhiteboardDoc?
   chatMessages LiveSessionChatMessage[]
   presentation LiveSessionPresentation?
@@ -976,6 +979,26 @@ model LiveSessionResource {
   session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
+}
+
+// A file the tutor gives the students of a class to keep (unlike
+// LiveSessionResource, which is only presented in the room). Students can open
+// it from `releaseAt` — by default when the class ends — and are told then.
+model ClassHandout {
+  id        String   @id @default(cuid())
+  sessionId String
+  title     String
+  fileUrl   String
+  fileName  String
+  fileSize  Int?
+  mimeType  String?
+  releaseAt DateTime
+  createdAt DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([releaseAt])
 }
 
 // A test in the test bank (the Tests menu). It is made once and put in any

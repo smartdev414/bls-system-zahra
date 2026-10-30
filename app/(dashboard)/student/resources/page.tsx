@@ -3,7 +3,7 @@
 import { useState } from "react"
 import {
   FolderOpen, Search, Download, FileText, Image, Music,
-  Loader2, BookOpen, Filter,
+  Loader2, BookOpen, Filter, CalendarDays,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -34,6 +34,16 @@ type Resource = {
 
 type ResourcesData = { resources: Resource[]; total: number }
 
+type Handout = {
+  id: string
+  title: string
+  fileUrl: string
+  fileName: string
+  fileSize: number | null
+  mimeType: string | null
+  session: { id: string; title: string; scheduledAt: string; course: { title: string } | null; tutor: { name: string } }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatBytes(bytes: number) {
@@ -47,6 +57,14 @@ const typeConfig = {
   DOCUMENT: { label: "Document", icon: FileText, className: "bg-blue-50 text-blue-700 border-blue-200" },
   IMAGE:    { label: "Image",    icon: Image,    className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   AUDIO:    { label: "Audio",    icon: Music,    className: "bg-violet-50 text-violet-700 border-violet-200" },
+}
+
+/** A handout's file, sorted into the same types as the filter. */
+function handoutType(mimeType: string | null): Resource["type"] {
+  if (mimeType === "application/pdf") return "PDF"
+  if (mimeType?.startsWith("image/")) return "IMAGE"
+  if (mimeType?.startsWith("audio/")) return "AUDIO"
+  return "DOCUMENT"
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -65,6 +83,16 @@ export default function ResourcesPage() {
     errorMessage: "Could not load resources",
   })
 
+  // Handouts from the student's classes, once each has opened.
+  const { data: handoutData, loading: handoutsLoading } = useFetch<{ handouts: Handout[] }>("/api/student/handouts", {
+    errorMessage: false,
+  })
+  const q = debouncedQuery.toLowerCase()
+  const handouts = (handoutData?.handouts ?? []).filter((h) =>
+    (typeFilter === "all" || typeFilter === handoutType(h.mimeType)) &&
+    (!q || h.title.toLowerCase().includes(q) || h.session.title.toLowerCase().includes(q))
+  )
+
   // Group by course
   const grouped = (data?.resources ?? []).reduce<Record<string, { courseTitle: string; resources: Resource[] }>>(
     (acc, r) => {
@@ -82,7 +110,10 @@ export default function ResourcesPage() {
           <FolderOpen className="size-6 text-primary" /> Resources
         </h1>
         <p className="text-muted-foreground mt-1">
-          {loading ? "\u00A0" : `${data?.total ?? 0} supplementary file${data?.total !== 1 ? "s" : ""} from your courses`}
+          {loading ? "\u00A0" : (() => {
+            const n = (data?.total ?? 0) + handouts.length
+            return `${n} file${n !== 1 ? "s" : ""} from your courses and classes`
+          })()}
         </p>
       </div>
 
@@ -112,11 +143,42 @@ export default function ResourcesPage() {
         </Select>
       </div>
 
-      {loading ? (
+      {handouts.length > 0 && (
+        <section id="class-handouts">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
+            <CalendarDays className="size-3.5" /> Class handouts
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {handouts.map((h) => (
+              <a key={h.id} href={h.fileUrl} target="_blank" rel="noopener noreferrer" className="group">
+                <Card className="shadow-sm hover:shadow-md hover:border-primary transition-all cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="rounded-xl bg-primary/10 p-3 shrink-0 group-hover:bg-primary/20 transition-colors">
+                      <FileText className="size-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold leading-snug truncate">{h.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {h.session.title} · {new Date(h.session.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                        {h.fileSize ? ` · ${formatBytes(h.fileSize)}` : ""}
+                      </p>
+                    </div>
+                    <Button size="icon" variant="ghost" className="size-8 shrink-0 text-muted-foreground group-hover:text-primary" tabIndex={-1}>
+                      <Download className="size-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {loading || handoutsLoading ? (
         <div className="flex items-center justify-center min-h-[300px]">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
-      ) : Object.keys(grouped).length > 0 ? (
+      ) : Object.keys(grouped).length > 0 || handouts.length > 0 ? (
         <div className="flex flex-col gap-8">
           {Object.entries(grouped).map(([courseId, group]) => (
             <section key={courseId}>

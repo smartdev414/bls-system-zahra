@@ -6,7 +6,7 @@ import {
   Video, Clock, Users, Radio,
   BookOpen, Loader2, Sparkles, Lock,
   CalendarDays, List, Play, CheckCircle2,
-  XCircle, ChevronLeft, ChevronRight, Send,
+  XCircle, ChevronLeft, ChevronRight, Send, Download,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,6 +38,8 @@ type LiveSession = {
   recordingUrl: string | null
   isInvited: boolean
   joinRequest: { id: string; status: "PENDING" | "APPROVED" | "REJECTED" } | null
+  /** Handouts the tutor has opened to this student. */
+  handouts: { id: string; title: string; fileUrl: string }[]
 }
 
 type SessionsData = { sessions: LiveSession[] }
@@ -274,7 +276,22 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {session.handouts.length === 1 && (
+              <Button asChild size="sm" variant="outline" className="gap-1.5 h-8">
+                <a href={session.handouts[0].fileUrl} target="_blank" rel="noopener noreferrer"
+                  title={session.handouts[0].title}>
+                  <Download className="size-3.5" /> Handout
+                </a>
+              </Button>
+            )}
+            {session.handouts.length > 1 && (
+              <Button asChild size="sm" variant="outline" className="gap-1.5 h-8">
+                <Link href="/student/resources">
+                  <Download className="size-3.5" /> Handouts ({session.handouts.length})
+                </Link>
+              </Button>
+            )}
             {session.status === "COMPLETED" && session.recordingUrl && (
               <Button
                 size="sm"

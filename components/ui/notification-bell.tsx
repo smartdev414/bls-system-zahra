@@ -65,6 +65,7 @@ type NotificationType =
   | "ACCOUNT_APPROVED"
   | "ACCOUNT_REJECTED"
   | "DICTIONARY_SIGN_ADDED"
+  | "CLASS_HANDOUT_READY"
 
 type Notification = {
   id: string
@@ -109,6 +110,7 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   ACCOUNT_APPROVED: UserPlus,
   ACCOUNT_REJECTED: XCircle,
   DICTIONARY_SIGN_ADDED: BookOpen,
+  CLASS_HANDOUT_READY: Download,
 }
 
 const typeColor: Record<NotificationType, string> = {
@@ -144,6 +146,7 @@ const typeColor: Record<NotificationType, string> = {
   ACCOUNT_APPROVED: "text-green-500",
   ACCOUNT_REJECTED: "text-destructive",
   DICTIONARY_SIGN_ADDED: "text-emerald-500",
+  CLASS_HANDOUT_READY: "text-primary",
 }
 
 const POLL_INTERVAL = 30_000 // 30 seconds

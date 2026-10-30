@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { reconcilePendingRecordings } from "@/lib/recording"
 import { studentVisibleSessions } from "@/lib/session-access"
+import { releasedHandoutsFor } from "@/lib/class-handouts"
 
 async function handleGET() {
   try {
@@ -39,6 +40,16 @@ async function handleGET() {
     })
     const recordingById = new Map(linked.map((r) => [r.id, r.recordingUrl]))
 
+    // A student's handouts, on the class they came from, once each is open.
+    const handoutsBySession = new Map<string, { id: string; title: string; fileUrl: string }[]>()
+    if (session.role === "STUDENT") {
+      for (const h of await releasedHandoutsFor(session.sub)) {
+        const list = handoutsBySession.get(h.session.id) ?? []
+        list.push({ id: h.id, title: h.title, fileUrl: h.fileUrl })
+        handoutsBySession.set(h.session.id, list)
+      }
+    }
+
     return NextResponse.json({
       sessions: sessions.map((s) => ({
         id: s.id,
@@ -61,6 +72,7 @@ async function handleGET() {
           : recordingById.get(s.id) ?? s.recordingUrl ?? null,
         isInvited: s.invites.length > 0,
         joinRequest: s.joinRequests[0] ?? null,
+        handouts: handoutsBySession.get(s.id) ?? [],
       })),
     })
   } catch (err) {

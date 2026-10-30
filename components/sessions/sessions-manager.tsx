@@ -31,6 +31,7 @@ import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
 import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
 import { TutorPickerModal } from "@/components/classroom/TutorPickerModal"
 import { InviteStudentsModal } from "@/components/classroom/InviteStudentsModal"
+import { ClassHandoutsDialog } from "@/components/sessions/class-handouts-dialog"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { Pagination } from "@/components/ui/pagination"
@@ -1001,6 +1002,7 @@ function SessionCard({
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [attendeesOpen, setAttendeesOpen] = useState(false)
   const [addStudentsOpen, setAddStudentsOpen] = useState(false)
+  const [handoutsOpen, setHandoutsOpen] = useState(false)
   const scope = useSessionsScope()
   const access = useTutorAccess()
   const canWatch = scope.canTeach || !!scope.canWatchRecordings
@@ -1234,6 +1236,13 @@ function SessionCard({
           {session.status === "CANCELLED" && (
             <span className="text-xs text-muted-foreground">This session was cancelled</span>
           )}
+          {/* Before, during or after class: files the students keep, opened at a set time. */}
+          {scope.canManageResources && !session.isCoTutor && access.calendar && session.status !== "CANCELLED" && (
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5"
+              onClick={() => setHandoutsOpen(true)}>
+              <FileText className="size-3" /> Handouts
+            </Button>
+          )}
           {!session.isCoTutor && access.calendar && (
             <Button
               size="sm"
@@ -1254,6 +1263,14 @@ function SessionCard({
         onOpenChange={setEditOpen}
         onCreated={() => { setEditOpen(false); onMutated?.() }}
       />
+
+      {handoutsOpen && (
+        <ClassHandoutsDialog
+          sessionId={session.id}
+          sessionTitle={session.title}
+          onClose={() => setHandoutsOpen(false)}
+        />
+      )}
 
       {addStudentsOpen && access.calendar && (
         <InviteStudentsModal

@@ -4,6 +4,7 @@
  *   • A class tomorrow     — the day before (any time from 24h to 2h ahead)
  *   • A class very soon    — within the hour before it starts
  *   • Lessons unlocked     — when lessons held back for a release date open
+ *   • Class handouts       — when a handout's set date and time arrives
  *   • Behind on homework   — work outstanding and nothing done for a week;
  *                            at most once a week per course, counting the
  *                            reminders tutors send by hand
@@ -17,6 +18,7 @@ import prisma from "@/lib/prisma"
 import { createNotification } from "@/lib/notifications"
 import { BEHIND_AFTER_DAYS, reminderLink } from "@/lib/homework"
 import { completeOverdueLiveSessions } from "@/lib/live-session-status"
+import { announceHandouts } from "@/lib/class-handouts"
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -215,7 +217,8 @@ export async function runReminders(now: Date = new Date()) {
   const classes = await classReminders(now)
   const unlocked = await unlockReminders(now)
   const homework = await homeworkReminders(now)
+  const handouts = await announceHandouts(now)
   // Keys only need to outlive the windows they guard (a week at most).
   await prisma.reminderSent.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 30 * DAY) } } })
-  return { classes, unlocked, homework }
+  return { classes, unlocked, homework, handouts }
 }
