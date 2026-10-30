@@ -100,6 +100,10 @@ export default function AdminSignsPage() {
     }
   )
 
+  // Only a dictionary with no signs at all offers the starter set — not a
+  // search or filter that happens to match nothing.
+  const emptyDictionary = !debouncedQuery && categoryFilter === "all" && levelFilter === "all" && data?.total === 0
+
   function handleCategoryChange(value: string) {
     setCategoryFilter(value)
     setPage(1)
@@ -122,7 +126,7 @@ export default function AdminSignsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {data?.total === 0 && (
+          {emptyDictionary && (
             <Button variant="outline" disabled={seeding} onClick={() => seed({})}>
               <Database className="size-4 mr-1.5" />
               {seeding ? "Seeding..." : "Seed defaults"}
@@ -201,8 +205,8 @@ export default function AdminSignsPage() {
           <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
             <Library className="size-10 text-muted-foreground" />
             <p className="font-semibold">No signs found</p>
-            {data?.total === 0 ? (
-              <p className="text-sm text-muted-foreground">Click "Seed defaults" to load the starter dictionary.</p>
+            {emptyDictionary ? (
+              <p className="text-sm text-muted-foreground">Click &quot;Seed defaults&quot; to load the starter dictionary.</p>
             ) : (
               <p className="text-sm text-muted-foreground">Try adjusting your filters.</p>
             )}
