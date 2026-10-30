@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { fulfilSignRequests } from "@/lib/sign-requests"
 
-// Where a requested word lands until someone moves it with Categories.
+// Where a requested word lands if whoever filmed it didn't pick a category.
 const REQUESTED_CATEGORY = "Requested"
 
 async function adminSession() {
@@ -37,9 +37,10 @@ async function handlePOST(req: NextRequest) {
     const denied = await adminSession()
     if (denied) return denied
 
-    const body = await req.json().catch(() => ({})) as { word?: unknown; videoUrl?: unknown }
+    const body = await req.json().catch(() => ({})) as { word?: unknown; videoUrl?: unknown; category?: unknown }
     const word = typeof body.word === "string" ? body.word.trim() : ""
     const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl.trim() : ""
+    const category = typeof body.category === "string" ? body.category.trim() : ""
     if (!word || !videoUrl) return NextResponse.json({ message: "Word and video are required" }, { status: 400 })
 
     const existing = await prisma.sign.findFirst({
@@ -47,9 +48,9 @@ async function handlePOST(req: NextRequest) {
       select: { id: true },
     })
     const sign = existing
-      ? await prisma.sign.update({ where: { id: existing.id }, data: { videoUrl } })
+      ? await prisma.sign.update({ where: { id: existing.id }, data: { videoUrl, ...(category && { category }) } })
       : await prisma.sign.create({
-          data: { word, category: REQUESTED_CATEGORY, description: "", handshape: "", usage: "", videoUrl },
+          data: { word, category: category || REQUESTED_CATEGORY, description: "", handshape: "", usage: "", videoUrl },
         })
 
     await prisma.signRequest.updateMany({

@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { Circle, Loader2, MonitorPlay, RotateCcw, Square, Trash2, X } from "lucide-react"
+import { Circle, Loader2, MonitorPlay, Pause, Play, RotateCcw, Square, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ProtectedVideo } from "@/components/ui/protected-video"
+import { cn } from "@/lib/utils"
 
 // A teacher's feedback on a filmed answer (a presentation, an assessment's
 // part). "Record feedback" opens a full-screen studio: the student's video
@@ -16,6 +17,9 @@ import { ProtectedVideo } from "@/components/ui/protected-video"
 
 /** Recording stops by itself after this. */
 const MAX_SECONDS = 30 * 60
+
+/** How fast the student's video can be played in the studio. */
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 /** What the browser can record, best first (Safari only does MP4). */
 function recordingType(): string | undefined {
@@ -128,11 +132,13 @@ function FeedbackStudio({ lessonId, answerId, studentVideoUrl, studentName, onCl
   onSaved: () => void
 }) {
   const cameraRef = useRef<HTMLVideoElement>(null)
+  const studentVideoRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
-  const [state, setState] = useState<"starting" | "ready" | "recording" | "saving">("starting")
+  const [state, setState] = useState<"starting" | "ready" | "recording" | "paused" | "saving">("starting")
   const [seconds, setSeconds] = useState(0)
+  const [speed, setSpeed] = useState(1)
   const [error, setError] = useState<string | null>(null)
 
   function stopAll() {
@@ -161,7 +167,7 @@ function FeedbackStudio({ lessonId, answerId, studentVideoUrl, studentName, onCl
     void start()
     return () => {
       cancelled = true
-      if (recorderRef.current?.state === "recording") recorderRef.current.onstop = null
+      if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.onstop = null
       recorderRef.current?.stop()
       stopAll()
     }
@@ -206,11 +212,36 @@ function FeedbackStudio({ lessonId, answerId, studentVideoUrl, studentName, onCl
       void save(new Blob(chunks, { type: type.split(";")[0] }))
     }
     // The browser's own "Stop sharing" stops the recording too.
-    screen.getVideoTracks()[0]?.addEventListener("ended", () => { if (recorder.state === "recording") recorder.stop() })
+    screen.getVideoTracks()[0]?.addEventListener("ended", () => { if (recorder.state !== "inactive") recorder.stop() })
     recorderRef.current = recorder
     recorder.start(1000)
     setSeconds(0)
     setState("recording")
+  }
+
+  // The student's video stops too, so it does not run on while nothing is being
+  // recorded. The teacher can move it, then press play once they have resumed.
+  function pause() {
+    if (recorderRef.current?.state !== "recording") return
+    recorderRef.current.pause()
+    studentVideoRef.current?.pause()
+    setState("paused")
+  }
+
+  function resume() {
+    if (recorderRef.current?.state !== "paused") return
+    recorderRef.current.resume()
+    setState("recording")
+  }
+
+  function changeSpeed(next: number) {
+    const video = studentVideoRef.current
+    if (!video) return
+    // The default too: the player reloads when its signed link expires, and a
+    // reload puts the speed back to the default.
+    video.defaultPlaybackRate = next
+    video.playbackRate = next
+    setSpeed(next)
   }
 
   async function save(file: Blob) {
@@ -226,8 +257,8 @@ function FeedbackStudio({ lessonId, answerId, studentVideoUrl, studentName, onCl
   }
 
   function close() {
-    if (state === "recording" && !window.confirm("Stop and throw away this recording?")) return
-    if (recorderRef.current?.state === "recording") {
+    if ((state === "recording" || state === "paused") && !window.confirm("Stop and throw away this recording?")) return
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
       recorderRef.current.onstop = null
       recorderRef.current.stop()
     }
@@ -239,17 +270,47 @@ function FeedbackStudio({ lessonId, answerId, studentVideoUrl, studentName, onCl
   return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col bg-background" role="dialog" aria-modal="true" aria-label="Record feedback">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
-        <p className="text-sm font-semibold">Feedback{studentName ? ` for ${studentName}` : ""}</p>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <p className="text-sm font-semibold">Feedback{studentName ? ` for ${studentName}` : ""}</p>
+          <div role="group" aria-label="Speed of the student's video" className="flex items-center gap-0.5">
+            <span className="mr-1 text-xs text-muted-foreground">Speed</span>
+            {SPEEDS.map((s) => (
+              <Button
+                key={s}
+                type="button"
+                size="sm"
+                variant={speed === s ? "default" : "ghost"}
+                className={cn("h-7 px-2 text-xs tabular-nums", speed !== s && "text-muted-foreground")}
+                aria-pressed={speed === s}
+                onClick={() => changeSpeed(s)}
+              >
+                {s}x
+              </Button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           {state === "recording" && (
             <span className="flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white tabular-nums">
               <Circle className="size-2 fill-current animate-pulse" /> {clock(seconds)}
             </span>
           )}
-          {state === "recording" ? (
-            <Button size="sm" variant="destructive" onClick={() => recorderRef.current?.stop()}>
-              <Square className="size-3.5 mr-1.5 fill-current" /> Stop and save
-            </Button>
+          {state === "paused" && (
+            <span className="flex items-center gap-1.5 rounded-full bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white tabular-nums">
+              <Pause className="size-2 fill-current" /> Paused {clock(seconds)}
+            </span>
+          )}
+          {state === "recording" || state === "paused" ? (
+            <>
+              <Button size="sm" variant="outline" onClick={state === "paused" ? resume : pause}>
+                {state === "paused"
+                  ? <><Play className="size-3.5 mr-1.5 fill-current" /> Resume</>
+                  : <><Pause className="size-3.5 mr-1.5 fill-current" /> Pause</>}
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => recorderRef.current?.stop()}>
+                <Square className="size-3.5 mr-1.5 fill-current" /> Stop and save
+              </Button>
+            </>
           ) : (
             <Button size="sm" onClick={() => void record()} disabled={state !== "ready"}>
               {state === "saving"
@@ -267,13 +328,23 @@ function FeedbackStudio({ lessonId, answerId, studentVideoUrl, studentName, onCl
         <p className="px-4 pt-3 text-xs text-muted-foreground">
           {state === "saving"
             ? "Uploading your feedback — keep this open until it is done."
+            : state === "paused"
+            ? "Paused — nothing is being recorded. Press Resume to carry on from here; the pause is left out of the video."
             : "Press Start recording and share this tab. Then play the student's video, pause it where you want to comment, and sign or talk next to it. Press Stop and save when you are done."}
         </p>
       )}
       {error && <p role="alert" className="mx-4 mt-2 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
 
       <div className="relative flex-1 min-h-0 p-4">
-        <ProtectedVideo src={studentVideoUrl} controls playsInline className="h-full w-full rounded-lg bg-black object-contain" />
+        <ProtectedVideo
+          ref={studentVideoRef}
+          src={studentVideoUrl}
+          controls
+          playsInline
+          // The player's own menu can change the speed too.
+          onRateChange={(e) => setSpeed(e.currentTarget.playbackRate)}
+          className="h-full w-full rounded-lg bg-black object-contain"
+        />
         {/* Not mirrored, so the student sees the signing the right way round. */}
         <video
           ref={cameraRef}

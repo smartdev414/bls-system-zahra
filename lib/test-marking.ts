@@ -113,14 +113,17 @@ export async function notifyStudentMarked(attemptId: string) {
     },
   })
   if (!attempt) return
-  const seeWhat = attempt.lesson.test?.testKind === "PRESENTATION" ? "your marks and your teacher's feedback" : "your marks and the answer sheet"
+  const presentation = attempt.lesson.test?.testKind === "PRESENTATION"
+  const seeWhat = presentation ? "your marks and your teacher's feedback" : "your marks and the answer sheet"
+  const scored = `You got ${attempt.score}% on "${attempt.lesson.title}".`
   await createNotification(
     attempt.userId,
     attempt.passed ? "QUIZ_PASSED" : "QUIZ_FAILED",
     `Your teacher has marked "${attempt.lesson.title}" — ${attempt.score}%`,
     attempt.passed
-      ? `You passed. See ${seeWhat}.`
-      : `Not passed this time. See ${seeWhat}.`,
+      ? `${scored} You passed. See ${seeWhat}.`
+      : `${scored} Not passed this time. See ${seeWhat}.`,
     `/student/lessons/${attempt.lessonId}`,
+    presentation ? "Presentation" : "Assessment",
   )
 }

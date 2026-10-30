@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
+import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { can, courseTeachScope } from "@/lib/permissions"
 import { attemptsLeft } from "@/lib/quiz"
@@ -186,7 +187,7 @@ async function handleDELETE(
 
     const lesson = await prisma.lesson.findFirst({
       where: { id, type: "QUIZ", section: { course: courseTeachScope(session) } },
-      select: { id: true, section: { select: { courseId: true } } },
+      select: { id: true, title: true, section: { select: { courseId: true, course: { select: { title: true } } } } },
     })
     if (!lesson) return NextResponse.json({ message: "Test not found" }, { status: 404 })
 
@@ -198,6 +199,16 @@ async function handleDELETE(
         data: { isCompleted: false, completedAt: null },
       }),
     ])
+
+    // The student hears they can sit it again. No new notification type: this
+    // one already emails, and opens the lesson, which is what is wanted.
+    if (count > 0) void createNotification(
+      studentId,
+      "LESSONS_UNLOCKED",
+      `You can take "${lesson.title}" again`,
+      `Your teacher has reset your attempts on "${lesson.title}" on ${lesson.section.course.title}. Your earlier scores for it have been cleared, so you can start again from the beginning.`,
+      `/student/lessons/${id}`,
+    )
 
     return NextResponse.json({ message: "Attempts reset", deleted: count })
   } catch (err) {

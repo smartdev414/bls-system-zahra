@@ -35,6 +35,14 @@ async function handleGET(req: NextRequest) {
         orderBy: [{ category: "asc" }, { word: "asc" }],
         take: limit,
         skip,
+        // What students wrote when asking for it, to start the description from.
+        include: {
+          requests: {
+            where: { context: { not: "" }, status: { not: "DECLINED" } },
+            orderBy: { createdAt: "asc" },
+            select: { context: true },
+          },
+        },
       }),
       prisma.sign.findMany({
         select: { category: true },
@@ -44,7 +52,10 @@ async function handleGET(req: NextRequest) {
     ])
 
     return NextResponse.json({
-      signs,
+      signs: signs.map(({ requests, ...sign }) => ({
+        ...sign,
+        studentContext: [...new Set(requests.map((r) => r.context))].join("\n"),
+      })),
       total,
       page,
       totalPages: Math.ceil(total / limit),

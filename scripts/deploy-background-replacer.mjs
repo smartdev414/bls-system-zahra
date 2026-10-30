@@ -82,12 +82,15 @@ const endpoint = {
   // video; the 5090 is the fallback when no 4090 is free.
   gpuTypeIds: ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 5090"],
   gpuCount: 1,
-  // Cost controls: nothing runs (or bills) while idle, never more than one
-  // worker, and a stuck job is stopped rather than left running.
+  // Cost controls: nothing runs (or bills) once a sitting is over, and a stuck
+  // job is stopped rather than left running. A second worker is there for when
+  // the first lands on a host with no free GPU, which otherwise holds the queue.
   workersMin: 0,
-  workersMax: 1,
-  // Long enough that back-to-back dictionary takes reuse the warm worker.
-  idleTimeout: 30,
+  workersMax: 2,
+  // A cold start is about 110 s against about 15 s to process a sign
+  // (2026-10-30), so the worker stays up through the pauses between takes. Each
+  // sitting costs about 5 minutes of idle GPU, roughly $0.10.
+  idleTimeout: 300,
   executionTimeoutMs: 2 * 60 * 60 * 1000,
   scalerType: "QUEUE_DELAY",
   scalerValue: 4,

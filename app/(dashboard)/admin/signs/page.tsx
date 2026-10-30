@@ -44,6 +44,8 @@ type Sign = {
   showUsage: boolean
   videoUrl: string | null
   imageUrl: string | null
+  // What students wrote when asking for this sign.
+  studentContext?: string
 }
 
 type SignsData = { signs: Sign[]; total: number; totalPages: number; page: number; categories: string[] }
@@ -600,7 +602,11 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
             <div className="flex gap-1.5 shrink-0">
               <Button
                 size="icon" variant="ghost" className="size-8"
-                onClick={() => { setForm({ ...sign }); setEditOpen(true) }}
+                onClick={() => {
+                  // Not saved until the admin has read it: students see the description.
+                  setForm({ ...sign, description: sign.description || (sign.studentContext ?? "") })
+                  setEditOpen(true)
+                }}
               >
                 <Pencil className="size-3.5" />
               </Button>
@@ -643,6 +649,7 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
         setForm={setForm}
         onSubmit={() => update(form)}
         loading={updating}
+        descriptionFromStudent={!sign.description && !!form.description && form.description === sign.studentContext}
       />
     </>
   )
@@ -651,7 +658,7 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
 // ─── Shared sign form dialog ──────────────────────────────────────────────────
 
 function SignDialog({
-  open, onClose, title, form, setForm, onSubmit, loading,
+  open, onClose, title, form, setForm, onSubmit, loading, descriptionFromStudent,
 }: {
   open: boolean
   onClose: () => void
@@ -660,6 +667,7 @@ function SignDialog({
   setForm: (f: Omit<Sign, "id">) => void
   onSubmit: () => void
   loading: boolean
+  descriptionFromStudent?: boolean
 }) {
   const set = (key: keyof Omit<Sign, "id">, value: string | boolean | null) =>
     setForm({ ...form, [key]: value })
@@ -726,6 +734,9 @@ function SignDialog({
               placeholder="How to perform this sign"
               rows={3}
             />
+            {descriptionFromStudent && (
+              <p className="text-xs text-muted-foreground">Copied from what the student wrote. Correct it, then save.</p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">

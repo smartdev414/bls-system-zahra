@@ -329,6 +329,10 @@ def process(source, output, color, logo_url, on_progress, background_url=None):
 
 def handler(job):
     data = job.get("input") or {}
+    # Sent when someone opens the recorder. Starting this worker is the point:
+    # the model is already loaded by the time a job can arrive.
+    if data.get("warm"):
+        return {"warm": True}
     source_url = require_https("source_url", data.get("source_url"))
     upload_url = require_https("upload_url", data.get("upload_url"))
     color = parse_color(data.get("color"))

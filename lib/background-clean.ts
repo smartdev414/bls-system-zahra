@@ -40,6 +40,8 @@ const JOB_URL_TTL_SECS = 6 * 60 * 60
 const JOB_TIMEOUT_MS = 2 * 60 * 60 * 1000
 // How long to trust that RunPod's report is still on its way before asking.
 const STALE_AFTER_MS = 2 * 60 * 1000
+// A warm-up that hasn't started by then is no use to anyone.
+const WARM_TTL_MS = 5 * 60 * 1000
 
 export type CleanState = "processing" | "done" | "failed"
 
@@ -125,6 +127,25 @@ async function sendToRunpod(job: Pick<VideoCleanJob, "id" | "rawKey" | "color">)
   const { id } = await res.json() as { id?: string }
   if (!id) throw new Error("RunPod returned no job id")
   return id
+}
+
+/**
+ * Starts a worker ahead of the first take, so it is ready by the time the take
+ * is saved. Worth nothing if it can't be sent, so failures are only logged.
+ */
+export async function warmBackgroundWorker(): Promise<void> {
+  const target = endpoint()
+  if (!target) return
+  try {
+    const res = await fetch(`${RUNPOD_API}/${target.id}/run`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${target.key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ input: { warm: true }, policy: { ttl: WARM_TTL_MS } }),
+    })
+    if (!res.ok) console.error(`[background-clean] could not warm a worker (${res.status})`)
+  } catch (err) {
+    console.error("[background-clean] could not warm a worker", err)
+  }
 }
 
 /**

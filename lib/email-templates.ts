@@ -259,13 +259,15 @@ function newTutorReview(name: string, body: string, link?: string): string {
   return layout(content, `New tutor review: ${body}`)
 }
 
-function quizResult(name: string, body: string, passed: boolean, link?: string): string {
+function quizResult(name: string, body: string, passed: boolean, link?: string, testName = "Quiz"): string {
   const color = passed ? "#059669" : "#DC2626"
   const label = passed ? "Passed ✓" : "Not Passed"
-  const headline = passed ? "Well done — you passed!" : "Quiz result"
+  const headline = passed ? "Well done — you passed!" : `${testName} result`
   const motivational = passed
     ? "Excellent work! Keep it up and move on to the next lesson."
-    : "Don't worry — review the material and try again. You can do it!"
+    : testName === "Quiz"
+      ? "Don't worry — review the material and try again. You can do it!"
+      : "Don't worry — go through your teacher's marks and keep practising. You can do it!"
 
   const content = `
     ${greeting(name)}
@@ -457,6 +459,7 @@ export function renderEmailTemplate(
   title: string,
   body: string,
   link?: string,
+  testName = "Quiz",
 ): { subject: string; html: string } {
   const subjects: Partial<Record<NotificationType, string>> = {
     [NotificationType.SESSION_SCHEDULED]:  `📅 New session scheduled — ${title}`,
@@ -474,8 +477,8 @@ export function renderEmailTemplate(
     [NotificationType.SESSION_JOIN_REQUEST]:     `🙋 Join request — ${title}`,
     [NotificationType.SESSION_REQUEST_APPROVED]: `✅ Request approved — ${title}`,
     [NotificationType.SESSION_REQUEST_REJECTED]: `❌ Request declined — ${title}`,
-    [NotificationType.QUIZ_PASSED]:        `✅ Quiz passed — ${title}`,
-    [NotificationType.QUIZ_FAILED]:        `📝 Quiz result — ${title}`,
+    [NotificationType.QUIZ_PASSED]:        `✅ ${testName} passed — ${title}`,
+    [NotificationType.QUIZ_FAILED]:        `📝 ${testName} result — ${title}`,
     [NotificationType.TEST_TO_MARK]:       `📝 ${title}`,
     [NotificationType.NEW_MESSAGE]:        `💬 ${title}`,
     [NotificationType.COURSE_PUBLISHED]:   `🚀 ${title}`,
@@ -516,8 +519,8 @@ export function renderEmailTemplate(
     case NotificationType.SESSION_JOIN_REQUEST:     html = generic(recipientName, title, body, link);   break
     case NotificationType.SESSION_REQUEST_APPROVED: html = generic(recipientName, title, body, link);   break
     case NotificationType.SESSION_REQUEST_REJECTED: html = generic(recipientName, title, body, link);   break
-    case NotificationType.QUIZ_PASSED:       html = quizResult(recipientName, body, true, link); break
-    case NotificationType.QUIZ_FAILED:       html = quizResult(recipientName, body, false, link);break
+    case NotificationType.QUIZ_PASSED:       html = quizResult(recipientName, body, true, link, testName); break
+    case NotificationType.QUIZ_FAILED:       html = quizResult(recipientName, body, false, link, testName);break
     case NotificationType.TEST_TO_MARK:      html = generic(recipientName, title, body, link);   break
     case NotificationType.NEW_MESSAGE:       html = newMessage(recipientName, body, link);       break
     case NotificationType.COURSE_PUBLISHED:  html = coursePublished(recipientName, body, link);  break

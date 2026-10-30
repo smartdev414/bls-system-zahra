@@ -22,11 +22,13 @@ export async function createNotification(
   title: string,
   body: string,
   link?: string,
+  /** What a QUIZ_PASSED/QUIZ_FAILED email calls the test, when it isn't a quiz. */
+  testName?: string,
 ): Promise<boolean> {
   try {
     await prisma.notification.create({ data: { userId, type, title, body, link: link ?? null } })
     // Fire email — never awaited so it never blocks the primary action
-    void sendNotificationEmail(userId, type, title, body, link)
+    void sendNotificationEmail(userId, type, title, body, link, testName)
     // And to their phone, if they turned on phone notifications
     if (pushConfigured()) inBackground(() => sendPushToUser(userId, { title, body, url: link }))
     return true

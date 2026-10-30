@@ -62,6 +62,7 @@ export async function sendNotificationEmail(
   title: string,
   body: string,
   link?: string,
+  testName?: string,
 ): Promise<void> {
   if (!EMAIL_NOTIFICATION_TYPES.has(type)) return
 
@@ -72,7 +73,7 @@ export async function sendNotificationEmail(
     })
     if (!user) return
 
-    const { subject, html } = renderEmailTemplate(type, user.name, title, body, link)
+    const { subject, html } = renderEmailTemplate(type, user.name, title, body, link, testName)
     await sendEmail(user.email, subject, html)
   } catch (err) {
     console.error("[email] sendNotificationEmail failed", err)

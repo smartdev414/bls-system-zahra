@@ -14,11 +14,12 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   ArrowLeft, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Circle,
-  Loader2, MessageSquareText, RotateCcw, Square, TriangleAlert, Video, X,
+  Loader2, MessageSquareText, Plus, RotateCcw, Square, TriangleAlert, Video, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -33,7 +34,7 @@ import {
 import { createHandsRestDetector, type HandsRestDetector } from "@/lib/hands-rest-detector"
 import { rawRecordingName } from "@/lib/background-clean-keys"
 import { BACKGROUND_IMAGES, DICTIONARY_BACKGROUND, backgroundImage, isBackgroundValue } from "@/lib/background-presets"
-import { setVideoCleanState } from "@/hooks/use-video-clean"
+import { setVideoCleanState, useVideoCleanState } from "@/hooks/use-video-clean"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 
 // The dictionary's own, so every sign is filmed against the same blue unless
@@ -90,6 +91,8 @@ type QueueData = {
 }
 
 const isNewRequest = (sign: QueueSign) => sign.id.startsWith("request:")
+// The picker's "make a new one" choice. Can't clash: it is never saved.
+const NEW_CATEGORY = "__new__"
 type Phase = "idle" | "countdown" | "recording" | "review"
 type TakeStatus = "uploading" | "saved" | "failed"
 type Take = { sign: QueueSign; blob: Blob; url: string }
@@ -161,12 +164,12 @@ const cleanColors = new WeakMap<Blob, string>()
  * Saves a take on its dictionary sign. A requested word that isn't in the
  * dictionary yet becomes a sign with it.
  */
-async function attachToSign(sign: QueueSign, fileUrl: string): Promise<void> {
+async function attachToSign(sign: QueueSign, fileUrl: string, category?: string): Promise<void> {
   const saveRes = isNewRequest(sign)
     ? await fetch("/api/admin/sign-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: sign.word, videoUrl: fileUrl }),
+        body: JSON.stringify({ word: sign.word, videoUrl: fileUrl, category }),
       })
     : await fetch(`/api/admin/signs/${sign.id}`, {
         method: "PATCH",
@@ -232,6 +235,24 @@ async function persistTake(
   return fileUrl
 }
 
+/** What has become of the take on screen: saved at once, then visible to students once its background is done. */
+function SavedBadge({ url }: { url: string | null | undefined }) {
+  const { state } = useVideoCleanState(url)
+  if (state === "failed") return <VideoCleanBadge url={url} />
+  if (state === "processing") {
+    return (
+      <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700">
+        <Loader2 className="size-2.5 animate-spin" /> Saved — finishing the background, usually 1–3 minutes. You can carry on or leave this page.
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="gap-1 border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
+      <Check className="size-2.5" /> {url && state === "done" ? "Ready — students can see it. Recording again replaces it" : "Saved — recording again replaces it"}
+    </Badge>
+  )
+}
+
 function Key({ children }: { children: React.ReactNode }) {
   return (
     <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
@@ -270,6 +291,10 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
   // Takes whose upload failed, kept so they can be retried without re-signing.
   const failedTakesRef = useRef(new Map<string, Blob>())
   const queueRequestRef = useRef(0)
+  // The category picked for each requested word not in the dictionary yet.
+  const [requestCategories, setRequestCategories] = useState<Record<string, string>>({})
+  // The requested word whose category is being typed as a new one.
+  const [typingCategoryFor, setTypingCategoryFor] = useState<string | null>(null)
   const currentRowRef = useRef<HTMLButtonElement>(null)
 
   // ── Camera ─────────────────────────────────────────────────────────────────
@@ -395,6 +420,13 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
       .catch(() => toast.error("Could not close the request"))
   }
 
+  // Its spelling in the list if it is already there, so "food" joins "Food".
+  function chosenCategory(sign: QueueSign): string | undefined {
+    const typed = requestCategories[sign.id]?.trim()
+    if (!typed) return undefined
+    return categories.find((c) => c.toLowerCase() === typed.toLowerCase()) ?? typed
+  }
+
   function changeFilter(apply: () => void) {
     apply()
     setItems([])
@@ -449,6 +481,14 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  // Gets a worker going before the first take, which would otherwise wait for one.
+  const workerWarmedRef = useRef(false)
+  useEffect(() => {
+    if (!cleanLater || workerWarmedRef.current) return
+    workerWarmedRef.current = true
+    fetch("/api/upload/clean-background/warm", { method: "POST" }).catch(() => {})
+  }, [cleanLater])
 
   // Starts the canvas render loop once the camera is live. The canvas — not
   // the raw camera — is what gets recorded, so the logo and background colour
@@ -659,8 +699,11 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
 
   function saveTake(sign: QueueSign, blob: Blob) {
     setStatuses((prev) => ({ ...prev, [sign.id]: "uploading" }))
-    persistTake(sign, blob, onRecorded ? (s, url) => onRecorded(s.id, url) : attachToSign)
+    const category = isNewRequest(sign) ? chosenCategory(sign) : undefined
+    persistTake(sign, blob, onRecorded ? (s, url) => onRecorded(s.id, url) : (s, url) => attachToSign(s, url, category))
       .then((cleanUrl) => {
+        // A new category is there to pick for the next word.
+        if (category) setCategories((prev) => (prev.includes(category) ? prev : [...prev, category].sort()))
         setCleanUrls((prev) => ({ ...prev, [sign.id]: cleanUrl }))
         failedTakesRef.current.delete(sign.id)
         setStatuses((prev) => ({ ...prev, [sign.id]: "saved" }))
@@ -848,12 +891,10 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
                   {current.level && (
                     <Badge variant="outline" className={`text-[10px] ${levelColor[current.level]}`}>{current.level}</Badge>
                   )}
-                  {current.category && <Badge variant="secondary" className="text-[10px]">{current.category}</Badge>}
-                  {statuses[current.id] === "saved" && (
-                    <Badge variant="outline" className="gap-1 border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
-                      <Check className="size-2.5" /> Saved — recording again replaces it
-                    </Badge>
+                  {(current.category ?? chosenCategory(current)) && (
+                    <Badge variant="secondary" className="text-[10px]">{current.category ?? chosenCategory(current)}</Badge>
                   )}
+                  {statuses[current.id] === "saved" && <SavedBadge url={cleanUrls[current.id]} />}
                 </div>
                 {current.description && (
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{current.description}</p>
@@ -882,6 +923,61 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
                         </li>
                       ))}
                     </ul>
+                    {/* Saved already: its category is changed from the dictionary page. */}
+                    {isNewRequest(current) && !statuses[current.id] && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-amber-800 dark:text-amber-300">Category</span>
+                        {typingCategoryFor === current.id ? (
+                          <>
+                            <Input
+                              autoFocus
+                              maxLength={60}
+                              placeholder="New category name"
+                              className="h-8 w-52 bg-background"
+                              value={requestCategories[current.id] ?? ""}
+                              onChange={(e) => setRequestCategories((prev) => ({ ...prev, [current.id]: e.target.value }))}
+                              // Hands the keyboard back to the recorder.
+                              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur() }}
+                            />
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2 text-xs"
+                              onClick={() => {
+                                setTypingCategoryFor(null)
+                                setRequestCategories((prev) => ({ ...prev, [current.id]: "" }))
+                              }}
+                            >
+                              Pick from the list
+                            </Button>
+                          </>
+                        ) : (
+                          <Select
+                            value={requestCategories[current.id] ?? ""}
+                            disabled={phase !== "idle"}
+                            onValueChange={(value) => {
+                              if (value === NEW_CATEGORY) {
+                                setTypingCategoryFor(current.id)
+                                setRequestCategories((prev) => ({ ...prev, [current.id]: "" }))
+                              } else {
+                                setRequestCategories((prev) => ({ ...prev, [current.id]: value }))
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-52 bg-background"><SelectValue placeholder="Choose a category" /></SelectTrigger>
+                            {/* Focus left on the picker would stop Space starting a take. */}
+                            <SelectContent onCloseAutoFocus={(e) => e.preventDefault()}>
+                              {categories.map((c) => (
+                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                              ))}
+                              <SelectItem value={NEW_CATEGORY}>
+                                <Plus className="size-3.5" /> New category
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -1210,8 +1306,8 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
           </div>
           {cleanLater && (
             <p className="text-center text-xs text-muted-foreground">
-              The background of each take is replaced automatically in the background after it is saved. It takes a
-              few minutes — the preview here is only a rough guide.
+              Each take saves straight away, then its background is replaced automatically — seconds once you are
+              under way, 1–3 minutes for the first. The preview here is only a rough guide.
             </p>
           )}
           {rendererActive && (
