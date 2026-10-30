@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { requestedToFilm } from "@/lib/sign-requests"
 
 const PAGE_SIZE = 50
 
@@ -25,10 +26,19 @@ async function handleGET(req: NextRequest) {
       ...(level ? { level: level as import("@/app/generated/prisma/client").CourseLevel } : {}),
     }
 
+    // Words students asked for go first, with who asked and why. Only on the
+    // unfiltered list: a request has no category or level yet.
+    const requested = !category && !level ? await requestedToFilm() : []
+    const requestedSignIds = requested.flatMap((r) => (r.id.startsWith("request:") ? [] : [r.id]))
+
     const [remaining, signs, allCategories] = await Promise.all([
       prisma.sign.count({ where }),
       prisma.sign.findMany({
-        where: { ...where, ...(after ? { word: { gt: after } } : {}) },
+        where: {
+          ...where,
+          ...(after ? { word: { gt: after } } : {}),
+          ...(requestedSignIds.length ? { id: { notIn: requestedSignIds } } : {}),
+        },
         orderBy: { word: "asc" },
         take: PAGE_SIZE + 1,
         select: { id: true, word: true, category: true, level: true, description: true },
@@ -41,9 +51,10 @@ async function handleGET(req: NextRequest) {
     ])
 
     return NextResponse.json({
+      requested: after ? [] : requested,
       signs: signs.slice(0, PAGE_SIZE),
       hasMore: signs.length > PAGE_SIZE,
-      remaining,
+      remaining: remaining + requested.length - requestedSignIds.length,
       categories: allCategories.map((c) => c.category),
     })
   } catch (err) {

@@ -27,6 +27,7 @@ import type { VideoCleanJob } from "@/app/generated/prisma/client"
 import { getPresignedDownloadUrl, getPresignedUploadUrl, objectExists, publicUrl } from "@/lib/s3"
 import { publicAppUrl } from "@/lib/publicUrl"
 import { createNotification } from "@/lib/notifications"
+import { fulfilSignRequests } from "@/lib/sign-requests"
 import { cleanKeyFor, rawKeyFromUrl } from "@/lib/background-clean-keys"
 import { LOGO_MARK_SRC } from "@/components/layout/logo"
 import { backgroundImage } from "@/lib/background-presets"
@@ -166,7 +167,7 @@ export async function settleBackgroundClean(jobId: string, succeeded: boolean): 
 
   const fileUrl = publicUrl(job.rawKey)
   const [sign, asset, libraryFile, user] = await Promise.all([
-    prisma.sign.findFirst({ where: { videoUrl: fileUrl }, select: { word: true } }),
+    prisma.sign.findFirst({ where: { videoUrl: fileUrl }, select: { id: true, word: true, videoUrl: true, imageUrl: true } }),
     prisma.lessonAsset.findFirst({
       where: { fileUrl },
       select: { lesson: { select: { id: true, title: true, section: { select: { courseId: true } } } } },
@@ -201,8 +202,12 @@ export async function settleBackgroundClean(jobId: string, succeeded: boolean): 
     return
   }
   // A dictionary sitting can be hundreds of takes; one message each would
-  // bury everything else. Signs only speak up when something goes wrong.
-  if (sign) return
+  // bury everything else. Signs only speak up when something goes wrong —
+  // apart from telling any student who asked for this one that it's there.
+  if (sign) {
+    await fulfilSignRequests(sign)
+    return
+  }
   await createNotification(
     job.userId,
     "VIDEO_BACKGROUND_READY",

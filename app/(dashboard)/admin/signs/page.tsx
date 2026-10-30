@@ -78,6 +78,10 @@ export default function AdminSignsPage() {
     errorMessage: "Could not load signs",
   })
 
+  // Words students asked for, waiting at the top of Record videos.
+  const { data: requestData } = useFetch<{ open: number }>("/api/admin/sign-requests")
+  const openRequests = requestData?.open ?? 0
+
   const { execute: create, loading: creating } = usePostCallback<{ sign: Sign }, Omit<Sign, "id">>(
     "/api/admin/signs",
     {
@@ -130,6 +134,11 @@ export default function AdminSignsPage() {
           <Button variant="outline" asChild>
             <Link href="/admin/signs/record">
               <Video className="size-4 mr-1.5" /> Record videos
+              {openRequests > 0 && (
+                <Badge className="ml-1.5 h-5 bg-amber-500 px-1.5 text-[11px] hover:bg-amber-500">
+                  {openRequests} asked for
+                </Badge>
+              )}
             </Link>
           </Button>
           <Button variant="outline" onClick={() => setBulkOpen(true)}>

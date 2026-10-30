@@ -165,6 +165,8 @@ enum NotificationType {
   // A recording's background replacement finished or failed (for whoever recorded it)
   VIDEO_BACKGROUND_READY
   VIDEO_BACKGROUND_FAILED
+  // A sign the student asked for is now in the dictionary
+  DICTIONARY_SIGN_ADDED
   // Ticket / feedback events
   TICKET_CREATED
   TICKET_UPDATED
@@ -260,6 +262,7 @@ model User {
   preparedCaptions     PreparedCaption[]       @relation("TutorPreparedCaptions")
   videoCleanJobs       VideoCleanJob[]
   savedSigns           SavedSign[]
+  signRequests         SignRequest[]
 }
 
 enum AccountStatus {
@@ -403,6 +406,7 @@ model Sign {
   updatedAt   DateTime    @updatedAt
 
   savedBy     SavedSign[]
+  requests    SignRequest[]
 
   @@index([category])
   @@index([level])
@@ -418,6 +422,34 @@ model SavedSign {
   sign Sign @relation(fields: [signId], references: [id], onDelete: Cascade)
 
   @@id([userId, signId])
+  @@index([signId])
+}
+
+enum SignRequestStatus {
+  OPEN
+  ADDED
+  DECLINED
+}
+
+// A word a student asked to have added to the dictionary, with what they need
+// it for. It shows at the top of the admin's Record videos list; once the sign
+// has a video the student is told by email.
+model SignRequest {
+  id         String            @id @default(cuid())
+  studentId  String
+  word       String
+  context    String            @default("")
+  status     SignRequestStatus @default(OPEN)
+  // The dictionary sign it became (or an existing one still waiting for a video).
+  signId     String?
+  createdAt  DateTime          @default(now())
+  resolvedAt DateTime?
+
+  student User  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  sign    Sign? @relation(fields: [signId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([studentId])
   @@index([signId])
 }
 

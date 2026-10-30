@@ -14,7 +14,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   ArrowLeft, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Circle,
-  Loader2, RotateCcw, Square, TriangleAlert, Video,
+  Loader2, MessageSquareText, RotateCcw, Square, TriangleAlert, Video, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -76,9 +76,20 @@ type QueueSign = {
   category?: string
   level?: CourseLevel
   description?: string
+  /** Students who asked for this word, and what they need it for. */
+  requests?: { studentName: string; context: string; createdAt: string }[]
 }
 
-type QueueData = { signs: QueueSign[]; hasMore: boolean; remaining: number; categories: string[] }
+type QueueData = {
+  /** Words students asked for, first in the list. The id is `request:<word>` until the sign exists. */
+  requested?: QueueSign[]
+  signs: QueueSign[]
+  hasMore: boolean
+  remaining: number
+  categories: string[]
+}
+
+const isNewRequest = (sign: QueueSign) => sign.id.startsWith("request:")
 type Phase = "idle" | "countdown" | "recording" | "review"
 type TakeStatus = "uploading" | "saved" | "failed"
 type Take = { sign: QueueSign; blob: Blob; url: string }
@@ -146,13 +157,22 @@ function writeStudioPrefs(prefs: StudioPrefs): void {
 // Kept against the blob so a retried upload asks for the same thing.
 const cleanColors = new WeakMap<Blob, string>()
 
-/** Saves a take on its dictionary sign. */
+/**
+ * Saves a take on its dictionary sign. A requested word that isn't in the
+ * dictionary yet becomes a sign with it.
+ */
 async function attachToSign(sign: QueueSign, fileUrl: string): Promise<void> {
-  const saveRes = await fetch(`/api/admin/signs/${sign.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ videoUrl: fileUrl }),
-  })
+  const saveRes = isNewRequest(sign)
+    ? await fetch("/api/admin/sign-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word: sign.word, videoUrl: fileUrl }),
+      })
+    : await fetch(`/api/admin/signs/${sign.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoUrl: fileUrl }),
+      })
   if (!saveRes.ok) {
     const err = await saveRes.json().catch(() => ({})) as { message?: string }
     throw new Error(err.message ?? "Could not save the video to the sign")
@@ -335,7 +355,7 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
       const data = await res.json() as QueueData
       // A newer request (the filters changed) has taken over.
       if (requestId !== queueRequestRef.current) return
-      setItems((prev) => (after ? [...prev, ...data.signs] : data.signs))
+      setItems((prev) => (after ? [...prev, ...data.signs] : [...(data.requested ?? []), ...data.signs]))
       setHasMore(data.hasMore)
       setCategories(data.categories)
       if (!after) setRemaining(data.remaining)
@@ -361,6 +381,19 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
   useEffect(() => {
     currentRowRef.current?.scrollIntoView({ block: "nearest" })
   }, [index])
+
+  // "Not adding" on a requested word: it leaves the list (a word already in
+  // the dictionary comes back in its usual place next time).
+  function declineRequest(sign: QueueSign) {
+    fetch(`/api/admin/sign-requests?word=${encodeURIComponent(sign.word)}`, { method: "DELETE" })
+      .then((res) => {
+        if (!res.ok) throw new Error()
+        setItems((prev) => prev.filter((s) => s.id !== sign.id))
+        setRemaining((n) => Math.max(0, n - 1))
+        toast.success(`Request for "${sign.word}" closed`)
+      })
+      .catch(() => toast.error("Could not close the request"))
+  }
 
   function changeFilter(apply: () => void) {
     apply()
@@ -825,6 +858,32 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
                 {current.description && (
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{current.description}</p>
                 )}
+                {!!current.requests?.length && (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="flex items-center gap-1.5 font-semibold text-amber-800 dark:text-amber-300">
+                        <MessageSquareText className="size-4" /> Asked for by
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="-my-1 h-7 px-2 text-xs"
+                        disabled={phase !== "idle"}
+                        onClick={() => declineRequest(current)}
+                      >
+                        <X className="mr-1 size-3.5" /> Not adding
+                      </Button>
+                    </div>
+                    <ul className="mt-1 space-y-0.5">
+                      {current.requests.map((r, i) => (
+                        <li key={i}>
+                          <span className="font-medium">{r.studentName}</span>
+                          {r.context ? <span className="text-muted-foreground"> — “{r.context}”</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </>
             ) : queueFinished ? (
               <>
@@ -1187,6 +1246,12 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
                         {status === "failed" && <TriangleAlert className="size-4 text-destructive" />}
                       </span>
                       <span className="truncate">{sign.word}</span>
+                      {!!sign.requests?.length && (
+                        <MessageSquareText
+                          className="ml-auto size-3.5 shrink-0 text-amber-600"
+                          aria-label="Asked for by a student"
+                        />
+                      )}
                     </button>
                     {status === "failed" && (
                       <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => retrySave(sign)}>

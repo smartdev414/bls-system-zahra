@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
-import { Search, Library, PlayCircle, BookOpen, Loader2, Filter, Image as ImageIcon, Star, Layers, CalendarDays } from "lucide-react"
+import { Search, Library, PlayCircle, BookOpen, Loader2, Filter, Image as ImageIcon, Star, Layers, CalendarDays, MessageSquarePlus } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { RequestSignDialog } from "@/components/dictionary/request-sign-dialog"
 import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
 import { Pagination } from "@/components/ui/pagination"
@@ -127,7 +129,9 @@ function StarButton({ saved, word, onToggle, className }: {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DictionaryPage() {
-  const [query, setQuery] = useState("")
+  // The "now in the dictionary" email links here with ?q=<word>.
+  const searchParams = useSearchParams()
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "")
   const [category, setCategory] = useState("all")
   const [level, setLevel] = useState("all")
   const [page, setPage] = useState(1)
@@ -135,7 +139,11 @@ export default function DictionaryPage() {
   // "All signs" or "My signs" — the ones this student starred.
   const [tab, setTab] = useState<"all" | "mine">("all")
 
+  // "Ask for a sign", started with whatever they searched for.
+  const [requestWord, setRequestWord] = useState<string | null>(null)
+
   const debouncedQuery = useDebounce(query)
+
 
   const url = buildUrl(debouncedQuery, category, level, page, tab === "mine")
   const { data, loading, mutate } = useFetch<DictionaryData>(url, {
@@ -192,11 +200,16 @@ export default function DictionaryPage() {
             Search and learn British Sign Language signs.
           </p>
         </div>
-        <Button asChild className="sm:self-auto">
-          <Link href="/student/dictionary/this-week">
-            <CalendarDays className="size-4 mr-1.5" /> Practise this week&apos;s signs
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setRequestWord("")}>
+            <MessageSquarePlus className="size-4 mr-1.5" /> Ask for a sign
+          </Button>
+          <Button asChild className="sm:self-auto">
+            <Link href="/student/dictionary/this-week">
+              <CalendarDays className="size-4 mr-1.5" /> Practise this week&apos;s signs
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* All signs / My signs */}
@@ -333,8 +346,17 @@ export default function DictionaryPage() {
           ) : (
             <div>
               <p className="font-semibold">No signs found</p>
-              <p className="text-sm text-muted-foreground mt-1">Try adjusting your search or filters.</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {debouncedQuery
+                  ? "Not in the dictionary yet? Ask for it and we'll email you when it's added."
+                  : "Try adjusting your search or filters."}
+              </p>
             </div>
+          )}
+          {debouncedQuery && (
+            <Button onClick={() => setRequestWord(debouncedQuery)}>
+              <MessageSquarePlus className="size-4 mr-1.5" /> Ask for &quot;{debouncedQuery}&quot;
+            </Button>
           )}
           {(debouncedQuery || category !== "all" || level !== "all") && (
             <Button
@@ -355,6 +377,21 @@ export default function DictionaryPage() {
 
       {data && data.totalPages > 1 && (
         <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} />
+      )}
+
+      {requestWord !== null && (
+        <RequestSignDialog
+          initialWord={requestWord}
+          onClose={() => setRequestWord(null)}
+          onShowSign={(word) => {
+            setRequestWord(null)
+            setTab("all")
+            setCategory("all")
+            setLevel("all")
+            setPage(1)
+            setQuery(word)
+          }}
+        />
       )}
 
       {/* Sign detail dialog */}

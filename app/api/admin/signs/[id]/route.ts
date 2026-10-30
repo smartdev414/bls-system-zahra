@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { fulfilSignRequests } from "@/lib/sign-requests"
 
 async function handlePATCH(
   req: NextRequest,
@@ -43,6 +44,9 @@ async function handlePATCH(
         ...(body.imageUrl !== undefined && { imageUrl: body.imageUrl?.trim() || null }),
       },
     })
+
+    // Students who asked for this word hear it is in the dictionary.
+    await fulfilSignRequests(sign)
 
     return NextResponse.json({ sign })
   } catch (err: unknown) {

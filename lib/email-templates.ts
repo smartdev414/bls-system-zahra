@@ -438,6 +438,7 @@ export const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
   NotificationType.ACCOUNT_PENDING_APPROVAL,
   NotificationType.ACCOUNT_APPROVED,
   NotificationType.ACCOUNT_REJECTED,
+  NotificationType.DICTIONARY_SIGN_ADDED,
 ])
 
 /** For text a stranger typed (a sign-up name or note) before it goes into HTML. */
@@ -491,6 +492,7 @@ export function renderEmailTemplate(
     [NotificationType.ACCOUNT_PENDING_APPROVAL]: `🙋 ${title}`,
     [NotificationType.ACCOUNT_APPROVED]:         `✅ ${title}`,
     [NotificationType.ACCOUNT_REJECTED]:         title,
+    [NotificationType.DICTIONARY_SIGN_ADDED]:    `📖 ${title}`,
   }
 
   const subject = subjects[type] ?? `${BRAND} — ${title}`
@@ -529,6 +531,8 @@ export function renderEmailTemplate(
     case NotificationType.ACCOUNT_PENDING_APPROVAL:
     case NotificationType.ACCOUNT_APPROVED:
     case NotificationType.ACCOUNT_REJECTED:
+    // A requested sign: the word and context were typed by the student
+    case NotificationType.DICTIONARY_SIGN_ADDED:
       html = generic(escapeHtml(recipientName), escapeHtml(title), escapeHtml(body), link); break
     // body = ticket title, title = comment preview (passed as title for subject reuse)
     case NotificationType.TICKET_COMMENT:    html = ticketComment(recipientName, `Re: "${title}"`, body, link); break
