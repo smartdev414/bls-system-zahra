@@ -234,14 +234,14 @@ export default function TestsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground truncate">
+                  <div className="mt-auto flex items-center justify-between gap-2">
+                    <p className="flex-1 min-w-0 text-xs text-muted-foreground truncate">
                       {test.courses.length > 0
                         ? test.courses.map((c) => c.title).join(", ")
                         : "Not in a course yet"}
                       {test.createdByName && ` · by ${test.createdByName}`}
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex shrink-0 gap-2">
                       {canChange && test.courses.length === 0 && (
                         <Button size="sm" variant="outline" onClick={() => setPlacing(test)}>Add to course</Button>
                       )}
