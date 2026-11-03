@@ -35,6 +35,8 @@ type TestItem = {
   lastAttemptAt: string | null
   isCompleted: boolean
   status: "PASSED" | "FAILED" | "IN_PROGRESS" | "NOT_STARTED"
+  /** Self-reflections: where the document is; null = not started. */
+  reflectionStatus?: "DRAFT" | "SUBMITTED" | "RETURNED" | "COMPLETE" | null
 }
 
 type TestsData = {
@@ -49,8 +51,21 @@ const STATUS: Record<TestItem["status"], { label: string; className: string }> =
   NOT_STARTED: { label: "To do", className: "text-amber-700 bg-amber-50 border-amber-200" },
 }
 
+/** Self-reflections: where the student's document is, instead of a pass or fail. */
+const REFLECTION_STATUS: Record<"NONE" | "DRAFT" | "SUBMITTED" | "RETURNED" | "COMPLETE", { label: string; className: string; action: string }> = {
+  NONE: { label: "To do", className: STATUS.NOT_STARTED.className, action: "Start writing" },
+  DRAFT: { label: "Not sent yet", className: STATUS.NOT_STARTED.className, action: "Continue" },
+  SUBMITTED: { label: "With your teacher", className: "bg-sky-50 text-sky-800 border-sky-200", action: "Open" },
+  RETURNED: { label: "Changes needed", className: "text-amber-700 bg-amber-50 border-amber-200", action: "See feedback" },
+  COMPLETE: { label: "Complete", className: STATUS.PASSED.className, action: "Open" },
+}
+const reflectionInfo = (test: TestItem) => REFLECTION_STATUS[test.reflectionStatus ?? "NONE"]
+
 /** "Vocabulary · 12 signs · 10 seconds each · Pass mark 70% · 1 of 3 attempts used" */
 function testFacts(test: TestItem) {
+  if (test.kind === "REFLECTION") {
+    return `${TEST_KIND_INFO.REFLECTION.label} · ${test.questionCount} criteri${test.questionCount !== 1 ? "a" : "on"}`
+  }
   const noun = isSignTest(test.kind) ? "sign" : "question"
   // Signing the words is not against the clock.
   const signOnly = test.vocabularyMode === "SIGN_IT"
@@ -202,8 +217,8 @@ export default function TestsPage() {
                         </div>
                       </div>
                       <div className="shrink-0 flex flex-col items-end gap-1">
-                        <Badge variant="outline" className={STATUS[test.status].className}>
-                          {STATUS[test.status].label}
+                        <Badge variant="outline" className={test.kind === "REFLECTION" ? reflectionInfo(test).className : STATUS[test.status].className}>
+                          {test.kind === "REFLECTION" ? reflectionInfo(test).label : STATUS[test.status].label}
                         </Badge>
                         {test.bestScore !== null && (
                           <p className="text-sm font-black" title="Your best score">{test.bestScore}%</p>
@@ -220,7 +235,9 @@ export default function TestsPage() {
                       ) : (
                         <Button asChild size="sm" variant={test.isCompleted || test.status === "FAILED" ? "outline" : "default"}>
                           <Link href={`/student/lessons/${test.id}`}>
-                            {test.isCompleted || test.status === "FAILED"
+                            {test.kind === "REFLECTION"
+                              ? reflectionInfo(test).action
+                              : test.isCompleted || test.status === "FAILED"
                               ? "Review"
                               : test.attempts > 0 ? "Try Again" : "Start Test"}
                             <span className="sr-only">: {test.title}</span>

@@ -35,6 +35,8 @@ async function handleGET(
             releaseAt: true,
             section: { select: { title: true, course: { select: { id: true, title: true, level: true, status: true } } } },
             attempts: { select: { userId: true, passed: true } },
+            // Self-reflections: sent in = taken, complete = passed.
+            reflections: { where: { status: { not: "DRAFT" } }, select: { userId: true, status: true } },
           },
         },
       },
@@ -55,8 +57,11 @@ async function handleGET(
         ...rest,
         createdByName: createdBy?.name ?? null,
         placements: lessons.map((l) => {
-          const students = new Set(l.attempts.map((a) => a.userId))
-          const passed = new Set(l.attempts.filter((a) => a.passed).map((a) => a.userId))
+          const reflection = test.testKind === "REFLECTION"
+          const students = new Set(reflection ? l.reflections.map((r) => r.userId) : l.attempts.map((a) => a.userId))
+          const passed = new Set(reflection
+            ? l.reflections.filter((r) => r.status === "COMPLETE").map((r) => r.userId)
+            : l.attempts.filter((a) => a.passed).map((a) => a.userId))
           return {
             lessonId: l.id,
             releaseAt: l.releaseAt,

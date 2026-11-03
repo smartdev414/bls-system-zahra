@@ -53,6 +53,8 @@ async function handlePOST(
             answerVideoUrl: q.answerVideoUrl,
             questionsVideoUrl: q.questionsVideoUrl,
             attachmentUrl: q.attachmentUrl,
+            locked: q.locked,
+            section: q.section,
             order: q.order,
             options: {
               create: q.options.map((o) => ({

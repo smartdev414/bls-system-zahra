@@ -13,7 +13,7 @@ async function handleGET() {
     if (session.role !== "STUDENT") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     // Every released test on the student's courses, in course order.
-    const [lessons, attempts] = await Promise.all([
+    const [lessons, attempts, reflections] = await Promise.all([
       prisma.lesson.findMany({
         // Tests appear on their release date, not before.
         where: {
@@ -40,7 +40,13 @@ async function handleGET() {
         where: { userId: session.sub },
         select: { lessonId: true, score: true, passed: true, selfMarked: true, createdAt: true },
       }),
+      // Self-reflections are written and sent back and forth, not attempted.
+      prisma.reflectionSubmission.findMany({
+        where: { userId: session.sub },
+        select: { lessonId: true, status: true, updatedAt: true },
+      }),
     ])
+    const reflectionOf = new Map(reflections.map((r) => [r.lessonId, r]))
 
     const tests = lessons.flatMap(({ test, ...lesson }) => {
       if (!test) return []
@@ -72,6 +78,20 @@ async function handleGET() {
         // A test is passed by passing it — not by the lesson being ticked off.
         isCompleted: passed,
         status: passed ? "PASSED" : mine.length === 0 ? "NOT_STARTED" : left === 0 ? "FAILED" : "IN_PROGRESS",
+        reflectionStatus: null as string | null,
+        // A self-reflection is written and sent back and forth, not attempted.
+        ...(test.testKind === "REFLECTION" && (() => {
+          const r = reflectionOf.get(lesson.id)
+          const complete = passed || r?.status === "COMPLETE"
+          return {
+            answerSeconds: null, maxAttempts: null, attempts: 0, attemptsLeft: null, bestScore: null,
+            lastAttemptAt: r?.updatedAt.toISOString() ?? null,
+            isCompleted: complete,
+            status: complete ? "PASSED" : r ? "IN_PROGRESS" : "NOT_STARTED",
+            // DRAFT, SUBMITTED, RETURNED or COMPLETE; null = not started.
+            reflectionStatus: complete ? "COMPLETE" : r?.status ?? null,
+          }
+        })()),
       }]
     })
 

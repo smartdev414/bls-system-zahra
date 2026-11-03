@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
 import { requireCapability } from "@/lib/permissions"
-import { isAssessment, isPresentation, isSelfMarked, isSignTest } from "@/lib/quiz"
+import { isAssessment, isPresentation, isReflection, isSelfMarked, isSignTest } from "@/lib/quiz"
 import { testEditScope } from "@/lib/tests"
 import { validateQuestion, type QuestionBody } from "./validate"
 
@@ -55,6 +55,8 @@ async function handlePOST(
         answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
         questionsVideoUrl: isAssessment(test.testKind) ? body.questionsVideoUrl ?? null : null,
         attachmentUrl: isPresentation(test.testKind) ? body.attachmentUrl ?? null : null,
+        locked: isReflection(test.testKind) && body.locked === true,
+        section: isReflection(test.testKind) ? body.section ?? null : null,
         order: (last._max.order ?? 0) + 1,
         options: {
           create: options.map((opt, i) => ({

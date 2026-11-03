@@ -27,7 +27,7 @@ export type TestSettings = {
 
 // ─── Kinds of test ────────────────────────────────────────────────────────────
 
-export const TEST_KINDS = ["STANDARD", "STORY", "FINGERSPELLING", "VOCABULARY", "ASSESSMENT", "PRESENTATION"] as const
+export const TEST_KINDS = ["STANDARD", "STORY", "FINGERSPELLING", "VOCABULARY", "ASSESSMENT", "PRESENTATION", "REFLECTION"] as const
 export type TestKind = (typeof TEST_KINDS)[number]
 
 export const TEST_KIND_INFO: Record<TestKind, { label: string; hint: string }> = {
@@ -37,6 +37,7 @@ export const TEST_KIND_INFO: Record<TestKind, { label: string; hint: string }> =
   VOCABULARY: { label: "Vocabulary", hint: "Students pick the word for a sign, or read a word and sign it." },
   ASSESSMENT: { label: "Assessment", hint: "A signed story in parts. Students watch each part's questions and the part, then film their answers." },
   PRESENTATION: { label: "Presentation", hint: "Students film themselves presenting. It goes to you to mark, and you can record your feedback." },
+  REFLECTION: { label: "Self-reflection", hint: "Students write about each criterion you pick and send it to you. You send it back with feedback until it is complete." },
 }
 
 export function parseTestKind(value: unknown): TestKind | null {
@@ -194,6 +195,25 @@ export function isAssessment(kind: string | null | undefined): kind is "ASSESSME
 
 export function isPresentation(kind: string | null | undefined): kind is "PRESENTATION" {
   return kind === "PRESENTATION"
+}
+
+// ─── Self-reflections ─────────────────────────────────────────────────────────
+// Coursework, not a test: each question is a criterion. The student writes a
+// section for every criterion not locked, and sends the document to their
+// teacher, who sends it back with feedback until they mark it complete. Kept
+// in ReflectionSubmission; a QuizAttempt (100%, passed) is only written when
+// it is complete, so course progress and "tests passed" count it.
+
+export function isReflection(kind: string | null | undefined): kind is "REFLECTION" {
+  return kind === "REFLECTION"
+}
+
+/** Longest section a student can write — several pages, enough for any criterion. */
+export const REFLECTION_MAX_CHARS = 20_000
+
+/** Words in a piece of writing, for the count under each section. */
+export function wordCount(text: string | null | undefined): number {
+  return (text ?? "").trim().split(/\s+/).filter(Boolean).length
 }
 
 /** Minutes a presentation can last, 1 to 20; recording stops by itself at the limit. */

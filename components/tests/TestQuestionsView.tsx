@@ -1,8 +1,9 @@
 "use client"
 
-import { CheckCircle2, Circle } from "lucide-react"
+import { Fragment } from "react"
+import { CheckCircle2, Circle, Lock } from "lucide-react"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { isAssessment, isPresentation, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
+import { isAssessment, isPresentation, isReflection, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 import { TaskFileLink } from "@/components/quiz/TaskFile"
 
@@ -22,6 +23,10 @@ export type ViewQuestion = {
   questionsVideoUrl?: string | null
   /** A presentation's task: a file that goes with it. */
   attachmentUrl?: string | null
+  /** A self-reflection's criterion that is not part of this assessment. */
+  locked?: boolean
+  /** A self-reflection's criterion: the heading it sits under. */
+  section?: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
 
@@ -38,7 +43,7 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
   questions: ViewQuestion[]
 }) {
   const signTest = isSignTest(kind)
-  const noun = signTest ? "sign" : isPresentation(kind) ? "task" : isAssessment(kind) ? "part" : "question"
+  const noun = signTest ? "sign" : isReflection(kind) ? "criterion" : isPresentation(kind) ? "task" : isAssessment(kind) ? "part" : "question"
 
   return (
     <div className="flex flex-col gap-6">
@@ -50,7 +55,25 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
       )}
 
       {questions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No {noun}s have been added to this test yet.</p>
+        <p className="text-sm text-muted-foreground">No {noun === "criterion" ? "criteria" : `${noun}s`} have been added to this test yet.</p>
+      ) : isReflection(kind) ? (
+        // A self-reflection: its criteria, the ones students write about ticked.
+        <ol className="flex flex-col gap-2">
+          {questions.map((q, i) => (
+            <Fragment key={q.id}>
+            {(i === 0 || questions[i - 1].section !== q.section) && q.section && (
+              <li role="presentation" className="pt-3 first:pt-0 text-sm font-bold">{q.section}</li>
+            )}
+            <li className={cn("flex items-start gap-3 rounded-xl border p-3 text-sm", q.locked && "border-dashed bg-muted/30 text-muted-foreground")}>
+              {q.locked ? <Lock className="mt-0.5 size-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />}
+              <div className="min-w-0">
+                <p className="whitespace-pre-wrap">{q.section || /^\s*(\d|[a-z][.)]\s)/i.test(q.question) ? "" : `${i + 1}. `}{q.question}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{q.locked ? "Not part of this assessment" : "Students write about this"}</p>
+              </div>
+            </li>
+            </Fragment>
+          ))}
+        </ol>
       ) : isPresentation(kind) ? (
         // A presentation: its one task.
         questions.map((q) => (

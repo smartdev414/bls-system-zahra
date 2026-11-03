@@ -88,6 +88,14 @@ export async function deleteCourseAnswerVideos(courseId: string, studentId?: str
     await deleteUnder(prefixes, {
       attempt: { lessonId: { in: lessons.map((l) => l.id) }, ...(studentId && { userId: studentId }) },
     })
+    // A teacher's filmed feedback on a self-reflection is kept in the same folders.
+    await prisma.reflectionFeedback.updateMany({
+      where: {
+        videoUrl: { not: null },
+        submission: { lessonId: { in: lessons.map((l) => l.id) }, ...(studentId && { userId: studentId }) },
+      },
+      data: { videoUrl: null },
+    })
   } catch (err) {
     console.error("[test-recordings] deleting a course's recordings", courseId, studentId, err)
   }

@@ -81,9 +81,11 @@ async function uploadAnswerVideo(lessonId: string, file: Blob): Promise<string> 
  * the phone's own camera is offered instead.
  */
 export function SignAnswerRecorder({
-  lessonId, videoUrl, onChange, deadline, maxSeconds = MAX_SECONDS, timeUp = false, filmLabel = "Film yourself signing",
+  lessonId, videoUrl, onChange, deadline, maxSeconds = MAX_SECONDS, timeUp = false, filmLabel = "Film yourself signing", upload,
 }: {
   lessonId: string
+  /** Where the recording goes, instead of the student's answer folder — e.g. a teacher's feedback. */
+  upload?: (file: Blob) => Promise<string>
   /** The recording already made for this question, if any. */
   videoUrl?: string
   onChange: (videoUrl: string | undefined) => void
@@ -165,7 +167,7 @@ export function SignAnswerRecorder({
     setState("uploading")
     setError(null)
     try {
-      onChange(await uploadAnswerVideo(lessonId, file))
+      onChange(await (upload ? upload(file) : uploadAnswerVideo(lessonId, file)))
       setState("idle")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not upload your video")

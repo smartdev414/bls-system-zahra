@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { DEFAULT_WRITTEN_MARKS, MAX_WRITTEN_MARKS, isAssessment, isPresentation, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
+import { DEFAULT_WRITTEN_MARKS, MAX_WRITTEN_MARKS, isAssessment, isPresentation, isReflection, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
 import { uploadFile } from "@/lib/upload-file"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
 import { FilmOverlay } from "./FilmOverlay"
@@ -66,6 +66,10 @@ export type QuestionDraft = {
   /** A presentation's task: a file that goes with it (PDF, picture, Word, PowerPoint). */
   attachmentUrl?: string
   attachmentUploading?: boolean
+  /** A self-reflection's criterion that is not part of this assessment. */
+  locked?: boolean
+  /** A self-reflection's criterion: the heading it sits under. */
+  section?: string
   options: QuizOptionDraft[]
   isOpen: boolean
   isSaving: boolean
@@ -143,6 +147,8 @@ export function isBlankQuestion(q: QuestionDraft): boolean {
 
 /** What still has to be done before a question can be saved, or null when it is ready. */
 export function questionProblem(q: QuestionDraft, testKind?: string): string | null {
+  // A self-reflection's criterion: just its wording.
+  if (isReflection(testKind)) return q.question.trim() ? null : "Type the criterion"
   // A presentation's task: written out, signed on video, or in a file.
   if (isPresentation(testKind)) {
     if (q.questionImageUploading || q.attachmentUploading) return "Wait for the upload to finish"
@@ -194,6 +200,8 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
       answerVideoUrl: q.type === "SIGN" ? q.answerVideoUrl ?? null : null,
       questionsVideoUrl: q.questionsVideoUrl ?? null,
       attachmentUrl: q.attachmentUrl ?? null,
+      locked: !!q.locked,
+      section: q.section ?? null,
       options: q.options.map((o) => ({
         id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
       })),

@@ -19,6 +19,7 @@ import { mediaDownloadHref } from "@/lib/protected-media"
 import { lessonKind } from "@/lib/lesson-kind"
 import { ReleaseBadge } from "@/components/courses/ReleaseField"
 import { QuizResults } from "@/components/quiz/QuizResults"
+import { ReflectionReviews } from "@/components/quiz/ReflectionReviews"
 import { TestQuestionsView, type ViewQuestion } from "@/components/tests/TestQuestionsView"
 import { TEST_KIND_INFO, type TestKind } from "@/lib/quiz"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
@@ -115,12 +116,16 @@ export default function ViewLessonPage({
             {test && (
               <>
                 <Badge variant="outline">{TEST_KIND_INFO[test.testKind].label}</Badge>
-                <Badge variant="outline">Pass mark {test.passMark}%</Badge>
-                <Badge variant="outline">
-                  {test.maxAttempts === null
-                    ? "Unlimited attempts"
-                    : `${test.maxAttempts} attempt${test.maxAttempts !== 1 ? "s" : ""}`}
-                </Badge>
+                {test.testKind !== "REFLECTION" && (
+                  <>
+                    <Badge variant="outline">Pass mark {test.passMark}%</Badge>
+                    <Badge variant="outline">
+                      {test.maxAttempts === null
+                        ? "Unlimited attempts"
+                        : `${test.maxAttempts} attempt${test.maxAttempts !== 1 ? "s" : ""}`}
+                    </Badge>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -166,12 +171,14 @@ export default function ViewLessonPage({
       {test && (
         <Tabs defaultValue="results">
           <TabsList className="mb-4">
-            <TabsTrigger value="results">Results</TabsTrigger>
-            <TabsTrigger value="questions">{test.testKind === "PRESENTATION" ? "Task" : test.testKind === "ASSESSMENT" ? "Parts" : "Questions"} ({test.questions.length})</TabsTrigger>
+            <TabsTrigger value="results">{test.testKind === "REFLECTION" ? "Students' work" : "Results"}</TabsTrigger>
+            <TabsTrigger value="questions">{test.testKind === "REFLECTION" ? "Criteria" : test.testKind === "PRESENTATION" ? "Task" : test.testKind === "ASSESSMENT" ? "Parts" : "Questions"} ({test.questions.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="results">
-            <QuizResults lessonId={lesson.id} questions={test.questions} marking={test} />
+            {test.testKind === "REFLECTION"
+              ? <ReflectionReviews lessonId={lesson.id} />
+              : <QuizResults lessonId={lesson.id} questions={test.questions} marking={test} />}
           </TabsContent>
 
           <TabsContent value="questions">

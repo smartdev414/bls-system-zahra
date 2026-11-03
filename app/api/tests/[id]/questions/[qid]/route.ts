@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
 import { requireCapability } from "@/lib/permissions"
-import { isAssessment, isPresentation, isSelfMarked, isSignTest } from "@/lib/quiz"
+import { isAssessment, isPresentation, isReflection, isSelfMarked, isSignTest } from "@/lib/quiz"
 import { testEditScope } from "@/lib/tests"
 import { validateQuestion, type QuestionBody } from "../validate"
 
@@ -65,6 +65,8 @@ async function handlePUT(
           answerVideoUrl: body.type === "SIGN" ? body.answerVideoUrl ?? null : null,
         questionsVideoUrl: isAssessment(existing.test.testKind) ? body.questionsVideoUrl ?? null : null,
         attachmentUrl: isPresentation(existing.test.testKind) ? body.attachmentUrl ?? null : null,
+        locked: isReflection(existing.test.testKind) && body.locked === true,
+        section: isReflection(existing.test.testKind) ? body.section ?? null : null,
           options: {
             update: body.options.flatMap((opt, i) =>
               opt.id && kept.has(opt.id) ? [{ where: { id: opt.id }, data: optionData(opt, i) }] : []

@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { BookOpen, Camera, Clapperboard, FolderOpen, Hand, Keyboard, ListChecks, Presentation, Upload, type LucideIcon } from "lucide-react"
+import { BookOpen, Camera, Clapperboard, FolderOpen, Hand, Keyboard, ListChecks, NotebookPen, Presentation, Upload, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
@@ -23,6 +23,7 @@ const ICONS: Record<TestKind, LucideIcon> = {
   VOCABULARY: Hand,
   ASSESSMENT: Clapperboard,
   PRESENTATION: Presentation,
+  REFLECTION: NotebookPen,
 }
 
 /** Which kind of test to make. Chosen once, when the test is added. */

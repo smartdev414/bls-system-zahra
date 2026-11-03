@@ -15,6 +15,7 @@ import { useFetch } from "@/hooks/use-fetch"
 import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks, type TestKind } from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { PresentationTaker } from "./PresentationTaker"
+import { ReflectionTaker } from "./ReflectionTaker"
 import { SignTestTaker, type SignTestData } from "./SignTestTaker"
 import { AssessmentTaker, type AssessmentData } from "./AssessmentTaker"
 import { SignAnswerRecorder } from "./SignAnswerRecorder"
@@ -375,6 +376,11 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   }
 
   const { questions, settings, attempts, bestAttempt } = data
+
+  // A self-reflection: written coursework, sent back and forth with the teacher.
+  if (settings.kind === "REFLECTION") {
+    return <ReflectionTaker lessonId={lessonId} onCompleted={onCompleted} nextHref={nextHref} />
+  }
 
   // A presentation: the task, filmed in one go and sent to the teacher.
   if (settings.kind === "PRESENTATION") {

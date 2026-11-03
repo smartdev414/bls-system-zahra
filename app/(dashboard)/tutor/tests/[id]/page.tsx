@@ -27,6 +27,7 @@ import {
 } from "@/components/quiz/TestKindFields"
 import { AssessmentPartsBuilder } from "@/components/quiz/AssessmentPartsBuilder"
 import { PresentationTaskBuilder } from "@/components/quiz/PresentationTaskBuilder"
+import { ReflectionCriteriaBuilder } from "@/components/quiz/ReflectionCriteriaBuilder"
 import { TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
 import { AddToCourseDialog } from "@/components/tests/AddToCourseDialog"
 import { DictionaryPicker, type DictionarySign } from "@/components/tests/DictionaryPicker"
@@ -34,7 +35,7 @@ import { TestQuestionsView } from "@/components/tests/TestQuestionsView"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PART_MARKS, TEST_KIND_INFO, isAssessment, isPresentation, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PART_MARKS, TEST_KIND_INFO, isAssessment, isPresentation, isReflection, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
 import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 import { cn } from "@/lib/utils"
 
@@ -53,6 +54,8 @@ type ApiQuestion = {
   answerVideoUrl: string | null
   questionsVideoUrl: string | null
   attachmentUrl: string | null
+  locked: boolean
+  section: string | null
   options: Array<{ id: string; text: string; imageUrl: string | null; mediaType: string | null; isCorrect: boolean }>
 }
 
@@ -116,6 +119,8 @@ function toDraft(q: ApiQuestion): QuestionDraft {
     answerVideoUrl: q.answerVideoUrl ?? undefined,
     questionsVideoUrl: q.questionsVideoUrl ?? undefined,
     attachmentUrl: q.attachmentUrl ?? undefined,
+    locked: q.locked,
+    section: q.section ?? undefined,
     options: q.options.map((o) => ({
       id: o.id,
       text: o.text,
@@ -233,7 +238,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
   const presentation = isPresentation(kind)
   // A presentation is filmed like an assessment, as one part: its task.
   const assessment = isAssessment(kind) && !presentation
-  const itemName = signTest ? "Sign" : presentation ? "Task" : assessment ? "Part" : "Question"
+  const reflection = isReflection(kind)
+  const itemName = signTest ? "Sign" : presentation ? "Task" : assessment ? "Part" : reflection ? "Criterion" : "Question"
+  const itemsName = reflection ? "Criteria" : `${itemName}s`
   const savedCount = questions.filter((q) => q.id).length
   const takenSomewhere = test.placements.some((p) => p.studentsTaken > 0)
   const patch = (change: Partial<Details>) => { setDetails((d) => (d ? { ...d, ...change } : d)); setError(null) }
@@ -255,7 +262,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
       const numbers = questions.flatMap((q, i) => (ids.has(q.uid) ? [i + 1] : []))
       setTab("questions")
       setError(
-        `${itemName}${numbers.length > 1 ? "s" : ""} ${numbers.join(", ")} ${numbers.length > 1 ? "are" : "is"} not finished. Complete or delete ${numbers.length > 1 ? "them" : "it"}, then save.`
+        `${numbers.length > 1 ? itemsName : itemName} ${numbers.join(", ")} ${numbers.length > 1 ? "are" : "is"} not finished. Complete or delete ${numbers.length > 1 ? "them" : "it"}, then save.`
       )
       return
     }
@@ -409,7 +416,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                 {p.course.status === "DRAFT" && <span className="font-normal text-muted-foreground"> (draft)</span>}
               </p>
               <p className="text-xs text-muted-foreground truncate">
-                {p.sectionTitle} · {p.studentsTaken === 0
+                {p.sectionTitle} · {test.testKind === "REFLECTION"
+                  ? (p.studentsTaken === 0 ? "Nobody has sent one in yet" : `${p.studentsTaken} sent in · ${p.studentsPassed} complete`)
+                  : p.studentsTaken === 0
                   ? "Nobody has taken it yet"
                   : `${p.studentsTaken} taken · ${p.studentsPassed} passed`}
               </p>
@@ -418,7 +427,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
             {p.canManage && (
               <div className="flex gap-1">
                 <Button asChild size="sm" variant="outline">
-                  <Link href={`${coursesBase}/${p.course.id}/lessons/${p.lessonId}`}><BarChart3 className="size-4 mr-1.5" /> Results</Link>
+                  <Link href={`${coursesBase}/${p.course.id}/lessons/${p.lessonId}`}><BarChart3 className="size-4 mr-1.5" /> {test.testKind === "REFLECTION" ? "Students' work" : "Results"}</Link>
                 </Button>
                 {canChange && (
                   <Button size="icon" variant="ghost" className="size-8 text-muted-foreground" title="Take out of this course"
@@ -500,7 +509,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="questions">
-            {presentation ? "The task" : <>{itemName}s ({canEdit ? questions.filter((q) => !isBlankQuestion(q)).length : test.questions.length})</>}
+            {presentation ? "The task" : <>{itemsName} ({canEdit ? questions.filter((q) => !isBlankQuestion(q)).length : test.questions.length})</>}
           </TabsTrigger>
           {canEdit && <TabsTrigger value="settings">Settings</TabsTrigger>}
           <TabsTrigger value="courses">Courses ({courseCount})</TabsTrigger>
@@ -552,7 +561,13 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                   <Loader2 className="size-4 animate-spin" /> Adding signs from the dictionary…
                 </p>
               )}
-              {presentation ? (
+              {reflection ? (
+                <ReflectionCriteriaBuilder
+                  testId={id}
+                  criteria={questions}
+                  onChange={(next) => { setQuestions(next); setError(null) }}
+                />
+              ) : presentation ? (
                 <PresentationTaskBuilder
                   tasks={questions}
                   onChange={(next) => { setQuestions(next); setError(null) }}
@@ -615,13 +630,13 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               <Textarea
                 id="test-description"
                 rows={3}
-                placeholder="e.g. Watch each sign and choose what it means."
+                placeholder={reflection ? "e.g. Write at least 150 words for each section, with examples from your assessment." : "e.g. Watch each sign and choose what it means."}
                 value={details.description}
                 onChange={(e) => patch({ description: e.target.value })}
               />
             </div>
 
-            <TestSettingsFields
+            {!reflection && <TestSettingsFields
               value={details.settings}
               onChange={(settings) => patch({ settings })}
               questionCount={questions.filter((q) => !isBlankQuestion(q)).length}
@@ -629,7 +644,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               totalMarks={isAssessment(kind)
                 ? questions.filter((q) => !isBlankQuestion(q)).reduce((sum, q) => sum + (q.maxMarks ?? DEFAULT_PART_MARKS), 0)
                 : undefined}
-            />
+            />}
 
             {/* The clock is for picking the word; signing a word is not timed. */}
             {signTest && (kind === "FINGERSPELLING" || picksWords({ testKind: kind, vocabularyMode: details.vocabularyMode })) && (
@@ -667,7 +682,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               />
             ) : (
               <p className="text-xs text-muted-foreground">
-                Kind of test: <span className="font-medium text-foreground">{TEST_KIND_INFO[kind].label}</span>. It can be changed while the test has no {itemName.toLowerCase()}s.
+                Kind of test: <span className="font-medium text-foreground">{TEST_KIND_INFO[kind].label}</span>. It can be changed while the test has no {itemsName.toLowerCase()}.
               </p>
             )}
           </TabsContent>

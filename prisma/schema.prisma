@@ -63,6 +63,12 @@ enum TestKind {
   // The student films a presentation on a set task, in one go, and sends it to
   // their teacher, who marks it and can record feedback over it.
   PRESENTATION
+  // Coursework: the student writes a self-reflection, one section per
+  // criterion (the test's questions). Only the criteria the teacher picked
+  // for this assessment can be filled in, and all of them must be before it
+  // is sent. The teacher sends it back with typed and filmed feedback until
+  // it is complete. Kept in ReflectionSubmission, not in attempts.
+  REFLECTION
 }
 
 // How a vocabulary test is practised: from the sign to the word, from the word
@@ -169,6 +175,8 @@ enum NotificationType {
   DICTIONARY_SIGN_ADDED
   // A class handout has opened for the student
   CLASS_HANDOUT_READY
+  // A teacher sent a student's self-reflection back to them with feedback
+  REFLECTION_RETURNED
   // Ticket / feedback events
   TICKET_CREATED
   TICKET_UPDATED
@@ -228,6 +236,8 @@ model User {
   courses              Course[]                @relation("TutorCourses")
   teachingCourses      CourseTutor[]           @relation("CourseTeaching")
   quizAttempts         QuizAttempt[]
+  reflections          ReflectionSubmission[]
+  reflectionFeedback   ReflectionFeedback[]    @relation("ReflectionFeedbackGiven")
   testsCreated         Test[]                  @relation("TestsCreated")
   leaguesCreated       League[]                @relation("LeaguesCreated")
   leagueMemberships    LeagueMember[]
@@ -552,6 +562,7 @@ model Lesson {
   assets    LessonAsset[]
   progress  LessonProgress[]
   attempts  QuizAttempt[]
+  reflections ReflectionSubmission[]
 
   @@index([sectionId])
   @@index([testId])
@@ -1076,6 +1087,13 @@ model QuizQuestion {
   // PRESENTATION: a file that goes with the task — a PDF, a picture, a Word
   // document or PowerPoint — for students to open before they present.
   attachmentUrl String?
+  // REFLECTION: a criterion that is not part of this assessment. Students see
+  // it, greyed out, but cannot write in it.
+  locked   Boolean @default(false)
+  // REFLECTION: the heading the criterion sits under, e.g. "1.1 Initiate and
+  // develop discourse". Criteria next to each other with the same heading are
+  // shown as one section.
+  section  String?
   order    Int
 
   test    Test                @relation(fields: [testId], references: [id], onDelete: Cascade)
@@ -1126,6 +1144,58 @@ model QuizAttempt {
 /// course was archived or they left it. They get a week to download them
 /// (lib/test-recordings.ts); coming back to the course, or the course being
 /// brought back, cancels it.
+enum ReflectionStatus {
+  DRAFT // being written; only the student sees it
+  SUBMITTED // sent to the teacher, waiting for them
+  RETURNED // sent back by the teacher with feedback, to be changed and sent again
+  COMPLETE // accepted by the teacher; the lesson is done
+}
+
+// A student's self-reflection on one course's REFLECTION test: one document,
+// sent back and forth between the student and their teacher until complete.
+model ReflectionSubmission {
+  id          String           @id @default(cuid())
+  lessonId    String
+  userId      String
+  status      ReflectionStatus @default(DRAFT)
+  // What the student wrote: criterion (QuizQuestion id) → text.
+  answers     Json             @default("{}")
+  // The last time it was sent to the teacher.
+  submittedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  lesson   Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedback ReflectionFeedback[]
+
+  @@unique([lessonId, userId])
+  @@index([lessonId, status])
+}
+
+// What a teacher said each time they sent a self-reflection back, or
+// accepted it: typed feedback, a filmed one, and notes on single criteria.
+model ReflectionFeedback {
+  id           String           @id @default(cuid())
+  submissionId String
+  authorId     String?
+  // RETURNED or COMPLETE.
+  outcome      ReflectionStatus
+  text         String?
+  // Kept with the student's test recordings (test-answers/{lesson}/{student}/),
+  // so only they and the course's teachers can watch it, and it is deleted
+  // with them (lib/test-recordings.ts).
+  videoUrl     String?
+  // Criterion (QuizQuestion id) → a note on that section.
+  notes        Json             @default("{}")
+  createdAt    DateTime         @default(now())
+
+  submission ReflectionSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  author     User?                @relation("ReflectionFeedbackGiven", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([submissionId])
+}
+
 model TestVideoDeletion {
   id         String    @id @default(cuid())
   userId     String

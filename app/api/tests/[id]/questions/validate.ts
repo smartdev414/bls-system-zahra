@@ -1,4 +1,4 @@
-import { MAX_PART_MARKS, MAX_WRITTEN_MARKS, SIGNED_QUESTION_TEXT, isAssessment, isPresentation, isSelfMarked, isSignTest, isVideoMedia } from "@/lib/quiz"
+import { MAX_PART_MARKS, MAX_WRITTEN_MARKS, SIGNED_QUESTION_TEXT, isAssessment, isPresentation, isReflection, isSelfMarked, isSignTest, isVideoMedia } from "@/lib/quiz"
 
 export type QuestionBody = {
   question: string
@@ -20,6 +20,10 @@ export type QuestionBody = {
   questionsVideoUrl?: string | null
   /** A presentation's task: a file that goes with it. */
   attachmentUrl?: string | null
+  /** A self-reflection's criterion that is not part of this assessment. */
+  locked?: boolean
+  /** A self-reflection's criterion: the heading it sits under. */
+  section?: string | null
   /** Left out for a sign in a fingerspelling or vocabulary test, and for a written or signed answer. */
   options: Array<{
     /** Present when the option already exists, so it is updated rather than replaced. */
@@ -37,6 +41,19 @@ export function validateQuestion(body: QuestionBody, testKind?: string): string 
   // come first, to be filmed later — students are not given it until then.
   if (isSignTest(testKind)) {
     if (!body.question?.trim()) return "Each sign needs its word"
+    return null
+  }
+  // A self-reflection's criterion: its wording, nothing else. Students write
+  // about it; nobody marks it.
+  if (isReflection(testKind)) {
+    body.type = "WRITTEN"
+    body.question = body.question?.trim() ?? ""
+    if (!body.question) return "Type the criterion"
+    if (body.question.length > 2000) return "A criterion can be up to 2,000 characters"
+    body.section = typeof body.section === "string" && body.section.trim() ? body.section.trim().slice(0, 300) : null
+    body.imageUrl = null
+    body.modelAnswer = null
+    body.maxMarks = null
     return null
   }
   // A presentation's task: what to present, written or signed, and its marks.
