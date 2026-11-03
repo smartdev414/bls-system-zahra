@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { SCREEN_SHARE_CAPTURE, SCREEN_SHARE_PUBLISH } from "./constants"
 import { toast } from "sonner"
-import { writeDevicePreference, mediaFailureMessage } from "@/components/classroom/devicePreference"
+import { writeDevicePreference, mediaFailureMessage, screenShareFailureMessage } from "@/components/classroom/devicePreference"
 import {
   setCaptionsEnabled, useCaptionsEnabled, setCaptionComposerOpen, useCaptionComposerOpen,
 } from "@/components/classroom/captionsPreference"
@@ -834,6 +834,10 @@ function MediaToggle({
       // can fix (blocked permission, webcam held by another app).
       if (next && source === Track.Source.Camera) toast.error(mediaFailureMessage(err, "camera"))
       if (next && source === Track.Source.Microphone) toast.error(mediaFailureMessage(err, "mic"))
+      if (next && source === Track.Source.ScreenShare) {
+        const msg = screenShareFailureMessage(err)
+        if (msg) toast.error(msg, { duration: 12000 })
+      }
       return
     }
     if (source === Track.Source.Camera) writeDevicePreference("camera", next)

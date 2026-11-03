@@ -60,3 +60,25 @@ export function mediaFailureMessage(
       return `Your ${device} couldn't start. Try again, or refresh the page.`
   }
 }
+
+/**
+ * Why a screen share didn't start, or null when there's nothing to say.
+ *
+ * Cancelling the browser's "choose what to share" picker rejects with the same
+ * NotAllowedError as a real block, so a plain NotAllowedError stays quiet —
+ * the person chose that. Chrome on a Mac adds "by system" when macOS itself
+ * refuses (Screen Recording permission off for the browser), which otherwise
+ * looks exactly like a button that does nothing.
+ */
+export function screenShareFailureMessage(error: unknown): string | null {
+  const name = error instanceof Error ? error.name : ""
+  const message = error instanceof Error ? error.message : String(error ?? "")
+  if (/by system/i.test(message)) {
+    return "Your computer is blocking screen sharing. On a Mac: System Settings → Privacy & Security → Screen & System Audio Recording, turn on your browser, then quit and reopen it."
+  }
+  if (name === "NotAllowedError") return null
+  if (name === "NotSupportedError" || (name === "TypeError" && /getDisplayMedia/i.test(message))) {
+    return "This browser can't share its screen. Use Chrome or Edge on a computer."
+  }
+  return "Your screen couldn't be shared. Try again, pick a different window or tab, or refresh the page."
+}
