@@ -3,8 +3,8 @@
 
 const pad = (n: number) => String(n).padStart(2, "0")
 
-/** "06:00" … "22:45". */
-export const TIME_OPTIONS: string[] = Array.from({ length: (23 - 6) * 4 }, (_, i) => `${pad(6 + Math.floor(i / 4))}:${pad((i % 4) * 15)}`)
+/** The whole day: "00:00" … "23:45". */
+export const TIME_OPTIONS: string[] = Array.from({ length: 24 * 4 }, (_, i) => `${pad(Math.floor(i / 4))}:${pad((i % 4) * 15)}`)
 
 /**
  * A date's local time as one of `TIME_OPTIONS` (rounded down to the quarter
