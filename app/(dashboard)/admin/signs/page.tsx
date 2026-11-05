@@ -199,7 +199,7 @@ export default function AdminSignsPage() {
       ) : data?.signs.length ? (
         <div className="flex flex-col gap-2">
           {data.signs.map((sign) => (
-            <SignRow key={sign.id} sign={sign} onMutated={refetch} />
+            <SignRow key={sign.id} sign={sign} categories={data.categories} onMutated={refetch} />
           ))}
         </div>
       ) : (
@@ -229,6 +229,7 @@ export default function AdminSignsPage() {
         setForm={setForm}
         onSubmit={() => create(form)}
         loading={creating}
+        categories={data?.categories ?? []}
       />
 
       <BulkAddDialog
@@ -515,7 +516,7 @@ function BulkAddDialog({
 
 // ─── Sign row ─────────────────────────────────────────────────────────────────
 
-function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
+function SignRow({ sign, categories, onMutated }: { sign: Sign; categories: string[]; onMutated: () => void }) {
   const [editOpen, setEditOpen] = useState(false)
   const [playOpen, setPlayOpen] = useState(false)
   const [form, setForm] = useState<Omit<Sign, "id">>({ ...sign })
@@ -649,16 +650,74 @@ function SignRow({ sign, onMutated }: { sign: Sign; onMutated: () => void }) {
         setForm={setForm}
         onSubmit={() => update(form)}
         loading={updating}
+        categories={categories}
         descriptionFromStudent={!sign.description && !!form.description && form.description === sign.studentContext}
       />
     </>
   )
 }
 
+// ─── Category picker ──────────────────────────────────────────────────────────
+
+const NEW_CATEGORY = "__new__"
+
+// A list of the existing categories, so a requested sign can be moved out of
+// "Requested" in one click; "New category…" swaps in a box to type one.
+function CategoryPicker({
+  value, categories, onChange,
+}: {
+  value: string
+  categories: string[]
+  onChange: (v: string) => void
+}) {
+  const options = [...new Set([...categories, ...(value.trim() ? [value] : [])])]
+    .sort((a, b) => a.localeCompare(b))
+  const [typing, setTyping] = useState(options.length === 0)
+
+  if (typing) {
+    return (
+      <div className="flex gap-1.5">
+        <Input
+          autoFocus
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g. Greetings"
+        />
+        {options.length > 0 && (
+          <Button
+            type="button" size="icon" variant="ghost" className="shrink-0"
+            title="Pick from the list"
+            onClick={() => { setTyping(false); if (!categories.includes(value)) onChange("") }}
+          >
+            <X className="size-4" />
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <Select
+      value={value || undefined}
+      onValueChange={(v) => {
+        if (v === NEW_CATEGORY) { onChange(""); setTyping(true) } else onChange(v)
+      }}
+    >
+      <SelectTrigger><SelectValue placeholder="Choose a category" /></SelectTrigger>
+      <SelectContent>
+        {options.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+        <SelectItem value={NEW_CATEGORY}>
+          <span className="flex items-center gap-1.5"><Plus className="size-3.5" /> New category…</span>
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
+
 // ─── Shared sign form dialog ──────────────────────────────────────────────────
 
 function SignDialog({
-  open, onClose, title, form, setForm, onSubmit, loading, descriptionFromStudent,
+  open, onClose, title, form, setForm, onSubmit, loading, categories, descriptionFromStudent,
 }: {
   open: boolean
   onClose: () => void
@@ -667,6 +726,7 @@ function SignDialog({
   setForm: (f: Omit<Sign, "id">) => void
   onSubmit: () => void
   loading: boolean
+  categories: string[]
   descriptionFromStudent?: boolean
 }) {
   const set = (key: keyof Omit<Sign, "id">, value: string | boolean | null) =>
@@ -699,7 +759,12 @@ function SignDialog({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Category *</Label>
-              <Input value={form.category} onChange={(e) => set("category", e.target.value)} placeholder="e.g. Greetings" />
+              <CategoryPicker
+                key={open ? "open" : "closed"}
+                value={form.category}
+                categories={categories}
+                onChange={(v) => set("category", v)}
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <FieldLabel
