@@ -23,6 +23,7 @@ import { QuizTaker } from "@/components/quiz/QuizTaker"
 import { TestTop } from "@/components/quiz/TestTop"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { cn } from "@/lib/utils"
+import { LESSON_KINDS, lessonKind } from "@/lib/lesson-kind"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ type SectionLesson = {
   id: string
   title: string
   type: string
+  kind: string
   order: number
   isFree: boolean
   isCompleted: boolean
@@ -104,7 +106,6 @@ function formatDuration(secs: number) {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
-const typeIcon = { VIDEO: PlayCircle, TEXT: FileText, QUIZ: FlaskConical }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -277,7 +278,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   const { lesson, course, section, navigation, progress, sections } = data
   const videoAsset = lesson.assets.find((a) => a.type === "VIDEO")
   const otherAssets = lesson.assets.filter((a) => a.type !== "VIDEO" && a.type !== "SUBTITLE")
-  const LessonIcon = typeIcon[lesson.type]
+  const LessonIcon = lessonKind(lesson.type, lesson.assets).Icon
 
   return (
     // From md up the page is exactly one screen tall below the header, so the
@@ -327,7 +328,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 </p>
               </div>
               {sec.lessons.map((l, li) => {
-                const Icon = typeIcon[l.type as keyof typeof typeIcon] ?? PlayCircle
+                const Icon = LESSON_KINDS[l.kind]?.Icon ?? PlayCircle
                 if (l.locked) {
                   return (
                     <div

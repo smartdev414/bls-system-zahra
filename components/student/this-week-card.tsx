@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
-  ArrowRight, CalendarPlus, CheckCircle2, ChevronRight, FileText, FlaskConical,
+  ArrowRight, CalendarPlus, CheckCircle2, ChevronRight,
   PlayCircle, Radio, Video, BookOpen, Sparkles, MapPin,
 } from "lucide-react"
+import { LESSON_KINDS } from "@/lib/lesson-kind"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -30,7 +31,6 @@ export type ThisWeek = {
   lastRecording: { id: string; title: string; scheduledAt: string } | null
 }
 
-const lessonIcon: Record<string, typeof PlayCircle> = { VIDEO: PlayCircle, TEXT: FileText, QUIZ: FlaskConical }
 
 // The classroom opens a few minutes early so students can check camera and sound.
 const JOIN_EARLY_MS = 15 * 60 * 1000
@@ -151,7 +151,7 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
           {homework.length > 0 ? (
             <div className="flex flex-col divide-y rounded-xl border overflow-hidden">
               {homework.map((lesson) => {
-                const Icon = lessonIcon[lesson.type] ?? PlayCircle
+                const Icon = LESSON_KINDS[lesson.type]?.Icon ?? PlayCircle
                 return (
                   <Link
                     key={lesson.id}

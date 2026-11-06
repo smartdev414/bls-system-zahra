@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import {
-  BookOpen, PlayCircle, FileText, FlaskConical,
+  BookOpen,
   Clock, CheckCircle2, Loader2, Lock, ChevronRight, CalendarClock, ArrowLeft, ArrowRight,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,11 +15,14 @@ import { useFetch } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
 import { levelColor, type CourseLevel } from "@/lib/levels"
 import { releaseLabel } from "@/lib/lesson-release"
+import { LESSON_KINDS } from "@/lib/lesson-kind"
 
 type LessonItem = {
   id: string
   title: string
   type: "VIDEO" | "TEXT" | "QUIZ"
+  /** What the lesson really holds — a "video" lesson with only a PDF is a PDF. */
+  kind: string
   order: number
   isFree: boolean
   duration: number | null
@@ -57,17 +60,6 @@ type CourseEnrollment = {
 
 type LessonsData = { courses: CourseEnrollment[] }
 
-const typeIcon = {
-  VIDEO: PlayCircle,
-  TEXT: FileText,
-  QUIZ: FlaskConical,
-}
-
-const typeLabel = {
-  VIDEO: "Video",
-  TEXT: "Reading",
-  QUIZ: "Test",
-}
 
 /**
  * The lesson "Continue" should open: the one last worked on if it isn't
@@ -208,7 +200,7 @@ export default function LessonsPage() {
                 </div>
                 {/* Lesson rows */}
                 {section.lessons.map((lesson, li) => {
-                  const Icon = typeIcon[lesson.type]
+                  const Icon = (LESSON_KINDS[lesson.kind] ?? LESSON_KINDS.VIDEO).Icon
                   if (lesson.locked) {
                     // Not a link: the student can see what is coming and when,
                     // but nothing opens until the release date.
@@ -268,8 +260,8 @@ export default function LessonsPage() {
                           {li + 1}. {lesson.title}
                         </p>
                         <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
-                          {typeLabel[lesson.type]}
-                          {lesson.type === "VIDEO" && lesson.duration ? (
+                          {(LESSON_KINDS[lesson.kind] ?? LESSON_KINDS.VIDEO).label}
+                          {lesson.kind === "VIDEO" && lesson.duration ? (
                             <>
                               <span aria-hidden>·</span>
                               <Clock className="size-3" />

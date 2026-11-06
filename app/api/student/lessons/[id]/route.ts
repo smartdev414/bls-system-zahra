@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased, releaseLabel } from "@/lib/lesson-release"
+import { lessonKindKey } from "@/lib/lesson-kind"
 import { urlsHiddenFromStudents } from "@/lib/background-clean"
 
 async function handleGET(
@@ -36,7 +37,7 @@ async function handleGET(
                 sections: {
                   orderBy: { order: "asc" },
                   include: {
-                    lessons: { orderBy: { order: "asc" } },
+                    lessons: { orderBy: { order: "asc" }, include: { assets: { select: { type: true } } } },
                   },
                 },
               },
@@ -102,6 +103,7 @@ async function handleGET(
           id: l.id,
           title: l.title,
           type: l.type,
+          kind: lessonKindKey(l.type, l.assets),
           order: l.order,
           isFree: l.isFree,
           isCompleted: prog?.isCompleted ?? false,

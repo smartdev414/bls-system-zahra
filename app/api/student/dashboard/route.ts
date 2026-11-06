@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { studentOwnSessions, studentVisibleSessions } from "@/lib/session-access"
 import { isReleased } from "@/lib/lesson-release"
+import { lessonKindKey } from "@/lib/lesson-kind"
 
 async function handleGET() {
   try {
@@ -30,7 +31,7 @@ async function handleGET() {
                   orderBy: { order: "asc" },
                   // Every lesson counts towards the total; a locked one just
                   // cannot be the next to open.
-                  include: { lessons: { orderBy: { order: "asc" } } },
+                  include: { lessons: { orderBy: { order: "asc" }, include: { assets: { select: { type: true } } } } },
                 },
               },
             },
@@ -115,7 +116,7 @@ async function handleGET() {
         completedLessons: enrollCompleted,
         totalLessons: enrollTotal,
         nextLesson: nextLesson
-          ? { id: nextLesson.id, title: nextLesson.title, type: nextLesson.type }
+          ? { id: nextLesson.id, title: nextLesson.title, type: lessonKindKey(nextLesson.type, nextLesson.assets) }
           : null,
       }
     }
@@ -190,7 +191,7 @@ async function handleGET() {
           homework.push({
             id: lesson.id,
             title: lesson.title,
-            type: lesson.type,
+            type: lessonKindKey(lesson.type, lesson.assets),
             courseTitle: enrollment.course.title,
             isNew: !!lesson.releaseAt && now.getTime() - lesson.releaseAt.getTime() < WEEK_MS,
           })

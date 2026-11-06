@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
+import { lessonKindKey } from "@/lib/lesson-kind"
 
 async function handleGET(req: Request) {
   try {
@@ -86,6 +87,7 @@ async function handleGET(req: Request) {
               id: lesson.id,
               title: lesson.title,
               type: lesson.type,
+              kind: lessonKindKey(lesson.type, lesson.assets),
               order: lesson.order,
               isFree: lesson.isFree,
               duration: lesson.assets.find((a) => a.type === "VIDEO")?.duration ?? null,
