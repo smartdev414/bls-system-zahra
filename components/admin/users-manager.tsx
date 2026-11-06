@@ -4,7 +4,7 @@ import { useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Users, Search, Filter, Loader2, ShieldCheck,
-  UserCheck, Trash2, ChevronDown, Clock, Check, X, BookOpen, SlidersHorizontal, VideoOff, Video,
+  UserCheck, Trash2, ChevronDown, Clock, Check, X, BookOpen, SlidersHorizontal, VideoOff, Video, Pencil,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -210,6 +210,23 @@ function UserRow({
   const initials = user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
   const [approving, setApproving] = useState(false)
   const [accessOpen, setAccessOpen] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState(user.name)
+
+  const { execute: saveName, loading: savingName } = usePatchCallback<
+    { user: UserItem },
+    { name: string }
+  >(`/api/admin/users/${user.id}`, {
+    successMessage: "Name updated",
+    // No errorMessage: the server says what's wrong with the name.
+    onSuccess: () => { setEditingName(false); onMutated() },
+  })
+
+  function submitName() {
+    const name = nameDraft.trim()
+    if (!name || name === user.name) { setEditingName(false); setNameDraft(user.name); return }
+    saveName({ name })
+  }
 
   const { execute: updateRole } = usePatchCallback<
     { user: UserItem },
@@ -270,7 +287,42 @@ function UserRow({
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-semibold text-sm">{user.name}</p>
+              {editingName ? (
+                <form
+                  className="flex items-center gap-1"
+                  onSubmit={(e) => { e.preventDefault(); submitName() }}
+                >
+                  <Input
+                    autoFocus
+                    value={nameDraft}
+                    maxLength={100}
+                    disabled={savingName}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") { setEditingName(false); setNameDraft(user.name) } }}
+                    className="h-8 w-56 text-sm"
+                    aria-label="Name"
+                  />
+                  <Button type="submit" size="icon" className="size-8" disabled={savingName} title="Save name">
+                    {savingName ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+                  </Button>
+                  <Button
+                    type="button" variant="ghost" size="icon" className="size-8" disabled={savingName} title="Cancel"
+                    onClick={() => { setEditingName(false); setNameDraft(user.name) }}
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setNameDraft(user.name); setEditingName(true) }}
+                  className="group flex items-center gap-1.5 font-semibold text-sm hover:text-primary"
+                  title="Edit name"
+                >
+                  {user.name}
+                  <Pencil className="size-3 text-muted-foreground group-hover:text-primary" />
+                </button>
+              )}
               <Badge variant="outline" className={`text-[10px] ${roleColor[user.role]}`}>
                 {roleLabel(user.role)}
               </Badge>

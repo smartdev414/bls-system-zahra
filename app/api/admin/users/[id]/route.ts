@@ -34,6 +34,8 @@ async function handlePATCH(
       /** Leave a student out of class recordings (safeguarding). Set by staff,
        *  so the student can't turn it off themselves. */
       recordingOptOut?: boolean
+      /** Tidy up the name someone typed at sign-up. */
+      name?: string
     }
 
     const user = await prisma.user.findUnique({ where: { id } })
@@ -50,6 +52,14 @@ async function handlePATCH(
         { message: `Only an administrator can change a ${roleLabel(user.role)} account` },
         { status: 403 },
       )
+    }
+
+    if (typeof body.name === "string") {
+      const name = body.name.replace(/\s+/g, " ").trim()
+      if (!name || name.length > 100) {
+        return NextResponse.json({ message: "Please enter a name (up to 100 characters)" }, { status: 400 })
+      }
+      await prisma.user.update({ where: { id }, data: { name } })
     }
 
     if (body.role) {
