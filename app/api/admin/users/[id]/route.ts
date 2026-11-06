@@ -18,9 +18,6 @@ async function handlePATCH(
     if (!can(session.role, "users.edit")) return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const { id } = await params
-    if (id === session.sub) {
-      return NextResponse.json({ message: "Cannot modify your own account" }, { status: 400 })
-    }
 
     const body = await req.json() as {
       role?: AppRole
@@ -36,6 +33,12 @@ async function handlePATCH(
       recordingOptOut?: boolean
       /** Tidy up the name someone typed at sign-up. */
       name?: string
+    }
+
+    // Staff may fix their own name, but not their own role, access or status.
+    const onlyName = Object.keys(body).every((k) => k === "name")
+    if (id === session.sub && !onlyName) {
+      return NextResponse.json({ message: "Cannot modify your own account" }, { status: 400 })
     }
 
     const user = await prisma.user.findUnique({ where: { id } })

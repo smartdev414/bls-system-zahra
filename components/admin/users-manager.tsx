@@ -199,7 +199,7 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
       {!data && loading ? (
         <div className="flex flex-col gap-2">
           {[0, 1, 2, 3].map((i) => (
-            <Card key={i} className="shadow-sm">
+            <Card key={i} className="shadow-sm py-0">
               <CardContent className="p-4 flex items-center gap-4 animate-pulse">
                 <div className="size-11 rounded-full bg-muted" />
                 <div className="flex-1 flex flex-col gap-2">
@@ -328,7 +328,7 @@ function UserRow({
   const awaiting = isAwaiting(user)
 
   return (
-    <Card className={`shadow-sm transition-colors ${awaiting ? "border-amber-300" : ""}`}>
+    <Card className={`shadow-sm py-0 transition-colors ${awaiting ? "ring-amber-300" : ""}`}>
       <CardContent className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -406,7 +406,7 @@ function UserRow({
           </div>
 
           {/* Actions — the next step stays visible; everything else is under ⋯ */}
-          <div className="flex items-center gap-2 sm:shrink-0 sm:justify-end">
+          <div className="flex items-center justify-end gap-2 sm:shrink-0">
             {user.role === "STUDENT" && user.status !== "ACTIVE" && (
               <Button
                 size="sm"
@@ -443,7 +443,7 @@ function UserRow({
               </Button>
             )}
 
-            <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => setEditing(true)}>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
               <Pencil className="size-3.5 mr-1" /> Edit
             </Button>
 
