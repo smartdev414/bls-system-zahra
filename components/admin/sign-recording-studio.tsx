@@ -14,12 +14,16 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   ArrowLeft, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Circle,
-  Loader2, MessageSquareText, Plus, RotateCcw, Square, TriangleAlert, Video, X,
+  Loader2, MessageSquareText, Plus, Reply, RotateCcw, Square, TriangleAlert, Video,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -293,6 +297,10 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
   const queueRequestRef = useRef(0)
   // The category picked for each requested word not in the dictionary yet.
   const [requestCategories, setRequestCategories] = useState<Record<string, string>>({})
+  // The requested word being answered from the "Reply" box.
+  const [replyFor, setReplyFor] = useState<QueueSign | null>(null)
+  const [replyText, setReplyText] = useState("")
+  const [replySending, setReplySending] = useState(false)
   // The requested word whose category is being typed as a new one.
   const [typingCategoryFor, setTypingCategoryFor] = useState<string | null>(null)
   const currentRowRef = useRef<HTMLButtonElement>(null)
@@ -407,17 +415,30 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
     currentRowRef.current?.scrollIntoView({ block: "nearest" })
   }, [index])
 
-  // "Not adding" on a requested word: it leaves the list (a word already in
-  // the dictionary comes back in its usual place next time).
-  function declineRequest(sign: QueueSign) {
-    fetch(`/api/admin/sign-requests?word=${encodeURIComponent(sign.word)}`, { method: "DELETE" })
-      .then((res) => {
-        if (!res.ok) throw new Error()
+  // "Reply" on a requested word: the admin's message (e.g. there is no single
+  // sign, it's shown another way) goes to each student who asked, by email too,
+  // and the word leaves the list (one already in the dictionary comes back in
+  // its usual place next time). An empty message just closes the request.
+  function declineRequest(sign: QueueSign, message: string) {
+    setReplySending(true)
+    fetch(`/api/admin/sign-requests?word=${encodeURIComponent(sign.word)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.message)
         setItems((prev) => prev.filter((s) => s.id !== sign.id))
         setRemaining((n) => Math.max(0, n - 1))
-        toast.success(`Request for "${sign.word}" closed`)
+        setReplyFor(null)
+        setReplyText("")
+        toast.success(message.trim()
+          ? `Reply sent — request for "${sign.word}" closed`
+          : `Request for "${sign.word}" closed`)
       })
-      .catch(() => toast.error("Could not close the request"))
+      .catch((err: Error) => toast.error(err.message || "Could not send the reply"))
+      .finally(() => setReplySending(false))
   }
 
   // Its spelling in the list if it is already there, so "food" joins "Food".
@@ -910,9 +931,9 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
                         variant="ghost"
                         className="-my-1 h-7 px-2 text-xs"
                         disabled={phase !== "idle"}
-                        onClick={() => declineRequest(current)}
+                        onClick={() => { setReplyFor(current); setReplyText("") }}
                       >
-                        <X className="mr-1 size-3.5" /> Not adding
+                        <Reply className="mr-1 size-3.5" /> Reply
                       </Button>
                     </div>
                     <ul className="mt-1 space-y-0.5">
@@ -1379,6 +1400,43 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!replyFor} onOpenChange={(open) => { if (!open && !replySending) setReplyFor(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reply about “{replyFor?.word}”</DialogTitle>
+            <DialogDescription>
+              {replyFor?.requests?.map((r) => r.studentName).filter((n, i, all) => all.indexOf(n) === i).join(", ")}
+              {" "}will get this in the app and by email, and the request closes.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            autoFocus
+            rows={5}
+            maxLength={1000}
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            placeholder={`e.g. There isn't one sign for "${replyFor?.word ?? ""}". In BSL it's shown differently: …`}
+          />
+          <DialogFooter>
+            <Button
+              disabled={replySending || !replyText.trim()}
+              onClick={() => replyFor && declineRequest(replyFor, replyText)}
+            >
+              {replySending ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Reply className="mr-1.5 size-4" />}
+              Send and close
+            </Button>
+          </DialogFooter>
+          <button
+            type="button"
+            className="mx-auto text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
+            disabled={replySending}
+            onClick={() => replyFor && declineRequest(replyFor, "")}
+          >
+            Close without a message
+          </button>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

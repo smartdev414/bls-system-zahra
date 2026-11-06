@@ -7,6 +7,8 @@ import { isReflection } from "@/lib/quiz"
 import {
   cleanAnswers, criteriaOf, missingCriteria, notifyReflectionSent, textMap,
 } from "@/lib/reflections"
+import { inBackground } from "@/lib/push"
+import { awardIfFinished } from "@/lib/trophies"
 
 /**
  * A student's self-reflection on one lesson (a REFLECTION test).
@@ -130,6 +132,7 @@ async function save(req: NextRequest, id: string, send: boolean) {
   if (send) {
     const me = await prisma.user.findUnique({ where: { id: session.sub }, select: { name: true } })
     void notifyReflectionSent(id, me?.name ?? "A student", !!existing?.submittedAt)
+    inBackground(() => awardIfFinished(session.sub, found.lesson.section.courseId))
   }
   return NextResponse.json(saved)
 }

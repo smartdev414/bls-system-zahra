@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -43,19 +44,22 @@ export default function TestsPage() {
   const testsBase = useTestsBase()
   // A teacher an admin keeps to view only browses the bank but changes nothing.
   const canChange = useTutorAccess().tests
-  const [query, setQuery] = useState("")
-  const [search, setSearch] = useState("")
-  const [level, setLevel] = useState<CourseLevel | "">("")
-  const [kind, setKind] = useState<TestKind | "">("")
-  const [mine, setMine] = useState(false)
-  const [page, setPage] = useState(1)
+  const [query, setQuery] = useRememberedState("query", "")
+  const [search, setSearch] = useRememberedState("search", "")
+  const [level, setLevel] = useRememberedState<CourseLevel | "">("level", "")
+  const [kind, setKind] = useRememberedState<TestKind | "">("kind", "")
+  const [mine, setMine] = useRememberedState("mine", false)
+  const [page, setPage] = useRememberedState("page", 1)
   const [placing, setPlacing] = useState<TestRow | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
+    // Nothing new typed (e.g. the search just came back from last visit):
+    // keep the page they were on.
+    if (query.trim() === search) return
     const t = setTimeout(() => { setSearch(query.trim()); setPage(1) }, 300)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, search, setSearch, setPage])
 
   const params = new URLSearchParams()
   if (search) params.set("q", search)

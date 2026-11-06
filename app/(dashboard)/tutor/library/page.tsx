@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import {
   Upload, Loader2, Trash2, Search, FolderOpen, CheckCircle2, AlertCircle, Captions, Save, Camera,
   MoreHorizontal, BookOpen, Presentation, Wand2,
@@ -121,11 +122,11 @@ export default function TutorLibraryPage() {
   })
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploads, setUploads] = useState<UploadRow[]>([])
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useRememberedState("query", "")
   const [removing, setRemoving] = useState<string | null>(null)
   // Level new uploads are filed under, and the level the list is narrowed to.
   const [uploadLevel, setUploadLevel] = useState<CourseLevel | "">("")
-  const [levelFilter, setLevelFilter] = useState<CourseLevel | "" | "NONE">("")
+  const [levelFilter, setLevelFilter] = useRememberedState<CourseLevel | "" | "NONE">("levelFilter", "")
   const [recording, setRecording] = useState(false)
   const [use, setUse] = useState<UseAction | null>(null)
   // Whether the server can replace a video's background (lib/background-clean.ts).

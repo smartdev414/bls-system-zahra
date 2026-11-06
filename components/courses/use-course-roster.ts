@@ -11,6 +11,8 @@ export type RosterData = {
   // Lessons and tests released to students so far — what progress is measured against.
   totalLessons: number
   totalTests: number
+  /** The class's average progress, 0–100. */
+  classAverage: number
 }
 
 /**
@@ -28,6 +30,36 @@ export function useCourseRoster(courseId: string, onTotalChange?: (total: number
   // Student ids a reminder is being sent to right now.
   const [remindingIds, setRemindingIds] = useState<Set<string>>(new Set())
   const [removingId, setRemovingId] = useState<string | null>(null)
+  // Student ids a trophy is being given to right now.
+  const [trophyIds, setTrophyIds] = useState<Set<string>>(new Set())
+
+  async function giveTrophy(targets: CourseStudent[]) {
+    if (targets.length === 0) return
+    setTrophyIds(new Set(targets.map((s) => s.id)))
+    try {
+      const res = await fetch(`${url}/trophy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentIds: targets.map((s) => s.id) }),
+      })
+      const body = await res.json().catch(() => ({})) as { given?: number; message?: string }
+      if (!res.ok) {
+        toast.error(body.message ?? "Could not give the trophy")
+        return
+      }
+      const given = body.given ?? 0
+      if (given === 0) {
+        toast.info(targets.length === 1 ? `${targets[0].name} already got a trophy today` : "They all got a trophy today already")
+      } else {
+        toast.success(`🏆 Trophy sent to ${given === 1 && targets.length === 1 ? targets[0].name : `${given} students`}`)
+      }
+      void refetch()
+    } catch {
+      toast.error("Could not give the trophy")
+    } finally {
+      setTrophyIds(new Set())
+    }
+  }
 
   async function remind(targets: CourseStudent[]) {
     if (targets.length === 0) return
@@ -87,5 +119,5 @@ export function useCourseRoster(courseId: string, onTotalChange?: (total: number
     }
   }
 
-  return { url, data, loading, refetch, remind, remove, remindingIds, removingId }
+  return { url, data, loading, refetch, remind, remove, giveTrophy, remindingIds, removingId, trophyIds }
 }

@@ -5,6 +5,7 @@ import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
 import { joinedClassOf } from "@/lib/session-access"
+import { activity, courseTests, statusOf, testStatuses, UNFINISHED, type TestStatus } from "@/lib/test-progress"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -84,6 +85,11 @@ async function handleGET(req: NextRequest) {
       bslLevel: string | null
       joinedAt: string
       source: "enrolled" | "invited" | "both"
+      lastSeenAt: string | null
+      activeDates: string[]
+      lastRemindedAt: string | null
+      testsDone: number
+      testsUnfinished: number
       courses: Array<{
         id: string
         title: string
@@ -91,8 +97,15 @@ async function handleGET(req: NextRequest) {
         totalLessons: number
         completedLessons: number
         completion: number
+        tests: Array<{ id: string; title: string; status: TestStatus; score: number | null; attempts: number }>
       }>
     }>()
+
+    // Every released test on these courses, and how each student is doing on them.
+    const testsByCourse = await courseTests(courseIds)
+    const allTestIds = [...testsByCourse.values()].flat().map((t) => t.id)
+    const statuses = await testStatuses(allTestIds, [...new Set(enrollments.map((e) => e.studentId))])
+    const blank = { lastSeenAt: null, activeDates: [], lastRemindedAt: null, testsDone: 0, testsUnfinished: 0 }
 
     for (const enrollment of enrollments) {
       const sid = enrollment.student.id
@@ -109,17 +122,28 @@ async function handleGET(req: NextRequest) {
           bslLevel: enrollment.student.bslLevel,
           joinedAt: enrollment.student.createdAt.toISOString(),
           source: invitedStudentIds.has(sid) ? "both" : "enrolled",
+          ...blank,
           courses: [],
         })
       }
 
-      studentMap.get(sid)!.courses.push({
+      const entry = studentMap.get(sid)!
+      const tests = (testsByCourse.get(enrollment.courseId) ?? []).map((t) => ({
+        id: t.id,
+        title: t.title,
+        ...statusOf(statuses, sid, t.id),
+      }))
+      const unfinished = tests.filter((t) => UNFINISHED.has(t.status)).length
+      entry.testsUnfinished += unfinished
+      entry.testsDone += tests.length - unfinished
+      entry.courses.push({
         id: enrollment.course.id,
         title: enrollment.course.title,
         enrolledAt: enrollment.enrolledAt.toISOString(),
         totalLessons,
         completedLessons,
         completion,
+        tests,
       })
     }
 
@@ -134,6 +158,7 @@ async function handleGET(req: NextRequest) {
           bslLevel: student.bslLevel,
           joinedAt: student.createdAt.toISOString(),
           source: "invited",
+          ...blank,
           courses: [],
         })
       } else {
@@ -153,11 +178,31 @@ async function handleGET(req: NextRequest) {
         bslLevel: student.bslLevel,
         joinedAt: student.createdAt.toISOString(),
         source: "enrolled",
+        ...blank,
         courses: [],
       })
     }
 
     const students = [...studentMap.values()]
+    // When each was last on the platform and last reminded to catch up.
+    const ids = students.map((s) => s.id)
+    const [seen, reminders] = await Promise.all([
+      activity(ids),
+      ids.length > 0
+        ? prisma.notification.groupBy({
+            by: ["userId"],
+            where: { type: "HOMEWORK_REMINDER", userId: { in: ids } },
+            _max: { createdAt: true },
+          })
+        : [],
+    ])
+    const remindedAt = new Map(reminders.map((r) => [r.userId, r._max.createdAt]))
+    for (const s of students) {
+      const a = seen.get(s.id)
+      s.lastSeenAt = a?.lastSeenAt?.toISOString() ?? null
+      s.activeDates = a?.activeDates ?? []
+      s.lastRemindedAt = remindedAt.get(s.id)?.toISOString() ?? null
+    }
     return NextResponse.json({ students, total: students.length })
   } catch (err) {
     console.error("[GET /api/tutor/students]", err)

@@ -256,6 +256,18 @@ students the class is for — invited, approved, or on the class's course), a
 "new lessons" message when held-back lessons unlock, and a weekly "catch up"
 nudge to students with work outstanding and nothing done for 7 days (never
 within a week of any other homework reminder, including a tutor's manual one).
+Students with a released test they have not finished are also reminded every
+2 days (9am–8pm UK only, not in their first 2 days on the course or a test's
+first 2 days out; any reminder in the last 46 hours, manual or automatic,
+counts). "Finished" is in `lib/test-progress.ts`. The Students page (People →
+Students) shows each student's last seen, active days and every test's status.
+Students well behind the rest of their class (15+ points under the class
+average, on the course a week or more) get a kinder "you can catch up" version
+of that reminder. The same run gives a **trophy** 🏆 to anyone who has finished
+every released lesson and test on a course (it is also given the moment they
+finish; another comes when they finish newly released work) — `lib/trophies.ts`.
+The first run after the `20261106120000_trophies` migration will award trophies
+to everyone who has already finished, by email too.
 Each goes to the bell, email and phone push. It needs `CRON_SECRET` set and a
 scheduler calling it **every 10 minutes** with `Authorization: Bearer
 $CRON_SECRET`. Without `CRON_SECRET` the route answers 503 and nothing is sent.

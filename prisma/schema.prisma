@@ -177,6 +177,8 @@ enum NotificationType {
   CLASS_HANDOUT_READY
   // A teacher sent a student's self-reflection back to them with feedback
   REFLECTION_RETURNED
+  // A teacher gave the student a trophy for their hard work on a course
+  TROPHY
   // Ticket / feedback events
   TICKET_CREATED
   TICKET_UPDATED
@@ -206,75 +208,77 @@ enum TicketPriority {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  passwordHash String? // null for OAuth-only users
-  googleId     String?      @unique
-  name         String
-  role         Role         @default(STUDENT)
-  avatarUrl    String?
-  bslLevel     CourseLevel? // relevant for STUDENT role
+  id                     String        @id @default(cuid())
+  email                  String        @unique
+  passwordHash           String? // null for OAuth-only users
+  googleId               String?       @unique
+  name                   String
+  role                   Role          @default(STUDENT)
+  avatarUrl              String?
+  bslLevel               CourseLevel? // relevant for STUDENT role
   // Students may be signed in on one device at a time: the newest login's id
   // lives here and any older token carrying a different id is rejected.
-  activeSessionId String?
+  activeSessionId        String?
   // Students who sign up on their own wait here until staff approve them (see
   // lib/account-approval.ts). Everyone else, and every account that existed
   // before approval, is ACTIVE.
-  status       AccountStatus @default(ACTIVE)
+  status                 AccountStatus @default(ACTIVE)
   // What the student told us at sign-up ("which course or teacher?") so staff
   // can tell a real student from a stranger.
-  signupNote   String?
+  signupNote             String?
   // Leave this student's face out of class recordings (safeguarding). They can
   // turn it on themselves; when staff turn it on (`ByStaff`), only staff can
   // turn it off again. See app/egress/recorder-view.tsx.
-  recordingOptOut        Boolean @default(false)
-  recordingOptOutByStaff Boolean @default(false)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  recordingOptOut        Boolean       @default(false)
+  recordingOptOutByStaff Boolean       @default(false)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
-  tutorProfile         TutorProfile?
-  courses              Course[]                @relation("TutorCourses")
-  teachingCourses      CourseTutor[]           @relation("CourseTeaching")
-  quizAttempts         QuizAttempt[]
-  reflections          ReflectionSubmission[]
-  reflectionFeedback   ReflectionFeedback[]    @relation("ReflectionFeedbackGiven")
-  testsCreated         Test[]                  @relation("TestsCreated")
-  leaguesCreated       League[]                @relation("LeaguesCreated")
-  leagueMemberships    LeagueMember[]
-  leagueAttempts       LeagueAttempt[]
-  hostedSessions       LiveSession[]           @relation("TutorLiveSessions")
-  coTutorSessions      LiveSessionCoTutor[]    @relation("CoTutorSessions")
-  coTutorInvitesSent   LiveSessionCoTutor[]    @relation("CoTutorInvitesSent")
-  enrollments          Enrollment[]
-  attendances          LiveSessionAttendance[]
-  sessionInvites       LiveSessionInvite[]
-  reviews              Review[]
-  studentConversations Conversation[]          @relation("StudentConversations")
-  tutorConversations   Conversation[]          @relation("TutorConversations")
-  sentMessages         Message[]               @relation("SentMessages")
-  notifications        Notification[]
-  pushSubscriptions    PushSubscription[]
-  studentGroups        StudentGroup[]          @relation("TutorStudentGroups")
-  groupMemberships     StudentGroupMember[]
-  sentInvites          TutorInvite[]           @relation("TutorInvites")
-  invitedStudents      User[]                  @relation("InvitedByTutor")
-  invitedBy            User?                   @relation("InvitedByTutor", fields: [invitedById], references: [id])
-  invitedById          String?
-  submittedTickets     Ticket[]                @relation("SubmittedTickets")
-  assignedTickets      Ticket[]                @relation("AssignedTickets")
-  ticketComments       TicketComment[]         @relation("TicketComments")
-  givenTutorReviews    TutorReview[]           @relation("StudentTutorReviews")
-  receivedTutorReviews TutorReview[]           @relation("TutorReceivedReviews")
-  sessionJoinRequests  SessionJoinRequest[]
-  certEnrollments      CertEnrollment[]
-  certReviews          CertStepSubmission[]    @relation("CertReviewer")
-  passwordResetTokens  PasswordResetToken[]
+  tutorProfile            TutorProfile?
+  courses                 Course[]                 @relation("TutorCourses")
+  teachingCourses         CourseTutor[]            @relation("CourseTeaching")
+  quizAttempts            QuizAttempt[]
+  reflections             ReflectionSubmission[]
+  reflectionFeedback      ReflectionFeedback[]     @relation("ReflectionFeedbackGiven")
+  testsCreated            Test[]                   @relation("TestsCreated")
+  leaguesCreated          League[]                 @relation("LeaguesCreated")
+  leagueMemberships       LeagueMember[]
+  leagueAttempts          LeagueAttempt[]
+  hostedSessions          LiveSession[]            @relation("TutorLiveSessions")
+  coTutorSessions         LiveSessionCoTutor[]     @relation("CoTutorSessions")
+  coTutorInvitesSent      LiveSessionCoTutor[]     @relation("CoTutorInvitesSent")
+  enrollments             Enrollment[]
+  attendances             LiveSessionAttendance[]
+  sessionInvites          LiveSessionInvite[]
+  reviews                 Review[]
+  studentConversations    Conversation[]           @relation("StudentConversations")
+  tutorConversations      Conversation[]           @relation("TutorConversations")
+  sentMessages            Message[]                @relation("SentMessages")
+  notifications           Notification[]
+  pushSubscriptions       PushSubscription[]
+  studentGroups           StudentGroup[]           @relation("TutorStudentGroups")
+  groupMemberships        StudentGroupMember[]
+  sentInvites             TutorInvite[]            @relation("TutorInvites")
+  invitedStudents         User[]                   @relation("InvitedByTutor")
+  invitedBy               User?                    @relation("InvitedByTutor", fields: [invitedById], references: [id])
+  invitedById             String?
+  submittedTickets        Ticket[]                 @relation("SubmittedTickets")
+  assignedTickets         Ticket[]                 @relation("AssignedTickets")
+  ticketComments          TicketComment[]          @relation("TicketComments")
+  givenTutorReviews       TutorReview[]            @relation("StudentTutorReviews")
+  receivedTutorReviews    TutorReview[]            @relation("TutorReceivedReviews")
+  sessionJoinRequests     SessionJoinRequest[]
+  certEnrollments         CertEnrollment[]
+  certReviews             CertStepSubmission[]     @relation("CertReviewer")
+  passwordResetTokens     PasswordResetToken[]
   liveSessionChatMessages LiveSessionChatMessage[] @relation("LiveSessionChatMessages")
-  libraryFiles         LibraryFile[]           @relation("TutorLibraryFiles")
-  preparedCaptions     PreparedCaption[]       @relation("TutorPreparedCaptions")
-  videoCleanJobs       VideoCleanJob[]
-  savedSigns           SavedSign[]
-  signRequests         SignRequest[]
+  libraryFiles            LibraryFile[]            @relation("TutorLibraryFiles")
+  preparedCaptions        PreparedCaption[]        @relation("TutorPreparedCaptions")
+  videoCleanJobs          VideoCleanJob[]
+  savedSigns              SavedSign[]
+  signRequests            SignRequest[]
+  trophies                Trophy[]                 @relation("TrophiesReceived")
+  trophiesGiven           Trophy[]                 @relation("TrophiesGiven")
 }
 
 enum AccountStatus {
@@ -376,19 +380,19 @@ model VideoCleanJob {
 }
 
 model TutorProfile {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-  bio            String?
-  qualifications String[] // e.g. ["CACDP Level 3", "Signature BSL"]
-  isVerified     Boolean  @default(false)
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  bio             String?
+  qualifications  String[] // e.g. ["CACDP Level 3", "Signature BSL"]
+  isVerified      Boolean  @default(false)
   // What an admin lets this teacher change (see lib/tutor-access.ts). Off means
   // view only; downloads off means watch only. Everything starts off.
-  canEditTests    Boolean @default(false)
-  canEditCalendar Boolean @default(false)
-  canEditLibrary  Boolean @default(false)
-  canEditGroups   Boolean @default(false)
-  canEditStudents Boolean @default(false)
-  canDownload     Boolean @default(false)
+  canEditTests    Boolean  @default(false)
+  canEditCalendar Boolean  @default(false)
+  canEditLibrary  Boolean  @default(false)
+  canEditGroups   Boolean  @default(false)
+  canEditStudents Boolean  @default(false)
+  canDownload     Boolean  @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -401,24 +405,24 @@ model Category {
 }
 
 model Sign {
-  id          String      @id @default(cuid())
-  word        String      @unique
-  category    String
-  level       CourseLevel @default(L1)
-  description String
-  videoUrl    String?
-  imageUrl    String?
-  handshape   String
-  usage       String
+  id            String      @id @default(cuid())
+  word          String      @unique
+  category      String
+  level         CourseLevel @default(L1)
+  description   String
+  videoUrl      String?
+  imageUrl      String?
+  handshape     String
+  usage         String
   // Untick to keep a detail off the student dictionary (admins and tutors still see it).
-  showLevel     Boolean   @default(true)
-  showHandshape Boolean   @default(true)
-  showUsage     Boolean   @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  showLevel     Boolean     @default(true)
+  showHandshape Boolean     @default(true)
+  showUsage     Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  savedBy     SavedSign[]
-  requests    SignRequest[]
+  savedBy  SavedSign[]
+  requests SignRequest[]
 
   @@index([category])
   @@index([level])
@@ -466,21 +470,21 @@ model SignRequest {
 }
 
 model Course {
-  id           String       @id @default(cuid())
+  id           String           @id @default(cuid())
   tutorId      String
   categoryId   String?
   title        String
-  slug         String       @unique
+  slug         String           @unique
   description  String
   thumbnailUrl String?
-  status       CourseStatus @default(DRAFT)
+  status       CourseStatus     @default(DRAFT)
   visibility   CourseVisibility @default(PRIVATE)
-  level        CourseLevel  @default(L1)
-  format       CourseFormat @default(ONLINE)
+  level        CourseLevel      @default(L1)
+  format       CourseFormat     @default(ONLINE)
   // Where a face-to-face course meets — the address students are shown.
   venue        String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   tutor        User          @relation("TutorCourses", fields: [tutorId], references: [id])
   category     Category?     @relation(fields: [categoryId], references: [id])
@@ -490,6 +494,7 @@ model Course {
   enrollments  Enrollment[]
   liveSessions LiveSession[]
   reviews      Review[]
+  trophies     Trophy[]
 
   @@index([tutorId])
   @@index([status])
@@ -557,11 +562,11 @@ model Lesson {
   // can sit in several courses; the attempts are kept here, per course.
   testId      String?
 
-  section   Section          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  test      Test?            @relation(fields: [testId], references: [id], onDelete: Cascade)
-  assets    LessonAsset[]
-  progress  LessonProgress[]
-  attempts  QuizAttempt[]
+  section     Section                @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  test        Test?                  @relation(fields: [testId], references: [id], onDelete: Cascade)
+  assets      LessonAsset[]
+  progress    LessonProgress[]
+  attempts    QuizAttempt[]
   reflections ReflectionSubmission[]
 
   @@index([sectionId])
@@ -619,39 +624,39 @@ model LessonProgress {
 }
 
 model LiveSession {
-  id           String                @id @default(cuid())
-  tutorId      String
-  courseId     String?
+  id              String                @id @default(cuid())
+  tutorId         String
+  courseId        String?
   // The group this class is for, when it is one group's class rather than the
   // whole course's. Its members are invited; this is what lets the course page
   // show each group's timetable.
-  groupId      String?
-  title        String
-  description  String?
-  scheduledAt  DateTime
-  durationMins Int
-  roomName     String                @unique
-  maxStudents  Int?
-  status       LiveSessionStatus     @default(SCHEDULED)
-  visibility   LiveSessionVisibility @default(PUBLIC)
-  startedAt    DateTime?
-  endedAt      DateTime?
-  egressId     String?
-  recordingKey String?
-  recordingUrl String?
+  groupId         String?
+  title           String
+  description     String?
+  scheduledAt     DateTime
+  durationMins    Int
+  roomName        String                @unique
+  maxStudents     Int?
+  status          LiveSessionStatus     @default(SCHEDULED)
+  visibility      LiveSessionVisibility @default(PUBLIC)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  egressId        String?
+  recordingKey    String?
+  recordingUrl    String?
   // Kept from students (staff can still watch). Set on recordings made before
   // recordings left students out, which show students' faces and names.
-  recordingHidden Boolean @default(false)
+  recordingHidden Boolean               @default(false)
   // A face-to-face class: it happens at `venue`, not in the online classroom,
   // so nobody gets a classroom token for it. Copied from the course's format
   // when the class is scheduled, and kept in step when the course changes.
-  inPerson     Boolean               @default(false)
-  venue        String?
-  createdAt    DateTime              @default(now())
+  inPerson        Boolean               @default(false)
+  venue           String?
+  createdAt       DateTime              @default(now())
 
-  tutor        User                    @relation("TutorLiveSessions", fields: [tutorId], references: [id])
-  course       Course?                 @relation(fields: [courseId], references: [id])
-  group        StudentGroup?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  tutor        User                     @relation("TutorLiveSessions", fields: [tutorId], references: [id])
+  course       Course?                  @relation(fields: [courseId], references: [id])
+  group        StudentGroup?            @relation(fields: [groupId], references: [id], onDelete: SetNull)
   attendances  LiveSessionAttendance[]
   invites      LiveSessionInvite[]
   coTutors     LiveSessionCoTutor[]
@@ -677,7 +682,7 @@ model LiveSession {
 model LiveSessionPresentation {
   sessionId     String   @id
   active        Boolean  @default(false)
-  kind          String?  // "slides" | "video"
+  kind          String? // "slides" | "video"
   url           String?
   page          Int      @default(1)
   totalPages    Int      @default(0)
@@ -696,21 +701,21 @@ model LiveSessionPresentation {
 // the LiveKit data channel for real-time delivery; this table is the durable
 // source so refreshes and late joiners can hydrate the full conversation.
 model LiveSessionChatMessage {
-  id        String   @id // client-generated so live + persisted copies share an id
-  sessionId String
-  senderId  String?
-  fromName  String
-  text      String   @default("")
-  type      String   // "text" | "reaction" | "system"
+  id                String   @id // client-generated so live + persisted copies share an id
+  sessionId         String
+  senderId          String?
+  fromName          String
+  text              String   @default("")
+  type              String // "text" | "reaction" | "system"
   // Optional file attachment (JSON: { fileUrl, fileName, fileSize, mimeType })
-  attachment Json?
+  attachment        Json?
   // Set when the message was sent inside a breakout group, so history only
   // hydrates for that group (and teachers). Null = whole class. Breakout groups
   // live only in the room's client state, so the id is the client's group id
   // and the name is kept alongside for labelling after the groups are gone.
   breakoutGroupId   String?
   breakoutGroupName String?
-  createdAt DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sender  User?       @relation("LiveSessionChatMessages", fields: [senderId], references: [id], onDelete: SetNull)
@@ -754,9 +759,9 @@ model LiveSessionCoTutor {
   invitedById String
   invitedAt   DateTime @default(now())
 
-  session     LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  tutor       User        @relation("CoTutorSessions", fields: [tutorId], references: [id], onDelete: Cascade)
-  invitedBy   User        @relation("CoTutorInvitesSent", fields: [invitedById], references: [id])
+  session   LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tutor     User        @relation("CoTutorSessions", fields: [tutorId], references: [id], onDelete: Cascade)
+  invitedBy User        @relation("CoTutorInvitesSent", fields: [invitedById], references: [id])
 
   @@unique([sessionId, tutorId])
   @@index([tutorId])
@@ -935,7 +940,7 @@ model ApiLog {
 // from those. `tutorId` is simply who uploaded the file; files a tutor added
 // before the library was shared stay theirs alone.
 model LibraryFile {
-  id                   String    @id @default(cuid())
+  id                   String       @id @default(cuid())
   tutorId              String
   title                String
   fileUrl              String
@@ -943,12 +948,12 @@ model LibraryFile {
   fileSize             Int?
   mimeType             String?
   assetType            AssetType
-  presentationUrl      String?   // pre-converted PDF (PowerPoint uploads only)
+  presentationUrl      String? // pre-converted PDF (PowerPoint uploads only)
   presentationMimeType String?
   // Which level the file is for, so a term's material can be filed in advance
   // and found by level. Null = not level-specific.
   level                CourseLevel?
-  createdAt            DateTime  @default(now())
+  createdAt            DateTime     @default(now())
 
   tutor User @relation("TutorLibraryFiles", fields: [tutorId], references: [id], onDelete: Cascade)
 
@@ -974,11 +979,11 @@ model LiveSessionResource {
   id                   String   @id @default(cuid())
   sessionId            String
   title                String
-  fileUrl              String   // original file — used for student downloads
+  fileUrl              String // original file — used for student downloads
   fileName             String
   fileSize             Int?
   mimeType             String?
-  presentationUrl      String?  // pre-converted PDF for low-latency classroom use
+  presentationUrl      String? // pre-converted PDF for low-latency classroom use
   presentationMimeType String?
   // Slides the tutor picked, in presentation order (1-based page numbers).
   // Set when a deck is prepared before class so the classroom can start
@@ -1015,40 +1020,40 @@ model ClassHandout {
 // A test in the test bank (the Tests menu). It is made once and put in any
 // number of courses: each placement is a lesson of type QUIZ pointing at it.
 model Test {
-  id            String       @id @default(cuid())
-  title         String
-  description   String?
+  id             String         @id @default(cuid())
+  title          String
+  description    String?
   // The level it is for, so tests can be found by level. Null = any level.
-  level         CourseLevel?
-  testKind      TestKind     @default(STANDARD)
+  level          CourseLevel?
+  testKind       TestKind       @default(STANDARD)
   // STORY: the video the questions are about.
-  storyUrl      String?
+  storyUrl       String?
   // STORY: whether students may pause, rewind and skip the story video. Off:
   // it just plays through, as on the old platform's assessments.
-  storyControls Boolean      @default(false)
+  storyControls  Boolean        @default(false)
   // FINGERSPELLING / VOCABULARY: seconds a student has for each sign. In these
   // tests a question is just a video and its word (QuizQuestion.question), with
   // no options.
-  answerSeconds Int?
+  answerSeconds  Int?
   // FINGERSPELLING / VOCABULARY: how many times each sign's video plays — 1 or
   // 2 for a harder test, null to keep it repeating until the time is up.
-  signPlays     Int?
+  signPlays      Int?
   // VOCABULARY: which way round it is practised.
   vocabularyMode VocabularyMode @default(PICK_WORD)
   // ASSESSMENT: minutes a student has to film their answers to each part.
-  answerMinutes Int?
+  answerMinutes  Int?
   // ASSESSMENT: a teacher marks the filmed answers, instead of the student
   // marking them against the answer sheet.
-  tutorMarks    Boolean      @default(false)
+  tutorMarks     Boolean        @default(false)
   // The score, out of 100, a student needs to pass, and how many times they may
   // sit it. Null attempts = as often as they like.
-  passMark      Int          @default(70)
-  maxAttempts   Int?
+  passMark       Int            @default(70)
+  maxAttempts    Int?
   // Who made it: a tutor changes their own tests, an admin any. The test stays
   // when the account goes, so the courses using it keep it.
-  createdById   String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   createdBy User?          @relation("TestsCreated", fields: [createdById], references: [id], onDelete: SetNull)
   questions QuizQuestion[]
@@ -1060,41 +1065,41 @@ model Test {
 }
 
 model QuizQuestion {
-  id       String       @id @default(cuid())
-  testId   String
-  question String
-  imageUrl String? // optional image or video shown with the question
-  mediaType String? // "image" | "video"
+  id                 String       @id @default(cuid())
+  testId             String
+  question           String
+  imageUrl           String? // optional image or video shown with the question
+  mediaType          String? // "image" | "video"
   // Whether students may pause, rewind and scrub this question's videos (its
   // own and its answers') while sitting the test. Off: they just play, looping.
-  videoControls Boolean @default(false)
+  videoControls      Boolean      @default(false)
   // The question and its answers stay hidden until the question's video has
   // played to the end — watch first, then answer (the old platform's "After
   // watching video show question and answers").
-  questionAfterVideo Boolean @default(false)
-  type     QuestionType @default(MULTIPLE_CHOICE)
+  questionAfterVideo Boolean      @default(false)
+  type               QuestionType @default(MULTIPLE_CHOICE)
   // WRITTEN: the answer students compare theirs with once they have submitted.
-  modelAnswer   String?
+  modelAnswer        String?
   // WRITTEN: what the question is worth; students see "(2 marks)" after it and
   // give themselves 0 up to this. Null = 3, as before it could be chosen.
-  maxMarks      Int?
+  maxMarks           Int?
   // SIGN: the video of the sign done right, shown next to the student's own
   // recording once they have submitted — never before.
-  answerVideoUrl String?
+  answerVideoUrl     String?
   // ASSESSMENT: a part's questions, signed — watched before the part itself
   // (imageUrl). The answer sheet is modelAnswer, its marks maxMarks.
-  questionsVideoUrl String?
+  questionsVideoUrl  String?
   // PRESENTATION: a file that goes with the task — a PDF, a picture, a Word
   // document or PowerPoint — for students to open before they present.
-  attachmentUrl String?
+  attachmentUrl      String?
   // REFLECTION: a criterion that is not part of this assessment. Students see
   // it, greyed out, but cannot write in it.
-  locked   Boolean @default(false)
+  locked             Boolean      @default(false)
   // REFLECTION: the heading the criterion sits under, e.g. "1.1 Initiate and
   // develop discourse". Criteria next to each other with the same heading are
   // shown as one section.
-  section  String?
-  order    Int
+  section            String?
+  order              Int
 
   test    Test                @relation(fields: [testId], references: [id], onDelete: Cascade)
   options QuizOption[]
@@ -1119,18 +1124,18 @@ model QuizOption {
 }
 
 model QuizAttempt {
-  id        String   @id @default(cuid())
-  lessonId  String
-  userId    String
-  score     Int
-  passed    Boolean
+  id         String   @id @default(cuid())
+  lessonId   String
+  userId     String
+  score      Int
+  passed     Boolean
   // How long the go took, as timed by the student's device — splits a tie on
   // the high scores of a timed test.
   durationMs Int?
   // False while written or signed answers are still waiting for the student to
   // mark them; the score then counts them as 0 and the attempt cannot pass.
-  selfMarked Boolean @default(true)
-  createdAt DateTime @default(now())
+  selfMarked Boolean  @default(true)
+  createdAt  DateTime @default(now())
 
   lesson  Lesson              @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1210,32 +1215,32 @@ model TestVideoDeletion {
 }
 
 model QuizAttemptAnswer {
-  id         String  @id @default(cuid())
-  attemptId  String
-  questionId String
-  optionId   String?
+  id               String   @id @default(cuid())
+  attemptId        String
+  questionId       String
+  optionId         String?
   // Every option ticked, for a question with more than one correct answer.
   // optionId is then the first of them; a single-answer question leaves this empty.
-  optionIds  String[] @default([])
+  optionIds        String[] @default([])
   // Fingerspelling / vocabulary: the word the student typed or picked.
   // WRITTEN: what the student wrote.
   // A vocabulary test signed one way or both ways keeps the student's
   // recording in videoUrl and their tick or cross in marks; isCorrect is then
   // only the word picked.
-  answerText String?
+  answerText       String?
   // SIGN (and vocabulary signed): the student's recording of themselves. Deleted a week after the
   // course is archived or the student leaves it (lib/test-recordings.ts), when
   // this goes back to null.
-  videoUrl   String?
+  videoUrl         String?
   // WRITTEN / SIGN: the marks given — by the student, or by a teacher who
   // changed them. Null until the student has marked the question.
-  marks      Int?
-  markedByTutor Boolean @default(false)
+  marks            Int?
+  markedByTutor    Boolean  @default(false)
   // A filmed answer a teacher marks: the teacher's feedback, recorded as they
   // share their screen with the student's video on it. Kept with the
   // student's recordings (lib/test-recordings.ts) and deleted with them.
   feedbackVideoUrl String?
-  isCorrect  Boolean
+  isCorrect        Boolean
 
   attempt  QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   // Cascade, so a question (or the whole test) can be deleted once students
@@ -1496,4 +1501,26 @@ model Certificate {
   enrollment CertEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
   @@index([token])
+}
+
+/// A trophy a teacher gave a student for their hard work on a course —
+/// finishing its lessons and tests, or just keeping at it. A student can earn
+/// more than one on a course as new lessons and tests are released.
+model Trophy {
+  id        String   @id @default(cuid())
+  studentId String
+  courseId  String
+  /// Null for the automatic trophy for finishing everything released so far.
+  givenById String?
+  /// Lessons and tests the student had done when they got it. A new automatic
+  /// trophy waits until they have finished more than that.
+  workDone  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  student User   @relation("TrophiesReceived", fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  givenBy User?  @relation("TrophiesGiven", fields: [givenById], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([courseId])
 }

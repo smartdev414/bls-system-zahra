@@ -5,6 +5,14 @@
  *   • A class very soon    — within the hour before it starts
  *   • Lessons unlocked     — when lessons held back for a release date open
  *   • Class handouts       — when a handout's set date and time arrives
+ *   • Unfinished tests     — every two days, by day (9am–8pm UK time), while a
+ *                            student has a released test they have not
+ *                            finished (lib/test-progress.ts says what counts)
+ *                            (students well behind the rest of their class
+ *                            get a kinder "you can catch up" version)
+ *   • Trophies             — anyone who has finished every released lesson and
+ *                            test on a course (also given the moment they
+ *                            finish; this catches the rest)
  *   • Behind on homework   — work outstanding and nothing done for a week;
  *                            at most once a week per course, counting the
  *                            reminders tutors send by hand
@@ -16,9 +24,12 @@
  */
 import prisma from "@/lib/prisma"
 import { createNotification } from "@/lib/notifications"
-import { BEHIND_AFTER_DAYS, reminderLink } from "@/lib/homework"
+import { BEHIND_AFTER_DAYS, behindClassBody, behindClassTitle, reminderLink } from "@/lib/homework"
+import { courseRoster } from "@/lib/course-roster"
+import { awardFinishers } from "@/lib/trophies"
 import { completeOverdueLiveSessions } from "@/lib/live-session-status"
 import { announceHandouts } from "@/lib/class-handouts"
+import { courseTests, testStatuses, statusOf, UNFINISHED } from "@/lib/test-progress"
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -210,15 +221,109 @@ async function homeworkReminders(now: Date): Promise<number> {
   return sent
 }
 
+/** Two days between test reminders, less a little so they keep to the same hour. */
+const TEST_REMINDER_EVERY_HOURS = 46
+
+async function testReminders(now: Date): Promise<number> {
+  // Daytime only, so the email is read, not buried under the night's mail.
+  const hour = Number(now.toLocaleString("en-GB", { hour: "2-digit", hour12: false, timeZone: TIME_ZONE }))
+  if (hour < 9 || hour >= 20) return 0
+
+  const twoDaysAgo = new Date(now.getTime() - 2 * DAY)
+  const courses = await prisma.course.findMany({
+    where: { status: "PUBLISHED", enrollments: { some: {} } },
+    select: {
+      id: true,
+      title: true,
+      // Just joined: give them two days before the first nudge.
+      enrollments: { where: { enrolledAt: { lte: twoDaysAgo }, student: { status: "ACTIVE" } }, select: { studentId: true } },
+    },
+  })
+  const testsByCourse = await courseTests(courses.map((c) => c.id), now)
+
+  let sent = 0
+  for (const course of courses) {
+    // A test released in the last two days is not overdue yet.
+    const tests = (testsByCourse.get(course.id) ?? []).filter((t) => !t.releaseAt || t.releaseAt <= twoDaysAgo)
+    const studentIds = course.enrollments.map((e) => e.studentId)
+    if (tests.length === 0 || studentIds.length === 0) continue
+
+    const link = reminderLink(course.id)
+    const [statuses, recent] = await Promise.all([
+      testStatuses(tests.map((t) => t.id), studentIds),
+      // Any reminder for this course — automatic or sent by a teacher — counts.
+      prisma.notification.findMany({
+        where: {
+          type: "HOMEWORK_REMINDER", link, userId: { in: studentIds },
+          createdAt: { gte: new Date(now.getTime() - TEST_REMINDER_EVERY_HOURS * HOUR) },
+        },
+        select: { userId: true },
+      }),
+    ])
+    const remindedLately = new Set(recent.map((n) => n.userId))
+    // Well behind the rest of the class: told so, kindly, to spur them on.
+    const behindClass = new Set((await courseRoster(course.id, now)).students.filter((s) => s.behindClass).map((s) => s.id))
+
+    for (const studentId of studentIds) {
+      if (remindedLately.has(studentId)) continue
+      const todo = tests
+        .map((t) => ({ ...t, status: statusOf(statuses, studentId, t.id).status }))
+        .filter((t) => UNFINISHED.has(t.status))
+      if (todo.length === 0) continue
+
+      // Guards against two overlapping runs on the same day.
+      const day = Math.floor(now.getTime() / DAY)
+      if (!(await claim(`tests:${course.id}:${studentId}:${day}`))) continue
+
+      const name = (t: (typeof todo)[number]) =>
+        t.status === "TO_MARK" ? `${t.title} (mark your answers)`
+          : t.status === "RETURNED" ? `${t.title} (sent back to you)`
+          : t.title
+      // Up to five by name; a longer list only buries the point.
+      const named = todo.slice(0, 5).map((t) => `"${name(t)}"`)
+      const more = todo.length - named.length
+      const list = more > 0
+        ? `${named.join(", ")} and ${more} more`
+        : named.length === 1 ? named[0] : `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`
+      const behind = behindClass.has(studentId)
+      if (await createNotification(
+        studentId,
+        "HOMEWORK_REMINDER",
+        behind ? behindClassTitle(course.title)
+          : todo.length === 1 ? `Please finish your test: ${todo[0].title}` : `You have ${todo.length} tests to finish`,
+        behind ? `${behindClassBody(course.title)} Still to do: ${list}.`
+          : `On ${course.title} you have not finished ${list} yet. Please complete ${todo.length === 1 ? "it" : "them"} as soon as you can — your teacher can see who has finished.`,
+        link,
+      )) sent++
+    }
+  }
+  return sent
+}
+
+/** Trophies for whoever has finished a course so far without one being given yet. */
+async function trophyRound(): Promise<number> {
+  const courses = await prisma.course.findMany({
+    where: { status: "PUBLISHED", enrollments: { some: {} } },
+    select: { id: true },
+  })
+  let given = 0
+  for (const c of courses) given += await awardFinishers(c.id)
+  return given
+}
+
 export async function runReminders(now: Date = new Date()) {
   // Not a reminder, but this is the job that runs on a clock: finish classes
   // left live after their slot with nobody in the room.
   await completeOverdueLiveSessions(now)
   const classes = await classReminders(now)
   const unlocked = await unlockReminders(now)
+  // Before the weekly homework nudge: a student just reminded about their
+  // tests is not sent that one as well.
+  const tests = await testReminders(now)
   const homework = await homeworkReminders(now)
   const handouts = await announceHandouts(now)
+  const trophies = await trophyRound()
   // Keys only need to outlive the windows they guard (a week at most).
   await prisma.reminderSent.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 30 * DAY) } } })
-  return { classes, unlocked, homework, handouts }
+  return { classes, unlocked, tests, homework, handouts, trophies }
 }

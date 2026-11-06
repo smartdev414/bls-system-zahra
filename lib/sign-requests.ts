@@ -5,6 +5,7 @@ import { rawKeyFromUrl } from "@/lib/background-clean-keys"
 
 export const MAX_REQUEST_WORD = 60
 export const MAX_REQUEST_CONTEXT = 300
+export const MAX_REQUEST_REPLY = 1000
 
 /** Where a student lands to see a sign they asked for. */
 export function dictionaryLink(word: string): string {
@@ -66,6 +67,32 @@ export async function fulfilSignRequests(sign: {
   } catch (err) {
     console.error(`[sign-requests] fulfilSignRequests failed (sign=${sign.id})`, err)
   }
+}
+
+/**
+ * The admin's reply when a requested word won't be filmed (say there is no
+ * single sign and it is shown another way): one message per student who asked,
+ * in the app and by email. Uses the sign-request notification type so its
+ * email escapes the typed text. Returns how many students were told.
+ */
+export async function replyToSignRequests(
+  requests: { studentId: string; word: string }[],
+  message: string,
+): Promise<number> {
+  const byStudent = new Map<string, string>()
+  for (const r of requests) if (!byStudent.has(r.studentId)) byStudent.set(r.studentId, r.word)
+  let told = 0
+  for (const [studentId, word] of byStudent) {
+    const ok = await createNotification(
+      studentId,
+      NotificationType.DICTIONARY_SIGN_ADDED,
+      `About the sign you asked for: "${word}"`,
+      message,
+      "/student/dictionary",
+    )
+    if (ok) told++
+  }
+  return told
 }
 
 export type RequestedSign = {

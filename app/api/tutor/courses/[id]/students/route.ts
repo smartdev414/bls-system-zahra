@@ -4,8 +4,7 @@ import { getSession } from "@/lib/auth"
 import { can, courseTeachScope } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
-import { releasedLessons } from "@/lib/lesson-release"
-import { BEHIND_AFTER_DAYS, reminderLink } from "@/lib/homework"
+import { courseRoster } from "@/lib/course-roster"
 import { enrolStudents, onStudentRemovedFromCourse } from "@/lib/course-groups"
 
 /**
@@ -41,78 +40,7 @@ async function handleGET(_req: NextRequest, { params }: RouteContext) {
     const course = await findManagedCourse(session, id)
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
-    // Everything is measured against what has been released: a test that is
-    // scheduled for next week is not homework yet.
-    const [enrolments, lessons] = await Promise.all([
-      prisma.enrollment.findMany({
-        where: { courseId: id },
-        orderBy: { student: { name: "asc" } },
-        include: {
-          student: { select: { id: true, name: true, email: true, avatarUrl: true, bslLevel: true } },
-          progress: { select: { lessonId: true, isCompleted: true, updatedAt: true } },
-        },
-      }),
-      prisma.lesson.findMany({
-        where: { section: { courseId: id }, ...releasedLessons() },
-        select: { id: true, type: true },
-      }),
-    ])
-
-    const lessonIds = new Set(lessons.map((l) => l.id))
-    const testIds = lessons.filter((l) => l.type === "QUIZ").map((l) => l.id)
-    const studentIds = enrolments.map((e) => e.studentId)
-
-    const [attempts, reminders] = await Promise.all([
-      testIds.length > 0 && studentIds.length > 0
-        ? prisma.quizAttempt.findMany({
-            where: { lessonId: { in: testIds }, userId: { in: studentIds } },
-            select: { userId: true, lessonId: true, passed: true, createdAt: true },
-          })
-        : [],
-      // The reminder history is the notifications themselves, so there is a
-      // record of every nudge a student was sent for this course.
-      studentIds.length > 0
-        ? prisma.notification.groupBy({
-            by: ["userId"],
-            where: { type: "HOMEWORK_REMINDER", link: reminderLink(id), userId: { in: studentIds } },
-            _max: { createdAt: true },
-            _count: { _all: true },
-          })
-        : [],
-    ])
-    const remindedAt = new Map(reminders.map((r) => [r.userId, { last: r._max.createdAt, count: r._count._all }]))
-
-    const behindBefore = Date.now() - BEHIND_AFTER_DAYS * 24 * 60 * 60 * 1000
-
-    return NextResponse.json({
-      totalLessons: lessons.length,
-      totalTests: testIds.length,
-      students: enrolments.map((e) => {
-        const mine = attempts.filter((a) => a.userId === e.studentId)
-        const completedLessons = e.progress.filter((p) => p.isCompleted && lessonIds.has(p.lessonId)).length
-        const testsPassed = new Set(mine.filter((a) => a.passed).map((a) => a.lessonId)).size
-        const lastActive = Math.max(
-          0,
-          ...e.progress.map((p) => p.updatedAt.getTime()),
-          ...mine.map((a) => a.createdAt.getTime()),
-        )
-        const outstanding = completedLessons < lessons.length || testsPassed < testIds.length
-        const reminder = remindedAt.get(e.studentId)
-        return {
-          ...e.student,
-          enrolledAt: e.enrolledAt.toISOString(),
-          completedLessons,
-          testsPassed,
-          lastActiveAt: lastActive ? new Date(lastActive).toISOString() : null,
-          // Work still to do and nothing touched for a week. Someone who only
-          // joined the course this week has not had the chance to fall behind.
-          behind: outstanding && Math.max(lastActive, e.enrolledAt.getTime()) < behindBefore,
-          lastRemindedAt: reminder?.last?.toISOString() ?? null,
-          reminderCount: reminder?.count ?? 0,
-        }
-      }),
-      total: enrolments.length,
-    })
+    return NextResponse.json(await courseRoster(id))
   } catch (err) {
     console.error("[GET /api/tutor/courses/[id]/students]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

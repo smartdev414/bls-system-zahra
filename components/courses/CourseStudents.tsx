@@ -51,7 +51,7 @@ export function CourseStudents({
         {behind.length > 0 && (
           <Button size="sm" variant="outline" disabled={roster.remindingIds.size > 0} onClick={() => roster.remind(behind)}>
             {roster.remindingIds.size > 1 ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <BellRing className="size-4 mr-1.5" />}
-            Remind {behind.length} behind
+            Encourage {behind.length} behind
           </Button>
         )}
       </div>
@@ -75,8 +75,10 @@ export function CourseStudents({
               totalLessons={data?.totalLessons ?? 0}
               totalTests={data?.totalTests ?? 0}
               remindingIds={roster.remindingIds}
+              trophyIds={roster.trophyIds}
               removingId={roster.removingId}
               onRemind={(s) => roster.remind([s])}
+              onTrophy={(s) => roster.giveTrophy([s])}
               onRemove={(s) => void roster.remove(s)}
             />
           </div>

@@ -199,8 +199,22 @@ async function handleGET() {
       }
     }
 
+    // Trophies their teachers gave them, and the ones for finishing a course so far.
+    const trophies = await prisma.trophy.findMany({
+      where: { studentId: session.sub },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: { id: true, createdAt: true, course: { select: { title: true } }, givenBy: { select: { name: true } } },
+    })
+
     return NextResponse.json({
       student: { name: user.name, bslLevel: user.bslLevel },
+      trophies: trophies.map((t) => ({
+        id: t.id,
+        courseTitle: t.course.title,
+        givenBy: t.givenBy?.name ?? null,
+        createdAt: t.createdAt.toISOString(),
+      })),
       thisWeek: {
         nextClass: nextClass
           ? {

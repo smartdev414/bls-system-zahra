@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
 import {
   Users, Search, BookOpen, Loader2, ChevronDown, ChevronUp,
   CalendarPlus, Check, Filter, ArrowUpDown, FolderOpen,
-  UserPlus
+  UserPlus, ClipboardCheck, BellRing, Clock
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,8 @@ import { levelColor, type CourseLevel } from "@/lib/levels"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 
+type TestStatus = "PASSED" | "WITH_TEACHER" | "NOT_PASSED" | "TO_MARK" | "STARTED" | "RETURNED" | "NOT_STARTED"
+
 type CourseProgress = {
   id: string
   title: string
@@ -42,7 +45,55 @@ type CourseProgress = {
   totalLessons: number
   completedLessons: number
   completion: number
+  tests: { id: string; title: string; status: TestStatus; score: number | null; attempts: number }[]
 }
+
+// What each test status looks like — red and amber are the ones still to do.
+const TEST_STATUS: Record<TestStatus, { label: string; className: string }> = {
+  PASSED:       { label: "Passed",                className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  WITH_TEACHER: { label: "Sent in – to mark",     className: "bg-sky-50 text-sky-700 border-sky-200" },
+  NOT_PASSED:   { label: "Done – not passed",     className: "bg-orange-50 text-orange-700 border-orange-200" },
+  TO_MARK:      { label: "Not finished – marking", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  STARTED:      { label: "Started – not sent",    className: "bg-amber-50 text-amber-700 border-amber-200" },
+  RETURNED:     { label: "Sent back to student",  className: "bg-amber-50 text-amber-700 border-amber-200" },
+  NOT_STARTED:  { label: "Not started",           className: "bg-red-50 text-red-700 border-red-200" },
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** Statuses that still need something from the student (as lib/test-progress.ts). */
+const UNFINISHED: ReadonlySet<TestStatus> = new Set(["NOT_STARTED", "STARTED", "RETURNED", "TO_MARK"])
+
+type Show = "all" | "unfinished" | "away" | "done"
+
+const SHOW_FILTER: Record<Exclude<Show, "all">, (s: Student) => boolean> = {
+  unfinished: (s) => s.testsUnfinished > 0,
+  away: (s) => { const d = daysSince(s.lastSeenAt); return d === null || d >= 7 },
+  done: (s) => s.testsUnfinished === 0 && s.testsDone > 0,
+}
+
+const SUMMARY: { key: Exclude<Show, "all">; label: string; icon: typeof Clock; iconBg: string; iconColor: string; active: string }[] = [
+  { key: "unfinished", label: "Have tests not finished", icon: ClipboardCheck, iconBg: "bg-red-50", iconColor: "text-red-600", active: "bg-red-50/60 border-red-200 ring-red-200" },
+  { key: "away", label: "Not seen for a week or more", icon: Clock, iconBg: "bg-amber-50", iconColor: "text-amber-600", active: "bg-amber-50/60 border-amber-200 ring-amber-200" },
+  { key: "done", label: "Finished every test", icon: Check, iconBg: "bg-emerald-50", iconColor: "text-emerald-600", active: "bg-emerald-50/60 border-emerald-200 ring-emerald-200" },
+]
+
+function daysSince(iso: string | null): number | null {
+  return iso ? Math.floor((Date.now() - new Date(iso).getTime()) / DAY_MS) : null
+}
+
+function seenLabel(iso: string | null) {
+  const days = daysSince(iso)
+  return days === null ? "Never" : days <= 0 ? "Today" : days === 1 ? "Yesterday" : `${days} days ago`
+}
+
+function seenClass(iso: string | null) {
+  const days = daysSince(iso)
+  return days === null || days >= 7 ? "text-red-600 font-semibold" : days >= 3 ? "text-amber-600 font-medium" : "text-emerald-700"
+}
+
+const shortDay = (d: string) =>
+  new Date(`${d}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
 
 type Student = {
   id: string
@@ -52,6 +103,12 @@ type Student = {
   bslLevel: string | null
   joinedAt: string
   source: "enrolled" | "invited" | "both"
+  /** Last time they used the platform, and the UK dates they used it on in the last 30 days. */
+  lastSeenAt: string | null
+  activeDates: string[]
+  lastRemindedAt: string | null
+  testsDone: number
+  testsUnfinished: number
   courses: CourseProgress[]
 }
 
@@ -69,7 +126,10 @@ type SessionsData = { sessions: LiveSession[] }
 
 const PAGE_SIZE = 50
 
-type SortKey = "name-asc" | "name-desc" | "joined-desc" | "joined-asc" | "progress-desc" | "progress-asc"
+// Student · Level · Courses · Last seen · Tests · Progress · actions
+const COLUMNS = "sm:grid-cols-[1fr_56px_56px_88px_104px_90px_40px]"
+
+type SortKey = "name-asc" | "name-desc" | "joined-desc" | "joined-asc" | "progress-desc" | "progress-asc" | "tests-unfinished" | "seen-oldest"
 
 const SORT_LABELS: Record<SortKey, string> = {
   "name-asc": "Name A→Z",
@@ -78,6 +138,8 @@ const SORT_LABELS: Record<SortKey, string> = {
   "joined-asc": "Joined (oldest)",
   "progress-desc": "Progress (high)",
   "progress-asc": "Progress (low)",
+  "tests-unfinished": "Most tests not finished",
+  "seen-oldest": "Not seen for longest",
 }
 
 function InviteModal({
@@ -175,6 +237,11 @@ function InviteModal({
 
 export function StudentsManager() {
   const router = useRouter()
+  // Admins see the same list; their course pages live under /admin.
+  const base = usePathname().startsWith("/admin") ? "/admin" : "/tutor"
+  // The summary cards above the list double as quick filters.
+  const [show, setShow] = useState<Show>("all")
+  const [remindingKey, setRemindingKey] = useState<string | null>(null)
   const access = useTutorAccess()
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
@@ -191,7 +258,7 @@ export function StudentsManager() {
   const params = new URLSearchParams()
   if (debouncedQuery) params.set("q", debouncedQuery)
 
-  const { data, loading } = useFetch<StudentsData>(`/api/tutor/students?${params.toString()}`, {
+  const { data, loading, refetch } = useFetch<StudentsData>(`/api/tutor/students?${params.toString()}`, {
     errorMessage: "Could not load students",
   })
 
@@ -201,6 +268,7 @@ export function StudentsManager() {
   const processed = useMemo(() => {
     let list = allStudents
     if (levelFilter !== "ALL") list = list.filter((s) => s.bslLevel === levelFilter)
+    if (show !== "all") list = list.filter(SHOW_FILTER[show])
 
     list = [...list].sort((a, b) => {
       const aProgress = a.courses.length > 0
@@ -215,11 +283,37 @@ export function StudentsManager() {
         case "joined-asc": return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime()
         case "progress-desc": return bProgress - aProgress
         case "progress-asc": return aProgress - bProgress
+        case "tests-unfinished": return b.testsUnfinished - a.testsUnfinished || a.name.localeCompare(b.name)
+        case "seen-oldest": {
+          const seen = (s: Student) => (s.lastSeenAt ? new Date(s.lastSeenAt).getTime() : 0)
+          return seen(a) - seen(b)
+        }
         default: return 0
       }
     })
     return list
-  }, [allStudents, levelFilter, sortKey])
+  }, [allStudents, levelFilter, show, sortKey])
+
+  /** Sends one student a reminder now, naming the tests they have left on that course. */
+  async function remindNow(student: Student, course: CourseProgress) {
+    const left = course.tests.filter((t) => UNFINISHED.has(t.status)).map((t) => t.title)
+    setRemindingKey(`${student.id}:${course.id}`)
+    try {
+      const res = await fetch(`/api/tutor/courses/${course.id}/students/remind`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentIds: [student.id], message: left.length ? `Tests to finish: ${left.join(", ")}.` : undefined }),
+      })
+      const body = await res.json().catch(() => ({})) as { sent?: number; message?: string }
+      if (!res.ok) toast.error(body.message ?? "Could not send the reminder")
+      else if (!body.sent) toast.info(`${student.name} was already reminded today`)
+      else { toast.success(`Reminder sent to ${student.name}`); void refetch() }
+    } catch {
+      toast.error("Could not send the reminder")
+    } finally {
+      setRemindingKey(null)
+    }
+  }
 
   const totalPages = Math.ceil(processed.length / PAGE_SIZE)
   const paginated = processed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -313,18 +407,55 @@ export function StudentsManager() {
 
       {!access.students && <p className="text-xs text-muted-foreground -mt-2">{VIEW_ONLY_MESSAGE.students}</p>}
 
+      {/* At a glance: who needs chasing. Each card filters the list. */}
+      {!loading && allStudents.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {SUMMARY.map((card) => {
+              const count = allStudents.filter(SHOW_FILTER[card.key]).length
+              const active = show === card.key
+              const Icon = card.icon
+              return (
+                <button
+                  key={card.key}
+                  type="button"
+                  onClick={() => { setShow(active ? "all" : card.key); setPage(1) }}
+                  aria-pressed={active}
+                  className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-all hover:shadow-sm ${active ? `${card.active} ring-2` : "bg-card hover:bg-muted/30"}`}
+                >
+                  <div className={`rounded-lg p-2 shrink-0 ${card.iconBg}`}>
+                    <Icon className={`size-4 ${card.iconColor}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-xl font-black leading-none ${count > 0 ? card.iconColor : "text-muted-foreground"}`}>{count}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+                  </div>
+                  <span className="text-[10px] font-semibold text-muted-foreground shrink-0">{active ? "Show all" : "Show"}</span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+            <BellRing className="size-3 shrink-0" />
+            Students with tests not finished get an email reminder automatically every 2 days until they finish. Click a student to see each test.
+          </p>
+        </div>
+      )}
+
       {/* List */}
       {loading ? (
         <div className="flex items-center justify-center min-h-75">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : paginated.length ? (
-        <Card className="shadow-sm overflow-hidden">
+        <Card className="shadow-sm overflow-hidden py-0 gap-0">
           {/* Column headers */}
-          <div className="hidden sm:grid grid-cols-[1fr_80px_56px_100px_72px] gap-3 px-4 py-2 border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <div className={`hidden sm:grid ${COLUMNS} gap-3 px-4 py-2 border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>
             <span>Student</span>
             <span>Level</span>
             <span className="text-center">Courses</span>
+            <span>Last seen</span>
+            <span>Tests</span>
             <span>Progress</span>
             <span />
           </div>
@@ -341,7 +472,7 @@ export function StudentsManager() {
               return (
                 <div key={student.id}>
                   {/* Student row */}
-                  <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_80px_56px_100px_72px] items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors group">
+                  <div className={`grid grid-cols-[1fr_auto] ${COLUMNS} items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors group`}>
                     {/* Name + email — clickable to expand */}
                     <button
                       className="flex items-center gap-2.5 min-w-0 text-left"
@@ -366,6 +497,11 @@ export function StudentsManager() {
                             : <ChevronDown className="size-3 text-muted-foreground shrink-0" />}
                         </div>
                         <p className="text-xs text-muted-foreground truncate mt-0.5">{student.email}</p>
+                        {/* Phones: the two things that matter most, under the name. */}
+                        <p className="sm:hidden text-[11px] mt-0.5">
+                          <span className={seenClass(student.lastSeenAt)}>Seen {seenLabel(student.lastSeenAt).toLowerCase()}</span>
+                          {student.testsUnfinished > 0 && <span className="text-red-600 font-semibold"> · {student.testsUnfinished} test{student.testsUnfinished === 1 ? "" : "s"} not finished</span>}
+                        </p>
                       </div>
                     </button>
 
@@ -384,6 +520,25 @@ export function StudentsManager() {
                     <div className="hidden sm:flex items-center justify-center gap-1 text-xs text-muted-foreground">
                       <BookOpen className="size-3" />
                       {student.courses.length}
+                    </div>
+
+                    {/* Last seen */}
+                    <div className={`hidden sm:block text-xs ${seenClass(student.lastSeenAt)}`} title={student.lastSeenAt ? new Date(student.lastSeenAt).toLocaleString("en-GB") : "Has never used the platform"}>
+                      {seenLabel(student.lastSeenAt)}
+                    </div>
+
+                    {/* Tests */}
+                    <div className="hidden sm:flex flex-col text-xs leading-tight">
+                      {student.testsDone + student.testsUnfinished === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <>
+                          <span>{student.testsDone} of {student.testsDone + student.testsUnfinished} done</span>
+                          {student.testsUnfinished > 0
+                            ? <span className="text-[11px] text-red-600 font-semibold">{student.testsUnfinished} not finished</span>
+                            : <span className="text-[11px] text-emerald-700 font-medium">All done</span>}
+                        </>
+                      )}
                     </div>
 
                     {/* Progress */}
@@ -408,6 +563,35 @@ export function StudentsManager() {
 
                   {isExpanded && (
                     <div className="border-t bg-muted/10">
+                      {/* When they have been on the platform, and reminders */}
+                      <div className="px-4 py-2.5 border-b border-dashed text-xs flex flex-col gap-1">
+                        <p className="flex items-center gap-1.5">
+                          <Clock className="size-3.5 text-muted-foreground shrink-0" />
+                          <span>
+                            Last seen{" "}
+                            <span className={seenClass(student.lastSeenAt)}>
+                              {student.lastSeenAt
+                                ? new Date(student.lastSeenAt).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                                : "never"}
+                            </span>
+                            {" · "}on the platform on {student.activeDates.length} day{student.activeDates.length === 1 ? "" : "s"} in the last 30
+                          </span>
+                        </p>
+                        {student.activeDates.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pl-5">
+                            {student.activeDates.map((d) => (
+                              <span key={d} className="rounded border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">{shortDay(d)}</span>
+                            ))}
+                          </div>
+                        )}
+                        <p className="flex items-center gap-1.5 text-muted-foreground">
+                          <BellRing className="size-3.5 shrink-0" />
+                          {student.lastRemindedAt
+                            ? `Last reminded ${new Date(student.lastRemindedAt).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}`
+                            : "Not reminded yet"}
+                          {student.testsUnfinished > 0 ? " · reminded by email every 2 days until their tests are finished" : ""}
+                        </p>
+                      </div>
                       <div className="px-4 py-1.5 border-b border-dashed">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                           Enrolled Courses
@@ -416,7 +600,8 @@ export function StudentsManager() {
                       {student.courses.length === 0 ? (
                         <p className="px-4 py-3 text-xs text-muted-foreground">No courses enrolled.</p>
                       ) : student.courses.map((course, i) => (
-                        <div key={course.id} className={`flex items-center gap-3 px-4 py-2.5 ${i > 0 ? "border-t" : ""}`}>
+                        <div key={course.id} className={`px-4 py-2.5 ${i > 0 ? "border-t" : ""}`}>
+                          <div className="flex items-center gap-3">
                           <div className="rounded-md bg-primary/10 p-1 shrink-0">
                             <BookOpen className="size-3.5 text-primary" />
                           </div>
@@ -427,10 +612,50 @@ export function StudentsManager() {
                               Enrolled {new Date(course.enrolledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                             </p>
                           </div>
+                          {course.tests.some((t) => UNFINISHED.has(t.status)) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs gap-1 shrink-0"
+                              disabled={remindingKey === `${student.id}:${course.id}`}
+                              onClick={() => void remindNow(student, course)}
+                              title="Send a reminder now, naming the tests left on this course"
+                            >
+                              {remindingKey === `${student.id}:${course.id}`
+                                ? <Loader2 className="size-3.5 animate-spin" />
+                                : <BellRing className="size-3.5" />}
+                              Remind now
+                            </Button>
+                          )}
                           <div className="flex flex-col items-end gap-1 w-20 shrink-0">
                             <span className="text-[11px] font-semibold">{course.completion}%</span>
                             <Progress value={course.completion} className="h-1.5 w-full" />
                           </div>
+                          </div>
+                          {/* Every released test on the course, done or not */}
+                          {course.tests.length > 0 && (
+                            <div className="mt-2 ml-8 flex flex-col divide-y rounded-md border bg-background">
+                              {course.tests.map((t) => {
+                                const look = TEST_STATUS[t.status]
+                                return (
+                                  <Link
+                                    key={t.id}
+                                    href={`${base}/courses/${course.id}/lessons/${t.id}`}
+                                    className="flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-muted/40"
+                                    title="Open this test's results"
+                                  >
+                                    <span className="flex-1 min-w-0 truncate">{t.title}</span>
+                                    {t.score !== null && (t.status === "PASSED" || t.status === "NOT_PASSED") && (
+                                      <span className="text-muted-foreground shrink-0">{t.score}%</span>
+                                    )}
+                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${look.className}`}>
+                                      {look.label}
+                                    </span>
+                                  </Link>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -448,12 +673,12 @@ export function StudentsManager() {
             </div>
             <div>
               <p className="font-semibold text-lg">
-                {debouncedQuery || levelFilter !== "ALL"
+                {debouncedQuery || levelFilter !== "ALL" || show !== "all"
                   ? "No students match your filters"
                   : "No students yet"}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {debouncedQuery || levelFilter !== "ALL"
+                {debouncedQuery || levelFilter !== "ALL" || show !== "all"
                   ? "Try adjusting your search or filters."
                   : "Students will appear here once they enrol in your courses or accept your invitation."}
               </p>

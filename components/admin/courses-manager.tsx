@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -76,9 +77,9 @@ export function CoursesManager({
   builderBase,
   canDelete = false,
 }: { canCreate?: boolean; builderBase?: string; canDelete?: boolean } = {}) {
-  const [query, setQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [page, setPage] = useState(1)
+  const [query, setQuery] = useRememberedState("query", "")
+  const [statusFilter, setStatusFilter] = useRememberedState("statusFilter", "all")
+  const [page, setPage] = useRememberedState("page", 1)
   const [teachersFor, setTeachersFor] = useState<CourseItem | null>(null)
   // Copying brings the lessons with it, so it is offered where the builder is (admins).
   const [copyOf, setCopyOf] = useState<CourseItem | null>(null)

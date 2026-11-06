@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import {
   FolderOpen, Search, Download, FileText, Image, Music,
   Loader2, BookOpen, Filter, CalendarDays,
@@ -70,8 +70,8 @@ function handoutType(mimeType: string | null): Resource["type"] {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ResourcesPage() {
-  const [query, setQuery] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
+  const [query, setQuery] = useRememberedState("query", "")
+  const [typeFilter, setTypeFilter] = useRememberedState("typeFilter", "all")
 
   const debouncedQuery = useDebounce(query)
 

@@ -1,20 +1,20 @@
 "use client"
 
 import { useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
-  Users, Search, Filter, Loader2, ShieldCheck,
-  UserCheck, Trash2, ChevronDown, Clock, Check, X, BookOpen, SlidersHorizontal, VideoOff, Video, Pencil,
+  Users, Search, Loader2, ShieldCheck, ShieldOff, UserCog, MoreHorizontal, ChevronRight,
+  UserCheck, Trash2, Clock, Check, X, BookOpen, SlidersHorizontal, VideoOff, Video, Pencil,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -74,9 +74,9 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
   const assignableRoles = viewerRole === "ADMIN" ? ASSIGNABLE_ROLES.admin : ASSIGNABLE_ROLES.support
   const canDelete = can(viewerRole, "users.delete")
   const canSetAccess = can(viewerRole, "users.tutorAccess")
-  const [query, setQuery] = useState("")
-  const [roleFilter, setRoleFilter] = useState("all")
-  const [page, setPage] = useState(1)
+  const [query, setQuery] = useRememberedState("query", "")
+  const [roleFilter, setRoleFilter] = useRememberedState("roleFilter", "all")
+  const [page, setPage] = useRememberedState("page", 1)
 
   // The waiting list lives in the URL so the "waiting for approval"
   // notification can link straight to it.
@@ -100,71 +100,118 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
     errorMessage: "Could not load users",
   })
 
-  function handleRoleChange(value: string) {
-    setRoleFilter(value)
-    setPage(1)
-  }
+  const roleTabs: { value: string; label: string }[] = [
+    { value: "all", label: "Everyone" },
+    { value: "STUDENT", label: "Students" },
+    { value: "TUTOR", label: "Tutors" },
+    ...(viewerRole === "ADMIN"
+      ? [{ value: "SUPPORT", label: "Support Team" }, { value: "ADMIN", label: "Admins" }]
+      : []),
+  ]
+  const filtered = Boolean(debouncedQuery) || roleFilter !== "all" || showAwaiting
+  const awaitingCount = data?.awaitingCount ?? 0
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-            <Users className="size-6 text-primary" /> Users
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {loading
-              ? "\u00A0"
-              : showAwaiting
-                ? `${data?.total ?? 0} waiting for approval`
-                : `${data?.total ?? 0} user${data?.total !== 1 ? "s" : ""} registered`}
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
+          <Users className="size-6 text-primary" /> Users
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          {!data
+            ? " "
+            : showAwaiting
+              ? `${data.total} waiting for approval`
+              : filtered
+                ? `${data.total} match${data.total === 1 ? "es" : ""}`
+                : `${data.total} user${data.total !== 1 ? "s" : ""} registered`}
+        </p>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-48 max-w-sm">
+      {/* Waiting for approval — the one thing that needs doing, so it stands out */}
+      {awaitingCount > 0 && !showAwaiting && (
+        <button
+          type="button"
+          onClick={toggleAwaiting}
+          className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-left text-amber-900 transition-colors hover:bg-amber-100"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-200/70">
+            <Clock className="size-4" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-semibold text-sm">
+              {awaitingCount} {awaitingCount === 1 ? "person is" : "people are"} waiting for approval
+            </span>
+            <span className="block text-xs text-amber-800/80">Tap to see them</span>
+          </span>
+          <ChevronRight className="size-4 shrink-0" />
+        </button>
+      )}
+      {showAwaiting && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <Clock className="size-4 shrink-0" />
+          <span className="flex-1 text-sm font-semibold">Showing only people waiting for approval</span>
+          <Button size="sm" variant="outline" className="bg-white" onClick={toggleAwaiting}>Show everyone</Button>
+        </div>
+      )}
+
+      {/* Search + role */}
+      <div className="flex flex-col gap-3">
+        <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search name or email..."
+            placeholder="Search by name or email"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(1) }}
-            className="pl-9"
+            className="pl-9 pr-9 h-10"
           />
+          {query && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => { setQuery(""); setPage(1) }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          )}
         </div>
-        <Select value={roleFilter} onValueChange={handleRoleChange}>
-          <SelectTrigger className="w-36">
-            <Filter className="size-3.5 mr-2 text-muted-foreground" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All roles</SelectItem>
-            <SelectItem value="STUDENT">Students</SelectItem>
-            <SelectItem value="TUTOR">Tutors</SelectItem>
-            {viewerRole === "ADMIN" && <SelectItem value="SUPPORT">Support Team</SelectItem>}
-            {viewerRole === "ADMIN" && <SelectItem value="ADMIN">Admins</SelectItem>}
-          </SelectContent>
-        </Select>
-        {(showAwaiting || (data?.awaitingCount ?? 0) > 0) && (
-          <Button
-            variant={showAwaiting ? "default" : "outline"}
-            onClick={toggleAwaiting}
-            className={showAwaiting ? "" : "text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"}
-          >
-            <Clock className="size-3.5 mr-1.5" />
-            Waiting for approval{data ? ` (${data.awaitingCount})` : ""}
-          </Button>
-        )}
+        <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1">
+          {roleTabs.map((t) => {
+            const on = roleFilter === t.value
+            return (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => { setRoleFilter(t.value); setPage(1) }}
+                className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  on ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+                }`}
+              >
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center min-h-[300px]">
-          <Loader2 className="size-8 animate-spin text-primary" />
+      {!data && loading ? (
+        <div className="flex flex-col gap-2">
+          {[0, 1, 2, 3].map((i) => (
+            <Card key={i} className="shadow-sm">
+              <CardContent className="p-4 flex items-center gap-4 animate-pulse">
+                <div className="size-11 rounded-full bg-muted" />
+                <div className="flex-1 flex flex-col gap-2">
+                  <div className="h-3.5 w-40 rounded bg-muted" />
+                  <div className="h-3 w-56 rounded bg-muted" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : data?.users.length ? (
-        <div className="flex flex-col gap-2">
+        <div className={`flex flex-col gap-2 transition-opacity ${loading ? "opacity-60" : ""}`}>
           {data.users.map((user) => (
             <UserRow
               key={user.id}
@@ -180,7 +227,16 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
         <Card className="shadow-sm">
           <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
             <Users className="size-10 text-muted-foreground" />
-            <p className="font-semibold">{showAwaiting ? "Nobody is waiting for approval" : "No users found"}</p>
+            <p className="font-semibold">
+              {showAwaiting
+                ? "Nobody is waiting for approval"
+                : debouncedQuery
+                  ? `No one matches “${debouncedQuery}”`
+                  : "No users found"}
+            </p>
+            {debouncedQuery && (
+              <Button variant="outline" size="sm" onClick={() => { setQuery(""); setPage(1) }}>Clear search</Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -193,6 +249,13 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
 }
 
 // ─── User row — owns its own mutation hooks ───────────────────────────────────
+
+const avatarColor: Record<string, string> = {
+  STUDENT: "bg-blue-100 text-blue-700",
+  TUTOR: "bg-violet-100 text-violet-700",
+  SUPPORT: "bg-amber-100 text-amber-700",
+  ADMIN: "bg-rose-100 text-rose-700",
+}
 
 function UserRow({
   user,
@@ -207,26 +270,12 @@ function UserRow({
   canDelete: boolean
   canSetAccess: boolean
 }) {
-  const initials = user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+  const initials = user.name.split(" ").filter(Boolean).map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+  // Sign-ups often only give a first name; nudge staff to add the rest.
+  const firstNameOnly = !user.name.trim().includes(" ")
   const [approving, setApproving] = useState(false)
   const [accessOpen, setAccessOpen] = useState(false)
-  const [editingName, setEditingName] = useState(false)
-  const [nameDraft, setNameDraft] = useState(user.name)
-
-  const { execute: saveName, loading: savingName } = usePatchCallback<
-    { user: UserItem },
-    { name: string }
-  >(`/api/admin/users/${user.id}`, {
-    successMessage: "Name updated",
-    // No errorMessage: the server says what's wrong with the name.
-    onSuccess: () => { setEditingName(false); onMutated() },
-  })
-
-  function submitName() {
-    const name = nameDraft.trim()
-    if (!name || name === user.name) { setEditingName(false); setNameDraft(user.name); return }
-    saveName({ name })
-  }
+  const [editing, setEditing] = useState(false)
 
   const { execute: updateRole } = usePatchCallback<
     { user: UserItem },
@@ -237,7 +286,7 @@ function UserRow({
     onSuccess: () => onMutated(),
   })
 
-  const { execute: toggleVerified } = usePatchCallback<
+  const { execute: toggleVerified, loading: verifying } = usePatchCallback<
     { user: UserItem },
     { isVerified: boolean }
   >(`/api/admin/users/${user.id}`, {
@@ -246,7 +295,7 @@ function UserRow({
     onSuccess: () => onMutated(),
   })
 
-  const { execute: setRecordingOptOut, loading: savingOptOut } = usePatchCallback<
+  const { execute: setRecordingOptOut } = usePatchCallback<
     { user: { recordingOptOut: boolean } },
     { recordingOptOut: boolean }
   >(`/api/admin/users/${user.id}`, {
@@ -275,97 +324,95 @@ function UserRow({
     }
   )
 
-  return (
-    <Card className="shadow-sm">
-      <CardContent className="p-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <Avatar className="size-10 shrink-0">
-            <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+  const joined = new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+  const awaiting = isAwaiting(user)
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              {editingName ? (
-                <form
-                  className="flex items-center gap-1"
-                  onSubmit={(e) => { e.preventDefault(); submitName() }}
-                >
-                  <Input
-                    autoFocus
-                    value={nameDraft}
-                    maxLength={100}
-                    disabled={savingName}
-                    onChange={(e) => setNameDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") { setEditingName(false); setNameDraft(user.name) } }}
-                    className="h-8 w-56 text-sm"
-                    aria-label="Name"
-                  />
-                  <Button type="submit" size="icon" className="size-8" disabled={savingName} title="Save name">
-                    {savingName ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
-                  </Button>
-                  <Button
-                    type="button" variant="ghost" size="icon" className="size-8" disabled={savingName} title="Cancel"
-                    onClick={() => { setEditingName(false); setNameDraft(user.name) }}
-                  >
-                    <X className="size-3.5" />
-                  </Button>
-                </form>
-              ) : (
+  return (
+    <Card className={`shadow-sm transition-colors ${awaiting ? "border-amber-300" : ""}`}>
+      <CardContent className="p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <Avatar className="size-11 shrink-0">
+              <AvatarFallback className={`font-semibold text-sm ${avatarColor[user.role] ?? "bg-primary/10 text-primary"}`}>
+                {initials || "?"}
+              </AvatarFallback>
+            </Avatar>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => { setNameDraft(user.name); setEditingName(true) }}
-                  className="group flex items-center gap-1.5 font-semibold text-sm hover:text-primary"
+                  onClick={() => setEditing(true)}
                   title="Edit name"
+                  className="group inline-flex items-center gap-1.5 rounded font-semibold text-[15px] leading-tight text-left hover:text-primary"
                 >
-                  {user.name}
-                  <Pencil className="size-3 text-muted-foreground group-hover:text-primary" />
+                  <span className="break-words">{user.name}</span>
+                  <Pencil className="size-3.5 shrink-0 text-muted-foreground/60 group-hover:text-primary" />
+                </button>
+                <Badge variant="outline" className={`text-[10px] ${roleColor[user.role]}`}>
+                  {roleLabel(user.role)}
+                </Badge>
+                {user.bslLevel && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {user.bslLevel.replace(/^L(\d)$/, "Level $1")}
+                  </Badge>
+                )}
+                {user.role === "TUTOR" && user.isVerified && (
+                  <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                    <UserCheck className="size-2.5 mr-1" /> Verified
+                  </Badge>
+                )}
+                {awaiting && (
+                  <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                    <Clock className="size-2.5 mr-1" /> Waiting for approval
+                  </Badge>
+                )}
+                {user.recordingOptOut && (
+                  <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-700 border-slate-300">
+                    <VideoOff className="size-2.5 mr-1" /> Not recorded
+                  </Badge>
+                )}
+                {user.role === "STUDENT" && user.status === "REJECTED" && (
+                  <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                    Not approved
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground break-all mt-0.5">{user.email}</p>
+              {firstNameOnly && (
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  <Pencil className="size-3" /> Add their full name
                 </button>
               )}
-              <Badge variant="outline" className={`text-[10px] ${roleColor[user.role]}`}>
-                {roleLabel(user.role)}
-              </Badge>
-              {user.role === "TUTOR" && user.isVerified && (
-                <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                  <UserCheck className="size-2.5 mr-1" /> Verified
-                </Badge>
+              {user.signupNote && (
+                <p className="text-xs mt-1.5 rounded-md bg-muted/60 px-2.5 py-1.5 italic text-foreground/80 break-words">
+                  &ldquo;{user.signupNote}&rdquo;
+                </p>
               )}
-              {isAwaiting(user) && (
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
-                  <Clock className="size-2.5 mr-1" /> Waiting for approval
-                </Badge>
-              )}
-              {user.recordingOptOut && (
-                <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-700 border-slate-300">
-                  <VideoOff className="size-2.5 mr-1" /> Not recorded
-                </Badge>
-              )}
-              {user.role === "STUDENT" && user.status === "REJECTED" && (
-                <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
-                  Not approved
-                </Badge>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">{user.email}</p>
-            {user.signupNote && (
-              <p className="text-xs mt-1 italic text-foreground/80 break-words">&ldquo;{user.signupNote}&rdquo;</p>
-            )}
-            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-              {user.role === "STUDENT" && <span>{user.enrollmentCount} enrolled</span>}
-              {user.role === "TUTOR" && <span>{user.courseCount} courses</span>}
-              <span>Joined {new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-1.5">
+                {user.role === "STUDENT" && (
+                  <span>{user.enrollmentCount} course{user.enrollmentCount === 1 ? "" : "s"}</span>
+                )}
+                {user.role === "TUTOR" && (
+                  <span>Teaches {user.courseCount} course{user.courseCount === 1 ? "" : "s"}</span>
+                )}
+                <span>Joined {joined}</span>
+              </div>
             </div>
           </div>
 
-          {/* Actions — on their own line on a phone */}
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:shrink-0">
+          {/* Actions — the next step stays visible; everything else is under ⋯ */}
+          <div className="flex items-center gap-2 sm:shrink-0 sm:justify-end">
             {user.role === "STUDENT" && user.status !== "ACTIVE" && (
               <Button
                 size="sm"
                 disabled={deciding}
                 onClick={() => setApproving(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <Check className="size-3.5 mr-1" /> Approve
               </Button>
@@ -375,7 +422,7 @@ function UserRow({
                 variant="outline"
                 size="sm"
                 disabled={deciding}
-                className="text-destructive border-destructive/30"
+                className="flex-1 sm:flex-none text-destructive border-destructive/30"
                 onClick={() => {
                   if (window.confirm(`Turn down ${user.name}? They won't be able to use the platform, and we'll email them to say so.`)) {
                     setStatus({ status: "REJECTED" })
@@ -385,82 +432,95 @@ function UserRow({
                 <X className="size-3.5 mr-1" /> Reject
               </Button>
             )}
-            {user.role === "TUTOR" && (
+            {user.role === "TUTOR" && !user.isVerified && (
               <Button
-                variant="outline"
                 size="sm"
-                onClick={() => toggleVerified({ isVerified: !user.isVerified })}
-                className={user.isVerified ? "text-amber-600 border-amber-200" : "text-emerald-600 border-emerald-200"}
+                disabled={verifying}
+                onClick={() => toggleVerified({ isVerified: true })}
+                className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                <ShieldCheck className="size-3.5 mr-1" />
-                {user.isVerified ? "Unverify" : "Approve"}
+                <ShieldCheck className="size-3.5 mr-1" /> Approve
               </Button>
             )}
 
-            {user.role === "STUDENT" && user.recordingOptOut !== null && (
-              // Safeguarding: keeps this student's face out of every class
-              // recording. The student can't turn it back off themselves.
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={savingOptOut}
-                title={user.recordingOptOut ? "Let this student appear in class recordings again" : "Keep this student's face out of class recordings"}
-                onClick={() => setRecordingOptOut({ recordingOptOut: !user.recordingOptOut })}
-              >
-                {user.recordingOptOut
-                  ? <><Video className="size-3.5 mr-1" /> Allow recording</>
-                  : <><VideoOff className="size-3.5 mr-1" /> Don&apos;t record</>}
-              </Button>
-            )}
-
-            {user.role === "TUTOR" && user.access && canSetAccess && (
-              <Button variant="outline" size="sm" onClick={() => setAccessOpen(true)}>
-                <SlidersHorizontal className="size-3.5 mr-1" /> Access
-              </Button>
-            )}
+            <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => setEditing(true)}>
+              <Pencil className="size-3.5 mr-1" /> Edit
+            </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  Role <ChevronDown className="size-3.5 ml-1" />
+                <Button variant="outline" size="icon" className="size-8 shrink-0" aria-label={`More for ${user.name}`}>
+                  <MoreHorizontal className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {assignableRoles.map((role) => (
-                  <DropdownMenuItem
-                    key={role}
-                    disabled={user.role === role}
-                    onSelect={() => updateRole({ role })}
-                  >
-                    {roleLabel(role)}
-                    {user.role === role && " (current)"}
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onSelect={() => setEditing(true)}>
+                  <Pencil className="size-4 mr-2" /> Edit name
+                </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <UserCog className="size-4 mr-2" /> Change role
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {assignableRoles.map((role) => (
+                      <DropdownMenuItem
+                        key={role}
+                        disabled={user.role === role}
+                        onSelect={() => updateRole({ role })}
+                      >
+                        {user.role === role ? <Check className="size-4 mr-2" /> : <span className="w-4 mr-2" />}
+                        {roleLabel(role)}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                {user.role === "TUTOR" && user.access && canSetAccess && (
+                  <DropdownMenuItem onSelect={() => setAccessOpen(true)}>
+                    <SlidersHorizontal className="size-4 mr-2" /> What they can change
                   </DropdownMenuItem>
-                ))}
+                )}
+                {user.role === "TUTOR" && user.isVerified && (
+                  <DropdownMenuItem onSelect={() => toggleVerified({ isVerified: false })}>
+                    <ShieldOff className="size-4 mr-2" /> Unverify tutor
+                  </DropdownMenuItem>
+                )}
+                {user.role === "STUDENT" && user.recordingOptOut !== null && (
+                  // Safeguarding: keeps this student's face out of every class
+                  // recording. The student can't turn it back off themselves.
+                  <DropdownMenuItem onSelect={() => setRecordingOptOut({ recordingOptOut: !user.recordingOptOut })}>
+                    {user.recordingOptOut
+                      ? <><Video className="size-4 mr-2" /> Allow in recordings</>
+                      : <><VideoOff className="size-4 mr-2" /> Keep out of recordings</>}
+                  </DropdownMenuItem>
+                )}
+                {canDelete && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={deleting}
+                      className="text-destructive focus:text-destructive"
+                      onSelect={() => {
+                        if (
+                          window.confirm(
+                            `Delete ${user.name} (${user.email})? Their enrolments, certificates, messages and reviews are removed too. This cannot be undone.`
+                          )
+                        ) {
+                          deleteUser()
+                        }
+                      }}
+                    >
+                      <Trash2 className="size-4 mr-2" /> Delete user
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {canDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 text-destructive hover:text-destructive"
-                disabled={deleting}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Delete ${user.name} (${user.email})? Their enrolments, certificates, messages and reviews are removed too. This cannot be undone.`
-                    )
-                  ) {
-                    deleteUser()
-                  }
-                }}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            )}
           </div>
         </div>
       </CardContent>
+      {editing && (
+        <EditNameDialog user={user} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onMutated() }} />
+      )}
       {approving && (
         <ApproveDialog
           user={user}
@@ -475,6 +535,65 @@ function UserRow({
         <AccessDialog user={user} access={user.access} onClose={() => { setAccessOpen(false); onMutated() }} />
       )}
     </Card>
+  )
+}
+
+// ─── Edit name — fix what someone typed at sign-up ───────────────────────────
+
+function EditNameDialog({ user, onClose, onSaved }: {
+  user: UserItem
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(user.name)
+  const { execute: save, loading: saving } = usePatchCallback<{ user: UserItem }, { name: string }>(
+    `/api/admin/users/${user.id}`,
+    {
+      successMessage: "Name updated",
+      // No errorMessage: the server says what's wrong with the name.
+      onSuccess: () => onSaved(),
+    },
+  )
+  const trimmed = name.replace(/\s+/g, " ").trim()
+  const unchanged = trimmed === user.name
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit name</DialogTitle>
+          <DialogDescription>{user.email}</DialogDescription>
+        </DialogHeader>
+        <form
+          id={`edit-name-${user.id}`}
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (unchanged) { onClose(); return }
+            if (trimmed) save({ name: trimmed })
+          }}
+        >
+          <Label htmlFor={`name-${user.id}`}>Full name</Label>
+          <Input
+            id={`name-${user.id}`}
+            autoFocus
+            value={name}
+            maxLength={100}
+            placeholder="First and last name"
+            onChange={(e) => setName(e.target.value)}
+            className="h-11 text-base"
+          />
+          <p className="text-xs text-muted-foreground">This is the name tutors and classmates see.</p>
+        </form>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form={`edit-name-${user.id}`} disabled={saving || !trimmed}>
+            {saving ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Check className="size-4 mr-1.5" />}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

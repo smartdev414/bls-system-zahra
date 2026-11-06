@@ -17,6 +17,7 @@ import {
   CalendarPlus,
   BellOff,
   Download,
+  Trophy,
 } from "lucide-react"
 import { toast } from "sonner"
 import { usePoll } from "@/hooks/use-poll"
@@ -66,6 +67,7 @@ type NotificationType =
   | "ACCOUNT_REJECTED"
   | "DICTIONARY_SIGN_ADDED"
   | "CLASS_HANDOUT_READY"
+  | "TROPHY"
 
 type Notification = {
   id: string
@@ -111,6 +113,7 @@ const typeIcon: Record<NotificationType, React.ElementType> = {
   ACCOUNT_REJECTED: XCircle,
   DICTIONARY_SIGN_ADDED: BookOpen,
   CLASS_HANDOUT_READY: Download,
+  TROPHY: Trophy,
 }
 
 const typeColor: Record<NotificationType, string> = {
@@ -147,6 +150,7 @@ const typeColor: Record<NotificationType, string> = {
   ACCOUNT_REJECTED: "text-destructive",
   DICTIONARY_SIGN_ADDED: "text-emerald-500",
   CLASS_HANDOUT_READY: "text-primary",
+  TROPHY: "text-amber-500",
 }
 
 const POLL_INTERVAL = 30_000 // 30 seconds

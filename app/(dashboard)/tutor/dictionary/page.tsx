@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { Search, Library, PlayCircle, BookOpen, Loader2, Filter, Image as ImageIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -83,10 +84,10 @@ function SignThumbnail({ sign }: { sign: Sign }) {
 
 export default function TutorDictionaryPage() {
   const canDownload = useTutorAccess().download
-  const [query, setQuery] = useState("")
-  const [category, setCategory] = useState("all")
-  const [level, setLevel] = useState("all")
-  const [page, setPage] = useState(1)
+  const [query, setQuery] = useRememberedState("query", "")
+  const [category, setCategory] = useRememberedState("category", "all")
+  const [level, setLevel] = useRememberedState("level", "all")
+  const [page, setPage] = useRememberedState("page", 1)
   const [selectedSign, setSelectedSign] = useState<Sign | null>(null)
 
   const debouncedQuery = useDebounce(query)

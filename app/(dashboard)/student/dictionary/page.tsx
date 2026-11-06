@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
@@ -131,16 +132,25 @@ function StarButton({ saved, word, onToggle, className }: {
 export default function DictionaryPage() {
   // The "now in the dictionary" email links here with ?q=<word>.
   const searchParams = useSearchParams()
-  const [query, setQuery] = useState(() => searchParams.get("q") ?? "")
-  const [category, setCategory] = useState("all")
-  const [level, setLevel] = useState("all")
-  const [page, setPage] = useState(1)
+  const linkedQuery = searchParams.get("q")
+  const [query, setQuery] = useRememberedState("query", linkedQuery ?? "")
+  const [category, setCategory] = useRememberedState("category", "all")
+  const [level, setLevel] = useRememberedState("level", "all")
+  const [page, setPage] = useRememberedState("page", 1)
   const [selectedSign, setSelectedSign] = useState<Sign | null>(null)
   // "All signs" or "My signs" — the ones this student starred.
-  const [tab, setTab] = useState<"all" | "mine">("all")
+  const [tab, setTab] = useRememberedState<"all" | "mine">("tab", "all")
 
   // "Ask for a sign", started with whatever they searched for.
   const [requestWord, setRequestWord] = useState<string | null>(null)
+
+  // An emailed ?q= link wins over whatever was last searched in this tab.
+  useEffect(() => {
+    if (linkedQuery === null) return
+    setQuery(linkedQuery)
+    setTab("all")
+    setPage(1)
+  }, [linkedQuery, setQuery, setTab, setPage])
 
   const debouncedQuery = useDebounce(query)
 

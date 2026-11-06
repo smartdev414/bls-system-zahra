@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import Link from "next/link"
 import {
   Library, Plus, Pencil, Trash2, Loader2, ListPlus, Camera, Upload,
@@ -59,10 +60,10 @@ const blank = (): Omit<Sign, "id"> => ({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminSignsPage() {
-  const [query, setQuery] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("all")
-  const [levelFilter, setLevelFilter] = useState("all")
-  const [page, setPage] = useState(1)
+  const [query, setQuery] = useRememberedState("query", "")
+  const [categoryFilter, setCategoryFilter] = useRememberedState("categoryFilter", "all")
+  const [levelFilter, setLevelFilter] = useRememberedState("levelFilter", "all")
+  const [page, setPage] = useRememberedState("page", 1)
   const [createOpen, setCreateOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)

@@ -4,7 +4,8 @@ import { getSession } from "@/lib/auth"
 import { can, courseTeachScope } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
-import { REMINDER_COOLDOWN_HOURS, reminderLink } from "@/lib/homework"
+import { behindClassBody, behindClassTitle, REMINDER_COOLDOWN_HOURS, reminderLink } from "@/lib/homework"
+import { courseRoster } from "@/lib/course-roster"
 
 /**
  * Remind students to catch up on a course's lessons and tests.
@@ -60,16 +61,29 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ sent: 0, skipped: alreadyReminded.size })
     }
 
+    // Someone well behind the rest of their class hears it in those words —
+    // kindly. Everyone else gets the plain catch-up reminder.
+    const roster = await courseRoster(id)
+    const behindClass = new Set(roster.students.filter((s) => s.behindClass).map((s) => s.id))
     const note = message?.trim().slice(0, 300)
-    const delivered = await createNotifications(
-      toRemind,
-      "HOMEWORK_REMINDER",
-      `Reminder: catch up on "${course.title}"`,
-      `${session.name} is reminding you to catch up on your lessons and tests for "${course.title}".` +
-        (note ? ` ${note}` : ""),
-      link,
-    )
-    if (!delivered) {
+    const extra = note ? ` ${note}` : ""
+    const [encouraged, reminded] = await Promise.all([
+      createNotifications(
+        toRemind.filter((sid) => behindClass.has(sid)),
+        "HOMEWORK_REMINDER",
+        behindClassTitle(course.title),
+        behindClassBody(course.title, session.name) + extra,
+        link,
+      ),
+      createNotifications(
+        toRemind.filter((sid) => !behindClass.has(sid)),
+        "HOMEWORK_REMINDER",
+        `Reminder: catch up on "${course.title}"`,
+        `${session.name} is reminding you to catch up on your lessons and tests for "${course.title}".` + extra,
+        link,
+      ),
+    ])
+    if (!encouraged || !reminded) {
       return NextResponse.json({ message: "The reminder could not be sent. Please try again." }, { status: 502 })
     }
 

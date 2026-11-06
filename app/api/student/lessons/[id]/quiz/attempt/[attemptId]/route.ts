@@ -5,6 +5,8 @@ import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { attemptsLeft, awaitsMarks, isAssessment, questionMarking } from "@/lib/quiz"
 import { rescoreAttempt } from "@/lib/test-marking"
+import { inBackground } from "@/lib/push"
+import { awardIfFinished, courseOfLesson } from "@/lib/trophies"
 
 // PATCH /api/student/lessons/[id]/quiz/attempt/[attemptId]
 // body: { marks: { [questionId]: number } }
@@ -70,6 +72,12 @@ async function handlePATCH(
           : `${scored} Review and try again.`,
       `/student/lessons/${id}`,
     )
+
+    // Marked: that may have finished the course so far.
+    inBackground(async () => {
+      const courseId = await courseOfLesson(id)
+      if (courseId) await awardIfFinished(session.sub, courseId)
+    })
 
     return NextResponse.json({ ...result, attemptsLeft: left })
   } catch (err) {

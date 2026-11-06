@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
+import { inBackground } from "@/lib/push"
+import { awardIfFinished } from "@/lib/trophies"
 
 async function handlePATCH(
   req: Request,
@@ -58,6 +60,9 @@ async function handlePATCH(
       },
       update: data,
     })
+
+    // Their last lesson may have finished the course so far: a trophy is due.
+    if (isCompleted === true) inBackground(() => awardIfFinished(session.sub, enrollment.courseId))
 
     return NextResponse.json({ progress })
   } catch (err) {

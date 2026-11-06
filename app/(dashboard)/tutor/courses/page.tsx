@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import Link from "next/link"
 import {
   BookOpen, Users, Layers, FileText,
@@ -53,7 +53,7 @@ export default function TutorCoursesPage() {
     errorMessage: "Could not load courses",
   })
 
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useRememberedState("page", 1)
 
   return (
     <div className="flex flex-col gap-6">

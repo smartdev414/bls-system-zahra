@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, BookOpen, XCircle,
@@ -95,8 +95,8 @@ const FILTERS: Array<{ value: Filter; label: string; matches: (test: TestItem) =
 ]
 
 export default function TestsPage() {
-  const [page, setPage] = useState(1)
-  const [filter, setFilter] = useState<Filter>("ALL")
+  const [page, setPage] = useRememberedState("page", 1)
+  const [filter, setFilter] = useRememberedState<Filter>("filter", "ALL")
 
   const { data, loading, refetch } = useFetch<TestsData>("/api/student/tests", {
     errorMessage: "Could not load tests",

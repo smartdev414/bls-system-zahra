@@ -319,6 +319,7 @@ export function CourseGroups({
   const grouped = useMemo(() => new Set(groups.flatMap((g) => g.studentIds)), [groups])
   const ungrouped = students.filter((s) => !grouped.has(s.id))
   const behindTotal = students.filter((s) => s.behind).length
+  const finishedTotal = students.filter((s) => s.allDone).length
 
   const cardCount = groups.length + (ungrouped.length > 0 ? 1 : 0)
   const isOpen = (id: string) => chosen[id] ?? cardCount === 1
@@ -420,8 +421,10 @@ export function CourseGroups({
       totalLessons={totalLessons}
       totalTests={totalTests}
       remindingIds={roster.remindingIds}
+      trophyIds={roster.trophyIds}
       removingId={roster.removingId}
       onRemind={(s) => roster.remind([s])}
+      onTrophy={(s) => roster.giveTrophy([s])}
       onRemove={access.students ? async (s) => { if (await roster.remove(s)) void refetchGroups() } : undefined}
     />
   )
@@ -443,11 +446,27 @@ export function CourseGroups({
               ? "Each group is one class, with its own students and its own day and time."
               : (groups.length > 0 ? `${groups.length} group${groups.length === 1 ? "" : "s"} · ` : "") +
                 `${students.length} student${students.length === 1 ? "" : "s"}` +
-                (behindTotal > 0 ? ` · ${behindTotal} behind on homework` : "")}
+                (students.length > 1 && totalLessons + totalTests > 0 ? ` · class average ${roster.data?.classAverage ?? 0}%` : "") +
+                (finishedTotal > 0 ? ` · ${finishedTotal} all done 🏆` : "") +
+                (behindTotal > 0 ? ` · ${behindTotal} behind` : "")}
           </p>
         </div>
-        {!empty && (access.students || access.groups) && (
+        {!empty && (access.students || access.groups || behindTotal > 0) && (
           <div className="flex flex-wrap gap-2">
+            {/* One click for everyone behind: a kind "you can catch up" note */}
+            {behindTotal > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-300 text-amber-800 hover:bg-amber-50"
+                disabled={roster.remindingIds.size > 0}
+                onClick={() => roster.remind(students.filter((s) => s.behind))}
+                title="Send each student who is behind a kind note to revise and finish their tests"
+              >
+                {roster.remindingIds.size > 1 ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <BellRing className="size-4 mr-1.5" />}
+                Encourage {behindTotal} behind
+              </Button>
+            )}
             {access.students && (
               <Button size="sm" variant="outline" onClick={() => setAddStudentsTo(UNGROUPED)}>
                 <UserPlus className="size-4 mr-1.5" /> Add Students
@@ -607,7 +626,7 @@ export function CourseGroups({
                           disabled={roster.remindingIds.size > 0}
                           onClick={() => roster.remind(behind)}
                         >
-                          <BellRing className="size-3.5 mr-1.5" /> Remind {behind.length} behind
+                          <BellRing className="size-3.5 mr-1.5" /> Encourage {behind.length} behind
                         </Button>
                       )}
                       {access.groups && (

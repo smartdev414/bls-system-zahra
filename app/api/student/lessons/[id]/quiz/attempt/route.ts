@@ -12,6 +12,8 @@ import {
 } from "@/lib/quiz"
 import { isOwnAnswerVideo } from "@/lib/test-recordings"
 import { notifyTeachersToMark } from "@/lib/test-marking"
+import { inBackground } from "@/lib/push"
+import { awardIfFinished } from "@/lib/trophies"
 
 // POST /api/student/lessons/[id]/quiz/attempt
 // body: { answers: { questionId: string; optionId?: string; optionIds?: string[]; text?: string; videoUrl?: string }[]; durationMs?: number }
@@ -187,6 +189,9 @@ async function handlePOST(
           : `You scored ${correct}/${total} on "${lesson.title}". Review and try again.`,
       `/student/lessons/${id}`,
     )
+
+    // Sat (or sent in): that may have finished the course so far.
+    inBackground(() => awardIfFinished(session.sub, lesson.section.courseId))
 
     // The questions to review against — with the correct answers only when the
     // student may see them.

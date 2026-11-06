@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { fulfilSignRequests } from "@/lib/sign-requests"
+import { MAX_REQUEST_REPLY, fulfilSignRequests, replyToSignRequests } from "@/lib/sign-requests"
 
 // Where a requested word lands if whoever filmed it didn't pick a category.
 const REQUESTED_CATEGORY = "Requested"
@@ -66,7 +66,9 @@ async function handlePOST(req: NextRequest) {
   }
 }
 
-// "Not adding": closes every open request for the word.
+// "Reply": closes every open request for the word. With a message (e.g. "there
+// is no single sign for this — it's shown like this…") each student who asked
+// gets it in the app and by email; without one the request just closes.
 async function handleDELETE(req: NextRequest) {
   try {
     const denied = await adminSession()
@@ -74,12 +76,22 @@ async function handleDELETE(req: NextRequest) {
 
     const word = req.nextUrl.searchParams.get("word")?.trim() ?? ""
     if (!word) return NextResponse.json({ message: "Word is required" }, { status: 400 })
+    const body = await req.json().catch(() => ({})) as { message?: unknown }
+    const message = typeof body.message === "string" ? body.message.trim() : ""
+    if (message.length > MAX_REQUEST_REPLY) {
+      return NextResponse.json({ message: `Keep the reply under ${MAX_REQUEST_REPLY} characters` }, { status: 400 })
+    }
 
-    const { count } = await prisma.signRequest.updateMany({
+    const open = await prisma.signRequest.findMany({
       where: { status: "OPEN", word: { equals: word, mode: "insensitive" } },
+      select: { id: true, studentId: true, word: true },
+    })
+    await prisma.signRequest.updateMany({
+      where: { id: { in: open.map((r) => r.id) } },
       data: { status: "DECLINED", resolvedAt: new Date() },
     })
-    return NextResponse.json({ declined: count })
+    const notified = message ? await replyToSignRequests(open, message) : 0
+    return NextResponse.json({ declined: open.length, notified })
   } catch (err) {
     console.error("[DELETE /api/admin/sign-requests]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

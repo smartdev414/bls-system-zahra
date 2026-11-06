@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
 import { ThisWeekCard, type ThisWeek } from "@/components/student/this-week-card"
 import { VenueLink } from "@/components/sessions/face-to-face"
+import { TrophyShelf, type StudentTrophy } from "@/components/student/trophy-shelf"
 
 type CurrentCourse = {
   courseId: string
@@ -36,6 +37,7 @@ type DashboardData = {
     totalTests: number
   }
   currentCourse: CurrentCourse | null
+  trophies: StudentTrophy[]
   thisWeek: ThisWeek
   upcomingSessions: Array<{
     id: string
@@ -77,6 +79,7 @@ export default function StudentDashboardPage() {
     errorMessage: "Could not load dashboard data",
   })
 
+  const trophyCount = data?.trophies?.length ?? 0
   const name = data?.student.name?.split(" ")[0] ?? "there"
   const stats = data?.stats ?? { completedLessons: 0, totalLessons: 0, completion: 0, testsPassed: 0, totalTests: 0, classesAttended: 0 }
   // Only an online class can be joined; a face-to-face one is listed with its venue.
@@ -99,7 +102,9 @@ export default function StudentDashboardPage() {
                 Welcome back, {name}!
               </h1>
               <p className="text-primary-foreground/80 mb-5">
-                {stats.completedLessons > 0
+                {trophyCount > 0
+                  ? `You've earned ${trophyCount === 1 ? "a trophy" : `${trophyCount} trophies`} 🏆 — brilliant work, keep it up!`
+                  : stats.completedLessons > 0
                   ? `You've completed ${stats.completedLessons} of ${stats.totalLessons} lessons — keep it up!`
                   : "You're just getting started. Pick a lesson below to begin your BSL journey!"}
               </p>
@@ -128,6 +133,9 @@ export default function StudentDashboardPage() {
 
         {/* Left — current course + stats + modules */}
         <div className="lg:col-span-2 flex flex-col gap-5">
+
+          {/* Trophies first: something to be proud of */}
+          <TrophyShelf trophies={data?.trophies ?? []} />
 
           {/* This week: next class, homework, last class's recording */}
           <ThisWeekCard

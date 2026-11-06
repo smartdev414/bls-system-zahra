@@ -23,3 +23,17 @@ export const REMINDER_COOLDOWN_HOURS = 20
 export function reminderLink(courseId: string): string {
   return `/student/lessons?courseId=${courseId}`
 }
+
+/**
+ * The nudge for a student well behind the rest of their class: it tells them
+ * so, but kindly — the point is to get them going again, not to shame them.
+ */
+export function behindClassTitle(courseTitle: string): string {
+  return `You can catch up on ${courseTitle}!`
+}
+
+export function behindClassBody(courseTitle: string, teacherName?: string): string {
+  return `${teacherName ? `${teacherName} is cheering you on! ` : ""}` +
+    `Most of your class is a little ahead of you on "${courseTitle}" right now — but you can do it. ` +
+    `Keep it up: revise your lessons and finish your tests, and you will soon be right there with them.`
+}
