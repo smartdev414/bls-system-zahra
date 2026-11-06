@@ -5,6 +5,7 @@ import { withAudit } from "@/lib/audit"
 import { studentOwnSessions, studentVisibleSessions } from "@/lib/session-access"
 import { isReleased } from "@/lib/lesson-release"
 import { lessonKindKey } from "@/lib/lesson-kind"
+import { statusOf, testStatuses, UNFINISHED } from "@/lib/test-progress"
 
 async function handleGET() {
   try {
@@ -182,8 +183,16 @@ async function handleGET() {
       const bLatest = b.progress.reduce((max, p) => Math.max(max, p.updatedAt.getTime()), b.enrolledAt.getTime())
       return bLatest - aLatest
     })
+    // A test sat or sent to the teacher is finished (lib/test-progress) even
+    // before it is passed — the same rule the reminders and trophies use.
+    const testLessonIds = byActivity.flatMap((e) =>
+      e.course.sections.flatMap((s) => s.lessons).filter((l) => l.type === "QUIZ" && l.testId).map((l) => l.id))
+    const testState = await testStatuses(testLessonIds, [session.sub])
+    const testFinished = (lessonId: string) =>
+      testLessonIds.includes(lessonId) && !UNFINISHED.has(statusOf(testState, session.sub, lessonId).status)
     for (const enrollment of byActivity) {
       const done = new Set(enrollment.progress.filter((p) => p.isCompleted).map((p) => p.lessonId))
+      for (const id of testLessonIds) if (testFinished(id)) done.add(id)
       for (const lesson of enrollment.course.sections.flatMap((s) => s.lessons)) {
         if (done.has(lesson.id) || !isReleased(lesson, now)) continue
         homeworkLeft++
