@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog"
 import { useFetch } from "@/hooks/use-fetch"
 import { useDebounce } from "@/hooks/use-debounce"
+import { useRememberedState } from "@/hooks/use-remembered-state"
 import { Pagination } from "@/components/ui/pagination"
 import { ManageGroupsModal } from "@/components/classroom/ManageGroupsModal"
 import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
@@ -240,14 +241,14 @@ export function StudentsManager() {
   // Admins see the same list; their course pages live under /admin.
   const base = usePathname().startsWith("/admin") ? "/admin" : "/tutor"
   // The summary cards above the list double as quick filters.
-  const [show, setShow] = useState<Show>("all")
+  const [show, setShow] = useRememberedState<Show>("show", "all")
   const [remindingKey, setRemindingKey] = useState<string | null>(null)
   const access = useTutorAccess()
-  const [query, setQuery] = useState("")
-  const [page, setPage] = useState(1)
+  const [query, setQuery] = useRememberedState("query", "")
+  const [page, setPage] = useRememberedState("page", 1)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [levelFilter, setLevelFilter] = useState<string>("ALL")
-  const [sortKey, setSortKey] = useState<SortKey>("name-asc")
+  const [levelFilter, setLevelFilter] = useRememberedState<string>("levelFilter", "ALL")
+  const [sortKey, setSortKey] = useRememberedState<SortKey>("sortKey", "name-asc")
   const [inviteStudent, setInviteStudent] = useState<Student | null>(null)
   const [messagingId, setMessagingId] = useState<string | null>(null)
   const [showGroups, setShowGroups] = useState(false)
