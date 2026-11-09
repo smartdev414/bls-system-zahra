@@ -300,7 +300,8 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
   // The requested word being answered from the "Reply" box.
   const [replyFor, setReplyFor] = useState<QueueSign | null>(null)
   const [replyText, setReplyText] = useState("")
-  const [replySending, setReplySending] = useState(false)
+  // Which button is busy, so the spinner shows on the one pressed.
+  const [replySending, setReplySending] = useState<false | "reply" | "close">(false)
   // The requested word whose category is being typed as a new one.
   const [typingCategoryFor, setTypingCategoryFor] = useState<string | null>(null)
   const currentRowRef = useRef<HTMLButtonElement>(null)
@@ -420,7 +421,7 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
   // and the word leaves the list (one already in the dictionary comes back in
   // its usual place next time). An empty message just closes the request.
   function declineRequest(sign: QueueSign, message: string) {
-    setReplySending(true)
+    setReplySending(message.trim() ? "reply" : "close")
     fetch(`/api/admin/sign-requests?word=${encodeURIComponent(sign.word)}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -1419,22 +1420,24 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
             placeholder={`e.g. There isn't one sign for "${replyFor?.word ?? ""}". In BSL it's shown differently: …`}
           />
           <DialogFooter>
+            {/* This closes the student's request too, so say so — "close" alone read like closing the box. */}
             <Button
-              disabled={replySending || !replyText.trim()}
+              variant="ghost"
+              className="text-muted-foreground"
+              disabled={!!replySending}
+              onClick={() => replyFor && declineRequest(replyFor, "")}
+            >
+              {replySending === "close" && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+              Close the request without replying
+            </Button>
+            <Button
+              disabled={!!replySending || !replyText.trim()}
               onClick={() => replyFor && declineRequest(replyFor, replyText)}
             >
-              {replySending ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Reply className="mr-1.5 size-4" />}
-              Send and close
+              {replySending === "reply" ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Reply className="mr-1.5 size-4" />}
+              Send reply
             </Button>
           </DialogFooter>
-          <button
-            type="button"
-            className="mx-auto text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
-            disabled={replySending}
-            onClick={() => replyFor && declineRequest(replyFor, "")}
-          >
-            Close without a message
-          </button>
         </DialogContent>
       </Dialog>
     </div>
