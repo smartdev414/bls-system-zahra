@@ -553,8 +553,9 @@ export function StudentsManager() {
                       {access.calendar && <Button
                         variant="ghost"
                         size="icon"
-                        className="size-7 text-muted-foreground hover:text-foreground"
-                        title="Invite to live classroom"
+                        className="size-9 sm:size-7 text-muted-foreground hover:text-foreground"
+                        title="Invite to a live class"
+                        aria-label={`Invite ${student.name} to a live class`}
                         onClick={() => setInviteStudent(student)}
                       >
                         <CalendarPlus className="size-3.5" />
@@ -602,12 +603,13 @@ export function StudentsManager() {
                         <p className="px-4 py-3 text-xs text-muted-foreground">No courses enrolled.</p>
                       ) : student.courses.map((course, i) => (
                         <div key={course.id} className={`px-4 py-2.5 ${i > 0 ? "border-t" : ""}`}>
-                          <div className="flex items-center gap-3">
+                          {/* On a phone the title gets the full width and Remind + progress wrap below it. */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                           <div className="rounded-md bg-primary/10 p-1 shrink-0">
                             <BookOpen className="size-3.5 text-primary" />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{course.title}</p>
+                          <div className="flex-1 min-w-48">
+                            <p className="text-sm font-medium sm:truncate">{course.title}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
                               {course.completedLessons}/{course.totalLessons} lessons ·{" "}
                               Enrolled {new Date(course.enrolledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
@@ -617,7 +619,7 @@ export function StudentsManager() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 px-2 text-xs gap-1 shrink-0"
+                              className="h-9 sm:h-7 px-2 text-xs gap-1 shrink-0 ml-8 sm:ml-0"
                               disabled={remindingKey === `${student.id}:${course.id}`}
                               onClick={() => void remindNow(student, course)}
                               title="Send a reminder now, naming the tests left on this course"
@@ -628,7 +630,7 @@ export function StudentsManager() {
                               Remind now
                             </Button>
                           )}
-                          <div className="flex flex-col items-end gap-1 w-20 shrink-0">
+                          <div className="flex flex-col items-end gap-1 w-20 shrink-0 ml-auto">
                             <span className="text-[11px] font-semibold">{course.completion}%</span>
                             <Progress value={course.completion} className="h-1.5 w-full" />
                           </div>
