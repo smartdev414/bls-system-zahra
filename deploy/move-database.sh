@@ -21,7 +21,7 @@ if [ -f .current-tag ] && [ "${FORCE:-}" != "yes" ]; then
   exit 1
 fi
 
-PG="postgres:17-alpine"
+PG="postgres:18-alpine"  # must be >= the Neon server version
 echo "==> Neon server version:"
 docker run --rm "$PG" psql "$NEON_URL" -tAc "show server_version"
 

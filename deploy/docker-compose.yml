@@ -10,14 +10,15 @@ name: bls
 
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: bls
       POSTGRES_DB: bls
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in /opt/bls/.env}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # Postgres 18+ images keep data under /var/lib/postgresql/18/docker
+      - pgdata:/var/lib/postgresql
     # Reachable from the server itself only (psql / SSH tunnel), never the internet.
     ports:
       - "127.0.0.1:5432:5432"

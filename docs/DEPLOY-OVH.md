@@ -6,7 +6,7 @@ Production runs on one OVH server with Docker:
 |---|---|
 | `caddy` | HTTPS (automatic certificates) → forwards to `web` |
 | `web` | The Next.js app (image built by GitHub Actions) |
-| `db` | PostgreSQL 17 (data in a Docker volume, port 5432 on 127.0.0.1 only) |
+| `db` | PostgreSQL 18 (data in a Docker volume, port 5432 on 127.0.0.1 only) |
 | `cron` | Calls `/api/cron/reminders` every 10 minutes |
 
 Files: [deploy/](../deploy/) and [.github/workflows/deploy-ovh.yml](../.github/workflows/deploy-ovh.yml).
