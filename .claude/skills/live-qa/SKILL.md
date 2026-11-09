@@ -1,111 +1,141 @@
 ---
 name: live-qa
-description: QA a live web platform end to end from a URL and login details, find bugs and UI/UX problems (including mobile responsiveness), then fix them in the codebase and verify the fixes. Use whenever the user gives an app URL plus credentials and asks to test, QA, check, audit or "make sure everything works" on the live/production site, or asks to find bugs or UX issues on a deployed app, even if they don't say "QA" — e.g. "here's the login, go through the platform and fix what's broken", "check classroom.tms.webcam works on phones".
+description: QA a live web platform in a real browser, either one feature at a time or the whole site. Walk each flow as every role on desktop and phone, find bugs and anything hard to use or hard to understand, fix it in the codebase on your own judgment, and verify the fix. Use this whenever the user asks to test, QA, check, audit, review or "make sure X works" on the live/production site or on a feature; when they ask to improve the UI/UX or make a feature easier or clearer; when they give an app URL plus logins; or right after building a BLS feature, to check it as a teacher and as a student. Use it even if they don't say "QA", e.g. "go through the new handouts feature and make it easier", "check classroom.tms.webcam works on phones", "is the test bank clear for teachers?".
 ---
 
-# Live QA: find, fix and verify
+# Live QA: find, improve, verify
 
-The goal is a platform where every feature works and is **easy to use on a phone as well as a desktop**. You are acting as a careful tester who is also the developer: you find problems on the live site, trace each one to the code, fix it, prove the fix, and report back plainly.
+The goal is that every feature **works, is easy to use, and is easy to understand**, for a non-technical person, on a phone as well as a desktop. You are both the tester and the developer. Find problems in the live browser, trace each one to the code, fix it, prove the fix, and report back plainly.
 
-The people using these apps are usually not technical (for the BLS platform: sign-language teachers and students). Judge the UX through their eyes: can someone do the job without thinking, on a 390px-wide phone, with a finger?
+For the BLS platform, the users are sign-language teachers and students. Judge every screen through their eyes. Could someone do the job without thinking, without help, on a 390px-wide phone, with a finger? Would they understand what each word means?
+
+If there are notes for this app in `references/` (`references/bls-system.md` for classroom.tms.webcam), read them first. They hold the accounts, routes, feature map, local test setup and deploy rules.
 
 ## 0. Inputs and ground rules
 
-You need the app URL and at least one login. Ask for anything missing in one short message, and ask which roles the accounts are (e.g. student, tutor, admin). One account per role gives the best coverage.
+**Logins.** For BLS, the QA accounts are already saved in `~/.config/bls-qa/accounts.env` (see the notes for which role each one has), so don't ask for them. For any other app, ask once for the URL, the logins and each account's role, in one short message. Keep passwords out of every file you write, and out of commits, reports, screenshot names and chat. `scripts/qa-lib.mjs` reads the accounts file itself. `sweep.mjs` takes `QA_EMAIL`/`QA_PASSWORD` from the environment: `set -a; . ~/.config/bls-qa/accounts.env; set +a; QA_EMAIL=$QA_A_EMAIL QA_PASSWORD=$QA_A_PASSWORD node …`.
 
-**Credentials**: keep them out of every file you write, every commit, report and screenshot name. Pass them to scripts as environment variables (`QA_EMAIL`, `QA_PASSWORD`). The script saves nothing with the session cookie except in memory.
+**The live site holds real users' data.** Breaking production or messaging real people is far worse than missing a bug. On the live site:
 
-**Live site = real users' data.** Breaking production or messaging real people is far worse than missing a bug, so on the live site:
-
-- Browse, open, filter, search, and fill in forms *without submitting* freely.
-- Don't submit anything that changes real data or reaches other people: deleting, editing real courses/students, sending messages, invites, emails, approving sign-ups, starting live classes or recordings, payments.
-- If a flow can only be tested by writing data, prefer reproducing it locally against a test database (see the project notes). If it must be done live, create clearly named data (`QA test – delete me`) under the QA account only, and remove it afterwards. Ask the user first if you're unsure.
+- Freely browse, open, filter and search, and fill in forms *without submitting*.
+- Don't submit anything that changes real data or reaches other people: deleting, editing real courses or students, sending messages, invites or emails, approving sign-ups, starting live classes or recordings, payments.
+- Test write paths locally against the test database (see the notes). If a write path can only be tested live, create clearly named data (`QA test – delete me`) under the QA account only, and remove it afterwards. Ask first if you're unsure.
+- Be gentle with the server. Log in once per account (`qa-lib.mjs` caches the session) and load pages one at a time. Never poll the site in a loop.
 - Never change production settings, schema or env vars as part of QA.
 
-If the project has notes in `references/` for this app (e.g. `references/bls-system.md` for classroom.tms.webcam), read them before starting — they hold the routes, roles, local test setup and deploy rules.
+## 1. Pick the scope
 
-## 1. Automated sweep (every role, desktop + phone)
+- **One feature** (the usual case: the user names one, or you just built one) → section 2.
+- **Whole platform** ("full QA", "check everything", "mobile pass") → run the sweep in section 3 first, then walk the main features one by one with section 2. Start with the ones real users touch most.
 
-Run the bundled read-only sweep once per account. It logs in, crawls every same-origin link it finds (plus any routes you give it), and checks each page at 1366×768 and 390×844:
+## 2. Feature walk-through
+
+### a. Understand the feature before judging it
+Find the code: grep the feature's visible words and routes, read its pages and components, and check `git log` and the notes' feature map. Then write down, in a few lines:
+- **Who uses it** (each role) and **what each of them is trying to get done**, in their words. For example: "a teacher wants to give the class a handout that appears after Tuesday's lesson".
+- **Every way in**: nav items, dashboard cards, buttons on other pages, emails and notifications that link here.
+- **The states**: empty (nothing yet), normal, lots of items, done/expired, no permission.
+
+### b. Walk it like a first-time user
+For each role and each job, do the job in the live browser at **phone (390×844) and desktop (1366×768)** with a small Playwright script built on `scripts/qa-lib.mjs`:
+
+```js
+import { openAs, shot, done } from "<skill>/scripts/qa-lib.mjs"
+const { page } = await openAs("B", { phone: true, out: "<scratchpad>/qa/<feature>" })
+await page.goto("/student/dictionary")
+await shot(page, "1-list")                 // Read the printed path to look at it
+await page.getByRole("button", { name: /next/i }).click()
+await shot(page, "2-after-next")
+await done()                               // prints console errors, failed requests
+```
+
+Start where a real user would start (the dashboard or nav, not a deep URL), and click your way through, taking a screenshot at each step. **Look at every screenshot** (the Read tool shows images). That look is the real test. Stop before any final submit that would write real data (see section 0), and do that step locally instead.
+
+At each screen, ask the **clarity questions**:
+1. Within five seconds, would a first-time user know what this screen is for?
+2. Is the next step obvious? Is there one main button, and does it say what will happen?
+3. Is every word one the user would use? Look for jargon, internal names, codes or IDs.
+4. Does anything contradict anything else? Watch for empty-state text next to real data, counts that don't match, and a status that disagrees with the page.
+5. After acting, can they tell it worked, and what happens next?
+6. If they make a mistake, is the error next to the field, in plain words, and can they get back or undo?
+7. On the phone: does everything fit, and is it big enough to tap and readable without zooming?
+
+Also try the edges: an empty submit, wrong input, a very long name, the empty state, and every dialog, menu, tab and dropdown on the phone (does it fit, scroll and close?). Then check `references/ux-checklist.md` for anything you didn't cover.
+
+Note each issue as you go: where (URL, role, viewport), the steps, what happened, what a user would expect, and the screenshot path.
+
+## 3. Whole-site sweep (automated, read-only)
 
 ```bash
-QA_EMAIL='…' QA_PASSWORD='…' node <skill>/scripts/sweep.mjs \
-  --url https://app.example.com --out <scratchpad>/qa/<role> \
-  [--routes <file-of-paths>] [--max-pages 80]
+QA_EMAIL=… QA_PASSWORD=… node <skill>/scripts/sweep.mjs \
+  --url <base> --out <scratchpad>/qa/<role> [--routes <file>] [--max-pages 80]
 ```
 
-Run it once with no credentials too, for the public pages (login, register, forgot password).
+Run it once per account, plus once with no credentials for the public pages. It only navigates and never clicks. It skips logout links, token links and live-room URLs. Build a `--routes` file from the codebase's route list (the notes show how) so pages missing from the nav get visited too.
 
-It only navigates, never clicks, and skips logout, token links and live-room URLs by default (`--skip` to change). Give it a `--routes` file built from the codebase's route list (e.g. every `app/**/page.tsx` for Next.js, with one real id filled in for dynamic segments, taken from links you saw while crawling) so pages that aren't linked from the nav still get visited.
+It writes `summary.md`, `report.json` and `screens/*.jpg`. It flags JS exceptions, console errors, 4xx/5xx and failed requests, horizontal scrolling on phones (and the element causing it), small tap targets, unnamed buttons, unlabelled inputs, tiny text, broken images, slow pages and error-looking text (`undefined`, `NaN`, `Invalid Date`). Treat these as leads, not verdicts, and look at the screenshots yourself.
 
-Output: `summary.md` (findings per page and viewport), `report.json`, and `screens/*.jpg` full-page screenshots. It flags:
-JS exceptions, console errors, failed or 4xx/5xx requests, horizontal scrolling on phones (and which element causes it), tap targets under 24px, unnamed buttons, unlabelled inputs, tiny text, broken images, slow pages, and error-looking text (`undefined`, `NaN`, `Invalid Date`, "Something went wrong").
+## 4. Triage
 
-Treat these as leads, not verdicts. A 404 on a prefetched link is a real broken link; a 16px checkbox inside a big clickable label is fine.
+Group duplicates (one broken component can show up on 20 pages) and rank them:
 
-## 2. Look at it like a user
-
-Automated checks miss most UX problems. **Open the screenshots** (the Read tool shows images) for every distinct page, at both widths, and judge them against `references/ux-checklist.md`. Then drive the important flows by hand with a Playwright script (write small throwaway scripts in the scratchpad, reusing the login approach in `sweep.mjs`):
-
-- The main job of each role, start to finish (for a student: find a course → open a lesson → take a test; for a tutor: open a course → edit a lesson → view a student's results). Stop before the final submit when that would write real data.
-- Every form: empty submit, wrong input, very long input. Is the error clear, next to the field, and in plain words?
-- Every dialog, menu, dropdown and tab on the phone viewport: does it fit, scroll, and close?
-- Empty states (a list with nothing in it), loading states, and what happens after an action (feedback? where does it go?).
-- Navigation on the phone: can you reach every section from the menu, and get back?
-
-Write down each issue as you go: where (URL + role + viewport), steps, what happened, what should happen, screenshot path.
-
-## 3. Triage
-
-Group duplicates (one broken component often shows up on 20 pages) and rank:
-
-1. **Broken**: crashes, errors, data not loading, actions that fail, dead links, a page unusable on a phone.
-2. **Hard to use**: confusing flows, unclear labels/errors, hidden actions, too many options, cramped or overflowing layouts on mobile, tiny tap targets.
+1. **Broken**: crashes, errors, data not loading, failing actions, dead links, a page you can't use on a phone.
+2. **Confusing or hard to use**: unclear words, contradictions, a hidden or unobvious next step, too many options or steps, missing feedback, cramped or overflowing mobile layouts, tiny tap targets.
 3. **Polish**: alignment, spacing, inconsistent wording.
 
-Fix group 1 first. Fixing is the point, but some issues are product decisions (removing a feature, changing what a role can do, writing legal text for a missing Terms page). For those, don't guess: list them for the user with a recommendation.
+Fix group 1 first, then group 2. Group 2 is where most of the value is, so don't stop at "no errors".
 
-## 4. Fix
+## 5. Improve: what you decide, and what you ask about
 
-For each issue, find the cause in the code before changing anything (grep the visible text or the route to find the component). Then:
+Make UX improvements **on your own judgment**. The user asked for this, so don't stop to ask about each one. You may, without asking:
+- Rewrite labels, headings, help text, empty states and error messages in plain words.
+- Fix contradictions and wrong or stale text.
+- Make the main action obvious, demote or tidy secondary ones, and put a control where the thing it acts on is.
+- Remove needless steps, clicks or fields, and replace required choices with sensible defaults.
+- Add missing feedback (a toast, loading state, success message or "what's next" hint).
+- Fix mobile layout, tap targets, overflow and dialogs that don't fit.
 
-- Make the smallest change that fixes the cause, in the style of the surrounding code. If the bug is in a shared component, fix it there once and every page benefits.
-- For mobile layout, use the project's existing responsive approach (e.g. Tailwind `sm:`/`md:` breakpoints, mobile-first) rather than one-off CSS; stack rows on phones, let tables scroll inside their own container or turn into cards, make tap targets ≥ 40px.
-- Keep UX fixes simple: fewer steps, clearer words, sensible defaults. Don't add settings or modes to solve a usability problem.
-- Don't touch database schema or production data to make a symptom go away. Schema changes need the user's go-ahead.
+Ask first (list these in the report with your recommendation) when a change would:
+- Remove a feature or change what a role is allowed to do or see.
+- Change the database schema or production data.
+- Need content only the user has (legal text, prices, policy).
+- Redesign a whole flow in a way that changes how teachers work.
 
-## 5. Verify
+How to fix:
+- Find the cause in the code before changing anything.
+- Make the smallest change that fixes the cause, in the style of the surrounding code. If the problem is in a shared component, fix it there once.
+- Mobile-first, using the project's existing responsive approach (Tailwind `sm:`/`md:`). Stack rows on phones, let tables scroll in their own box or turn into cards, and make tap targets ≥ 40px.
+- Make things simpler, not more configurable. Never add a setting, mode or extra dialog to solve a usability problem.
+
+## 6. Verify
 
 A fix isn't done until you've seen it work:
+1. Run `npx tsc --noEmit` and `npx eslint <changed files>`.
+2. Run the app locally (see the notes), repeat the exact walk-through steps at both viewports, and **look at the after screenshots** next to the before ones. Write paths you skipped on live get tested here, end to end.
+3. If it can't be reproduced locally (it depends on production data), say so rather than claiming it's fixed.
 
-1. Typecheck and lint the changed files (`npx tsc --noEmit`, `npx eslint <files>`).
-2. Run the app locally (see the project notes for the setup) and repeat the exact repro steps at the viewport where it failed, plus the other viewport to make sure you didn't break it. Re-run `sweep.mjs` against the local URL for the affected routes.
-3. Take an after screenshot and look at it.
+## 7. Ship and re-check
 
-If something can't be reproduced locally (e.g. depends on production data), say so in the report rather than claiming it's fixed.
+Commit in small, clearly described commits (one per issue or shared component). Pushing or releasing deploys to production, so ask before the first push or release in a session unless the user has already said to deploy. After it's live, walk the affected screens once more on the live site (one pass, no polling) and confirm.
 
-## 6. Ship and re-check
+## 8. Report
 
-Commit fixes in small, clearly described commits (one per issue or per shared component). **Pushing usually deploys to production**, so ask the user before the first push in a session unless they've already told you to deploy. After the deploy finishes, re-run the sweep on the live site for the affected pages and confirm the issues are gone.
-
-## 7. Report
-
-Finish with a short report the user can read in a minute. Use this shape:
+Keep it short, so the user can read it in a minute:
 
 ```
-## Live QA – <app> – <date>
-Covered: <roles>, <N> pages, desktop + phone. Flows tested: <list>.
+## QA – <feature or "whole platform"> – <date>
+Checked as: <roles>, desktop + phone. Jobs walked: <list>.
 
-### Fixed (<n>)
-| Issue | Where | Fix | Verified |
+### Improved (<n>)
+| What was wrong (as a user saw it) | Where | What I changed | Verified |
 |---|---|---|---|
-| Privacy/Terms links 404 | footer, every page | … | local + live |
+| Dashboard said "not on a course yet" next to the next class | student dashboard | … | local, phone+desktop |
 
 ### Needs your decision (<n>)
 - <issue> – <why it's a decision> – I'd suggest <x>.
 
-### Not fixed / couldn't test (<n>)
-- <issue or flow> – <reason, e.g. would send real invites>.
+### Not tested (<n>)
+- <flow> – <why, e.g. it would send real emails; tested locally instead / not at all>.
 ```
 
-Lead with what changed for users, not with implementation detail. Mention anything you skipped and why, so the user never assumes something was tested when it wasn't.
+Lead with what changed for users, not implementation detail. Name anything you skipped, so the user never assumes something was tested when it wasn't.
