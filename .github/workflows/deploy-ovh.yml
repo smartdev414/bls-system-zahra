@@ -27,7 +27,9 @@ jobs:
           SSH_KEY: ${{ secrets.OVH_SSH_KEY }}
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          # tr: a key pasted from Windows carries \r line endings, which ssh rejects
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null || { echo "::error::OVH_SSH_KEY is not a valid private key. Paste the whole file, BEGIN and END lines included."; exit 1; }
           echo "[198.244.201.81]:32984 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID7STpGbfqd6W357ecYqATlZlXg9O5tpDsHazzwGtfpR" > ~/.ssh/known_hosts
           printf 'Host ovh\n  HostName 198.244.201.81\n  Port 32984\n  User deploy\n  IdentityFile ~/.ssh/id_deploy\n' > ~/.ssh/config
 
