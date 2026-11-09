@@ -444,7 +444,7 @@ function UserRow({
             )}
 
             <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-              <Pencil className="size-3.5 mr-1" /> Edit
+              <Pencil className="size-3.5 mr-1" /> Edit name
             </Button>
 
             <DropdownMenu>
@@ -454,9 +454,6 @@ function UserRow({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onSelect={() => setEditing(true)}>
-                  <Pencil className="size-4 mr-2" /> Edit name
-                </DropdownMenuItem>
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
                     <UserCog className="size-4 mr-2" /> Change role
