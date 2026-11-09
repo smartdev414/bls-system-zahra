@@ -106,14 +106,19 @@ export default function StudentDashboardPage() {
                   ? `You've earned ${trophyCount === 1 ? "a trophy" : `${trophyCount} trophies`} 🏆 — brilliant work, keep it up!`
                   : stats.completedLessons > 0
                   ? `You've completed ${stats.completedLessons} of ${stats.totalLessons} lessons — keep it up!`
-                  : "You're just getting started. Pick a lesson below to begin your BSL journey!"}
+                  : !data?.currentCourse
+                  // Invited to classes but not on a course yet: there are no lessons to pick.
+                  ? "Your lessons and homework will appear here once your teacher adds you to a course."
+                  : "You're just getting started. Open your homework below to begin your BSL journey!"}
               </p>
               <div className="flex items-center gap-3 flex-wrap">
-                <Button asChild variant="secondary" size="sm">
-                  <Link href="/student/courses">
-                    My Courses <ArrowRight className="size-4 ml-1.5" />
-                  </Link>
-                </Button>
+                {data?.currentCourse && (
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href="/student/courses">
+                      My Courses <ArrowRight className="size-4 ml-1.5" />
+                    </Link>
+                  </Button>
+                )}
                 {liveSessions.length > 0 && (
                   <Button asChild size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white border-0 gap-1.5">
                     <Link href={`/student/classroom/${liveSessions[0].id}`}>

@@ -123,7 +123,11 @@ export default function StudentCoursesPage() {
           <BookOpen className="size-6 text-primary" /> Courses
         </h1>
         <p className="text-muted-foreground mt-1">
-          {myCourses.length > 0 ? "Pick up where you left off, or start something new." : "Browse and enrol in BSL courses."}
+          {myCourses.length > 0
+            ? "Pick up where you left off, or start something new."
+            : available.length > 0 || recommended.length > 0
+            ? "Browse and enrol in BSL courses."
+            : "Your BSL courses."}
         </p>
       </div>
 

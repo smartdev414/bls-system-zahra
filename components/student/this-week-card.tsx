@@ -176,12 +176,11 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
               <CheckCircle2 className="size-4 shrink-0" /> All caught up — nice work!
             </p>
           ) : (
-            <div className="rounded-xl border border-dashed px-4 py-3 flex items-center gap-3 flex-wrap">
+            <div className="rounded-xl border border-dashed px-4 py-3 flex items-center gap-3">
               <BookOpen className="size-4 text-muted-foreground shrink-0" />
-              <p className="text-sm text-muted-foreground flex-1">You&apos;re not on a course yet.</p>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/student/courses">Browse courses</Link>
-              </Button>
+              <p className="text-sm text-muted-foreground flex-1">
+                No homework yet. It will appear here once your teacher adds you to a course.
+              </p>
             </div>
           )}
           <div className="flex items-center justify-between gap-3 flex-wrap">
