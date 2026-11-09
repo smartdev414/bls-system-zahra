@@ -26,11 +26,14 @@ const DESKTOP = { viewport: { width: 1366, height: 768 } }
 let browser
 const opened = []
 
-export async function openAs(key, { phone = false, out = process.cwd(), slowMo = 0 } = {}) {
+// fakeMedia: a fake camera + mic with permission granted, for the classroom / connection check.
+export async function openAs(key, { phone = false, out = process.cwd(), slowMo = 0, fakeMedia = false } = {}) {
   const { chromium } = loadPlaywright()
-  browser ??= await launch(chromium, { headless: true, slowMo })
+  const args = fakeMedia ? ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] : []
+  browser ??= await launch(chromium, { headless: true, slowMo, args })
   const storageState = key ? await getState(key) : undefined
-  const ctx = await browser.newContext({ ...(phone ? PHONE : DESKTOP), baseURL: BASE, storageState, ignoreHTTPSErrors: true })
+  const ctx = await browser.newContext({ ...(phone ? PHONE : DESKTOP), baseURL: BASE, storageState, ignoreHTTPSErrors: true,
+    ...(fakeMedia ? { permissions: ["camera", "microphone"] } : {}) })
   const page = await ctx.newPage()
   const issues = []
   page.on("console", (m) => m.type() === "error" && issues.push(`console: ${m.text().slice(0, 300)}`))
