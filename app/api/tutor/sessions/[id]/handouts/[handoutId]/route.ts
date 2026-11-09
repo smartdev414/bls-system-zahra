@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostedBy } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
@@ -16,7 +17,7 @@ async function ownHandout(params: Ctx["params"]) {
   }
   const { id, handoutId } = await params
   const handout = await prisma.classHandout.findFirst({
-    where: { id: handoutId, sessionId: id, session: { tutorId: session.sub } },
+    where: { id: handoutId, sessionId: id, session: hostedBy(session.sub) },
     select: { id: true, sessionId: true },
   })
   if (!handout) return { error: NextResponse.json({ message: "Handout not found" }, { status: 404 }) }

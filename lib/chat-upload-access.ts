@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
-import { studentMayJoinSession } from "@/lib/session-access"
+import { isSessionHost, studentMayJoinSession } from "@/lib/session-access"
 
 /**
  * Shared gate for classroom chat attachment uploads.
@@ -105,7 +105,8 @@ export async function authorizeChatUpload(sessionId: string): Promise<AccessResu
   const isTutor =
     auth.role === "TUTOR" &&
     (auth.sub === liveSession.tutorId ||
-      liveSession.coTutors.some((c) => c.tutorId === auth.sub))
+      liveSession.coTutors.some((c) => c.tutorId === auth.sub) ||
+      (await isSessionHost(auth, liveSession.id)))
   const isStudent = auth.role === "STUDENT"
 
   if (!isTutor && !isStudent) {

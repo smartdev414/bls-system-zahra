@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostScope } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
-import { can, ownerScope } from "@/lib/permissions"
+import { can } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
@@ -27,7 +28,7 @@ async function handlePOST(
     }
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, ...ownerScope(session) },
+      where: { id, ...hostScope(session) },
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
     if (liveSession.status !== "SCHEDULED") {
@@ -73,7 +74,7 @@ async function handleGET(
 
     const { id } = await params
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, ...ownerScope(session) },
+      where: { id, ...hostScope(session) },
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
@@ -112,7 +113,7 @@ async function handleDELETE(
     const { studentId } = await req.json() as { studentId: string }
     if (!studentId) return NextResponse.json({ message: "studentId is required" }, { status: 400 })
 
-    const liveSession = await prisma.liveSession.findFirst({ where: { id, ...ownerScope(session) } })
+    const liveSession = await prisma.liveSession.findFirst({ where: { id, ...hostScope(session) } })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     await prisma.liveSessionInvite.deleteMany({

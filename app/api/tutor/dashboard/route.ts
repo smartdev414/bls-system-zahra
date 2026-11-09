@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { courseTeachScope } from "@/lib/permissions"
-import { joinedClassOf } from "@/lib/session-access"
+import { joinedClassOf, hostedBy } from "@/lib/session-access"
 
 async function handleGET() {
   try {
@@ -56,7 +56,7 @@ async function handleGET() {
     // Upcoming sessions
     const upcomingSessions = await prisma.liveSession.findMany({
       where: {
-        tutorId: session.sub,
+        ...hostedBy(session.sub),
         status: { in: ["SCHEDULED", "LIVE"] },
         scheduledAt: { gte: new Date() },
       },

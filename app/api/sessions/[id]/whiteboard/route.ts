@@ -18,16 +18,24 @@ async function loadSession(sessionId: string) {
       tutorId: true,
       status: true,
       coTutors: { select: { tutorId: true } },
+      // Teachers on the class's course run it like its owner.
+      course: { select: { tutorId: true, teachers: { select: { tutorId: true } } } },
     },
   })
 }
 
 function canWrite(
   auth: { role: string; sub: string },
-  liveSession: { tutorId: string; coTutors: { tutorId: string }[] },
+  liveSession: {
+    tutorId: string
+    coTutors: { tutorId: string }[]
+    course: { tutorId: string; teachers: { tutorId: string }[] } | null
+  },
 ) {
   if (auth.role !== "TUTOR") return false
   if (auth.sub === liveSession.tutorId) return true
+  if (liveSession.course?.tutorId === auth.sub) return true
+  if (liveSession.course?.teachers.some((t) => t.tutorId === auth.sub)) return true
   return liveSession.coTutors.some((c) => c.tutorId === auth.sub)
 }
 

@@ -5,7 +5,7 @@ import { mediaGatewayPath } from "@/lib/protected-media"
 import { discoverMp4Keys, reconcileSessionRecording } from "@/lib/recording"
 import { deleteObject } from "@/lib/s3"
 import { withAudit } from "@/lib/audit"
-import { recordingViewers } from "@/lib/session-access"
+import { recordingViewers, hostedBy } from "@/lib/session-access"
 
 async function handleGET(
   _req: Request,
@@ -70,7 +70,7 @@ async function handleDELETE(
     const { segment } = (await req.json().catch(() => ({}))) as { segment?: string }
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, ...(session.role === "ADMIN" ? {} : { tutorId: session.sub }) },
+      where: { id, ...(session.role === "ADMIN" ? {} : hostedBy(session.sub)) },
     })
     if (!liveSession) return NextResponse.json({ message: "Not found" }, { status: 404 })
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostScope } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
 import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { randomBytes } from "crypto"
@@ -70,7 +71,8 @@ async function handleGET(req: NextRequest) {
 
     const [owned, coTutorLinks] = await Promise.all([
       prisma.liveSession.findMany({
-        where: { ...(staff ? {} : { tutorId: session.sub }), ...courseFilter },
+        // …and every class on a course they teach, whoever scheduled it.
+        where: { ...hostScope(session), ...courseFilter },
         orderBy: { scheduledAt: "desc" },
         include: sessionInclude,
       }),

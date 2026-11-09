@@ -1,6 +1,42 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import type { Prisma } from "@/app/generated/prisma/client"
+import { isStaff } from "@/lib/permissions"
+
+/**
+ * Prisma `where` fragment for the classes a tutor runs as host: the ones they
+ * own, and every class on a course they teach (they lead it, or an admin put
+ * them on it as a teacher). A teacher put on a course takes its classes even
+ * when someone else scheduled them, so they can see, start and run them.
+ * Co-tutors invited to one class are separate (`coTutors`); they join a class
+ * but do not start or manage it.
+ */
+export function hostedBy(tutorId: string): Prisma.LiveSessionWhereInput {
+  return {
+    OR: [
+      { tutorId },
+      { course: { OR: [{ tutorId }, { teachers: { some: { tutorId } } }] } },
+    ],
+  }
+}
+
+/** `hostedBy` for a tutor; staff (admin, support) see every class. */
+export function hostScope(auth: { role: string; sub: string }): Prisma.LiveSessionWhereInput {
+  return isStaff(auth.role) ? {} : hostedBy(auth.sub)
+}
+
+/** Is this person a host of the class: its owner or a teacher on its course? */
+export async function isSessionHost(
+  auth: { role: string; sub: string },
+  sessionId: string,
+): Promise<boolean> {
+  if (auth.role !== "TUTOR" && auth.role !== "ADMIN") return false
+  const found = await prisma.liveSession.findFirst({
+    where: { id: sessionId, ...hostedBy(auth.sub) },
+    select: { id: true },
+  })
+  return !!found
+}
 
 /**
  * Which students a live session is for.
@@ -104,7 +140,7 @@ export function joinedClassOf(tutorId: string): Prisma.UserWhereInput {
     attendances: {
       some: {
         joinedAt: { not: null },
-        session: { OR: [{ tutorId }, { coTutors: { some: { tutorId } } }] },
+        session: { OR: [hostedBy(tutorId), { coTutors: { some: { tutorId } } }] },
       },
     },
   }
@@ -159,6 +195,8 @@ export async function assertCanAccessSession(
     liveSession.coTutors.some((c) => c.tutorId === auth.sub)
 
   if (isOwner || isCoTutor) return { liveSession, isTutor: true }
+  // A teacher on the class's course runs it like its owner.
+  if (auth.role === "TUTOR" && (await isSessionHost(auth, sessionId))) return { liveSession, isTutor: true }
 
   if (auth.role !== "STUDENT") {
     return { error: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }

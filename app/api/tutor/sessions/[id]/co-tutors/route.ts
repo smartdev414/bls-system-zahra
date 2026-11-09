@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostScope } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
-import { can, ownerScope } from "@/lib/permissions"
+import { can } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
@@ -15,7 +16,7 @@ import { withAudit } from "@/lib/audit"
 async function loadOwnedSession(session: { role: string; sub: string }, id: string) {
   // Owner-only: scope by tutorId so co-tutors can't invite further co-tutors.
   // Staff manage the timetable, so they aren't scoped to a single tutor.
-  return prisma.liveSession.findFirst({ where: { id, ...ownerScope(session) } })
+  return prisma.liveSession.findFirst({ where: { id, ...hostScope(session) } })
 }
 
 async function handlePOST(

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostScope, hostedBy } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
-import { can, courseTeachScope, isStaff, ownerScope } from "@/lib/permissions"
+import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { EgressClient } from "livekit-server-sdk"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
@@ -44,7 +45,7 @@ async function handleGET(
     const liveSession = await prisma.liveSession.findFirst({
       where: isStaff(session.role)
         ? { id }
-        : { id, OR: [{ tutorId: session.sub }, { coTutors: { some: { tutorId: session.sub } } }] },
+        : { id, OR: [hostedBy(session.sub), { coTutors: { some: { tutorId: session.sub } } }] },
       include: {
         course: { select: { id: true, title: true } },
         attendances: {
@@ -98,7 +99,7 @@ async function handlePATCH(
     }
 
     const { id } = await params
-    const existing = await prisma.liveSession.findFirst({ where: { id, ...ownerScope(session) } })
+    const existing = await prisma.liveSession.findFirst({ where: { id, ...hostScope(session) } })
     if (!existing) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     const body = await req.json() as {
@@ -323,7 +324,7 @@ async function handleDELETE(
     }
 
     const { id } = await params
-    const existing = await prisma.liveSession.findFirst({ where: { id, ...ownerScope(session) } })
+    const existing = await prisma.liveSession.findFirst({ where: { id, ...hostScope(session) } })
     if (!existing) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
     // Notify audience before deleting

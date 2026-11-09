@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth"
 import { AccessToken, TrackSource } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
 import { ensureClassroomTranscriber } from "@/lib/livekit"
-import { studentMayJoinSession } from "@/lib/session-access"
+import { isSessionHost, studentMayJoinSession } from "@/lib/session-access"
 
 async function handlePOST(
   _req: Request,
@@ -60,7 +60,11 @@ async function handlePOST(
     // The owning tutor always gets tutor rights. A co-tutor (another tutor the
     // owner invited to this specific session) gets the same tutor metadata and
     // publish grant, so they join with full classroom controls.
-    const isOwnerTutor = session.role === "TUTOR" && session.sub === liveSession.tutorId
+    // A teacher on the class's course counts as its owner here: an admin puts
+    // teachers on a course, so they take its classes whoever scheduled them.
+    const isOwnerTutor = session.role === "TUTOR" && (
+      session.sub === liveSession.tutorId || (await isSessionHost(session, id))
+    )
     const isCoTutor =
       session.role === "TUTOR" &&
       !isOwnerTutor &&

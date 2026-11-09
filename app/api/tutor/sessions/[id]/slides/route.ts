@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { hostedBy } from "@/lib/session-access"
 import { withAudit } from "@/lib/audit"
 
 // Mime types that identify a presentation resource (slides or video). The
@@ -32,7 +33,7 @@ async function handleGET(
     const { id } = await params
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...hostedBy(session.sub) },
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
@@ -65,7 +66,7 @@ async function handlePOST(
     const { id } = await params
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...hostedBy(session.sub) },
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 
@@ -134,7 +135,7 @@ async function handleDELETE(
     const { id } = await params
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...hostedBy(session.sub) },
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 

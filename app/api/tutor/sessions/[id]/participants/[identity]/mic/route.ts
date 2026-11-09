@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostedBy } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
 import { RoomServiceClient, TrackSource } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
@@ -40,7 +41,7 @@ async function handlePATCH(
       where: {
         id,
         OR: [
-          { tutorId: session.sub },
+          hostedBy(session.sub),
           { coTutors: { some: { tutorId: session.sub } } },
         ],
       },

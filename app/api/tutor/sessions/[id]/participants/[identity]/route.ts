@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostedBy } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
 import { RoomServiceClient } from "livekit-server-sdk"
 import { withAudit } from "@/lib/audit"
@@ -27,7 +28,7 @@ async function handleDELETE(
     const { id, identity } = await params
 
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...hostedBy(session.sub) },
       select: { id: true, roomName: true },
     })
     if (!liveSession) {

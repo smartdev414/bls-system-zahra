@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { isSessionHost } from "@/lib/session-access"
 
 async function handleGET(
   _req: Request,
@@ -72,7 +73,10 @@ async function handleGET(
       },
       // Tutors/admins: true only for the owning tutor. Co-tutors get false, so
       // the classroom page won't try to flip session status (an owner-only op).
-      ...(auth.role !== "STUDENT" ? { isOwner: auth.sub === rest.tutorId } : {}),
+      // A teacher on the class's course counts as its owner (they start it too).
+      ...(auth.role !== "STUDENT"
+        ? { isOwner: auth.sub === rest.tutorId || (await isSessionHost(auth, rest.id)) }
+        : {}),
     })
   } catch (err) {
     console.error("[GET /api/sessions/[id]/info]", err)

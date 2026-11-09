@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostedBy } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
@@ -19,7 +20,7 @@ async function handleDELETE(
 
     // Verify tutor owns the session
     const liveSession = await prisma.liveSession.findFirst({
-      where: { id, tutorId: session.sub },
+      where: { id, ...hostedBy(session.sub) },
     })
     if (!liveSession) return NextResponse.json({ message: "Session not found" }, { status: 404 })
 

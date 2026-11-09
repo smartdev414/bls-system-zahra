@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostScope } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
-import { can, ownerScope } from "@/lib/permissions"
+import { can } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
@@ -30,7 +31,7 @@ async function handlePOST(req: NextRequest) {
     if (ids.length === 0) return NextResponse.json({ message: "No classes chosen" }, { status: 400 })
 
     const sessions = await prisma.liveSession.findMany({
-      where: { id: { in: ids }, status: "SCHEDULED", ...ownerScope(session) },
+      where: { id: { in: ids }, status: "SCHEDULED", ...hostScope(session) },
       orderBy: { scheduledAt: "asc" },
       select: { id: true, title: true, scheduledAt: true, tutorId: true, courseId: true, visibility: true },
     })

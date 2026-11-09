@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { hostedBy } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
@@ -15,7 +16,7 @@ async function ownClass(id: string) {
     return { error: NextResponse.json({ message: "Forbidden" }, { status: 403 }) }
   }
   const liveSession = await prisma.liveSession.findFirst({
-    where: { id, tutorId: session.sub },
+    where: { id, ...hostedBy(session.sub) },
     select: { id: true, scheduledAt: true, durationMins: true },
   })
   if (!liveSession) return { error: NextResponse.json({ message: "Session not found" }, { status: 404 }) }
