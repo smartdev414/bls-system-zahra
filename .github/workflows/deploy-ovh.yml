@@ -1,0 +1,119 @@
+# Build the app image on every push to main and release it on the OVH server.
+#
+# Repository secrets:   OVH_HOST, OVH_SSH_KEY (private key of the "deploy" user),
+#                       OVH_KNOWN_HOSTS (output of `ssh-keyscan -p PORT HOST`),
+#                       optional OVH_PORT (default 22)
+# Repository variables: NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_PUSHER_KEY,
+#                       NEXT_PUBLIC_PUSHER_CLUSTER, NEXT_PUBLIC_TLDRAW_LICENSE_KEY
+#                       (baked into the browser bundle at build time)
+# The pipeline stays off until the repository variable OVH_DEPLOY is set to "on".
+# Rollback: Actions → "Deploy to OVH" → Run workflow → pick an older commit's
+# branch/tag, or on the server: /opt/bls/deploy.sh <old-commit-sha>
+name: Deploy to OVH
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ovh
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPO: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    if: vars.OVH_DEPLOY == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          target: web
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPO }}:${{ github.sha }}
+            ${{ env.IMAGE_REPO }}:latest
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}
+            NEXT_PUBLIC_PUSHER_KEY=${{ vars.NEXT_PUBLIC_PUSHER_KEY }}
+            NEXT_PUBLIC_PUSHER_CLUSTER=${{ vars.NEXT_PUBLIC_PUSHER_CLUSTER }}
+            NEXT_PUBLIC_TLDRAW_LICENSE_KEY=${{ vars.NEXT_PUBLIC_TLDRAW_LICENSE_KEY }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: Build and push migrations image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          target: migrate
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPO }}-migrate:${{ github.sha }}
+            ${{ env.IMAGE_REPO }}-migrate:latest
+          cache-from: type=gha,scope=web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.OVH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host ovh
+            HostName ${{ secrets.OVH_HOST }}
+            Port ${{ secrets.OVH_PORT || '22' }}
+            User deploy
+            IdentityFile ~/.ssh/id_deploy
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Copy stack files
+        run: |
+          chmod +x deploy/*.sh
+          scp deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh deploy/backup.sh deploy/move-database.sh ovh:/opt/bls/
+
+      - name: Release
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | ssh ovh "docker login ghcr.io -u ${{ github.actor }} --password-stdin >/dev/null"
+          ssh ovh "/opt/bls/deploy.sh ${{ github.sha }}"
+
+      # Fails harmlessly until the domain's DNS points at OVH.
+      - name: Check the live site
+        continue-on-error: true
+        run: |
+          url="${{ vars.NEXT_PUBLIC_APP_URL }}"
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$url/api/health"

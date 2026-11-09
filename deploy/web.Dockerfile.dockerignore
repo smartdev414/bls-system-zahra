@@ -1,0 +1,19 @@
+# Used instead of the repo-root .dockerignore (which is for the caption agent)
+# when building with deploy/web.Dockerfile.
+.git
+.github
+.next
+node_modules
+app/generated
+public/pdf
+.env
+.env.*
+**/secrets.env
+*.tsbuildinfo
+.claude
+.cursor
+.vscode
+docs
+uploads
+terminals
+**/*.log

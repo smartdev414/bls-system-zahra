@@ -1,0 +1,90 @@
+# BLS production stack on the OVH server. Lives at /opt/bls on the server;
+# the CI pipeline copies this file there on every deploy (do not edit it on
+# the server — edit it in git).
+#
+#   /opt/bls/.env      compose settings: DOMAIN, POSTGRES_PASSWORD, IMAGE_REPO
+#   /opt/bls/app.env   the app's secrets (LiveKit, S3, Mailgun, Pusher, …)
+#   IMAGE_TAG          passed in by deploy.sh (the git commit being released)
+
+name: bls
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bls
+      POSTGRES_DB: bls
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in /opt/bls/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Reachable from the server itself only (psql / SSH tunnel), never the internet.
+    ports:
+      - "127.0.0.1:5432:5432"
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bls -d bls"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: applies pending prisma/migrations before each release.
+  migrate:
+    image: ${IMAGE_REPO:?}-migrate:${IMAGE_TAG:-latest}
+    profiles: ["tools"]
+    environment:
+      DATABASE_URL: postgresql://bls:${POSTGRES_PASSWORD}@db:5432/bls
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: ${IMAGE_REPO:?}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: app.env
+    environment:
+      DATABASE_URL: postgresql://bls:${POSTGRES_PASSWORD}@db:5432/bls
+    depends_on:
+      db:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in /opt/bls/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+  # Automatic reminders + expired test-video clean-up, every 10 minutes
+  # (replaces the Vercel cron that was never set up).
+  cron:
+    image: curlimages/curl:8.11.1
+    restart: unless-stopped
+    env_file: app.env
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 600
+          curl -sS -m 120 -H "Authorization: Bearer $$CRON_SECRET" http://web:3000/api/cron/reminders || true
+          echo
+        done
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,6 @@
+# Caddy fetches and renews the HTTPS certificate for $DOMAIN automatically
+# (the domain's DNS A record must point at this server).
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
