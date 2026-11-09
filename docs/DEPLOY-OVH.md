@@ -15,7 +15,7 @@ Everything lives in `/opt/bls`, owned by the `deploy` user:
 |---|---|
 | `app.env` | the app's secrets (LiveKit, S3, Mailgun, Pusher, …). Edit it here, then re-run the latest deploy |
 | `.env` | domain, DB password, `CRON=on/off` |
-| `src/` | the code from the last deploy |
+| `src/` | the code, only while a deploy is building (deleted afterwards) |
 | `backups/` | nightly database dump at 03:15, 14 days kept |
 
 Containers (`docker compose ps` in `/opt/bls`): `caddy` (HTTPS), `web`, `db` (Postgres 18), `cron` (reminders every 10 min).

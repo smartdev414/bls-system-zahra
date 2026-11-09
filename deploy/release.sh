@@ -24,4 +24,5 @@ DOCKER_BUILDKIT=1 nice docker build -q -f deploy/web.Dockerfile --target migrate
 cp deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh deploy/backup.sh /opt/bls/
 
 SKIP_PULL=yes /opt/bls/deploy.sh "$TAG"
-docker builder prune -f --filter until=240h >/dev/null || true
+# The workflow then deletes /opt/bls/src and the build cache (it holds a copy
+# of the source), so only the built images stay on the server.

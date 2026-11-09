@@ -40,5 +40,10 @@ jobs:
       - name: Build and release
         run: ssh ovh "bash /opt/bls/src/deploy/release.sh ${GITHUB_SHA::7}"
 
+      # The source is only needed for the build; don't leave it on the server.
+      - name: Remove the source from the server
+        if: always()
+        run: ssh ovh "rm -rf /opt/bls/src && docker builder prune -af > /dev/null"
+
       - name: Check the live site
         run: curl -fsS --retry 5 --retry-delay 5 --retry-all-errors https://classroom.tms.webcam/api/health
