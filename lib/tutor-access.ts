@@ -16,8 +16,9 @@ const COLUMN = {
   download: "canDownload",
 } as const satisfies Record<TutorArea, string>
 
+// A teacher with no profile row yet gets what a new profile starts with.
 const NO_ACCESS: TutorAccess = {
-  tests: false, calendar: false, library: false, groups: false, students: false, download: false,
+  tests: false, calendar: true, library: false, groups: false, students: false, download: false,
 }
 
 type ProfileRow = Partial<Record<(typeof COLUMN)[TutorArea], boolean>>
