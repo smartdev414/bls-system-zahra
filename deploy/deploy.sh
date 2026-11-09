@@ -9,11 +9,13 @@ set -euo pipefail
 
 TAG="${1:?usage: deploy.sh <image-tag>}"
 cd "$(dirname "$(readlink -f "$0")")"
+set -a; . ./.env; set +a
 export IMAGE_TAG="$TAG"
 PREVIOUS="$(cat .current-tag 2>/dev/null || true)"
 
 echo "==> Pulling $TAG"
-docker compose --profile tools pull web migrate
+# SKIP_PULL=yes: images were built on the server itself (no registry).
+[ "${SKIP_PULL:-}" = "yes" ] || docker compose --profile tools pull web migrate
 echo "$TAG" > .last-pulled-tag
 
 docker compose up -d --wait db
@@ -28,7 +30,10 @@ echo "==> Applying database migrations"
 docker compose --profile tools run --rm -T migrate
 
 echo "==> Starting web"
-if docker compose up -d --wait --wait-timeout 180 --remove-orphans web caddy cron; then
+# CRON=off (in .env) keeps reminders off while OVH is only a test copy.
+SERVICES="web caddy"; [ "${CRON:-on}" = "off" ] || SERVICES="$SERVICES cron"
+if [ "${CRON:-on}" = "off" ]; then docker compose stop cron 2>/dev/null || true; fi
+if docker compose up -d --wait --wait-timeout 180 $SERVICES; then
   echo "$TAG" > .current-tag
   echo "==> Released $TAG"
 else

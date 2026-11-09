@@ -55,9 +55,10 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      # BIND_IP (in .env) limits this to one server IP, for a shared server.
+      - "${BIND_IP:-0.0.0.0}:80:80"
+      - "${BIND_IP:-0.0.0.0}:443:443"
+      - "${BIND_IP:-0.0.0.0}:443:443/udp"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in /opt/bls/.env}
     volumes:
