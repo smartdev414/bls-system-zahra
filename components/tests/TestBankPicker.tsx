@@ -24,10 +24,12 @@ export type BankTest = {
 
 /** "12 questions · in 2 courses" */
 export function bankTestFacts(test: Pick<BankTest, "testKind" | "questionCount" | "courses">): string {
-  const noun = isSignTest(test.testKind) ? "sign" : "question"
+  const count = test.testKind === "REFLECTION"
+    ? `${test.questionCount} ${test.questionCount === 1 ? "criterion" : "criteria"}`
+    : `${test.questionCount} ${isSignTest(test.testKind) ? "sign" : "question"}${test.questionCount !== 1 ? "s" : ""}`
   return [
     TEST_KIND_INFO[test.testKind].label,
-    `${test.questionCount} ${noun}${test.questionCount !== 1 ? "s" : ""}`,
+    count,
     test.courses.length > 0 ? `in ${test.courses.length} course${test.courses.length !== 1 ? "s" : ""}` : null,
   ].filter(Boolean).join(" · ")
 }

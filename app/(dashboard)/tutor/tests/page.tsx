@@ -200,7 +200,9 @@ export default function TestsPage() {
                     <Link href={`${testsBase}/${test.id}`} className="flex-1 min-w-0 group">
                       <p className="font-semibold leading-snug group-hover:text-primary break-words">{test.title}</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {bankTestFacts(test)} · Pass {test.passMark}%
+                        {bankTestFacts(test)}
+                        {/* A self-reflection is sent and reviewed, not scored. */}
+                        {test.testKind !== "REFLECTION" && ` · Pass ${test.passMark}%`}
                       </p>
                       {test.description && (
                         <p className="text-sm text-muted-foreground mt-1.5 line-clamp-2">{test.description}</p>
