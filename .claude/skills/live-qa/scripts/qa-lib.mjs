@@ -71,7 +71,10 @@ async function getState(key) {
   const ctx = await browser.newContext({ ...DESKTOP, baseURL: BASE, ignoreHTTPSErrors: true })
   const page = await ctx.newPage()
   // Wait for hydration: clicking before React is up submits the form as a plain GET (/login?).
-  await page.goto("/login", { waitUntil: "networkidle", timeout: 90000 })
+  // networkidle can never come (live polling), so wait for load plus a hydration pause.
+  await page.goto("/login", { waitUntil: "load", timeout: 90000 })
+  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {})
+  await page.waitForTimeout(2500)
   await page.locator('input[type="email"], input[name*="email" i]').first().fill(email)
   await page.locator('input[type="password"]').first().fill(password)
   await Promise.all([

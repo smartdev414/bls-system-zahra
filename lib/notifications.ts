@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma"
 import { NotificationType } from "@/app/generated/prisma/enums"
 import { sendNotificationEmail } from "@/lib/email"
-import { inBackground, pushConfigured, sendPushToUser } from "@/lib/push"
+import { inBackground, sendPushToUser } from "@/lib/push"
 
 /**
  * Notifications are fire-and-forget: a failure here must never take down the
@@ -29,8 +29,8 @@ export async function createNotification(
     await prisma.notification.create({ data: { userId, type, title, body, link: link ?? null } })
     // Fire email — never awaited so it never blocks the primary action
     void sendNotificationEmail(userId, type, title, body, link, testName)
-    // And to their phone, if they turned on phone notifications
-    if (pushConfigured()) inBackground(() => sendPushToUser(userId, { title, body, url: link }))
+    // And to their phone (browser notifications or the Teach Me Sign app), if they turned them on
+    inBackground(() => sendPushToUser(userId, { title, body, url: link }))
     return true
   } catch (err) {
     console.error(`[notifications] createNotification failed (type=${type}, user=${userId})`, err)
@@ -60,11 +60,9 @@ export async function createNotifications(
         ),
       )
     }
-    if (pushConfigured()) {
-      inBackground(() =>
-        Promise.all(userIds.map((uid) => sendPushToUser(uid, { title, body, url: link }))),
-      )
-    }
+    inBackground(() =>
+      Promise.all(userIds.map((uid) => sendPushToUser(uid, { title, body, url: link }))),
+    )
     return true
   } catch (err) {
     // Worth naming the type: the failure that hid the co-teaching invite was an

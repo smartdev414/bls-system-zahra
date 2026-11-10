@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { triggerNewMessage, triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
+import { inBackground, sendPushToUser } from "@/lib/push"
 
 async function handlePOST(
   req: NextRequest,
@@ -57,6 +58,17 @@ async function handlePOST(
       senderId: session.sub,
       senderName: session.name,
     })
+    // Lock-screen notification on the recipient's phone (app or browser)
+    const recipientArea = recipientId === conversation.studentId ? "student" : "tutor"
+    const text = content.trim()
+    inBackground(() =>
+      sendPushToUser(recipientId, {
+        title: session.name ? `Message from ${session.name}` : "New message",
+        body: text.length > 140 ? `${text.slice(0, 137)}…` : text,
+        url: `/${recipientArea}/messages?conversation=${conversationId}`,
+        tag: `conversation-${conversationId}`,
+      }),
+    )
 
     return NextResponse.json({ message }, { status: 201 })
   } catch (err) {
