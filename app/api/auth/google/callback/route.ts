@@ -8,6 +8,7 @@ import {
   setPendingGoogleCookie,
 } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { MOBILE_REDIRECT, clearMobileSignIn, mobileChallenge, signHandoff } from "@/lib/mobile-google"
 
 type GoogleUserInfo = {
   id: string
@@ -48,19 +49,29 @@ async function handleGET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get("code")
   const error = searchParams.get("error")
+  // Started by the phone app (see lib/mobile-google.ts): hand back to the app instead of the website.
+  const mobile = mobileChallenge(req)
+  const toApp = async (params: Record<string, string>) => {
+    const res = NextResponse.redirect(`${MOBILE_REDIRECT}?${new URLSearchParams(params)}`)
+    clearMobileSignIn(res)
+    return res
+  }
 
   if (error || !code) {
+    if (mobile) return toApp({ error: "google_cancelled" })
     return NextResponse.redirect(`${appUrl}/login?error=google_cancelled`)
   }
 
   try {
     const tokens = await exchangeCodeForTokens(code, appUrl)
     if (!tokens) {
+      if (mobile) return toApp({ error: "google_failed" })
       return NextResponse.redirect(`${appUrl}/login?error=google_failed`)
     }
 
     const googleUser = await fetchGoogleUser(tokens.access_token)
     if (!googleUser) {
+      if (mobile) return toApp({ error: "google_failed" })
       return NextResponse.redirect(`${appUrl}/login?error=google_failed`)
     }
 
@@ -80,6 +91,10 @@ async function handleGET(req: NextRequest) {
             data: { googleId: googleUser.id },
           })
 
+      if (mobile) {
+        return toApp({ code: await signHandoff({ kind: "user", userId: user.id, challenge: mobile }) })
+      }
+
       const token = await signToken({
         sub: user.id,
         name: user.name,
@@ -93,6 +108,10 @@ async function handleGET(req: NextRequest) {
     }
 
     // New user — set a short-lived cookie and redirect to onboarding
+    if (mobile) {
+      const pending = { googleId: googleUser.id, email: googleUser.email, name: googleUser.name, avatarUrl: googleUser.picture }
+      return toApp({ code: await signHandoff({ kind: "pending", pending, challenge: mobile }) })
+    }
     const pendingToken = await signPendingGoogleToken({
       googleId: googleUser.id,
       email: googleUser.email,
@@ -112,6 +131,7 @@ async function handleGET(req: NextRequest) {
     return res
   } catch (err) {
     console.error("[GET /api/auth/google/callback]", err)
+    if (mobile) return toApp({ error: "google_failed" })
     return NextResponse.redirect(`${appUrl}/login?error=google_failed`)
   }
 }
