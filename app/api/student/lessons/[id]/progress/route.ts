@@ -1,3 +1,4 @@
+import { openCourses } from "@/lib/course-closing"
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
@@ -25,7 +26,8 @@ async function handlePATCH(
 
     // Verify enrollment belongs to this student
     const enrollment = await prisma.enrollment.findFirst({
-      where: { id: enrollmentId, studentId: session.sub },
+      // Not on a course that has finished (lib/course-closing.ts).
+      where: { id: enrollmentId, studentId: session.sub, course: openCourses() },
     })
     if (!enrollment) return NextResponse.json({ message: "Enrollment not found" }, { status: 404 })
 

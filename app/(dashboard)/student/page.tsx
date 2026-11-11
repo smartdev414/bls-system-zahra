@@ -14,6 +14,7 @@ import { useFetch } from "@/hooks/use-fetch"
 import { ThisWeekCard, type ThisWeek } from "@/components/student/this-week-card"
 import { VenueLink } from "@/components/sessions/face-to-face"
 import { TrophyShelf, type StudentTrophy } from "@/components/student/trophy-shelf"
+import { StandingCard } from "@/components/student/standing"
 
 type CurrentCourse = {
   courseId: string
@@ -141,6 +142,9 @@ export default function StudentDashboardPage() {
 
           {/* Trophies first: something to be proud of */}
           <TrophyShelf trophies={data?.trophies ?? []} />
+
+          {/* A face for each area: doing well, keep going, lots to catch up */}
+          <StandingCard />
 
           {/* This week: next class, homework, last class's recording */}
           <ThisWeekCard

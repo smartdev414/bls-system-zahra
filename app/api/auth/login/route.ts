@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs"
 import prisma from "@/lib/prisma"
 import { signToken, setSessionCookie, dashboardPath } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { recordLogin } from "@/lib/activity-tracking"
 
 async function handlePOST(req: NextRequest) {
   try {
@@ -18,6 +19,7 @@ async function handlePOST(req: NextRequest) {
     const user = await prisma.user.findUnique({ where: { email } })
 
     if (!user) {
+      await recordLogin(req, { method: "PASSWORD", email, success: false, failureReason: "unknown-email" })
       return NextResponse.json(
         { message: "Invalid email or password" },
         { status: 401 }
@@ -25,6 +27,7 @@ async function handlePOST(req: NextRequest) {
     }
 
     if (!user.passwordHash) {
+      await recordLogin(req, { method: "PASSWORD", email, userId: user.id, success: false, failureReason: "google-only-account" })
       return NextResponse.json(
         { message: "This account uses Google sign-in. Please continue with Google." },
         { status: 401 }
@@ -32,6 +35,7 @@ async function handlePOST(req: NextRequest) {
     }
 
     if (!(await bcrypt.compare(password, user.passwordHash))) {
+      await recordLogin(req, { method: "PASSWORD", email, userId: user.id, success: false, failureReason: "wrong-password" })
       return NextResponse.json(
         { message: "Invalid email or password" },
         { status: 401 }
@@ -44,7 +48,7 @@ async function handlePOST(req: NextRequest) {
       email: user.email,
       role: user.role,
     })
-
+    await recordLogin(req, { method: "PASSWORD", email: user.email, userId: user.id, success: true })
 
     const res = NextResponse.json({ redirectTo: dashboardPath(user.role) })
     setSessionCookie(res, token)

@@ -76,10 +76,20 @@ async function handlePUT(
       visibility?: CourseVisibility
       categoryId?: string | null
       thumbnailUrl?: string | null
+      /** ISO date-time the course finishes (now = close straight away), or null to reopen. */
+      closesAt?: string | null
     }
 
     if (body.visibility !== undefined && !isCourseVisibility(body.visibility)) {
       return NextResponse.json({ message: "visibility must be PRIVATE or PUBLIC" }, { status: 400 })
+    }
+
+    let closesAt: Date | null | undefined
+    if (body.closesAt !== undefined) {
+      closesAt = body.closesAt === null ? null : new Date(body.closesAt)
+      if (closesAt && Number.isNaN(closesAt.getTime())) {
+        return NextResponse.json({ message: "closesAt must be a date" }, { status: 400 })
+      }
     }
 
     // Verify ownership
@@ -96,6 +106,7 @@ async function handlePUT(
         ...(body.visibility && { visibility: body.visibility }),
         ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
         ...(body.thumbnailUrl !== undefined && { thumbnailUrl: body.thumbnailUrl }),
+        ...(closesAt !== undefined && { closesAt }),
       },
     })
 

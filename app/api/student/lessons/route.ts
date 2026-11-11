@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
 import { lessonKindKey } from "@/lib/lesson-kind"
+import { openCourses } from "@/lib/course-closing"
 
 async function handleGET(req: Request) {
   try {
@@ -15,7 +16,7 @@ async function handleGET(req: Request) {
     const courseId = searchParams.get("courseId")
 
     const enrollments = await prisma.enrollment.findMany({
-      where: { studentId: session.sub, ...(courseId ? { courseId } : {}) },
+      where: { studentId: session.sub, ...(courseId ? { courseId } : {}), course: openCourses() },
       include: {
         course: {
           include: {

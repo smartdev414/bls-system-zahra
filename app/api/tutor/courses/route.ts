@@ -37,6 +37,7 @@ async function handleGET() {
         description: c.description,
         thumbnailUrl: c.thumbnailUrl,
         status: c.status,
+        closesAt: c.closesAt?.toISOString() ?? null,
         level: c.level,
         category: c.category,
         enrollmentCount: c._count.enrollments,

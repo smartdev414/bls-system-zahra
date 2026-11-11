@@ -1,4 +1,5 @@
 import type { Prisma } from "@/app/generated/prisma/client"
+import { openCourses } from "@/lib/course-closing"
 
 /**
  * Which courses a student can see: published, and either public or one they
@@ -9,7 +10,8 @@ import type { Prisma } from "@/app/generated/prisma/client"
 export function studentVisibleCourses(studentId: string): Prisma.CourseWhereInput {
   return {
     status: "PUBLISHED",
-    OR: [{ visibility: "PUBLIC" }, { enrollments: { some: { studentId } } }],
+    // A course that has finished (lib/course-closing.ts) is gone for students.
+    AND: [{ OR: [{ visibility: "PUBLIC" }, { enrollments: { some: { studentId } } }] }, openCourses()],
   }
 }
 

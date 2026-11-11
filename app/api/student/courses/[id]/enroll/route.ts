@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { openCourses } from "@/lib/course-closing"
 
 async function handlePOST(
   _req: Request,
@@ -19,7 +20,7 @@ async function handlePOST(
     // Only public courses take self-enrolment; a private course is a class
     // that staff or its tutor put students on.
     const course = await prisma.course.findFirst({
-      where: { id: courseId, status: "PUBLISHED", visibility: "PUBLIC" },
+      where: { id: courseId, status: "PUBLISHED", visibility: "PUBLIC", ...openCourses() },
       include: { tutor: { select: { id: true } } },
     })
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })

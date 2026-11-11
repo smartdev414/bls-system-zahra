@@ -31,6 +31,7 @@ import { Pagination } from "@/components/ui/pagination"
 import { COURSE_LEVELS, levelColorSolid, levelLabel, type CourseLevel } from "@/lib/levels"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { CourseClosedBadge } from "@/components/courses/course-closing"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
@@ -42,6 +43,7 @@ type CourseItem = {
   id: string
   title: string
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+  closesAt: string | null
   visibility: CourseVisibility
   level: CourseLevel
   format: CourseFormat
@@ -273,6 +275,7 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, onEditDetails, o
                   {course.level}
                 </Badge>
                 <ClassFormatBadge inPerson={course.format === "IN_PERSON"} />
+                <CourseClosedBadge closesAt={course.closesAt} />
                 {course.category && (
                   <Badge variant="secondary" className="text-[10px]">{course.category.name}</Badge>
                 )}

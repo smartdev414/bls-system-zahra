@@ -1,14 +1,26 @@
 "use client"
 
-import { Clock, Mail, CheckCircle2, RefreshCw, XCircle } from "lucide-react"
+import { Clock, Mail, CheckCircle2, RefreshCw, XCircle, GraduationCap } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { LogoFull } from "@/components/layout/logo"
 import { useDeleteCallback } from "@/hooks/use-fetch"
 
-/** The waiting page for a student who signed up on their own (see lib/account-approval.ts). */
-export function StudentPendingApproval({ userName, rejected }: { userName: string; rejected: boolean }) {
+/**
+ * The waiting page for a student who signed up on their own (see
+ * lib/account-approval.ts), and the page a student sees once every course they
+ * were on has finished (lib/course-closing.ts).
+ */
+export function StudentPendingApproval({
+  userName,
+  state,
+}: {
+  userName: string
+  state: "pending" | "rejected" | "finished" | "ok"
+}) {
   const firstName = userName.split(" ")[0]
+  const rejected = state === "rejected"
+  const finished = state === "finished"
 
   const { execute: signOut, loading: signingOut } = useDeleteCallback("/api/auth/logout", {
     onSuccess: () => { window.location.href = "/login" },
@@ -19,7 +31,22 @@ export function StudentPendingApproval({ userName, rejected }: { userName: strin
       <LogoFull />
       <Card className="max-w-lg w-full text-center shadow-lg">
         <CardContent className="pt-8 pb-8 px-8 space-y-6">
-          {rejected ? (
+          {finished ? (
+            <>
+              <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <GraduationCap className="w-8 h-8 text-primary" />
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-2xl font-bold tracking-tight">Well done, {firstName}!</h1>
+                <p className="text-muted-foreground text-lg">Your course has finished</p>
+              </div>
+              <p className="text-muted-foreground leading-relaxed">
+                Your course is now closed, so the student space is no longer available. Thank you for
+                learning with us. If you&apos;d like to carry on to the next level, please get in touch and
+                we&apos;ll add you to your next course.
+              </p>
+            </>
+          ) : rejected ? (
             <>
               <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
                 <XCircle className="w-8 h-8 text-destructive" />
@@ -66,7 +93,7 @@ export function StudentPendingApproval({ userName, rejected }: { userName: strin
           )}
 
           <div className="flex flex-col gap-3">
-            {!rejected && (
+            {state === "pending" && (
               <Button onClick={() => window.location.reload()}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Check again

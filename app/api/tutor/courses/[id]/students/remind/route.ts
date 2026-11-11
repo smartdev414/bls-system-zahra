@@ -6,6 +6,7 @@ import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { behindClassBody, behindClassTitle, REMINDER_COOLDOWN_HOURS, reminderLink } from "@/lib/homework"
 import { courseRoster } from "@/lib/course-roster"
+import { isCourseClosed } from "@/lib/course-closing"
 
 /**
  * Remind students to catch up on a course's lessons and tests.
@@ -32,9 +33,12 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const course = await prisma.course.findFirst({
       where: { id, ...courseTeachScope(session) },
-      select: { id: true, title: true },
+      select: { id: true, title: true, closesAt: true },
     })
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
+    if (isCourseClosed(course)) {
+      return NextResponse.json({ message: "This course has finished, so its students can't be reminded about it." }, { status: 409 })
+    }
 
     // Only students who are actually on the course.
     const enrolled = await prisma.enrollment.findMany({
@@ -86,6 +90,14 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!encouraged || !reminded) {
       return NextResponse.json({ message: "The reminder could not be sent. Please try again." }, { status: 502 })
     }
+
+    // Anyone still behind sees the "you're falling behind" notice again next
+    // time they open the platform, however recently they last closed it
+    // (lib/student-standing.ts).
+    await prisma.enrollment.updateMany({
+      where: { courseId: id, studentId: { in: toRemind } },
+      data: { behindNoticeSeenAt: null },
+    })
 
     return NextResponse.json({ sent: toRemind.length, skipped: alreadyReminded.size }, { status: 201 })
   } catch (err) {

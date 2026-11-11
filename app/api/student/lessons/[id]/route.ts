@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { freePreviewOpen } from "@/lib/course-visibility"
+import { COURSE_CLOSED_MESSAGE, isCourseClosed } from "@/lib/course-closing"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
@@ -49,6 +50,11 @@ async function handleGET(
 
     if (!lesson) {
       return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
+    }
+
+    // The course has finished: nothing on it can be opened any more.
+    if (isCourseClosed(lesson.section.course)) {
+      return NextResponse.json({ message: COURSE_CLOSED_MESSAGE, closed: true }, { status: 403 })
     }
 
     // Verify student is enrolled

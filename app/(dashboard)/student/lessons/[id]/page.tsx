@@ -129,7 +129,8 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
     // A locked lesson is a page of its own below, not a failure to report.
     errorMessage: false,
     onError: (e) => {
-      if (!(e.details as Partial<LockedLesson> | null)?.locked) toast.error("Could not load lesson")
+      const details = e.details as (Partial<LockedLesson> & { closed?: boolean }) | null
+      if (!details?.locked && !details?.closed) toast.error("Could not load lesson")
     },
     onSuccess: (d) => {
       setIsCompleted(d.lesson.isCompleted)
@@ -267,6 +268,26 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
         <Button asChild variant="outline" size="sm">
           <Link href={`/student/lessons?courseId=${locked.courseId}`}>
             <ChevronLeft className="size-4 mr-1" /> Back to the course
+          </Link>
+        </Button>
+      </div>
+    )
+  }
+
+  // The course has finished (lib/course-closing.ts).
+  if ((error?.details as { closed?: boolean } | null)?.closed) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-6">
+        <div className="rounded-full bg-muted p-6">
+          <Lock className="size-10 text-muted-foreground" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold">This course has finished</h2>
+          <p className="text-muted-foreground mt-1">Its lessons and tests are closed now.</p>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/student">
+            <ChevronLeft className="size-4 mr-1" /> Back to your dashboard
           </Link>
         </Button>
       </div>

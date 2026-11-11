@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { freePreviewOpen } from "@/lib/course-visibility"
+import { COURSE_CLOSED_MESSAGE, isCourseClosed } from "@/lib/course-closing"
 import prisma from "@/lib/prisma"
 import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
@@ -27,7 +28,7 @@ async function handleGET(
     const lesson = await prisma.lesson.findUnique({
       where: { id },
       include: {
-        section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } },
+        section: { select: { courseId: true, course: { select: { status: true, visibility: true, closesAt: true } } } },
         test: true,
       },
     })
@@ -36,6 +37,11 @@ async function handleGET(
       return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
     }
     const test = lesson.test
+
+    // The course has finished: nothing on it can be opened any more.
+    if (isCourseClosed(lesson.section.course)) {
+      return NextResponse.json({ message: COURSE_CLOSED_MESSAGE, closed: true }, { status: 403 })
+    }
 
     // Verify access
     const enrollment = await prisma.enrollment.findFirst({

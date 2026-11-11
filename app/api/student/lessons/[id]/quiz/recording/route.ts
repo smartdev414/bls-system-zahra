@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { freePreviewOpen } from "@/lib/course-visibility"
+import { COURSE_CLOSED_MESSAGE, isCourseClosed } from "@/lib/course-closing"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
@@ -25,7 +26,7 @@ async function handlePOST(
     const lesson = await prisma.lesson.findUnique({
       where: { id },
       include: {
-        section: { select: { courseId: true, course: { select: { status: true, visibility: true } } } },
+        section: { select: { courseId: true, course: { select: { status: true, visibility: true, closesAt: true } } } },
         test: {
           select: { testKind: true, vocabularyMode: true, questions: { where: { type: "SIGN" }, select: { id: true }, take: 1 } },
         },
@@ -37,6 +38,11 @@ async function handlePOST(
     const assessment = isAssessment(lesson.test.testKind)
     if (lesson.test.questions.length === 0 && !signsWords(lesson.test) && !assessment) {
       return NextResponse.json({ message: "This test has nothing to film" }, { status: 400 })
+    }
+
+    // The course has finished: nothing on it can be opened any more.
+    if (isCourseClosed(lesson.section.course)) {
+      return NextResponse.json({ message: COURSE_CLOSED_MESSAGE, closed: true }, { status: 403 })
     }
 
     const enrollment = await prisma.enrollment.findFirst({

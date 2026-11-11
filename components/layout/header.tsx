@@ -7,7 +7,7 @@ import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare, Clapperboard,
   Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
-  CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy, MessageSquarePlus,
+  CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy, MessageSquarePlus, LogIn,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -103,6 +103,7 @@ const adminNav: NavEntry[] = [
     label: "People", icon: Users, items: [
       { label: "Students", href: "/admin/students", icon: GraduationCap },
       { label: "Users", href: "/admin/users", icon: Users },
+      { label: "Login activity", href: "/admin/login-activity", icon: LogIn },
     ],
   },
 ]

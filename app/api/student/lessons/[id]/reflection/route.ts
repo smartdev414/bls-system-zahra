@@ -1,3 +1,4 @@
+import { isCourseClosed } from "@/lib/course-closing"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
@@ -26,11 +27,12 @@ async function load(lessonId: string, userId: string) {
     where: { id: lessonId },
     select: {
       id: true, title: true, type: true, releaseAt: true,
-      section: { select: { courseId: true } },
+      section: { select: { courseId: true, course: { select: { closesAt: true } } } },
       test: { select: { id: true, testKind: true, description: true } },
     },
   })
   if (!lesson?.test || !isReflection(lesson.test.testKind) || !isReleased(lesson)) return null
+  if (isCourseClosed(lesson.section.course)) return null
   const enrollment = await prisma.enrollment.findFirst({
     where: { studentId: userId, courseId: lesson.section.courseId },
     select: { id: true },

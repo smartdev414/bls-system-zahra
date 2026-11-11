@@ -7,8 +7,9 @@ import {
   ChevronLeft, Plus, Layers,
   Loader2, ChevronDown, ChevronUp,
   Globe, Lock, CheckCircle2, FilePen, Edit3, Trash2, Save, Pencil, X, Camera, Eye, GraduationCap, Copy, CalendarClock,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, GripVertical,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,6 +39,8 @@ import { CourseVisibilityButton } from "@/components/admin/course-visibility-but
 import type { CourseVisibility } from "@/lib/course-visibility"
 import { VideoCleanBadge } from "@/components/ui/video-clean-badge"
 import { useTutorAccess } from "@/components/tutor-access-provider"
+import { useLessonDrag, DropLine } from "@/components/courses/use-lesson-drag"
+import { CourseClosingButton, CourseClosedBadge } from "@/components/courses/course-closing"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +83,8 @@ type CourseDetail = {
   format: "ONLINE" | "IN_PERSON"
   venue: string | null
   thumbnailUrl: string | null
+  /** When the course finishes and students lose access; null = open. */
+  closesAt: string | null
   sections: SectionItem[]
   // The lead, and the teachers the school has put on the course.
   tutor: { id: string; name: string }
@@ -94,6 +99,22 @@ type CourseData = { course: CourseDetail; canEdit: boolean }
 function sharedRelease(section: SectionItem): string | null {
   const first = section.lessons[0]?.releaseAt ?? null
   return first && section.lessons.every((l) => l.releaseAt === first) ? first : null
+}
+
+/**
+ * The sections with one lesson taken out of its place and put at `index` in
+ * `sectionId`, each section numbered 1..n — what the page shows while a
+ * dragged lesson's move is saving.
+ */
+function moveInSections(sections: SectionItem[], lessonId: string, sectionId: string, index: number): SectionItem[] {
+  const lesson = sections.flatMap((s) => s.lessons).find((l) => l.id === lessonId)
+  if (!lesson) return sections
+  return sections.map((s) => {
+    const lessons = s.lessons.filter((l) => l.id !== lessonId)
+    if (s.id === sectionId) lessons.splice(Math.min(index, lessons.length), 0, lesson)
+    if (lessons.length === s.lessons.length && s.id !== sectionId) return s
+    return { ...s, lessons: lessons.map((l, i) => ({ ...l, order: i + 1 })) }
+  })
 }
 
 /** One line on how the course reaches students. */
@@ -279,6 +300,44 @@ const { execute: updateCourseStatus, loading: updating } = usePutCallback<
     onSuccess: () => refetch(),
   })
 
+  const { execute: saveMove, loading: movingLesson } = usePutCallback<
+    { ok: true; releaseAt: string | null },
+    { lessonId: string; sectionId: string; index: number }
+  >(`/api/tutor/courses/${id}/lessons/move`, {
+    successMessage: false,
+    errorMessage: "Could not move lesson",
+    // Put the lessons back the way the server has them.
+    onError: () => refetch(),
+  })
+
+  const drag = useLessonDrag(async (lessonId, fromSectionId, sectionId, index) => {
+    const target = data?.course.sections.find((s) => s.id === sectionId)
+    // Shown straight away; a refetch would blank the page for a moment.
+    mutate((prev) => prev && {
+      ...prev,
+      course: { ...prev.course, sections: moveInSections(prev.course.sections, lessonId, sectionId, index) },
+    })
+    const saved = await saveMove({ lessonId, sectionId, index })
+    if (!saved) return
+    // A lesson moved to another section opens with the rest of it.
+    mutate((prev) => prev && {
+      ...prev,
+      course: {
+        ...prev.course,
+        sections: prev.course.sections.map((s) => ({
+          ...s,
+          lessons: s.lessons.map((l) => (l.id === lessonId ? { ...l, releaseAt: saved.releaseAt } : l)),
+        })),
+      },
+    })
+    if (fromSectionId !== sectionId && target) {
+      const opens = saved.releaseAt && new Date(saved.releaseAt) > new Date() ? new Date(saved.releaseAt) : null
+      toast.success(opens
+        ? `Moved to ${target.title} — students get it with the rest of ${target.title}, ${opens.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}`
+        : `Moved to ${target.title}`)
+    }
+  })
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-100">
@@ -342,6 +401,7 @@ return (
                   ? <><Globe className="size-3 mr-1" /> Public</>
                   : <><Lock className="size-3 mr-1" /> Private</>}
               </Badge>
+              <CourseClosedBadge closesAt={course.closesAt} />
               <ClassFormatBadge inPerson={course.format === "IN_PERSON"} className="text-xs" />
               {course.format === "IN_PERSON" && <VenueLink venue={course.venue} className="text-xs" />}
             </div>
@@ -384,6 +444,11 @@ return (
             visibility={course.visibility}
             disabled={changingVisibility}
             onChange={(visibility) => updateVisibility({ visibility })}
+          />
+          <CourseClosingButton
+            courseId={id}
+            closesAt={course.closesAt}
+            onSaved={(closesAt) => mutate((prev) => prev && { ...prev, course: { ...prev.course, closesAt } })}
           />
         </div>}
         </div>
@@ -440,6 +505,12 @@ return (
             {course.sections.length > 0 && (
               <p className="text-sm text-muted-foreground mt-0.5">{releaseSummary(course.sections)}</p>
             )}
+            {canEdit && course.sections.some((s) => s.lessons.length > 0) && (
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <GripVertical className="size-3.5 shrink-0" />
+                To move a lesson or test, hold the dots beside it and drag it up or down — even into another section.
+              </p>
+            )}
           </div>
           {canEdit && (
             <div className="flex gap-2">
@@ -491,12 +562,17 @@ return (
                 }
                 onMutated={refetch}
                 onOpenSchedule={() => setReleaseOpen(true)}
+                dropIndex={drag.target?.sectionId === section.id ? drag.target.index : null}
+                dragging={drag.dragging}
+                onDragStart={movingLesson ? undefined : (e, lesson, index) => drag.start(e, lesson, section.id, index)}
               />
             ))}
           </div>
         )}
         </div>
       </div>
+
+      {drag.ghost}
 
       {releaseOpen && (
         <ReleaseScheduleDialog
@@ -635,6 +711,9 @@ function SectionBlock({
   onReorder,
   onMutated,
   onOpenSchedule,
+  dropIndex,
+  dragging,
+  onDragStart,
 }: {
   courseId: string
   section: SectionItem
@@ -650,7 +729,16 @@ function SectionBlock({
   onReorder: (lessons: LessonItem[]) => void
   onMutated: () => void
   onOpenSchedule: () => void
+  /** A lesson is being dragged over this section: the slot it would land in. */
+  dropIndex: number | null
+  dragging: { lessonId: string; sectionId: string; index: number } | null
+  /** Starts dragging a lesson by its handle; undefined while a move is saving. */
+  onDragStart?: (e: React.PointerEvent, lesson: LessonItem, index: number) => void
 }) {
+  // Dropping a lesson back where it already is changes nothing, so no line there.
+  const ownSlot = dragging?.sectionId === section.id
+    && (dropIndex === dragging.index || dropIndex === dragging.index + 1)
+  const showLine = (i: number) => dropIndex === i && !ownSlot
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(section.title)
 
@@ -692,9 +780,13 @@ function SectionBlock({
   }
 
   return (
-    <Card className="shadow-sm overflow-hidden">
-      {/* Section header */}
-      <div className="flex items-center bg-muted/30 hover:bg-muted/50 transition-colors">
+    <Card className={`shadow-sm overflow-hidden transition-shadow ${dropIndex !== null && (isCollapsed || section.lessons.length === 0) ? "ring-2 ring-primary" : ""}`}>
+      {/* Section header — a lesson dropped here goes first, or last when the section is closed. */}
+      <div
+        className="flex items-center bg-muted/30 hover:bg-muted/50 transition-colors"
+        data-section-drop={section.id}
+        data-drop-index={isCollapsed ? section.lessons.length : 0}
+      >
         {renaming ? (
           <div className="flex-1 flex items-center gap-2 px-5 py-2">
             <Input
@@ -769,10 +861,15 @@ function SectionBlock({
       {!isCollapsed && !renaming && (
         <>
           {section.lessons.map((lesson, index) => (
+            <div key={lesson.id}>
+            {showLine(index) && <DropLine />}
             <LessonRow
-              key={lesson.id}
               lesson={lesson}
+              sectionId={section.id}
+              index={index}
               number={index + 1}
+              isDragged={dragging?.lessonId === lesson.id}
+              onDragStart={onDragStart && ((e) => onDragStart(e, lesson, index))}
               courseId={courseId}
               canEdit={canEdit}
               hideRelease={sharedRelease(section) !== null}
@@ -781,9 +878,11 @@ function SectionBlock({
               moving={reordering}
               onMutated={onMutated}
             />
+            </div>
           ))}
+          {showLine(section.lessons.length) && <DropLine />}
           {canEdit ? (
-            <div className="px-3 sm:px-5 py-3 border-t">
+            <div className="px-3 sm:px-5 py-3 border-t" data-section-drop={section.id} data-drop-index={section.lessons.length}>
               <Button
                 variant="ghost" size="sm" className="text-primary hover:text-primary"
                 onClick={onAddLesson}
@@ -802,8 +901,15 @@ function SectionBlock({
 
 // ─── Lesson row — edit (admins) or view (teachers) on a dedicated page ────────
 
-function LessonRow({ lesson, number, courseId, canEdit, hideRelease, onMoveUp, onMoveDown, moving, onMutated }: {
+function LessonRow({
+  lesson, sectionId, index, number, isDragged, onDragStart, courseId, canEdit, hideRelease, onMoveUp, onMoveDown, moving, onMutated,
+}: {
   lesson: LessonItem
+  sectionId: string
+  index: number
+  /** This is the lesson being dragged: faded where it was. */
+  isDragged: boolean
+  onDragStart?: (e: React.PointerEvent) => void
   /** Its position in the section; `order` can have gaps after a delete. */
   number: number
   courseId: string
@@ -830,7 +936,24 @@ function LessonRow({ lesson, number, courseId, canEdit, hideRelease, onMoveUp, o
   )
 
   return (
-    <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-t hover:bg-muted/20 transition-colors">
+    <div
+      className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-t hover:bg-muted/20 transition-colors ${isDragged ? "opacity-40" : ""}`}
+      data-lesson-row
+      data-section-id={sectionId}
+      data-index={index}
+    >
+      {canEdit && (
+        <button
+          type="button"
+          className="-ml-1.5 sm:-ml-3 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted touch-none cursor-grab active:cursor-grabbing disabled:opacity-40 disabled:cursor-default shrink-0"
+          title="Drag to move"
+          aria-label={`Drag to move ${lesson.title}`}
+          disabled={!onDragStart}
+          onPointerDown={onDragStart}
+        >
+          <GripVertical className="size-4" />
+        </button>
+      )}
       <div className="rounded-lg bg-primary/10 p-1.5 shrink-0">
         <Icon className="size-4 text-primary" />
       </div>
@@ -853,7 +976,7 @@ function LessonRow({ lesson, number, courseId, canEdit, hideRelease, onMoveUp, o
         {canEdit && (
           <>
             <Button
-              variant="ghost" size="icon" className="size-7"
+              variant="ghost" size="icon" className="size-7 hidden sm:inline-flex"
               disabled={!onMoveUp || moving}
               title="Move up"
               onClick={onMoveUp}
@@ -861,7 +984,7 @@ function LessonRow({ lesson, number, courseId, canEdit, hideRelease, onMoveUp, o
               <ArrowUp className="size-3.5" />
             </Button>
             <Button
-              variant="ghost" size="icon" className="size-7"
+              variant="ghost" size="icon" className="size-7 hidden sm:inline-flex"
               disabled={!onMoveDown || moving}
               title="Move down"
               onClick={onMoveDown}

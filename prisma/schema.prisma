@@ -231,6 +231,11 @@ model User {
   // turn it off again. See app/egress/recorder-view.tsx.
   recordingOptOut        Boolean       @default(false)
   recordingOptOutByStaff Boolean       @default(false)
+  // Activity tracking (lib/activity-tracking.ts): the last successful sign-in,
+  // and the last time a signed-in request was seen (written at most every few
+  // minutes, so "online now" and "last seen" stay cheap to read).
+  lastLoginAt            DateTime?
+  lastActiveAt           DateTime?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
@@ -279,6 +284,37 @@ model User {
   signRequests            SignRequest[]
   trophies                Trophy[]                 @relation("TrophiesReceived")
   trophiesGiven           Trophy[]                 @relation("TrophiesGiven")
+  loginEvents             LoginEvent[]
+}
+
+enum LoginMethod {
+  PASSWORD
+  GOOGLE
+  REGISTER
+}
+
+/// One row per sign-in attempt, successful or not (lib/activity-tracking.ts).
+/// Failed attempts against an unknown email keep the email typed but no user.
+/// Read by the student activity page and the admin Login activity page.
+model LoginEvent {
+  id            String      @id @default(cuid())
+  userId        String?
+  email         String
+  success       Boolean
+  method        LoginMethod
+  // Why a failed attempt failed, e.g. "wrong-password", "unknown-email".
+  failureReason String?
+  // "web", "ios-app", "android-app" — worked out from the request.
+  client        String
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([success, createdAt])
 }
 
 enum AccountStatus {
@@ -485,6 +521,11 @@ model Course {
   format       CourseFormat     @default(ONLINE)
   // Where a face-to-face course meets — the address students are shown.
   venue        String?
+  // When the course finishes. From this moment students can no longer open its
+  // lessons or tests, and a student whose courses have all finished is shown a
+  // "your course has finished" page instead of the student space. Set in the
+  // future it closes on its own; null = open.
+  closesAt     DateTime?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -600,6 +641,10 @@ model Enrollment {
   courseId    String
   enrolledAt  DateTime  @default(now())
   completedAt DateTime?
+  // When the student last pressed "I understand" on the "you're falling behind"
+  // notice for this course. While they stay behind it comes back a week later,
+  // or straight away when a teacher presses Encourage.
+  behindNoticeSeenAt DateTime?
 
   student  User             @relation(fields: [studentId], references: [id])
   course   Course           @relation(fields: [courseId], references: [id])
@@ -1178,6 +1223,7 @@ model ReflectionSubmission {
 
   @@unique([lessonId, userId])
   @@index([lessonId, status])
+  @@index([userId, updatedAt])
 }
 
 // What a teacher said each time they sent a self-reflection back, or
@@ -1316,6 +1362,7 @@ model LeagueAttempt {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([leagueId, userId])
+  @@index([userId, createdAt])
 }
 
 model Ticket {

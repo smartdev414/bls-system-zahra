@@ -6,6 +6,7 @@ import { studentOwnSessions, studentVisibleSessions } from "@/lib/session-access
 import { isReleased } from "@/lib/lesson-release"
 import { lessonKindKey } from "@/lib/lesson-kind"
 import { statusOf, testStatuses, UNFINISHED } from "@/lib/test-progress"
+import { openCourses } from "@/lib/course-closing"
 
 async function handleGET() {
   try {
@@ -23,7 +24,7 @@ async function handleGET() {
         // Only courses that are running count: an archived or unpublished
         // course drops out of the student's stats and "continue" card.
         enrollments: {
-          where: { course: { status: "PUBLISHED" } },
+          where: { course: { status: "PUBLISHED", ...openCourses() } },
           include: {
             course: {
               include: {

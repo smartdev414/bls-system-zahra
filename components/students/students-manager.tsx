@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   Users, Search, BookOpen, Loader2, ChevronDown, ChevronUp,
   CalendarPlus, Check, Filter, ArrowUpDown, FolderOpen,
-  UserPlus, ClipboardCheck, BellRing, Clock
+  UserPlus, ClipboardCheck, BellRing, Clock, LogIn, GraduationCap, Activity, ArrowRight, UserX
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -36,6 +36,7 @@ import { toast } from "sonner"
 import { levelColor, type CourseLevel } from "@/lib/levels"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
+import { ENGAGEMENT_LOOK, STUDY_WINDOW_DAYS, agoLabel, type Engagement } from "@/lib/engagement"
 
 type TestStatus = "PASSED" | "WITH_TEACHER" | "NOT_PASSED" | "TO_MARK" | "STARTED" | "RETURNED" | "NOT_STARTED"
 
@@ -65,17 +66,31 @@ const DAY_MS = 24 * 60 * 60 * 1000
 /** Statuses that still need something from the student (as lib/test-progress.ts). */
 const UNFINISHED: ReadonlySet<TestStatus> = new Set(["NOT_STARTED", "STARTED", "RETURNED", "TO_MARK"])
 
-type Show = "all" | "unfinished" | "away" | "done"
+type Show = "all" | "unfinished" | "away" | "done" | Engagement
 
 const SHOW_FILTER: Record<Exclude<Show, "all">, (s: Student) => boolean> = {
   unfinished: (s) => s.testsUnfinished > 0,
-  away: (s) => { const d = daysSince(s.lastSeenAt); return d === null || d >= 7 },
+  // Kept for a filter remembered from before the engagement cards.
+  away: (s) => s.engagement === "inactive" || s.engagement === "never",
   done: (s) => s.testsUnfinished === 0 && s.testsDone > 0,
+  studying: (s) => s.engagement === "studying",
+  browsing: (s) => s.engagement === "browsing",
+  inactive: (s) => s.engagement === "inactive",
+  never: (s) => s.engagement === "never",
 }
 
-const SUMMARY: { key: Exclude<Show, "all">; label: string; icon: typeof Clock; iconBg: string; iconColor: string; active: string }[] = [
+type SummaryCard = { key: Exclude<Show, "all">; label: string; icon: typeof Clock; iconBg: string; iconColor: string; active: string }
+
+// Who is actually studying — the first thing a teacher wants to know.
+const ENGAGEMENT_SUMMARY: SummaryCard[] = [
+  { key: "studying", label: `Studying (last ${STUDY_WINDOW_DAYS} days)`, icon: GraduationCap, iconBg: "bg-emerald-50", iconColor: "text-emerald-600", active: "bg-emerald-50/60 border-emerald-200 ring-emerald-200" },
+  { key: "browsing", label: "Signing in, not studying", icon: LogIn, iconBg: "bg-amber-50", iconColor: "text-amber-600", active: "bg-amber-50/60 border-amber-200 ring-amber-200" },
+  { key: "inactive", label: `Inactive ${STUDY_WINDOW_DAYS}+ days`, icon: Clock, iconBg: "bg-red-50", iconColor: "text-red-600", active: "bg-red-50/60 border-red-200 ring-red-200" },
+  { key: "never", label: "Never signed in", icon: UserX, iconBg: "bg-muted", iconColor: "text-muted-foreground", active: "bg-muted/60 border-border ring-border" },
+]
+
+const SUMMARY: SummaryCard[] = [
   { key: "unfinished", label: "Have tests not finished", icon: ClipboardCheck, iconBg: "bg-red-50", iconColor: "text-red-600", active: "bg-red-50/60 border-red-200 ring-red-200" },
-  { key: "away", label: "Not seen for a week or more", icon: Clock, iconBg: "bg-amber-50", iconColor: "text-amber-600", active: "bg-amber-50/60 border-amber-200 ring-amber-200" },
   { key: "done", label: "Finished every test", icon: Check, iconBg: "bg-emerald-50", iconColor: "text-emerald-600", active: "bg-emerald-50/60 border-emerald-200 ring-emerald-200" },
 ]
 
@@ -107,6 +122,12 @@ type Student = {
   /** Last time they used the platform, and the UK dates they used it on in the last 30 days. */
   lastSeenAt: string | null
   activeDates: string[]
+  lastLoginAt: string | null
+  /** Last lesson, test, class, league game or reflection, and the UK dates with any in the last 30 days. */
+  lastStudiedAt: string | null
+  studyDates: string[]
+  engagement: Engagement
+  online: boolean
   lastRemindedAt: string | null
   testsDone: number
   testsUnfinished: number
@@ -127,10 +148,10 @@ type SessionsData = { sessions: LiveSession[] }
 
 const PAGE_SIZE = 50
 
-// Student · Level · Courses · Last seen · Tests · Progress · actions
-const COLUMNS = "sm:grid-cols-[1fr_56px_56px_88px_104px_90px_40px]"
+// Student · Level · Courses · Activity · Tests · Progress · actions
+const COLUMNS = "sm:grid-cols-[1fr_56px_56px_132px_104px_90px_40px]"
 
-type SortKey = "name-asc" | "name-desc" | "joined-desc" | "joined-asc" | "progress-desc" | "progress-asc" | "tests-unfinished" | "seen-oldest"
+type SortKey = "name-asc" | "name-desc" | "joined-desc" | "joined-asc" | "progress-desc" | "progress-asc" | "tests-unfinished" | "seen-oldest" | "studied-oldest" | "studied-recent"
 
 const SORT_LABELS: Record<SortKey, string> = {
   "name-asc": "Name A→Z",
@@ -141,6 +162,18 @@ const SORT_LABELS: Record<SortKey, string> = {
   "progress-asc": "Progress (low)",
   "tests-unfinished": "Most tests not finished",
   "seen-oldest": "Not seen for longest",
+  "studied-oldest": "Not studied for longest",
+  "studied-recent": "Studied most recently",
+}
+
+function EngagementPill({ student }: { student: Student }) {
+  const look = ENGAGEMENT_LOOK[student.engagement]
+  return (
+    <span title={look.hint} className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold leading-none w-fit ${look.className}`}>
+      <span className={`size-1.5 rounded-full ${look.dot}`} />
+      {look.label === "Signing in, not studying" ? "Not studying" : look.label}
+    </span>
+  )
 }
 
 function InviteModal({
@@ -239,7 +272,10 @@ function InviteModal({
 export function StudentsManager() {
   const router = useRouter()
   // Admins see the same list; their course pages live under /admin.
-  const base = usePathname().startsWith("/admin") ? "/admin" : "/tutor"
+  const pathname = usePathname()
+  const base = pathname.startsWith("/admin") ? "/admin" : "/tutor"
+  // Where this role's student pages live (support has its own tree).
+  const pathBase = pathname.startsWith("/support") ? "/support" : base
   // The summary cards above the list double as quick filters.
   const [show, setShow] = useRememberedState<Show>("show", "all")
   const [remindingKey, setRemindingKey] = useState<string | null>(null)
@@ -288,6 +324,11 @@ export function StudentsManager() {
         case "seen-oldest": {
           const seen = (s: Student) => (s.lastSeenAt ? new Date(s.lastSeenAt).getTime() : 0)
           return seen(a) - seen(b)
+        }
+        case "studied-oldest":
+        case "studied-recent": {
+          const studied = (s: Student) => (s.lastStudiedAt ? new Date(s.lastStudiedAt).getTime() : 0)
+          return sortKey === "studied-oldest" ? studied(a) - studied(b) : studied(b) - studied(a)
         }
         default: return 0
       }
@@ -411,8 +452,9 @@ export function StudentsManager() {
       {/* At a glance: who needs chasing. Each card filters the list. */}
       {!loading && allStudents.length > 0 && (
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {SUMMARY.map((card) => {
+          {[ENGAGEMENT_SUMMARY, SUMMARY].map((cards, row) => (
+          <div key={row} className={`grid grid-cols-1 gap-2 ${row === 0 ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2"}`}>
+            {cards.map((card) => {
               const count = allStudents.filter(SHOW_FILTER[card.key]).length
               const active = show === card.key
               const Icon = card.icon
@@ -436,6 +478,11 @@ export function StudentsManager() {
               )
             })}
           </div>
+          ))}
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+            <Activity className="size-3 shrink-0" />
+            &ldquo;Studying&rdquo; means a lesson, test, live class, league game or self-reflection in the last {STUDY_WINDOW_DAYS} days &mdash; not just signing in.
+          </p>
           <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             <BellRing className="size-3 shrink-0" />
             Students with tests not finished get an email reminder automatically every 2 days until they finish. Click a student to see each test.
@@ -455,7 +502,7 @@ export function StudentsManager() {
             <span>Student</span>
             <span>Level</span>
             <span className="text-center">Courses</span>
-            <span>Last seen</span>
+            <span>Activity</span>
             <span>Tests</span>
             <span>Progress</span>
             <span />
@@ -479,12 +526,17 @@ export function StudentsManager() {
                       className="flex items-center gap-2.5 min-w-0 text-left"
                       onClick={() => setExpandedId(isExpanded ? null : student.id)}
                     >
-                      <Avatar className="size-7 shrink-0">
-                        {student.avatarUrl && <AvatarImage src={student.avatarUrl} alt={student.name} />}
-                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[10px]">
-                          {initials}
-                        </AvatarFallback>
-                      </Avatar>
+                      <span className="relative shrink-0">
+                        <Avatar className="size-7">
+                          {student.avatarUrl && <AvatarImage src={student.avatarUrl} alt={student.name} />}
+                          <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[10px]">
+                            {initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        {student.online && (
+                          <span title="Online now" className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
+                        )}
+                      </span>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-medium truncate leading-none">{student.name}</span>
@@ -499,7 +551,8 @@ export function StudentsManager() {
                         </div>
                         <p className="text-xs text-muted-foreground truncate mt-0.5">{student.email}</p>
                         {/* Phones: the two things that matter most, under the name. */}
-                        <p className="sm:hidden text-[11px] mt-0.5">
+                        <p className="sm:hidden text-[11px] mt-0.5 flex flex-wrap items-center gap-x-1">
+                          <EngagementPill student={student} />
                           <span className={seenClass(student.lastSeenAt)}>Seen {seenLabel(student.lastSeenAt).toLowerCase()}</span>
                           {student.testsUnfinished > 0 && <span className="text-red-600 font-semibold"> · {student.testsUnfinished} test{student.testsUnfinished === 1 ? "" : "s"} not finished</span>}
                         </p>
@@ -523,9 +576,18 @@ export function StudentsManager() {
                       {student.courses.length}
                     </div>
 
-                    {/* Last seen */}
-                    <div className={`hidden sm:block text-xs ${seenClass(student.lastSeenAt)}`} title={student.lastSeenAt ? new Date(student.lastSeenAt).toLocaleString("en-GB") : "Has never used the platform"}>
-                      {seenLabel(student.lastSeenAt)}
+                    {/* Activity: are they studying, and when were they last on */}
+                    <div className="hidden sm:flex flex-col gap-1 text-[11px] leading-tight min-w-0">
+                      <EngagementPill student={student} />
+                      <span
+                        className={seenClass(student.lastSeenAt)}
+                        title={[
+                          `Last on the platform: ${student.lastSeenAt ? new Date(student.lastSeenAt).toLocaleString("en-GB") : "never"}`,
+                          `Last studied: ${student.lastStudiedAt ? new Date(student.lastStudiedAt).toLocaleString("en-GB") : "never"}`,
+                        ].join("\n")}
+                      >
+                        {student.online ? "Online now" : `Seen ${seenLabel(student.lastSeenAt).toLowerCase()}`}
+                      </span>
                     </div>
 
                     {/* Tests */}
@@ -579,11 +641,45 @@ export function StudentsManager() {
                             {" · "}on the platform on {student.activeDates.length} day{student.activeDates.length === 1 ? "" : "s"} in the last 30
                           </span>
                         </p>
+                        <p className="flex items-center gap-1.5">
+                          <LogIn className="size-3.5 text-muted-foreground shrink-0" />
+                          <span>
+                            Last signed in{" "}
+                            <span className="font-medium">
+                              {student.lastLoginAt
+                                ? new Date(student.lastLoginAt).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                                : "— not recorded yet"}
+                            </span>
+                          </span>
+                        </p>
+                        <p className="flex items-center gap-1.5">
+                          <GraduationCap className="size-3.5 text-muted-foreground shrink-0" />
+                          <span>
+                            Last studied{" "}
+                            <span className="font-medium">{agoLabel(student.lastStudiedAt).toLowerCase()}</span>
+                            {" · "}studied on {student.studyDates.length} of the {student.activeDates.length} day{student.activeDates.length === 1 ? "" : "s"} they were on
+                          </span>
+                          <Link
+                            href={`${pathBase}/students/${student.id}`}
+                            className="ml-auto inline-flex items-center gap-1 font-semibold text-primary hover:underline shrink-0"
+                          >
+                            Full activity <ArrowRight className="size-3" />
+                          </Link>
+                        </p>
                         {student.activeDates.length > 0 && (
                           <div className="flex flex-wrap gap-1 pl-5">
-                            {student.activeDates.map((d) => (
-                              <span key={d} className="rounded border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">{shortDay(d)}</span>
-                            ))}
+                            {student.activeDates.map((d) => {
+                              const studied = student.studyDates.includes(d)
+                              return (
+                                <span
+                                  key={d}
+                                  title={studied ? "Studied this day" : "Signed in, no learning"}
+                                  className={`rounded border px-1.5 py-0.5 text-[10px] ${studied ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-background text-muted-foreground"}`}
+                                >
+                                  {shortDay(d)}
+                                </span>
+                              )
+                            })}
                           </div>
                         )}
                         <p className="flex items-center gap-1.5 text-muted-foreground">

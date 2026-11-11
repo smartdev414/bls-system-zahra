@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { withAudit } from "@/lib/audit"
+import { recordLogin } from "@/lib/activity-tracking"
 import { setPendingGoogleCookie, setSessionCookie, signPendingGoogleToken, signToken } from "@/lib/auth"
 import { verifyHandoff } from "@/lib/mobile-google"
 
@@ -25,6 +26,7 @@ async function handlePOST(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { id: handoff.userId } })
   if (!user) return NextResponse.json({ message: "Account not found" }, { status: 404 })
   const token = await signToken({ sub: user.id, name: user.name, email: user.email, role: user.role })
+  await recordLogin(req, { method: "GOOGLE", email: user.email, userId: user.id, success: true })
   const res = NextResponse.json({ status: "signed-in" })
   setSessionCookie(res, token)
   return res

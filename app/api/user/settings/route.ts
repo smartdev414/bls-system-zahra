@@ -7,7 +7,8 @@ async function handleGET() {
   try {
     // A student waiting for approval can still read their own profile: the
     // mobile app loads it to learn it should show its waiting screen.
-    const session = (await getAccountSession())?.session
+    const found = await getAccountSession()
+    const session = found?.session
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
 
     const user = await prisma.user.findUnique({
@@ -29,7 +30,9 @@ async function handleGET() {
 
     if (!user) return NextResponse.json({ message: "User not found" }, { status: 404 })
 
-    return NextResponse.json({ user })
+    // Every course they were on has closed (lib/course-closing.ts): the app
+    // shows its "your course has finished" screen, as the web does.
+    return NextResponse.json({ user, courseFinished: found?.state === "finished" })
   } catch (err) {
     console.error("[GET /api/user/settings]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma"
 import { READY_QUESTION } from "@/lib/tests"
 import { urlsHiddenFromStudents } from "@/lib/background-clean"
 import { VOCABULARY_CHOICES, sameWord, type SignQuestion } from "@/lib/quiz"
+import { openCourses } from "@/lib/course-closing"
 
 /**
  * Practice from the dictionary — the student's starred signs as flashcards,
@@ -70,7 +71,7 @@ async function weekSignIds(studentId: string, allSigns: { id: string; word: stri
   const lessons = await prisma.lesson.findMany({
     where: {
       releaseAt: { gte: new Date(now.getTime() - WEEK_MS), lte: now },
-      section: { course: { status: "PUBLISHED", enrollments: { some: { studentId } } } },
+      section: { course: { status: "PUBLISHED", enrollments: { some: { studentId } }, ...openCourses(now) } },
     },
     select: {
       title: true,

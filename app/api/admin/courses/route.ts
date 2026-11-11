@@ -50,6 +50,7 @@ async function handleGET(req: NextRequest) {
         id: c.id,
         title: c.title,
         status: c.status,
+        closesAt: c.closesAt?.toISOString() ?? null,
         visibility: c.visibility,
         level: c.level,
         format: c.format,

@@ -8,6 +8,7 @@ import {
   setPendingGoogleCookie,
 } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { recordLogin } from "@/lib/activity-tracking"
 import { MOBILE_REDIRECT, clearMobileSignIn, mobileChallenge, signHandoff } from "@/lib/mobile-google"
 
 type GoogleUserInfo = {
@@ -102,6 +103,8 @@ async function handleGET(req: NextRequest) {
         role: user.role,
       })
 
+      // (The phone app's sign-in is recorded when it trades the code in — mobile/exchange.)
+      await recordLogin(req, { method: "GOOGLE", email: user.email, userId: user.id, success: true })
       const res = NextResponse.redirect(`${appUrl}${dashboardPath(user.role)}`)
       setSessionCookie(res, token)
       return res

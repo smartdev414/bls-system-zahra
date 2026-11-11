@@ -4,11 +4,14 @@ import { StudentPendingApproval } from "@/components/student-pending-approval"
 
 export const metadata = { title: "Waiting for approval" }
 
-/** Where a student who signed up on their own waits for staff to approve them. */
+/**
+ * Where a student who signed up on their own waits for staff to approve them —
+ * and where a student whose courses have all finished is kept (lib/course-closing.ts).
+ */
 export default async function PendingApprovalPage() {
   const found = await getAccountSession()
   if (!found) redirect("/login")
   if (found.state === "ok") redirect(dashboardPath(found.session.role))
 
-  return <StudentPendingApproval userName={found.session.name} rejected={found.state === "rejected"} />
+  return <StudentPendingApproval userName={found.session.name} state={found.state} />
 }

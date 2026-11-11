@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { useFetch } from "@/hooks/use-fetch"
 import { Pagination } from "@/components/ui/pagination"
 import { levelColorSolid, type CourseLevel } from "@/lib/levels"
+import { CourseClosedBadge } from "@/components/courses/course-closing"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ type CourseItem = {
   description: string
   thumbnailUrl: string | null
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+  closesAt: string | null
   level: CourseLevel
   category: { id: string; name: string } | null
   enrollmentCount: number
@@ -83,7 +85,8 @@ export default function TutorCoursesPage() {
                       ) : (
                         <BookOpen className="size-10 text-primary/40" />
                       )}
-                      <div className="absolute top-2 right-2">
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <CourseClosedBadge closesAt={course.closesAt} />
                         <Badge variant="outline" className={`text-xs ${statusColor[course.status]}`}>
                           <StatusIcon className="size-3 mr-1" />
                           {course.status.charAt(0) + course.status.slice(1).toLowerCase()}

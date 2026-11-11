@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
+import { openCourses } from "@/lib/course-closing"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -18,7 +19,7 @@ async function handleGET(req: NextRequest) {
 
     // All non-VIDEO, non-SUBTITLE assets from lessons in courses the student is enrolled in
     const enrollments = await prisma.enrollment.findMany({
-      where: { studentId: session.sub },
+      where: { studentId: session.sub, course: openCourses() },
       include: {
         course: {
           select: {

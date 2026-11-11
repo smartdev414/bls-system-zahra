@@ -30,6 +30,7 @@ import { awardFinishers } from "@/lib/trophies"
 import { completeOverdueLiveSessions } from "@/lib/live-session-status"
 import { announceHandouts } from "@/lib/class-handouts"
 import { courseTests, testStatuses, statusOf, UNFINISHED } from "@/lib/test-progress"
+import { openCourses } from "@/lib/course-closing"
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -110,7 +111,7 @@ async function unlockReminders(now: Date): Promise<number> {
   const opened = await prisma.lesson.findMany({
     where: {
       releaseAt: { lte: now, gt: new Date(now.getTime() - 2 * DAY) },
-      section: { course: { status: "PUBLISHED" } },
+      section: { course: { status: "PUBLISHED", ...openCourses(now) } },
     },
     orderBy: [{ section: { order: "asc" } }, { order: "asc" }],
     select: {
@@ -149,7 +150,7 @@ async function homeworkReminders(now: Date): Promise<number> {
   const quietSince = new Date(now.getTime() - BEHIND_AFTER_DAYS * DAY)
 
   const courses = await prisma.course.findMany({
-    where: { status: "PUBLISHED", enrollments: { some: {} } },
+    where: { status: "PUBLISHED", enrollments: { some: {} }, ...openCourses() },
     select: {
       id: true,
       title: true,
@@ -231,7 +232,7 @@ async function testReminders(now: Date): Promise<number> {
 
   const twoDaysAgo = new Date(now.getTime() - 2 * DAY)
   const courses = await prisma.course.findMany({
-    where: { status: "PUBLISHED", enrollments: { some: {} } },
+    where: { status: "PUBLISHED", enrollments: { some: {} }, ...openCourses() },
     select: {
       id: true,
       title: true,
@@ -303,7 +304,7 @@ async function testReminders(now: Date): Promise<number> {
 /** Trophies for whoever has finished a course so far without one being given yet. */
 async function trophyRound(): Promise<number> {
   const courses = await prisma.course.findMany({
-    where: { status: "PUBLISHED", enrollments: { some: {} } },
+    where: { status: "PUBLISHED", enrollments: { some: {} }, ...openCourses() },
     select: { id: true },
   })
   let given = 0

@@ -38,7 +38,8 @@ export async function proxy(request: NextRequest) {
   const state = verified ? await sessionState(verified) : null
   const replaced = state === "replaced"
   const session = replaced ? null : verified
-  const awaitingApproval = state === "pending" || state === "rejected"
+  // Waiting for approval, turned down, or every course finished: kept on one page.
+  const awaitingApproval = state === "pending" || state === "rejected" || state === "finished"
   const home = (role: string) => (awaitingApproval ? PENDING_PATH : ROLE_HOME[role] ?? "/student")
 
   // The waiting page is only for students who are waiting

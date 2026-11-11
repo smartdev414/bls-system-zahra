@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma"
 import { signToken, setSessionCookie, dashboardPath, PENDING_PATH } from "@/lib/auth"
 import { Role } from "@/app/generated/prisma/enums"
 import { withAudit } from "@/lib/audit"
+import { recordLogin } from "@/lib/activity-tracking"
 import { cleanSignupNote, notifyStaffOfSignup, studentApprovalRequired } from "@/lib/account-approval"
 
 async function handlePOST(req: NextRequest) {
@@ -87,7 +88,7 @@ async function handlePOST(req: NextRequest) {
       email: user.email,
       role: user.role,
     })
-
+    await recordLogin(req, { method: "REGISTER", email: user.email, userId: user.id, success: true })
 
     const res = NextResponse.json(
       { redirectTo: pending ? PENDING_PATH : dashboardPath(user.role), pending },

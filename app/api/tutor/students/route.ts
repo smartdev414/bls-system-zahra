@@ -5,6 +5,8 @@ import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
 import { joinedClassOf } from "@/lib/session-access"
+import { learningSummary, type LearningCounts } from "@/lib/student-activity"
+import { engagementOf, isOnline, latest, type Engagement } from "@/lib/engagement"
 import { activity, courseTests, statusOf, testStatuses, UNFINISHED, type TestStatus } from "@/lib/test-progress"
 
 async function handleGET(req: NextRequest) {
@@ -87,6 +89,12 @@ async function handleGET(req: NextRequest) {
       source: "enrolled" | "invited" | "both"
       lastSeenAt: string | null
       activeDates: string[]
+      lastLoginAt: string | null
+      lastStudiedAt: string | null
+      studyDates: string[]
+      learning30d: LearningCounts | null
+      engagement: Engagement
+      online: boolean
       lastRemindedAt: string | null
       testsDone: number
       testsUnfinished: number
@@ -105,7 +113,11 @@ async function handleGET(req: NextRequest) {
     const testsByCourse = await courseTests(courseIds)
     const allTestIds = [...testsByCourse.values()].flat().map((t) => t.id)
     const statuses = await testStatuses(allTestIds, [...new Set(enrollments.map((e) => e.studentId))])
-    const blank = { lastSeenAt: null, activeDates: [], lastRemindedAt: null, testsDone: 0, testsUnfinished: 0 }
+    const blank = {
+      lastSeenAt: null, activeDates: [], lastRemindedAt: null, testsDone: 0, testsUnfinished: 0,
+      lastLoginAt: null, lastStudiedAt: null, studyDates: [], learning30d: null,
+      engagement: "never" as Engagement, online: false,
+    }
 
     for (const enrollment of enrollments) {
       const sid = enrollment.student.id
@@ -186,8 +198,12 @@ async function handleGET(req: NextRequest) {
     const students = [...studentMap.values()]
     // When each was last on the platform and last reminded to catch up.
     const ids = students.map((s) => s.id)
-    const [seen, reminders] = await Promise.all([
+    const [seen, learning, stamps, reminders] = await Promise.all([
       activity(ids),
+      learningSummary(ids),
+      ids.length > 0
+        ? prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, lastLoginAt: true, lastActiveAt: true } })
+        : [],
       ids.length > 0
         ? prisma.notification.groupBy({
             by: ["userId"],
@@ -197,10 +213,21 @@ async function handleGET(req: NextRequest) {
         : [],
     ])
     const remindedAt = new Map(reminders.map((r) => [r.userId, r._max.createdAt]))
+    const stampOf = new Map(stamps.map((u) => [u.id, u]))
     for (const s of students) {
       const a = seen.get(s.id)
-      s.lastSeenAt = a?.lastSeenAt?.toISOString() ?? null
+      const l = learning.get(s.id)
+      const u = stampOf.get(s.id)
+      // Page loads (lastActiveAt) and API calls (ApiLog) both count as being seen.
+      const lastSeen = latest(a?.lastSeenAt, u?.lastActiveAt, u?.lastLoginAt)
+      s.lastSeenAt = lastSeen?.toISOString() ?? null
       s.activeDates = a?.activeDates ?? []
+      s.lastLoginAt = u?.lastLoginAt?.toISOString() ?? null
+      s.lastStudiedAt = l?.lastStudiedAt?.toISOString() ?? null
+      s.studyDates = l?.studyDates ?? []
+      s.learning30d = l?.counts ?? null
+      s.engagement = engagementOf({ lastSeenAt: lastSeen, lastStudiedAt: l?.lastStudiedAt })
+      s.online = isOnline(u?.lastActiveAt)
       s.lastRemindedAt = remindedAt.get(s.id)?.toISOString() ?? null
     }
     return NextResponse.json({ students, total: students.length })

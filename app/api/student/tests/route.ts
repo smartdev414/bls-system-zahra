@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
 import { attemptsLeft } from "@/lib/quiz"
+import { openCourses } from "@/lib/course-closing"
 
 async function handleGET() {
   try {
@@ -19,7 +20,7 @@ async function handleGET() {
         where: {
           type: "QUIZ",
           // Tests on archived or unpublished courses drop out, as on the dashboard.
-          section: { course: { status: "PUBLISHED", enrollments: { some: { studentId: session.sub } } } },
+          section: { course: { status: "PUBLISHED", enrollments: { some: { studentId: session.sub } }, ...openCourses() } },
           ...releasedLessons(),
         },
         orderBy: [{ section: { courseId: "asc" } }, { section: { order: "asc" } }, { order: "asc" }],

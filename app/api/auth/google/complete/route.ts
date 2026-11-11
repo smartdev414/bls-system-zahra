@@ -10,6 +10,7 @@ import {
   getPendingGoogleToken,
 } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { recordLogin } from "@/lib/activity-tracking"
 import { notifyStaffOfSignup, studentApprovalRequired } from "@/lib/account-approval"
 
 type Role = "STUDENT" | "TUTOR"
@@ -55,6 +56,7 @@ async function handlePOST(req: NextRequest) {
         role: user.role,
       })
 
+      await recordLogin(req, { method: "GOOGLE", email: user.email, userId: user.id, success: true })
       const res = NextResponse.json({ redirectTo: dashboardPath(user.role) })
       setSessionCookie(res, token)
       clearPendingGoogleCookie(res)
@@ -87,7 +89,7 @@ async function handlePOST(req: NextRequest) {
       email: user.email,
       role: user.role,
     })
-
+    await recordLogin(req, { method: "REGISTER", email: user.email, userId: user.id, success: true })
 
     const res = NextResponse.json(
       { redirectTo: awaiting ? PENDING_PATH : dashboardPath(user.role), pending: awaiting },
