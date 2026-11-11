@@ -225,7 +225,15 @@ function ClassList({
             : <CalendarClock className="size-3.5 text-muted-foreground shrink-0" />}
           <span className="font-medium">{classDate(s.scheduledAt)}</span>
           {s.canManage && calendar && !picked
-            ? <WeekPicker sessionId={s.id} week={s.week} date={classDate(s.scheduledAt)} onSaved={onChanged} />
+            ? (
+              <WeekPicker
+                sessionId={s.id}
+                week={s.week}
+                date={classDate(s.scheduledAt)}
+                onSaved={onChanged}
+                later={sessions.slice(sessions.indexOf(s) + 1).filter((x) => x.canManage).map((x) => x.id)}
+              />
+            )
             : <WeekBadge week={s.week} />}
           <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">
             {s.durationMins} min · {s.tutorName}

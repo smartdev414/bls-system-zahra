@@ -189,7 +189,11 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
               )}
               {student.status !== "ACTIVE" && <Badge variant="outline" className="text-[10px] h-5">{student.status.toLowerCase()}</Badge>}
             </div>
-            <p className="text-sm text-muted-foreground break-all">{student.email} · joined {new Date(student.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+            <p className="text-sm text-muted-foreground">
+              <span className="break-all">{student.email}</span>
+              {" · "}
+              <span className="whitespace-nowrap">joined {new Date(student.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+            </p>
             <EngagementBadge engagement={data.engagement} online={data.online} />
           </div>
         </CardContent>
