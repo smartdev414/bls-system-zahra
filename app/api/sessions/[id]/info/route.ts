@@ -26,6 +26,7 @@ async function handleGET(
         venue: true,
         tutorId: true,
         durationMins: true,
+        week: true,
         scheduledAt: true,
         tutor: { select: { name: true } },
         course: { select: { id: true, title: true } },

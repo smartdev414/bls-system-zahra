@@ -29,7 +29,18 @@ type ActivityData = {
   online: boolean
   last30: { daysActive: number; daysStudied: number; logins: number; failedLogins: number } & Record<Kind, number>
   days: Array<{ date: string; active: boolean; learning: number; kinds: Partial<Record<Kind, number>> }>
-  courses: Array<{ id: string; title: string; enrolledAt: string; totalLessons: number; completedLessons: number; completion: number }>
+  courses: Array<{
+    id: string; title: string; enrolledAt: string
+    totalLessons: number; completedLessons: number
+    /** Homework tests released so far, and how many they've sat or sent in. */
+    totalTests: number; testsDone: number
+    /** Lessons and tests together, 0–100. */
+    completion: number
+    classAverage: number
+    behindClass: boolean
+    inactive: boolean
+    closed: boolean
+  }>
   timeline: Array<{ at: string; kind: Kind; title: string; detail: string | null }>
   logins: Array<{
     id: string; createdAt: string; success: boolean; method: string; failureReason: string | null
@@ -77,7 +88,7 @@ function Stat({ label, value, sub, icon: Icon }: { label: string; value: string 
     <div className="rounded-xl border bg-card p-3 flex flex-col gap-1 min-w-0">
       <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Icon className="size-3.5 shrink-0" /> {label}</p>
       <p className="text-lg font-black leading-tight tabular-nums truncate">{value}</p>
-      {sub && <p className="text-[11px] text-muted-foreground truncate">{sub}</p>}
+      {sub && <p className="text-[11px] leading-snug text-muted-foreground">{sub}</p>}
     </div>
   )
 }
@@ -178,7 +189,7 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
               )}
               {student.status !== "ACTIVE" && <Badge variant="outline" className="text-[10px] h-5">{student.status.toLowerCase()}</Badge>}
             </div>
-            <p className="text-sm text-muted-foreground truncate">{student.email} · joined {new Date(student.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+            <p className="text-sm text-muted-foreground break-all">{student.email} · joined {new Date(student.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
             <EngagementBadge engagement={data.engagement} online={data.online} />
           </div>
         </CardContent>
@@ -186,16 +197,17 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
 
       {/* Headline numbers */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        <Stat icon={LogIn} label="Last sign-in" value={agoLabel(student.lastLoginAt)} sub={student.lastLoginAt ? fullDate(student.lastLoginAt) : "No sign-in recorded yet"} />
+        {/* Sign-ins are only recorded since 11 Nov 2026, so "Never" would be wrong for anyone older. */}
+        <Stat icon={LogIn} label="Last sign-in" value={student.lastLoginAt ? agoLabel(student.lastLoginAt) : "Not yet"} sub={student.lastLoginAt ? fullDate(student.lastLoginAt) : "Recorded from their next sign-in"} />
         <Stat icon={Clock} label="Last on the platform" value={agoLabel(data.lastSeenAt)} sub={data.lastSeenAt ? fullDate(data.lastSeenAt) : undefined} />
         <Stat icon={GraduationCap} label="Last studied" value={agoLabel(data.lastStudiedAt)} sub={data.lastStudiedAt ? fullDate(data.lastStudiedAt) : "No learning yet"} />
-        <Stat icon={CalendarDays} label="Days on, last 30" value={last30.daysActive} sub={`${last30.logins} sign-in${last30.logins === 1 ? "" : "s"}`} />
-        <Stat icon={BookOpen} label="Days studied, last 30" value={last30.daysStudied} sub={last30.daysActive > last30.daysStudied ? `${last30.daysActive - last30.daysStudied} day(s) on without studying` : undefined} />
+        <Stat icon={CalendarDays} label="Days on, last 30" value={last30.daysActive} sub={student.lastLoginAt ? `${last30.logins} sign-in${last30.logins === 1 ? "" : "s"}` : undefined} />
+        <Stat icon={BookOpen} label="Days studied, last 30" value={last30.daysStudied} sub={last30.daysActive > last30.daysStudied ? `${last30.daysActive - last30.daysStudied} day${last30.daysActive - last30.daysStudied === 1 ? "" : "s"} on without studying` : undefined} />
         <Stat icon={ClipboardCheck} label="Done in last 30 days" value={last30.lesson + last30.test + last30.class + last30.league + last30.reflection}
           sub={[
-            last30["lesson-completed"] && `${last30["lesson-completed"]} lessons done`,
-            last30.test && `${last30.test} tests`,
-            last30.class && `${last30.class} classes`,
+            last30["lesson-completed"] && `${last30["lesson-completed"]} lesson${last30["lesson-completed"] === 1 ? "" : "s"} done`,
+            last30.test && `${last30.test} test${last30.test === 1 ? "" : "s"}`,
+            last30.class && `${last30.class} class${last30.class === 1 ? "" : "es"}`,
           ].filter(Boolean).join(" · ") || "Nothing yet"} />
       </div>
 
@@ -249,7 +261,18 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
                       <span className="text-xs font-semibold tabular-nums">{c.completion}%</span>
                     </div>
                     <Progress value={c.completion} className="h-1.5" />
-                    <p className="text-[11px] text-muted-foreground">{c.completedLessons}/{c.totalLessons} lessons</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {[
+                        c.totalLessons > 0 && `${c.completedLessons}/${c.totalLessons} lessons`,
+                        c.totalTests > 0 && `${c.testsDone}/${c.totalTests} homework tests`,
+                        c.classAverage > 0 && `class average ${c.classAverage}%`,
+                      ].filter(Boolean).join(" · ") || "Nothing released yet"}
+                    </p>
+                    {(c.closed || c.behindClass || c.inactive) && (
+                      <p className={`text-[11px] font-semibold ${c.closed ? "text-muted-foreground" : "text-rose-600"}`}>
+                        {c.closed ? "Course finished" : c.behindClass ? "Behind the class" : "No course work for a week"}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>

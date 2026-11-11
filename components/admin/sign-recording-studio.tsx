@@ -14,7 +14,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   ArrowLeft, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Circle,
-  Loader2, MessageSquareText, Plus, Reply, RotateCcw, Square, TriangleAlert, Video,
+  Loader2, MessageSquareText, PauseCircle, Play, Plus, Reply, RotateCcw, Square, TriangleAlert, Video,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -83,6 +83,8 @@ type QueueSign = {
   description?: string
   /** Students who asked for this word, and what they need it for. */
   requests?: { studentName: string; context: string; createdAt: string }[]
+  /** A requested word the admin put on hold to research first. */
+  held?: boolean
 }
 
 type QueueData = {
@@ -302,6 +304,8 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
   const [replyText, setReplyText] = useState("")
   // Which button is busy, so the spinner shows on the one pressed.
   const [replySending, setReplySending] = useState<false | "reply" | "close">(false)
+  // The requested word being put on (or taken off) hold.
+  const [holding, setHolding] = useState<string | null>(null)
   // The requested word whose category is being typed as a new one.
   const [typingCategoryFor, setTypingCategoryFor] = useState<string | null>(null)
   const currentRowRef = useRef<HTMLButtonElement>(null)
@@ -440,6 +444,41 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
       })
       .catch((err: Error) => toast.error(err.message || "Could not send the reply"))
       .finally(() => setReplySending(false))
+  }
+
+  // "Hold" on a requested word: it's still wanted, but the admin wants to look
+  // into it before filming it or replying. It moves below the other requested
+  // words (the next word comes up), and the students see "Looking into it".
+  function holdRequest(sign: QueueSign, hold: boolean) {
+    setHolding(sign.id)
+    fetch(`/api/admin/sign-requests?word=${encodeURIComponent(sign.word)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hold }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.message)
+        const moved = { ...sign, held: hold }
+        const at = items.findIndex((s) => s.id === sign.id)
+        const rest = items.filter((s) => s.id !== sign.id)
+        // Held words sit at the end of the requested ones; a word taken off
+        // hold goes back just above the held ones.
+        const isRequested = (s: QueueSign) => !!s.requests?.length
+        const slot = hold
+          ? rest.filter(isRequested).length
+          : rest.filter((s) => isRequested(s) && !s.held).length
+        const next = [...rest.slice(0, slot), moved, ...rest.slice(slot)]
+        setItems(next)
+        // Holding brings the next word up; taking off hold stays on this one.
+        if (hold) setIndex(Math.min(at, next.length - 1))
+        else setIndex(slot)
+        toast.success(hold
+          ? `"${sign.word}" is on hold — it waits below the other requests`
+          : `"${sign.word}" is back with the other requests`)
+      })
+      .catch((err: Error) => toast.error(err.message || "Could not change the hold"))
+      .finally(() => setHolding(null))
   }
 
   // Its spelling in the list if it is already there, so "food" joins "Food".
@@ -923,20 +962,40 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
                 )}
                 {!!current.requests?.length && (
                   <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/40">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="flex items-center gap-1.5 font-semibold text-amber-800 dark:text-amber-300">
+                    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                      <p className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-amber-800 dark:text-amber-300">
                         <MessageSquareText className="size-4" /> Asked for by
                       </p>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="-my-1 h-7 px-2 text-xs"
-                        disabled={phase !== "idle"}
-                        onClick={() => { setReplyFor(current); setReplyText("") }}
-                      >
-                        <Reply className="mr-1 size-3.5" /> Reply
-                      </Button>
+                      <div className="-my-1 flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          disabled={phase !== "idle" || holding === current.id}
+                          onClick={() => holdRequest(current, !current.held)}
+                        >
+                          {holding === current.id
+                            ? <Loader2 className="mr-1 size-3.5 animate-spin" />
+                            : current.held ? <Play className="mr-1 size-3.5" /> : <PauseCircle className="mr-1 size-3.5" />}
+                          {current.held ? "Take off hold" : "Hold"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          disabled={phase !== "idle"}
+                          onClick={() => { setReplyFor(current); setReplyText("") }}
+                        >
+                          <Reply className="mr-1 size-3.5" /> Reply
+                        </Button>
+                      </div>
                     </div>
+                    {current.held && (
+                      <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-sky-700 dark:text-sky-300">
+                        <PauseCircle className="size-3.5" />
+                        On hold while you look into it — film it or reply when you&apos;re ready. The students see &ldquo;Looking into it&rdquo;.
+                      </p>
+                    )}
                     <ul className="mt-1 space-y-0.5">
                       {current.requests.map((r, i) => (
                         <li key={i}>
@@ -1364,12 +1423,17 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
                         {status === "failed" && <TriangleAlert className="size-4 text-destructive" />}
                       </span>
                       <span className="truncate">{sign.word}</span>
-                      {!!sign.requests?.length && (
+                      {!!sign.requests?.length && (sign.held ? (
+                        <PauseCircle
+                          className="ml-auto size-3.5 shrink-0 text-sky-600"
+                          aria-label="Asked for by a student — on hold"
+                        />
+                      ) : (
                         <MessageSquareText
                           className="ml-auto size-3.5 shrink-0 text-amber-600"
                           aria-label="Asked for by a student"
                         />
-                      )}
+                      ))}
                     </button>
                     {status === "failed" && (
                       <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => retrySave(sign)}>

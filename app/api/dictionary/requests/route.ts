@@ -15,6 +15,11 @@ async function studentSession() {
 }
 
 // The signs this student has asked for, newest first.
+// What the student sees: "on hold" is the admin researching the word.
+function shape<T extends { heldAt: Date | null; status: string }>({ heldAt, ...r }: T) {
+  return { ...r, held: r.status === "OPEN" && heldAt !== null }
+}
+
 async function handleGET() {
   try {
     const { session, error } = await studentSession()
@@ -24,9 +29,9 @@ async function handleGET() {
       where: { studentId: session.sub },
       orderBy: { createdAt: "desc" },
       take: 20,
-      select: { id: true, word: true, context: true, status: true, createdAt: true },
+      select: { id: true, word: true, context: true, status: true, heldAt: true, createdAt: true },
     })
-    return NextResponse.json({ requests })
+    return NextResponse.json({ requests: requests.map(shape) })
   } catch (err) {
     console.error("[GET /api/dictionary/requests]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
@@ -71,16 +76,23 @@ async function handlePOST(req: NextRequest) {
       ? await prisma.signRequest.update({
           where: { id: mine.id },
           data: { context: context || undefined },
-          select: { id: true, word: true, context: true, status: true, createdAt: true },
+          select: { id: true, word: true, context: true, status: true, heldAt: true, createdAt: true },
         })
       : await prisma.signRequest.create({
           // A word already in the dictionary without a video is in the
-          // filming list; the request rides along with it.
-          data: { studentId: session.sub, word, context, signId: existing?.id ?? null },
-          select: { id: true, word: true, context: true, status: true, createdAt: true },
+          // filming list; the request rides along with it. A word the admin
+          // is already looking into stays on hold with this ask too.
+          data: {
+            studentId: session.sub, word, context, signId: existing?.id ?? null,
+            heldAt: (await prisma.signRequest.findFirst({
+              where: { status: "OPEN", heldAt: { not: null }, word: { equals: word, mode: "insensitive" } },
+              select: { heldAt: true },
+            }))?.heldAt ?? null,
+          },
+          select: { id: true, word: true, context: true, status: true, heldAt: true, createdAt: true },
         })
 
-    return NextResponse.json({ request }, { status: mine ? 200 : 201 })
+    return NextResponse.json({ request: shape(request) }, { status: mine ? 200 : 201 })
   } catch (err) {
     console.error("[POST /api/dictionary/requests]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

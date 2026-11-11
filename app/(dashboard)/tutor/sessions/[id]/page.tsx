@@ -20,6 +20,7 @@ import { SlidePrepCard } from "@/components/classroom/SlidePrepCard"
 import { toast } from "sonner"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
+import { WeekBadge } from "@/components/sessions/class-week"
 
 type Invite = {
   studentId: string
@@ -42,6 +43,7 @@ type SessionDetail = {
   description: string | null
   scheduledAt: string
   durationMins: number
+  week: number | null
   roomName: string
   maxStudents: number | null
   status: "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED"
@@ -246,6 +248,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               <p className="font-medium flex items-center gap-1.5">
                 <Calendar className="size-3.5 text-primary" />
                 {scheduled.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                <WeekBadge week={session.week} />
               </p>
             </div>
             <div>

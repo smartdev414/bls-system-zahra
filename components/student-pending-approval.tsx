@@ -1,6 +1,6 @@
 "use client"
 
-import { Clock, Mail, CheckCircle2, RefreshCw, XCircle, GraduationCap } from "lucide-react"
+import { Clock, Mail, CheckCircle2, RefreshCw, XCircle, GraduationCap, ArrowRight } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { LogoFull } from "@/components/layout/logo"
@@ -14,9 +14,12 @@ import { useDeleteCallback } from "@/hooks/use-fetch"
 export function StudentPendingApproval({
   userName,
   state,
+  subscriptionUrl = null,
 }: {
   userName: string
   state: "pending" | "rejected" | "finished" | "ok"
+  /** The school's subscription options, for a student whose course has finished. */
+  subscriptionUrl?: string | null
 }) {
   const firstName = userName.split(" ")[0]
   const rejected = state === "rejected"
@@ -42,8 +45,10 @@ export function StudentPendingApproval({
               </div>
               <p className="text-muted-foreground leading-relaxed">
                 Your course is now closed, so the student space is no longer available. Thank you for
-                learning with us. If you&apos;d like to carry on to the next level, please get in touch and
-                we&apos;ll add you to your next course.
+                learning with us.{" "}
+                {subscriptionUrl
+                  ? "To keep learning, choose one of our subscription options."
+                  : "If you'd like to carry on to the next level, please get in touch and we'll add you to your next course."}
               </p>
             </>
           ) : rejected ? (
@@ -93,6 +98,13 @@ export function StudentPendingApproval({
           )}
 
           <div className="flex flex-col gap-3">
+            {finished && subscriptionUrl && (
+              <Button asChild size="lg">
+                <a href={subscriptionUrl}>
+                  See subscription options <ArrowRight className="w-4 h-4 ml-2" />
+                </a>
+              </Button>
+            )}
             {state === "pending" && (
               <Button onClick={() => window.location.reload()}>
                 <RefreshCw className="w-4 h-4 mr-2" />

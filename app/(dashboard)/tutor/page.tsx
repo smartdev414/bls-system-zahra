@@ -16,6 +16,7 @@ import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
+import { WeekBadge } from "@/components/sessions/class-week"
 
 type DashboardData = {
   tutorName: string
@@ -38,6 +39,7 @@ type DashboardData = {
     title: string
     scheduledAt: string
     durationMins: number
+    week: number | null
     status: string
     attendeeCount: number
     maxStudents: number | null
@@ -365,6 +367,7 @@ export default function TutorDashboardPage() {
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Clock className="size-3" />
                         {formatSessionDate(session.scheduledAt)}
+                        <WeekBadge week={session.week} />
                       </div>
                       {session.maxStudents && (
                         <div className="flex flex-col gap-1">

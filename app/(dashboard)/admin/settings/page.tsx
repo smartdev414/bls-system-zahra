@@ -1,6 +1,6 @@
 "use client"
 
-import { Settings, Lock, Eye, EyeOff, UserCheck } from "lucide-react"
+import { Settings, Lock, Eye, EyeOff, UserCheck, GraduationCap, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -36,6 +36,8 @@ export default function AdminSettingsPage() {
       </div>
 
       <SignupApprovalCard />
+
+      <SubscriptionLinkCard />
 
       <Card className="shadow-sm">
         <CardHeader>
@@ -109,14 +111,14 @@ export default function AdminSettingsPage() {
   )
 }
 
-type PlatformSettings = { studentApprovalRequired: boolean }
+type PlatformSettings = { studentApprovalRequired: boolean; subscriptionUrl: string | null }
 
 /** One switch: do students who sign up on their own wait for approval? */
 function SignupApprovalCard() {
   const { data, loading, mutate } = useFetch<PlatformSettings>("/api/admin/platform-settings", {
     errorMessage: "Could not load sign-up settings",
   })
-  const { execute: save, loading: saving } = usePutCallback<PlatformSettings, PlatformSettings>(
+  const { execute: save, loading: saving } = usePutCallback<PlatformSettings, Partial<PlatformSettings>>(
     "/api/admin/platform-settings",
     {
       successMessage: (d) => (d.studentApprovalRequired ? "New students now need approval" : "New students get in straight away"),
@@ -150,6 +152,74 @@ function SignupApprovalCard() {
             New students need my approval before they can use the platform
           </Label>
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Where students go once their course has finished and closed: the school's
+ * subscription options. They see a "Your course has finished" page with a
+ * button to this address.
+ */
+function SubscriptionLinkCard() {
+  const { data, mutate } = useFetch<PlatformSettings>("/api/admin/platform-settings")
+  // Remounted with what was saved, so the box starts from it.
+  return <SubscriptionLinkForm key={data?.subscriptionUrl ?? ""} data={data} onSaved={mutate} />
+}
+
+function SubscriptionLinkForm({ data, onSaved }: {
+  data: PlatformSettings | null | undefined
+  onSaved: (d: PlatformSettings) => void
+}) {
+  const loading = !data
+  const [url, setUrl] = useState(data?.subscriptionUrl ?? "")
+  const { execute: save, loading: saving } = usePutCallback<PlatformSettings, Partial<PlatformSettings>>(
+    "/api/admin/platform-settings",
+    {
+      successMessage: (d) => (d.subscriptionUrl ? "Saved — finished students are sent there" : "Link removed"),
+      onSuccess: (d) => onSaved(d),
+    },
+  )
+  const changed = url.trim() !== (data?.subscriptionUrl ?? "")
+
+  return (
+    <Card className="shadow-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <GraduationCap className="size-4 text-primary" /> When a Course Finishes
+        </CardTitle>
+        <CardDescription>
+          When a course closes, its students can no longer use the student space. They see &ldquo;Your course has
+          finished&rdquo; with a button to your subscription options, so they can carry on learning.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          onSubmit={(e) => { e.preventDefault(); void save({ subscriptionUrl: url.trim() || null }) }}
+          className="flex flex-col gap-3"
+        >
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="subscription-url">Subscription options page</Label>
+            <Input
+              id="subscription-url"
+              type="text"
+              inputMode="url"
+              placeholder="e.g. www.yourschool.co.uk/subscriptions"
+              value={url}
+              disabled={loading || !data}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              {data?.subscriptionUrl
+                ? <>Students are sent to <a href={data.subscriptionUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline break-all">{data.subscriptionUrl}</a></>
+                : "Leave empty and students are asked to get in touch with you instead."}
+            </p>
+          </div>
+          <Button type="submit" className="self-start" disabled={!changed || saving || !data}>
+            {saving && <Loader2 className="size-4 mr-1.5 animate-spin" />} Save
+          </Button>
+        </form>
       </CardContent>
     </Card>
   )

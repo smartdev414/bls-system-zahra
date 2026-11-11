@@ -37,6 +37,7 @@ import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { Pagination } from "@/components/ui/pagination"
 import { SegmentedVideoPlayer } from "@/components/ui/segmented-video-player"
 import { cn } from "@/lib/utils"
+import { WeekBadge, WeekPicker } from "@/components/sessions/class-week"
 import { ClassFormatBadge, VenueLink } from "@/components/sessions/face-to-face"
 import { mediaDownloadHref } from "@/lib/protected-media"
 import { useTutorAccess } from "@/components/tutor-access-provider"
@@ -106,6 +107,8 @@ type SessionItem = {
   description: string | null
   scheduledAt: string
   durationMins: number
+  /** Which week of the course this class is — tells the teacher which slides. */
+  week?: number | null
   status: "SCHEDULED" | "LIVE" | "COMPLETED" | "CANCELLED"
   visibility: "PUBLIC" | "INVITE_ONLY"
   // A face-to-face class: taught at `venue`, never in the online classroom.
@@ -1147,9 +1150,21 @@ function SessionCard({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-muted/40 rounded-xl px-3 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Date</p>
-            <p className="text-xs font-semibold">
-              {scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
-            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="text-xs font-semibold">
+                {scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+              </p>
+              {!session.isCoTutor && access.calendar && session.status !== "CANCELLED" && session.course
+                ? (
+                  <WeekPicker
+                    sessionId={session.id}
+                    week={session.week ?? null}
+                    date={scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                    onSaved={() => onMutated?.()}
+                  />
+                )
+                : <WeekBadge week={session.week} />}
+            </div>
           </div>
           <div className="bg-muted/40 rounded-xl px-3 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Time</p>
@@ -1527,7 +1542,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold truncate">{s.title}</p>
                     <p className="text-[10px] text-muted-foreground">
-                      {formatTime(s.scheduledAt)} · {s.durationMins} min
+                      {formatTime(s.scheduledAt)} · {s.durationMins} min{s.week ? ` · Week ${s.week}` : ""}
                     </p>
                   </div>
                   <Badge variant="outline" className={cn("text-[9px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
@@ -1566,7 +1581,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
                     <p className="text-xs font-semibold truncate group-hover:text-primary transition-colors">{s.title}</p>
                     <p className="text-[10px] text-muted-foreground">
                       {new Date(s.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                      {" · "}{formatTime(s.scheduledAt)}
+                      {" · "}{formatTime(s.scheduledAt)}{s.week ? ` · Week ${s.week}` : ""}
                     </p>
                   </div>
                 </button>
@@ -1626,7 +1641,7 @@ function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onM
                 <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate">{s.title}</p>
-                  <p className="text-[10px] text-muted-foreground">{formatTime(s.scheduledAt)} · {s.durationMins} min</p>
+                  <p className="text-[10px] text-muted-foreground">{formatTime(s.scheduledAt)} · {s.durationMins} min{s.week ? ` · Week ${s.week}` : ""}</p>
                 </div>
                 <Badge variant="outline" className={cn("text-[9px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
                   {STATUS[s.status].label}
@@ -1653,7 +1668,7 @@ function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onM
                   <p className="text-xs font-semibold truncate">{s.title}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {new Date(s.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                    {" · "}{formatTime(s.scheduledAt)}
+                    {" · "}{formatTime(s.scheduledAt)}{s.week ? ` · Week ${s.week}` : ""}
                   </p>
                 </div>
               </div>

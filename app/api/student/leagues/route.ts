@@ -4,7 +4,7 @@ import { READY_QUESTION } from "@/lib/tests"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { LEAGUE_DIFFICULTIES, isLeagueOpen, shortName } from "@/lib/leagues"
-import { leagueStandings } from "@/lib/league-server"
+import { leagueStandings, standingsForStudent } from "@/lib/league-server"
 
 // GET /api/student/leagues — every league, whatever the student's level: the
 // running ones first (Easy → Hard), then the finished ones, newest first.
@@ -26,7 +26,7 @@ async function handleGET() {
 
     const now = new Date()
     const rows = await Promise.all(leagues.map(async ({ test, _count, members, ...league }) => {
-      const standings = await leagueStandings(league.id)
+      const standings = standingsForStudent(await leagueStandings(league.id), session.sub)
       const mine = standings.find((s) => s.userId === session.sub)
       const leader = standings[0]
       return {

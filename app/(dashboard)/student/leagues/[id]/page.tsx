@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { GetReady, SignRound } from "@/components/quiz/SignTestTaker"
 import { DifficultyBadge, LeagueTable, leagueWhen, seconds, type TableRow } from "@/components/leagues/league-bits"
 import { useFetch } from "@/hooks/use-fetch"
+import { LeaguePrivacySwitch } from "@/components/leagues/league-privacy-switch"
 import { DIFFICULTY_INFO, ordinal, type LeagueDifficulty } from "@/lib/leagues"
 import { newOrder, type SignQuestion } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
@@ -30,7 +31,7 @@ type LeagueData = {
   }
   questions: SignQuestion[]
   standings: Array<TableRow & { isYou: boolean }>
-  me: { rank: number | null; score: number | null; durationMs: number | null; goes: number }
+  me: { rank: number | null; score: number | null; durationMs: number | null; goes: number; hidden: boolean }
 }
 
 type Result = {
@@ -283,10 +284,13 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
           </CardContent>
         </Card>
 
-        <LeagueTable
-          rows={standings}
-          empty={league.open ? "No scores yet — be the first." : "No scores."}
-        />
+        <div className="flex flex-col gap-3">
+          <LeagueTable
+            rows={standings}
+            empty={league.open ? "No scores yet — be the first." : "No scores."}
+          />
+          <LeaguePrivacySwitch hidden={me.hidden} onChanged={() => void refetch()} />
+        </div>
       </div>
     </div>
   )

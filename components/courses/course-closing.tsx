@@ -78,7 +78,7 @@ export function CourseClosingButton({
     },
   )
 
-  const label = closed ? "Closed" : closesAt ? `Closes ${new Date(closesAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "Open"
+  const label = closed ? "Closed" : closesAt ? `Closes ${new Date(closesAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "Open to students"
   const Icon = closed ? DoorClosed : DoorOpen
 
   function openDatePicker() {
@@ -144,7 +144,8 @@ export function CourseClosingButton({
                 <DialogDescription>
                   Students on it will no longer be able to open its lessons, tests or files. Anyone with no other
                   course still running will see a &ldquo;your course has finished&rdquo; page instead of their student
-                  space. Their work and marks are kept, and you can reopen the course at any time.
+                  space, with a button to your subscription options (set in Settings). Their work and marks are
+                  kept, and you can reopen the course at any time.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>

@@ -481,7 +481,7 @@ export function StudentsManager() {
           ))}
           <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             <Activity className="size-3 shrink-0" />
-            &ldquo;Studying&rdquo; means a lesson, test, live class, league game or self-reflection in the last {STUDY_WINDOW_DAYS} days &mdash; not just signing in.
+            &ldquo;Studying&rdquo; means a lesson, test, live class, league game or self-reflection in the last{` ${STUDY_WINDOW_DAYS} days `}&mdash; not just signing in.
           </p>
           <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             <BellRing className="size-3 shrink-0" />
@@ -629,6 +629,13 @@ export function StudentsManager() {
                     <div className="border-t bg-muted/10">
                       {/* When they have been on the platform, and reminders */}
                       <div className="px-4 py-2.5 border-b border-dashed text-xs flex flex-col gap-1">
+                        {/* The whole history — learning, homework, sign-ins — is one tap away. */}
+                        <Link
+                          href={`${pathBase}/students/${student.id}`}
+                          className="mb-1 inline-flex w-fit items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
+                        >
+                          See {student.name.split(" ")[0]}&apos;s full learning history <ArrowRight className="size-3.5" />
+                        </Link>
                         <p className="flex items-center gap-1.5">
                           <Clock className="size-3.5 text-muted-foreground shrink-0" />
                           <span>
@@ -659,12 +666,6 @@ export function StudentsManager() {
                             <span className="font-medium">{agoLabel(student.lastStudiedAt).toLowerCase()}</span>
                             {" · "}studied on {student.studyDates.length} of the {student.activeDates.length} day{student.activeDates.length === 1 ? "" : "s"} they were on
                           </span>
-                          <Link
-                            href={`${pathBase}/students/${student.id}`}
-                            className="ml-auto inline-flex items-center gap-1 font-semibold text-primary hover:underline shrink-0"
-                          >
-                            Full activity <ArrowRight className="size-3" />
-                          </Link>
                         </p>
                         {student.activeDates.length > 0 && (
                           <div className="flex flex-wrap gap-1 pl-5">

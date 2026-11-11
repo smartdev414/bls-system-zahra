@@ -231,6 +231,9 @@ model User {
   // turn it off again. See app/egress/recorder-view.tsx.
   recordingOptOut        Boolean       @default(false)
   recordingOptOutByStaff Boolean       @default(false)
+  // Keep this student's name and scores off the league tables other students
+  // see (lib/league-server.ts). Staff still see the full table.
+  hideFromLeagueTables   Boolean       @default(false)
   // Activity tracking (lib/activity-tracking.ts): the last successful sign-in,
   // and the last time a signed-in request was seen (written at most every few
   // minutes, so "online now" and "last seen" stay cheap to read).
@@ -337,6 +340,9 @@ model ReminderSent {
 model PlatformSettings {
   id                      String   @id @default("default")
   studentApprovalRequired Boolean  @default(true)
+  // Where a student goes once all their courses have finished — the school's
+  // subscription options. Null = they're asked to contact the school.
+  subscriptionUrl         String?
   updatedAt               DateTime @updatedAt
 }
 
@@ -498,6 +504,9 @@ model SignRequest {
   signId     String?
   createdAt  DateTime          @default(now())
   resolvedAt DateTime?
+  // Put on hold by the admin while they research the word: still open, but
+  // moved below the other requests and shown to the student as "Looking into it".
+  heldAt     DateTime?
 
   student User  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   sign    Sign? @relation(fields: [signId], references: [id], onDelete: SetNull)
@@ -636,11 +645,11 @@ model LessonAsset {
 }
 
 model Enrollment {
-  id          String    @id @default(cuid())
-  studentId   String
-  courseId    String
-  enrolledAt  DateTime  @default(now())
-  completedAt DateTime?
+  id                 String    @id @default(cuid())
+  studentId          String
+  courseId           String
+  enrolledAt         DateTime  @default(now())
+  completedAt        DateTime?
   // When the student last pressed "I understand" on the "you're falling behind"
   // notice for this course. While they stay behind it comes back a week later,
   // or straight away when a teacher presses Encourage.
@@ -699,6 +708,10 @@ model LiveSession {
   // when the class is scheduled, and kept in step when the course changes.
   inPerson        Boolean               @default(false)
   venue           String?
+  // Which week of the course this class is (1, 2, 3…), shown next to its date
+  // so the teacher knows which slides to use. Numbered on when a weekly
+  // series is scheduled; changed per class from the course page.
+  week            Int?
   createdAt       DateTime              @default(now())
 
   tutor        User                     @relation("TutorLiveSessions", fields: [tutorId], references: [id])

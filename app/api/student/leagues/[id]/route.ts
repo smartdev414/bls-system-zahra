@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { signQuestionsForStudent } from "@/lib/quiz"
 import { DIFFICULTY_INFO, isLeagueOpen, shortName } from "@/lib/leagues"
-import { leagueStandings } from "@/lib/league-server"
+import { leagueStandings, standingsForStudent } from "@/lib/league-server"
 
 // GET /api/student/leagues/[id] — a league, its table (short names), and the
 // words to play once the student has joined. The words themselves are never
@@ -25,12 +25,13 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
         members: { where: { userId: session.sub }, select: { id: true } },
       },
     })
+    const viewer = await prisma.user.findUnique({ where: { id: session.sub }, select: { hideFromLeagueTables: true } })
     if (!league) return NextResponse.json({ message: "League not found" }, { status: 404 })
 
     const joined = league.members.length > 0
     const open = isLeagueOpen(league)
     const [standings, words, myGoes] = await Promise.all([
-      leagueStandings(id),
+      leagueStandings(id).then((all) => standingsForStudent(all, session.sub)),
       league.testId
         ? prisma.quizQuestion.findMany({
             where: { testId: league.testId, ...READY_QUESTION },
@@ -64,8 +65,13 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
         score: s.score,
         durationMs: s.durationMs,
         isYou: s.userId === session.sub,
+        // Only ever their own row: everyone else private is off this table.
+        hidden: s.hidden,
       })),
-      me: { rank: mine?.rank ?? null, score: mine?.score ?? null, durationMs: mine?.durationMs ?? null, goes: myGoes },
+      me: {
+        rank: mine?.rank ?? null, score: mine?.score ?? null, durationMs: mine?.durationMs ?? null, goes: myGoes,
+        hidden: viewer?.hideFromLeagueTables ?? false,
+      },
     })
   } catch (err) {
     console.error("[GET /api/student/leagues/[id]]", err)

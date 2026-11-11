@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getAccountSession, getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { subscriptionUrl } from "@/lib/subscription-link"
 
 async function handleGET() {
   try {
@@ -24,6 +25,7 @@ async function handleGET() {
         createdAt: true,
         recordingOptOut: true,
         recordingOptOutByStaff: true,
+        hideFromLeagueTables: true,
         tutorProfile: { select: { bio: true, qualifications: true, isVerified: true } },
       },
     })
@@ -32,7 +34,13 @@ async function handleGET() {
 
     // Every course they were on has closed (lib/course-closing.ts): the app
     // shows its "your course has finished" screen, as the web does.
-    return NextResponse.json({ user, courseFinished: found?.state === "finished" })
+    const courseFinished = found?.state === "finished"
+    return NextResponse.json({
+      user,
+      courseFinished,
+      // Where the app sends a student whose course has finished.
+      subscriptionUrl: courseFinished ? await subscriptionUrl() : null,
+    })
   } catch (err) {
     console.error("[GET /api/user/settings]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })
@@ -52,9 +60,15 @@ async function handlePUT(req: NextRequest) {
       qualifications?: string[]
       /** A student's "leave my face out of class recordings". */
       recordingOptOut?: boolean
+      /** A student's "keep my name and scores off the league tables". */
+      hideFromLeagueTables?: boolean
     }
 
-    const { name, avatarUrl, bslLevel, bio, qualifications, recordingOptOut } = body
+    const { name, avatarUrl, bslLevel, bio, qualifications, recordingOptOut, hideFromLeagueTables } = body
+
+    if (typeof hideFromLeagueTables === "boolean" && session.role !== "STUDENT") {
+      return NextResponse.json({ message: "Only students are on league tables" }, { status: 400 })
+    }
 
     if (typeof recordingOptOut === "boolean") {
       if (session.role !== "STUDENT") {
@@ -79,10 +93,11 @@ async function handlePUT(req: NextRequest) {
         ...(avatarUrl !== undefined && { avatarUrl }),
         ...(bslLevel !== undefined && { bslLevel }),
         ...(typeof recordingOptOut === "boolean" && { recordingOptOut }),
+        ...(typeof hideFromLeagueTables === "boolean" && { hideFromLeagueTables }),
       },
       select: {
         id: true, name: true, email: true, role: true, avatarUrl: true, bslLevel: true,
-        recordingOptOut: true, recordingOptOutByStaff: true,
+        recordingOptOut: true, recordingOptOutByStaff: true, hideFromLeagueTables: true,
       },
     })
 

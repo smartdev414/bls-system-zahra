@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import {
   User, Lock, Info, Bell, Camera, Eye, EyeOff, Check, X,
   Shield, Calendar, Mail, Loader2, CheckCircle2, BookOpen,
-  GraduationCap, Video, VideoOff, ArrowRight, Award, Copy, Share2,
+  GraduationCap, Video, VideoOff, ArrowRight, Award, Copy, Share2, Trophy,
 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useFetch, usePutCallback } from "@/hooks/use-fetch"
 import { PhoneNotificationsCard } from "@/components/pwa/phone-notifications"
+import { LeaguePrivacySwitch } from "@/components/leagues/league-privacy-switch"
 import { COURSE_LEVELS, levelColor, levelDot, type CourseLevel } from "@/lib/levels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,6 +37,8 @@ type UserData = {
     recordingOptOut: boolean
     /** Staff turned it on, so only staff can turn it off. */
     recordingOptOutByStaff: boolean
+    /** Keep their name and scores off the league tables other students see. */
+    hideFromLeagueTables: boolean
   }
 }
 
@@ -413,11 +416,28 @@ export default function StudentSettingsPage() {
 
           {/* ════ PRIVACY ════ */}
           {section === "privacy" && user && (
-            <RecordingPrivacyCard
-              optedOut={user.recordingOptOut}
-              byStaff={user.recordingOptOutByStaff}
-              onChanged={() => refetch()}
-            />
+            <div className="flex flex-col gap-6">
+              <RecordingPrivacyCard
+                optedOut={user.recordingOptOut}
+                byStaff={user.recordingOptOutByStaff}
+                onChanged={() => refetch()}
+              />
+              <div className="rounded-2xl border bg-card p-6">
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="size-9 shrink-0 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Trophy className="size-4 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="font-semibold">League tables</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Fingerspelling league tables show each player&apos;s first name and best score to the other players.
+                    </p>
+                  </div>
+                </div>
+                <Separator className="my-5" />
+                <LeaguePrivacySwitch hidden={user.hideFromLeagueTables} onChanged={() => refetch()} />
+              </div>
+            </div>
           )}
 
           {/* ════ ACCOUNT ════ */}

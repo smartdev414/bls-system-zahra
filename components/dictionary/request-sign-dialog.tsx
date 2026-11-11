@@ -19,6 +19,8 @@ type SignRequest = {
   word: string
   context: string
   status: "OPEN" | "ADDED" | "DECLINED"
+  /** The admin is researching the word before adding it. */
+  held?: boolean
   createdAt: string
 }
 
@@ -27,6 +29,7 @@ const STATUS: Record<SignRequest["status"], { label: string; className: string }
   ADDED: { label: "Added", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   DECLINED: { label: "Not added", className: "bg-muted text-muted-foreground" },
 }
+const HELD = { label: "Looking into it", className: "bg-sky-50 text-sky-700 border-sky-200" }
 
 /**
  * A student asks for a word that isn't in the dictionary, with an example of
@@ -136,8 +139,8 @@ export function RequestSignDialog({ initialWord, onClose, onShowSign }: {
                   ) : (
                     <span className="truncate font-medium">{r.word}</span>
                   )}
-                  <Badge variant="outline" className={cn("shrink-0 text-[10px]", STATUS[r.status].className)}>
-                    {STATUS[r.status].label}
+                  <Badge variant="outline" className={cn("shrink-0 text-[10px]", (r.held ? HELD : STATUS[r.status]).className)}>
+                    {(r.held ? HELD : STATUS[r.status]).label}
                   </Badge>
                 </li>
               ))}

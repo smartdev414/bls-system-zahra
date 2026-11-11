@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getAccountSession, dashboardPath } from "@/lib/auth"
 import { StudentPendingApproval } from "@/components/student-pending-approval"
+import { subscriptionUrl } from "@/lib/subscription-link"
 
 export const metadata = { title: "Waiting for approval" }
 
@@ -13,5 +14,12 @@ export default async function PendingApprovalPage() {
   if (!found) redirect("/login")
   if (found.state === "ok") redirect(dashboardPath(found.session.role))
 
-  return <StudentPendingApproval userName={found.session.name} state={found.state} />
+  return (
+    <StudentPendingApproval
+      userName={found.session.name}
+      state={found.state}
+      // A finished student is sent on to the school's subscription options.
+      subscriptionUrl={found.state === "finished" ? await subscriptionUrl() : null}
+    />
+  )
 }

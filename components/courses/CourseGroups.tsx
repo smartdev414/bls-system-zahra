@@ -17,6 +17,7 @@ import { useCourseRoster } from "@/components/courses/use-course-roster"
 import { ScheduleClassDialog, WHOLE_COURSE, type ClassDefaults } from "@/components/courses/ScheduleClassDialog"
 import { timeOf } from "@/components/courses/time-options"
 import { AddGroupDialog } from "@/components/courses/AddGroupDialog"
+import { WeekBadge, WeekPicker } from "@/components/sessions/class-week"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 
@@ -27,6 +28,7 @@ type ClassSession = {
   title: string
   scheduledAt: string
   durationMins: number
+  week: number | null
   status: "SCHEDULED" | "LIVE"
   visibility: "PUBLIC" | "INVITE_ONLY"
   tutorId: string
@@ -222,6 +224,9 @@ function ClassList({
             ? <Radio className="size-3.5 text-emerald-600 shrink-0" />
             : <CalendarClock className="size-3.5 text-muted-foreground shrink-0" />}
           <span className="font-medium">{classDate(s.scheduledAt)}</span>
+          {s.canManage && calendar && !picked
+            ? <WeekPicker sessionId={s.id} week={s.week} date={classDate(s.scheduledAt)} onSaved={onChanged} />
+            : <WeekBadge week={s.week} />}
           <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">
             {s.durationMins} min · {s.tutorName}
             {showInviteOnly && s.visibility === "INVITE_ONLY" ? " · invited students only" : ""}
@@ -357,6 +362,8 @@ export function CourseGroups({
       time: timeOf(at),
       durationMins: ref.durationMins,
       tutorId: ref.tutorId,
+      // The week after this group's last class; a first class starts at Week 1.
+      week: lastOwn ? (lastOwn.week ? Math.min(lastOwn.week + 1, 52) : null) : 1,
     }
   }
 

@@ -58,7 +58,7 @@ async function handleGET(_req: NextRequest, { params }: { params: Promise<{ id: 
     ])
 
     const s = summary.get(id)!
-    const lastSeen = latest(seen.get(id)?.lastSeenAt, student.lastActiveAt, student.lastLoginAt)
+    const lastSeen = latest(seen.get(id)?.lastSeenAt, student.lastActiveAt, student.lastLoginAt, s.lastStudiedAt)
 
     // One cell per day, oldest first, for the 12-week calendar.
     const days: Array<{ date: string; active: boolean; learning: number; kinds: Record<string, number> }> = []
@@ -83,7 +83,8 @@ async function handleGET(_req: NextRequest, { params }: { params: Promise<{ id: 
       engagement: engagementOf({ lastSeenAt: lastSeen, lastStudiedAt: s.lastStudiedAt }),
       online: isOnline(student.lastActiveAt),
       last30: {
-        daysActive: seen.get(id)?.activeDates.length ?? 0,
+        // A day they studied is a day they were on, even if no page load was logged.
+        daysActive: new Set([...(seen.get(id)?.activeDates ?? []), ...s.studyDates]).size,
         daysStudied: s.studyDates.length,
         logins: loginCount30d,
         failedLogins: failedCount30d,

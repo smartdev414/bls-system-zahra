@@ -2,7 +2,8 @@ import prisma from "@/lib/prisma"
 import { Prisma } from "@/app/generated/prisma/client"
 import { isStaff, courseTeachScope } from "@/lib/permissions"
 import { joinedClassOf } from "@/lib/session-access"
-import { releasedLessons } from "@/lib/lesson-release"
+import { courseRoster } from "@/lib/course-roster"
+import { isCourseClosed } from "@/lib/course-closing"
 
 // What students have actually *done* — lessons, tests, live classes, league
 // games, self-reflections — as opposed to merely being signed in. Read from the
@@ -212,28 +213,35 @@ export async function learningTimeline(userId: string, limit = 60): Promise<Time
   return items.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit)
 }
 
-/** Each course the student is on, and how far through the released lessons they are. */
+/**
+ * Each course the student is on: how far through the released lessons and the
+ * homework tests they are, with the same "behind" judgement as the course's
+ * student list (lib/course-roster.ts).
+ */
 export async function courseProgress(userId: string) {
   const enrollments = await prisma.enrollment.findMany({
     where: { studentId: userId },
     orderBy: { enrolledAt: "desc" },
-    select: {
-      enrolledAt: true,
-      course: { select: { id: true, title: true } },
-      progress: { where: { isCompleted: true }, select: { id: true } },
-    },
+    select: { enrolledAt: true, course: { select: { id: true, title: true, closesAt: true } } },
   })
   return Promise.all(
     enrollments.map(async (e) => {
-      const total = await prisma.lesson.count({ where: { section: { courseId: e.course.id }, ...releasedLessons() } })
-      const done = Math.min(e.progress.length, total)
+      const roster = await courseRoster(e.course.id)
+      const me = roster.students.find((s) => s.id === userId)
       return {
         id: e.course.id,
         title: e.course.title,
         enrolledAt: e.enrolledAt.toISOString(),
-        totalLessons: total,
-        completedLessons: done,
-        completion: total > 0 ? Math.round((done / total) * 100) : 0,
+        totalLessons: roster.totalLessons,
+        completedLessons: me?.completedLessons ?? 0,
+        totalTests: roster.totalTests,
+        testsDone: me?.testsDone ?? 0,
+        /** Lessons and tests together. */
+        completion: me?.percent ?? 0,
+        classAverage: roster.classAverage,
+        behindClass: me?.behindClass ?? false,
+        inactive: me?.inactive ?? false,
+        closed: isCourseClosed(e.course),
       }
     }),
   )

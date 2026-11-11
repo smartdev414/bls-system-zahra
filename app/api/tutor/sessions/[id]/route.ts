@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { MAX_WEEK, parseWeek } from "@/lib/class-week"
 import prisma from "@/lib/prisma"
 import { hostScope, hostedBy } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
@@ -66,6 +67,7 @@ async function handleGET(
         description: liveSession.description,
         scheduledAt: liveSession.scheduledAt.toISOString(),
         durationMins: liveSession.durationMins,
+        week: liveSession.week,
         roomName: liveSession.roomName,
         maxStudents: liveSession.maxStudents,
         status: liveSession.status,
@@ -114,6 +116,8 @@ async function handlePATCH(
       visibility?: "PUBLIC" | "INVITE_ONLY"
       invitedStudentIds?: string[]
       invitedTutorIds?: string[]
+      /** The course week (1–52), or null to clear it. */
+      week?: number | null
     }
 
     // Starting and ending a class is teaching, which every tutor does. Anything
@@ -148,6 +152,11 @@ async function handlePATCH(
     if (body.description !== undefined) data.description = body.description?.trim() ?? null
     if (body.scheduledAt) data.scheduledAt = new Date(body.scheduledAt)
     if (body.durationMins) data.durationMins = body.durationMins
+    if (body.week !== undefined) {
+      const week = parseWeek(body.week)
+      if (week === undefined) return NextResponse.json({ message: `Week must be 1 to ${MAX_WEEK}` }, { status: 400 })
+      data.week = week
+    }
     if (body.maxStudents !== undefined) data.maxStudents = body.maxStudents
     if (body.visibility) data.visibility = body.visibility
     // A face-to-face class has no online room to go live in.

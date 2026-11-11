@@ -1,4 +1,4 @@
-import { Trophy } from "lucide-react"
+import { EyeOff, Trophy } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { DIFFICULTY_INFO, type LeagueDifficulty } from "@/lib/leagues"
 import { cn } from "@/lib/utils"
@@ -28,7 +28,15 @@ export function seconds(ms: number | null): string | null {
   return ms === null ? null : `${(ms / 1000).toFixed(1)}s`
 }
 
-export type TableRow = { rank: number; name: string; score: number; durationMs: number | null; isYou?: boolean }
+export type TableRow = {
+  rank: number
+  name: string
+  score: number
+  durationMs: number | null
+  isYou?: boolean
+  /** Kept off the table other students see (User.hideFromLeagueTables). */
+  hidden?: boolean
+}
 
 /** A league table. Gold, silver and bronze for the top three. */
 export function LeagueTable({ rows, empty, className }: { rows: TableRow[]; empty: string; className?: string }) {
@@ -55,6 +63,14 @@ export function LeagueTable({ rows, empty, className }: { rows: TableRow[]; empt
                 {r.rank}
               </span>
               <span className="min-w-0 flex-1 truncate">{r.name}</span>
+              {r.hidden && (
+                <span
+                  className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground shrink-0"
+                  title={r.isYou ? "Other students can't see your name or score" : "Other students can't see this student on the table"}
+                >
+                  <EyeOff className="size-3.5" /> Private
+                </span>
+              )}
               {r.durationMs !== null && <span className="text-xs font-normal text-muted-foreground tabular-nums">{seconds(r.durationMs)}</span>}
               <span className="w-11 text-right tabular-nums">{r.score}%</span>
             </li>

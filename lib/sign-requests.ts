@@ -103,6 +103,8 @@ export type RequestedSign = {
   level?: import("@/app/generated/prisma/client").CourseLevel
   description?: string
   requests: { studentName: string; context: string; createdAt: Date }[]
+  /** The admin put it on hold to research it: listed after the other requests. */
+  held: boolean
 }
 
 /**
@@ -119,6 +121,7 @@ export async function requestedToFilm(): Promise<RequestedSign[]> {
       context: true,
       createdAt: true,
       signId: true,
+      heldAt: true,
       student: { select: { name: true } },
     },
   })
@@ -156,7 +159,11 @@ export async function requestedToFilm(): Promise<RequestedSign[]> {
       level: sign?.level,
       description: sign?.description || undefined,
       requests: rows.map((r) => ({ studentName: r.student.name, context: r.context, createdAt: r.createdAt })),
+      // A new ask for a held word is held with it (see the hold route), so any
+      // one held row means the admin is still looking into the word.
+      held: rows.some((r) => r.heldAt),
     })
   }
-  return result
+  // Words on hold wait below the rest, still oldest first.
+  return [...result.filter((r) => !r.held), ...result.filter((r) => r.held)]
 }

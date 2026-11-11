@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils"
 import { FaceToFaceClassScreen } from "@/components/sessions/face-to-face"
 import { SESSION_STATUS_EVENT } from "@/components/layout/session-status-listener"
 import { toast } from "sonner"
+import { WeekBadge } from "@/components/sessions/class-week"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ type SessionInfo = {
     tutor: { name: string }
     description?: string | null
     durationMins?: number
+    week?: number | null
     scheduledAt: string
     inPerson: boolean
     venue: string | null
@@ -234,6 +236,9 @@ function TutorEntryScreen({
               <Radio className="size-3" /> Tutor lobby
             </Badge>
             <h1 className="text-xl font-black leading-tight">{session.title}</h1>
+            {session.week ? (
+              <p className="mt-1"><WeekBadge week={session.week} className="text-xs" /> <span className="text-xs text-muted-foreground">— use the Week {session.week} slides</span></p>
+            ) : null}
             {session.description && (
               <p className="text-sm text-muted-foreground mt-1.5 line-clamp-3">{session.description}</p>
             )}

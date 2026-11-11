@@ -98,6 +98,32 @@ async function handleDELETE(req: NextRequest) {
   }
 }
 
+// "Hold": the admin wants to research the word before filming it or replying.
+// It stays open but moves below the other requests, and the students see
+// "Looking into it". `{ hold: false }` puts it back with the others.
+async function handlePATCH(req: NextRequest) {
+  try {
+    const denied = await adminSession()
+    if (denied) return denied
+
+    const word = req.nextUrl.searchParams.get("word")?.trim() ?? ""
+    if (!word) return NextResponse.json({ message: "Word is required" }, { status: 400 })
+    const body = await req.json().catch(() => ({})) as { hold?: unknown }
+    if (typeof body.hold !== "boolean") return NextResponse.json({ message: "Say whether to hold it" }, { status: 400 })
+
+    const { count } = await prisma.signRequest.updateMany({
+      where: { status: "OPEN", word: { equals: word, mode: "insensitive" } },
+      data: { heldAt: body.hold ? new Date() : null },
+    })
+    if (count === 0) return NextResponse.json({ message: "Nobody is waiting for this word any more" }, { status: 404 })
+    return NextResponse.json({ held: body.hold, requests: count })
+  } catch (err) {
+    console.error("[PATCH /api/admin/sign-requests]", err)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
+}
+
 export const GET = withAudit(handleGET)
+export const PATCH = withAudit(handlePATCH)
 export const POST = withAudit(handlePOST)
 export const DELETE = withAudit(handleDELETE)

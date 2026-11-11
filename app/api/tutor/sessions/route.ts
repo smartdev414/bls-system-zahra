@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { MAX_WEEK, parseWeek } from "@/lib/class-week"
 import prisma from "@/lib/prisma"
 import { hostScope } from "@/lib/session-access"
 import { getSession } from "@/lib/auth"
@@ -118,6 +119,7 @@ async function handleGET(req: NextRequest) {
       description: s.description,
       scheduledAt: s.scheduledAt.toISOString(),
       durationMins: s.durationMins,
+      week: s.week,
       roomName: s.roomName,
       maxStudents: s.maxStudents,
       status: s.status,
@@ -183,6 +185,8 @@ async function handlePOST(req: NextRequest) {
       groupId?: string
       /** Where this face-to-face class meets, when not the course's usual venue. */
       venue?: string
+      /** The course week of the first class; a weekly series counts on from it. */
+      firstWeek?: number | null
     }
 
     const { title, description, scheduledAt, durationMins, maxStudents, courseId, invitedTutorIds = [], repeatWeeks = 1 } = body
@@ -230,6 +234,7 @@ async function handlePOST(req: NextRequest) {
     }
 
     const occurrences = Math.min(Math.max(Math.floor(repeatWeeks) || 1, 1), 52)
+    const firstWeek = parseWeek(body.firstWeek) ?? null
     const baseDate = new Date(scheduledAt)
     const timeZone = isValidTimeZone(body.timeZone) ? body.timeZone : DEFAULT_TIME_ZONE
     const now = new Date()
@@ -257,6 +262,7 @@ async function handlePOST(req: NextRequest) {
             groupId,
             inPerson,
             venue,
+            week: firstWeek && firstWeek + i <= MAX_WEEK ? firstWeek + i : null,
             status: held ? "COMPLETED" : "SCHEDULED",
             ...(held && { startedAt: occursAt, endedAt: endsAt }),
             visibility,

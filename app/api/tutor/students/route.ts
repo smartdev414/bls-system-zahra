@@ -219,9 +219,10 @@ async function handleGET(req: NextRequest) {
       const l = learning.get(s.id)
       const u = stampOf.get(s.id)
       // Page loads (lastActiveAt) and API calls (ApiLog) both count as being seen.
-      const lastSeen = latest(a?.lastSeenAt, u?.lastActiveAt, u?.lastLoginAt)
+      const lastSeen = latest(a?.lastSeenAt, u?.lastActiveAt, u?.lastLoginAt, l?.lastStudiedAt)
       s.lastSeenAt = lastSeen?.toISOString() ?? null
-      s.activeDates = a?.activeDates ?? []
+      // A day they studied is a day they were on, even if no page load was logged.
+      s.activeDates = [...new Set([...(a?.activeDates ?? []), ...(l?.studyDates ?? [])])].sort().reverse()
       s.lastLoginAt = u?.lastLoginAt?.toISOString() ?? null
       s.lastStudiedAt = l?.lastStudiedAt?.toISOString() ?? null
       s.studyDates = l?.studyDates ?? []

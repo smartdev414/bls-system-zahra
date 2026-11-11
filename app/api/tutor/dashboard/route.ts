@@ -147,6 +147,7 @@ async function handleGET() {
         title: s.title,
         scheduledAt: s.scheduledAt.toISOString(),
         durationMins: s.durationMins,
+        week: s.week,
         status: s.status,
         attendeeCount: s._count.attendances,
         maxStudents: s.maxStudents,

@@ -12,6 +12,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { TIME_OPTIONS } from "@/components/courses/time-options"
+import { MAX_WEEK } from "@/lib/class-week"
 
 /** "Everyone on the course" rather than one group. */
 export const WHOLE_COURSE = "all"
@@ -49,6 +50,8 @@ export type ClassDefaults = {
   time?: string
   durationMins?: number
   tutorId?: string
+  /** The course week of the next class (the last class's week + 1); null when the classes have none. Week 1 if not given. */
+  week?: number | null
 }
 
 /**
@@ -95,6 +98,10 @@ export function ScheduleClassDialog({
   const [durationMins, setDurationMins] = useState(defaults.durationMins ?? 60)
   const [repeatWeekly, setRepeatWeekly] = useState(true)
   const [weeks, setWeeks] = useState(10)
+  // Which week of the course the (first) class is, for the teacher's slides.
+  const [courseWeek, setCourseWeek] = useState<string>(
+    defaults.week === undefined ? "1" : defaults.week ? String(defaults.week) : "",
+  )
   const [tutorId, setTutorId] = useState(
     tutorOptions.some((t) => t.id === defaults.tutorId)
       ? defaults.tutorId!
@@ -165,6 +172,7 @@ export function ScheduleClassDialog({
           // class is open to everyone enrolled.
           ...(group ? { groupId: group.id } : { visibility: "PUBLIC" }),
           repeatWeeks: occurrences,
+          firstWeek: courseWeek ? Number(courseWeek) : null,
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           ...(mustAssignTutor ? { tutorId } : {}),
           ...(inPerson ? { venue } : {}),
@@ -273,6 +281,21 @@ export function ScheduleClassDialog({
                 weeks
               </span>
             )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sc-week">{repeatWeekly ? "Course week of the first class" : "Course week"}</Label>
+            <div className="flex items-center gap-2">
+              <select id="sc-week" value={courseWeek} onChange={(e) => setCourseWeek(e.target.value)} className={`${selectClass} w-32`}>
+                <option value="">No week</option>
+                {Array.from({ length: MAX_WEEK }, (_, i) => i + 1).map((w) => <option key={w} value={w}>Week {w}</option>)}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                {repeatWeekly && courseWeek
+                  ? `Then Week ${Number(courseWeek) + 1}, ${Number(courseWeek) + 2}… — shown next to each date so the teacher knows which slides to use.`
+                  : "Shown next to the date so the teacher knows which slides to use."}
+              </span>
+            </div>
           </div>
 
           {inPerson && (

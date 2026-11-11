@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { sameWord } from "@/lib/quiz"
 import { isLeagueOpen } from "@/lib/leagues"
-import { leagueStandings } from "@/lib/league-server"
+import { leagueStandings, standingsForStudent } from "@/lib/league-server"
 
 // POST /api/student/leagues/[id]/attempt
 // body: { answers: { questionId: string; text: string }[]; durationMs?: number }
@@ -49,7 +49,7 @@ async function handlePOST(req: NextRequest, { params }: { params: Promise<{ id: 
     await prisma.leagueAttempt.create({
       data: { leagueId: id, userId: session.sub, correct, total, score, durationMs },
     })
-    const standings = await leagueStandings(id)
+    const standings = standingsForStudent(await leagueStandings(id), session.sub)
     const mine = standings.find((s) => s.userId === session.sub)!
 
     return NextResponse.json({

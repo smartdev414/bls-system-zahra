@@ -29,6 +29,8 @@ export type Standing = {
   total: number
   durationMs: number | null
   goes: number
+  /** They chose to keep their name and scores off other students' tables. */
+  hidden: boolean
 }
 
 /**
@@ -41,7 +43,7 @@ export async function leagueStandings(leagueId: string): Promise<Standing[]> {
     prisma.leagueAttempt.findMany({
       where: { leagueId },
       orderBy: [{ score: "desc" }, { durationMs: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-      select: { userId: true, score: true, correct: true, total: true, durationMs: true, user: { select: { name: true } } },
+      select: { userId: true, score: true, correct: true, total: true, durationMs: true, user: { select: { name: true, hideFromLeagueTables: true } } },
     }),
     prisma.leagueMember.findMany({ where: { leagueId }, select: { userId: true } }),
   ])
@@ -63,5 +65,18 @@ export async function leagueStandings(leagueId: string): Promise<Standing[]> {
       total: a.total,
       durationMs: a.durationMs,
       goes: goes.get(a.userId) ?? 0,
+      hidden: a.user.hideFromLeagueTables,
     }))
+}
+
+/**
+ * The table as one student sees it: everyone else who keeps their scores
+ * private is left out, and the places are counted again without them, so a
+ * gap can't give them away. The student themselves is always on it, at their
+ * place among those shown. Staff use leagueStandings, which has everyone.
+ */
+export function standingsForStudent(standings: Standing[], viewerId: string): Standing[] {
+  return standings
+    .filter((s) => !s.hidden || s.userId === viewerId)
+    .map((s, i) => ({ ...s, rank: i + 1 }))
 }
