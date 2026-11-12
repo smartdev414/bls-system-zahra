@@ -51,6 +51,9 @@ export type RosterStudent = {
   done: number
   /** Everything released is done, and more than at their last trophy: an automatic trophy is due. */
   trophyDue: boolean
+  /** Staff have suspended this student until they lift it (lib/account-approval.ts):
+   *  they can't sign in, and get no reminders or trophies meanwhile. */
+  suspended: boolean
 }
 
 export type Roster = {
@@ -69,7 +72,7 @@ export async function courseRoster(courseId: string, now: Date = new Date()): Pr
       where: { courseId },
       orderBy: { student: { name: "asc" } },
       include: {
-        student: { select: { id: true, name: true, email: true, avatarUrl: true, bslLevel: true } },
+        student: { select: { id: true, name: true, email: true, avatarUrl: true, bslLevel: true, status: true } },
         progress: { select: { lessonId: true, isCompleted: true, updatedAt: true } },
       },
     }),
@@ -133,8 +136,11 @@ export async function courseRoster(courseId: string, now: Date = new Date()): Pr
     const allDone = totalWork > 0 && done >= totalWork
     const reminder = remindedAt.get(e.studentId)
     const trophy = trophiesOf.get(e.studentId)
+    const { status, ...student } = e.student
+    const suspended = status === "SUSPENDED"
     return {
-      ...e.student,
+      ...student,
+      suspended,
       enrolledAt: e.enrolledAt.toISOString(),
       completedLessons,
       testsDone,
@@ -144,7 +150,7 @@ export async function courseRoster(courseId: string, now: Date = new Date()): Pr
       allDone,
       lastActiveAt: lastActive ? new Date(lastActive).toISOString() : null,
       // Someone who only joined this week has not had the chance to fall behind.
-      inactive: totalWork > 0 && !allDone && Math.max(lastActive, e.enrolledAt.getTime()) < settledBefore,
+      inactive: !suspended && totalWork > 0 && !allDone && Math.max(lastActive, e.enrolledAt.getTime()) < settledBefore,
       behindClass: false,
       behind: false,
       lastRemindedAt: reminder?.last?.toISOString() ?? null,
@@ -152,7 +158,7 @@ export async function courseRoster(courseId: string, now: Date = new Date()): Pr
       trophies: trophy?.count ?? 0,
       lastTrophyAt: trophy?.last?.toISOString() ?? null,
       /** Finished more than they had when they last got a trophy: one is due. */
-      trophyDue: allDone && done > (trophy?.workDone ?? 0),
+      trophyDue: !suspended && allDone && done > (trophy?.workDone ?? 0),
       settled: e.enrolledAt.getTime() < settledBefore,
     }
   })
@@ -162,7 +168,8 @@ export async function courseRoster(courseId: string, now: Date = new Date()): Pr
     : 0
   for (const s of students) {
     s.rank = 1 + students.filter((o) => o.percent > s.percent).length
-    s.behindClass = students.length >= 2 && totalWork > 0 && s.settled && !s.allDone &&
+    // A suspended student can't catch up, so they're never on the "behind" list.
+    s.behindClass = !s.suspended && students.length >= 2 && totalWork > 0 && s.settled && !s.allDone &&
       s.percent <= classAverage - BEHIND_CLASS_POINTS
     s.behind = s.inactive || s.behindClass
   }

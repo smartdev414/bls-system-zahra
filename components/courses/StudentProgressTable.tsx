@@ -1,6 +1,6 @@
 "use client"
 
-import { BellRing, Loader2, Trophy, X } from "lucide-react"
+import { BellRing, Loader2, PauseCircle, Trophy, X } from "lucide-react"
 import type { RosterStudent } from "@/lib/course-roster"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -95,7 +95,7 @@ export function StudentProgressTable({
         {ranked.map((student) => (
           <div
             key={student.id}
-            className={`grid ${COLUMNS} items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors ${student.behindClass ? "bg-amber-50/60" : ""}`}
+            className={`grid ${COLUMNS} items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors ${student.suspended ? "bg-rose-50/60 opacity-70" : student.behindClass ? "bg-amber-50/60" : ""}`}
             data-student={student.name}
           >
             <div className="hidden @xl:flex justify-center"><Place student={student} /></div>
@@ -122,7 +122,15 @@ export function StudentProgressTable({
                       🏆{student.trophies > 1 ? ` ×${student.trophies}` : ""}
                     </Badge>
                   )}
-                  {student.allDone ? (
+                  {student.suspended ? (
+                    <Badge
+                      variant="outline"
+                      className={`${badge} gap-0.5 bg-rose-100 text-rose-700 border-rose-200`}
+                      title="Suspended by staff: they can't sign in until the suspension is lifted (Users page)"
+                    >
+                      <PauseCircle className="size-2.5" /> Suspended
+                    </Badge>
+                  ) : student.allDone ? (
                     <Badge variant="outline" className={`${badge} bg-emerald-100 text-emerald-700 border-emerald-200`}>
                       All done
                     </Badge>
@@ -188,7 +196,7 @@ export function StudentProgressTable({
                 variant="ghost"
                 size="sm"
                 className={`h-7 px-2 text-xs gap-1 ${student.trophyDue ? "text-amber-600 hover:text-amber-700" : "text-muted-foreground hover:text-amber-600"}`}
-                disabled={trophyIds.has(student.id)}
+                disabled={trophyIds.has(student.id) || student.suspended}
                 onClick={() => onTrophy(student)}
                 aria-label={`Give ${student.name} a trophy`}
                 title="Give a trophy for their hard work (they get one automatically when they finish everything)"
@@ -200,10 +208,12 @@ export function StudentProgressTable({
                 variant="ghost"
                 size="sm"
                 className={`h-7 px-2 text-xs gap-1 ${student.behindClass ? "text-amber-700 hover:text-amber-800" : "text-muted-foreground hover:text-foreground"}`}
-                disabled={remindingIds.has(student.id) || student.allDone}
+                disabled={remindingIds.has(student.id) || student.allDone || student.suspended}
                 onClick={() => onRemind(student)}
                 aria-label={`Remind ${student.name}`}
-                title={student.allDone
+                title={student.suspended
+                  ? "Suspended — reminders are paused until the suspension is lifted"
+                  : student.allDone
                   ? "Nothing to catch up on"
                   : student.behindClass
                   ? "Send a kind note: they are behind the class but can catch up — revise and finish their tests"
