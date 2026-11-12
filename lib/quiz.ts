@@ -78,7 +78,7 @@ export function signsWords(test: { testKind: string; vocabularyMode?: string | n
 }
 
 /** Seconds a student can be given for each sign. */
-export const ANSWER_SECONDS = [5, 10] as const
+export const ANSWER_SECONDS = [5, 10, 15] as const
 export const DEFAULT_ANSWER_SECONDS = 10
 
 /** Words offered for each sign in a vocabulary test — the right one among them. */
@@ -258,7 +258,7 @@ export function parseTestSettings(
   if (body.answerSeconds !== undefined) {
     const answerSeconds = Number(body.answerSeconds)
     if (!ANSWER_SECONDS.includes(answerSeconds as (typeof ANSWER_SECONDS)[number])) {
-      return `Time for each sign must be ${ANSWER_SECONDS.join(" or ")} seconds`
+      return `Time for each sign must be ${ANSWER_SECONDS.slice(0, -1).join(", ")} or ${ANSWER_SECONDS.at(-1)} seconds`
     }
     settings.answerSeconds = answerSeconds
   }
