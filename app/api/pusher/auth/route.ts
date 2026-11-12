@@ -21,6 +21,19 @@ async function handlePOST(req: NextRequest) {
     return NextResponse.json({ message: "Missing socket_id or channel_name" }, { status: 400 })
   }
 
+  // Mirror the pusher lib's own validation so malformed client input is a 400,
+  // not an uncaught throw from authorizeChannel() that surfaces as a 500 alert.
+  if (!/^\d+\.\d+$/.test(socketId)) {
+    return NextResponse.json({ message: "Invalid socket_id" }, { status: 400 })
+  }
+  if (
+    channelName.length > 200 ||
+    /[^A-Za-z0-9_\-=@,.;]/.test(channelName) ||
+    !(channelName.startsWith("private-user-") || channelName.startsWith("private-conversation-"))
+  ) {
+    return NextResponse.json({ message: "Invalid channel_name" }, { status: 400 })
+  }
+
   // Only allow subscribing to channels the user owns:
   // - private-conversation-<id>  → verified after subscription; we allow any authenticated user
   //   (the conversation route already enforces membership)
