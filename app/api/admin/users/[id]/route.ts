@@ -6,6 +6,8 @@ import { withAudit } from "@/lib/audit"
 import { createNotification } from "@/lib/notifications"
 import { enrolStudents } from "@/lib/course-groups"
 import { deleteStudentAnswerVideos } from "@/lib/test-recordings"
+import { notifyReplaced } from "@/lib/single-session"
+import { SUSPEND_REASON_MAX } from "@/lib/account-approval"
 import { ACCESS_SELECT, accessFromProfile, accessToProfileData, type TutorAccess } from "@/lib/tutor-access"
 
 async function handlePATCH(
@@ -24,6 +26,10 @@ async function handlePATCH(
       isVerified?: boolean
       /** Approve or turn down a student who signed up on their own. */
       status?: "ACTIVE" | "REJECTED"
+      /** Suspend a student (e.g. over behaviour) until staff lift it, or lift it. */
+      suspended?: boolean
+      /** Staff-only note on why — never shown to the student. */
+      suspendedReason?: string
       /** Courses to put a student on as they are approved, so staff don't have to do it after. */
       courseIds?: string[]
       /** What this teacher may change; only the switches sent are saved. */
@@ -105,7 +111,34 @@ async function handlePATCH(
       })
     }
 
-    if ((body.status === "ACTIVE" || body.status === "REJECTED") && body.status !== user.status) {
+    if (typeof body.suspended === "boolean") {
+      if (user.role !== "STUDENT") {
+        return NextResponse.json({ message: "Only students can be suspended" }, { status: 400 })
+      }
+      if (body.suspended) {
+        if (user.status === "PENDING" || user.status === "REJECTED") {
+          return NextResponse.json({ message: "Approve or reject this sign-up instead" }, { status: 400 })
+        }
+        const reason = typeof body.suspendedReason === "string"
+          ? body.suspendedReason.trim().slice(0, SUSPEND_REASON_MAX) || null
+          : null
+        await prisma.user.update({
+          where: { id },
+          data: { status: "SUSPENDED", suspendedAt: new Date(), suspendedReason: reason },
+        })
+        // Any open tab (including a live class) checks in and is moved to the
+        // "account paused" page; the phone app does the same on its next call.
+        await notifyReplaced(id)
+      } else if (user.status === "SUSPENDED") {
+        // Back exactly as they were: courses, groups and progress were never touched.
+        await prisma.user.update({
+          where: { id },
+          data: { status: "ACTIVE", suspendedAt: null, suspendedReason: null },
+        })
+      }
+    }
+
+    if ((body.status === "ACTIVE" || body.status === "REJECTED") && body.status !== user.status && user.status !== "SUSPENDED") {
       if (user.role !== "STUDENT") {
         return NextResponse.json({ message: "Only student sign-ups are approved here" }, { status: 400 })
       }
@@ -152,6 +185,7 @@ async function handlePATCH(
       where: { id },
       select: {
         id: true, name: true, email: true, role: true, status: true, recordingOptOut: true,
+        suspendedAt: true, suspendedReason: true,
         tutorProfile: { select: { isVerified: true, ...ACCESS_SELECT } },
       },
     })

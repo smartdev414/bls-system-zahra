@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth"
 import { can, type AppRole } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { ACCESS_SELECT, accessFromProfile } from "@/lib/tutor-access"
-import { AWAITING_APPROVAL } from "@/lib/account-approval"
+import { AWAITING_APPROVAL, SUSPENDED_STUDENTS } from "@/lib/account-approval"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -16,6 +16,8 @@ async function handleGET(req: NextRequest) {
     const q = req.nextUrl.searchParams.get("q")?.trim()
     // ?status=pending — only the people staff still have to approve
     const onlyAwaiting = req.nextUrl.searchParams.get("status") === "pending"
+    // ?status=suspended — only students staff have suspended
+    const onlySuspended = req.nextUrl.searchParams.get("status") === "suspended"
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
     const limit = 20
     const skip = (page - 1) * limit
@@ -40,14 +42,17 @@ async function handleGET(req: NextRequest) {
           }
         : {}),
       ...(onlyAwaiting ? { AND: [AWAITING_APPROVAL] } : {}),
+      ...(onlySuspended ? { AND: [SUSPENDED_STUDENTS] } : {}),
     }
 
-    const [total, awaitingCount, users] = await Promise.all([
+    const [total, awaitingCount, suspendedCount, users] = await Promise.all([
       prisma.user.count({ where }),
       prisma.user.count({ where: AWAITING_APPROVAL }),
+      prisma.user.count({ where: SUSPENDED_STUDENTS }),
       prisma.user.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        // The suspended list reads best most-recent-first, like a log.
+        orderBy: onlySuspended ? { suspendedAt: { sort: "desc", nulls: "last" } } : { createdAt: "desc" },
         take: limit,
         skip,
         select: {
@@ -57,6 +62,8 @@ async function handleGET(req: NextRequest) {
           role: true,
           status: true,
           signupNote: true,
+          suspendedAt: true,
+          suspendedReason: true,
           bslLevel: true,
           createdAt: true,
           recordingOptOut: true,
@@ -74,6 +81,8 @@ async function handleGET(req: NextRequest) {
         role: u.role,
         status: u.status,
         signupNote: u.signupNote,
+        suspendedAt: u.suspendedAt?.toISOString() ?? null,
+        suspendedReason: u.suspendedReason,
         bslLevel: u.bslLevel,
         createdAt: u.createdAt.toISOString(),
         recordingOptOut: u.role === "STUDENT" ? u.recordingOptOut : null,
@@ -84,6 +93,7 @@ async function handleGET(req: NextRequest) {
       })),
       total,
       awaitingCount,
+      suspendedCount,
       page,
       totalPages: Math.ceil(total / limit),
     })

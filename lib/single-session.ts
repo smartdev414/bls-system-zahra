@@ -27,7 +27,11 @@ export async function startStudentSession(userId: string): Promise<string> {
 // Pusher normally answers in well under a second; never hold a login longer.
 const NOTIFY_TIMEOUT_MS = 2_000
 
-async function notifyReplaced(userId: string) {
+/**
+ * Asks every open tab of this student to check whether it may stay — used when
+ * they sign in elsewhere, and when staff suspend the account.
+ */
+export async function notifyReplaced(userId: string) {
   try {
     await Promise.race([
       getPusher().trigger(`private-user-${userId}`, "session-replaced", {}),
@@ -47,13 +51,14 @@ async function notifyReplaced(userId: string) {
  *   replaced — signed in on another device since; treat as signed out
  *   pending  — signed up, waiting for staff to approve
  *   rejected — staff turned the sign-up down
+ *   suspended — staff paused the account (e.g. over behaviour) until they lift it
  *   finished — every course they were on has closed (lib/course-closing.ts), so
  *              the student space is closed to them until they join another
  *
  * Tokens issued before the single-device rule carry no sid; they stay valid
  * until the student next signs in anywhere.
  */
-export type SessionState = "ok" | "replaced" | "pending" | "rejected" | "finished"
+export type SessionState = "ok" | "replaced" | "pending" | "rejected" | "suspended" | "finished"
 
 export async function sessionState(payload: { sub: string; role: string; sid?: string }): Promise<SessionState> {
   if (payload.role !== "STUDENT") return "ok"
@@ -70,6 +75,7 @@ export async function sessionState(payload: { sub: string; role: string; sid?: s
   if (user.activeSessionId && user.activeSessionId !== payload.sid) return "replaced"
   if (user.status === "PENDING") return "pending"
   if (user.status === "REJECTED") return "rejected"
+  if (user.status === "SUSPENDED") return "suspended"
   // On courses, and every one of them has finished. A student on no course at
   // all (say, only invited to classes) is not affected.
   const now = Date.now()

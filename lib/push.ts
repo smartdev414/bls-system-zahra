@@ -49,7 +49,8 @@ export const isExpoToken = (t: string) => /^Expo(nent)?PushToken\[.+\]$/.test(t)
 /** Pushes to every device the user subscribed. Resolves to the number delivered. */
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<number> {
   try {
-    const subs = await prisma.pushSubscription.findMany({ where: { userId } })
+    // A suspended student gets no class reminders or alerts until they're back.
+    const subs = await prisma.pushSubscription.findMany({ where: { userId, user: { status: { not: "SUSPENDED" } } } })
     if (subs.length === 0) return 0
 
     const expoSubs = subs.filter((s) => s.p256dh === EXPO_MARKER)

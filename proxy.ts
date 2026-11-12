@@ -10,7 +10,7 @@ const COOKIE = "bsl-token"
 
 const PUBLIC_ROUTES = ["/login", "/register"]
 // A student who signed up and is waiting for staff approval (or was turned
-// down) is kept on this page — see lib/account-approval.ts.
+// down, or has been suspended) is kept on this page — see lib/account-approval.ts.
 const PENDING_PATH = "/pending"
 const ROLE_HOME: Record<string, string> = {
   STUDENT: "/student",
@@ -38,8 +38,9 @@ export async function proxy(request: NextRequest) {
   const state = verified ? await sessionState(verified) : null
   const replaced = state === "replaced"
   const session = replaced ? null : verified
-  // Waiting for approval, turned down, or every course finished: kept on one page.
-  const awaitingApproval = state === "pending" || state === "rejected" || state === "finished"
+  // Waiting for approval, turned down, suspended, or every course finished: kept on one page.
+  const awaitingApproval =
+    state === "pending" || state === "rejected" || state === "suspended" || state === "finished"
   const home = (role: string) => (awaitingApproval ? PENDING_PATH : ROLE_HOME[role] ?? "/student")
 
   // The waiting page is only for students who are waiting

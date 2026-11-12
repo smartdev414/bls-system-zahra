@@ -1,6 +1,6 @@
 "use client"
 
-import { Clock, Mail, CheckCircle2, RefreshCw, XCircle, GraduationCap, ArrowRight } from "lucide-react"
+import { Clock, Mail, CheckCircle2, RefreshCw, XCircle, GraduationCap, ArrowRight, PauseCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { LogoFull } from "@/components/layout/logo"
@@ -8,7 +8,7 @@ import { useDeleteCallback } from "@/hooks/use-fetch"
 
 /**
  * The waiting page for a student who signed up on their own (see
- * lib/account-approval.ts), and the page a student sees once every course they
+ * lib/account-approval.ts), the page a suspended student is held on, and the page a student sees once every course they
  * were on has finished (lib/course-closing.ts).
  */
 export function StudentPendingApproval({
@@ -17,13 +17,14 @@ export function StudentPendingApproval({
   subscriptionUrl = null,
 }: {
   userName: string
-  state: "pending" | "rejected" | "finished" | "ok"
+  state: "pending" | "rejected" | "suspended" | "finished" | "ok"
   /** The school's subscription options, for a student whose course has finished. */
   subscriptionUrl?: string | null
 }) {
   const firstName = userName.split(" ")[0]
   const rejected = state === "rejected"
   const finished = state === "finished"
+  const suspended = state === "suspended"
 
   const { execute: signOut, loading: signingOut } = useDeleteCallback("/api/auth/logout", {
     onSuccess: () => { window.location.href = "/login" },
@@ -49,6 +50,20 @@ export function StudentPendingApproval({
                 {subscriptionUrl
                   ? "To keep learning, choose one of our subscription options."
                   : "If you'd like to carry on to the next level, please get in touch and we'll add you to your next course."}
+              </p>
+            </>
+          ) : suspended ? (
+            <>
+              <div className="mx-auto w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <PauseCircle className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-2xl font-bold tracking-tight">Hello, {firstName}</h1>
+                <p className="text-muted-foreground text-lg">Your account has been paused</p>
+              </div>
+              <p className="text-muted-foreground leading-relaxed">
+                Our team has paused your access to classes and lessons for now. Your courses and
+                progress are safe. Please get in touch with us to talk about coming back.
               </p>
             </>
           ) : rejected ? (

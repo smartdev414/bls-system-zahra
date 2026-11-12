@@ -40,6 +40,17 @@ export const AWAITING_APPROVAL: Prisma.UserWhereInput = {
   ],
 }
 
+/**
+ * Suspended students — paused by staff (say, over behaviour) until staff lift
+ * it. They are kept off the platform exactly like a rejected sign-up (the proxy
+ * holds them on /pending), but their courses, groups and progress stay put, so
+ * lifting the suspension puts them straight back where they were.
+ */
+export const SUSPENDED_STUDENTS: Prisma.UserWhereInput = { role: "STUDENT", status: "SUSPENDED" }
+
+/** Longest staff note kept with a suspension. */
+export const SUSPEND_REASON_MAX = 500
+
 /** Longest note a student can leave on the sign-up form. */
 export const SIGNUP_NOTE_MAX = 300
 

@@ -69,9 +69,10 @@ export async function sendNotificationEmail(
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, name: true },
+      select: { email: true, name: true, status: true },
     })
-    if (!user) return
+    // A suspended student hears nothing from us until staff lift the suspension.
+    if (!user || user.status === "SUSPENDED") return
 
     const { subject, html } = renderEmailTemplate(type, user.name, title, body, link, testName)
     await sendEmail(user.email, subject, html)

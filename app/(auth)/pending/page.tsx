@@ -3,7 +3,7 @@ import { getAccountSession, dashboardPath } from "@/lib/auth"
 import { StudentPendingApproval } from "@/components/student-pending-approval"
 import { subscriptionUrl } from "@/lib/subscription-link"
 
-export const metadata = { title: "Waiting for approval" }
+export const metadata = { title: "Your account" }
 
 /**
  * Where a student who signed up on their own waits for staff to approve them —

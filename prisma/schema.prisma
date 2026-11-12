@@ -223,6 +223,10 @@ model User {
   // lib/account-approval.ts). Everyone else, and every account that existed
   // before approval, is ACTIVE.
   status                 AccountStatus @default(ACTIVE)
+  // When staff suspended this student, and why (staff-only, never shown to the
+  // student). Cleared when the suspension is lifted.
+  suspendedAt            DateTime?
+  suspendedReason        String?
   // What the student told us at sign-up ("which course or teacher?") so staff
   // can tell a real student from a stranger.
   signupNote             String?
@@ -324,6 +328,9 @@ enum AccountStatus {
   PENDING
   ACTIVE
   REJECTED
+  // Staff have paused this student (e.g. over behaviour) until they lift it.
+  // Their courses, groups and progress are kept; see lib/account-approval.ts.
+  SUSPENDED
 }
 
 /// One row per automatic reminder already sent (see lib/reminders.ts), keyed by

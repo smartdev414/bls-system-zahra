@@ -6,12 +6,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Users, Search, Loader2, ShieldCheck, ShieldOff, UserCog, MoreHorizontal, ChevronRight,
   UserCheck, Trash2, Clock, Check, X, BookOpen, SlidersHorizontal, VideoOff, Video, Pencil,
+  PauseCircle, PlayCircle,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
@@ -33,9 +35,12 @@ type UserItem = {
   name: string
   email: string
   role: AppRole
-  status: "PENDING" | "ACTIVE" | "REJECTED"
+  status: "PENDING" | "ACTIVE" | "REJECTED" | "SUSPENDED"
   /** What a student told us at sign-up, to help decide whether to approve. */
   signupNote: string | null
+  /** When staff suspended this student, and their (staff-only) note on why. */
+  suspendedAt: string | null
+  suspendedReason: string | null
   bslLevel: string | null
   createdAt: string
   isVerified: boolean | null
@@ -47,7 +52,18 @@ type UserItem = {
   courseCount: number
 }
 
-type UsersData = { users: UserItem[]; total: number; awaitingCount: number; page: number; totalPages: number }
+type UsersData = {
+  users: UserItem[]
+  total: number
+  awaitingCount: number
+  suspendedCount: number
+  page: number
+  totalPages: number
+}
+
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+}
 
 /** Someone staff still have to decide on: a new student, or a tutor not yet verified. */
 function isAwaiting(user: UserItem): boolean {
@@ -78,15 +94,18 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
   const [roleFilter, setRoleFilter] = useRememberedState("roleFilter", "all")
   const [page, setPage] = useRememberedState("page", 1)
 
-  // The waiting list lives in the URL so the "waiting for approval"
-  // notification can link straight to it.
+  // The waiting list and the suspended list live in the URL so a notification
+  // (or a bookmark) can link straight to them.
   const router = useRouter()
   const pathname = usePathname()
-  const showAwaiting = useSearchParams().get("status") === "pending"
-  function toggleAwaiting() {
-    router.replace(showAwaiting ? pathname : `${pathname}?status=pending`)
+  const statusParam = useSearchParams().get("status")
+  const showAwaiting = statusParam === "pending"
+  const showSuspended = statusParam === "suspended"
+  function showList(status: "pending" | "suspended" | null) {
+    router.replace(status ? `${pathname}?status=${status}` : pathname)
     setPage(1)
   }
+  function toggleAwaiting() { showList(showAwaiting ? null : "pending") }
 
   const debouncedQuery = useDebounce(query)
 
@@ -94,6 +113,7 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
   if (debouncedQuery) params.set("q", debouncedQuery)
   if (roleFilter !== "all") params.set("role", roleFilter)
   if (showAwaiting) params.set("status", "pending")
+  if (showSuspended) params.set("status", "suspended")
   params.set("page", String(page))
 
   const { data, loading, refetch } = useFetch<UsersData>(`/api/admin/users?${params.toString()}`, {
@@ -108,8 +128,9 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
       ? [{ value: "SUPPORT", label: "Support Team" }, { value: "ADMIN", label: "Admins" }]
       : []),
   ]
-  const filtered = Boolean(debouncedQuery) || roleFilter !== "all" || showAwaiting
+  const filtered = Boolean(debouncedQuery) || roleFilter !== "all" || showAwaiting || showSuspended
   const awaitingCount = data?.awaitingCount ?? 0
+  const suspendedCount = data?.suspendedCount ?? 0
 
   return (
     <div className="flex flex-col gap-5">
@@ -123,7 +144,9 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
             ? " "
             : showAwaiting
               ? `${data.total} waiting for approval`
-              : filtered
+              : showSuspended
+                ? `${data.total} suspended student${data.total === 1 ? "" : "s"}`
+                : filtered
                 ? `${data.total} match${data.total === 1 ? "es" : ""}`
                 : `${data.total} user${data.total !== 1 ? "s" : ""} registered`}
         </p>
@@ -153,6 +176,15 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
           <Clock className="size-4 shrink-0" />
           <span className="flex-1 text-sm font-semibold">Showing only people waiting for approval</span>
           <Button size="sm" variant="outline" className="bg-white" onClick={toggleAwaiting}>Show everyone</Button>
+        </div>
+      )}
+      {showSuspended && (
+        <div className="flex items-center gap-3 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-rose-900">
+          <PauseCircle className="size-4 shrink-0" />
+          <span className="flex-1 text-sm font-semibold">
+            Suspended students — they can&apos;t use the website or app until you lift the suspension
+          </span>
+          <Button size="sm" variant="outline" className="bg-white" onClick={() => showList(null)}>Show everyone</Button>
         </div>
       )}
 
@@ -193,6 +225,22 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
               </button>
             )
           })}
+          {(suspendedCount > 0 || showSuspended) && (
+            <button
+              type="button"
+              onClick={() => showList(showSuspended ? null : "suspended")}
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                showSuspended
+                  ? "border-rose-600 bg-rose-600 text-white"
+                  : "border-rose-200 text-rose-700 bg-background hover:bg-rose-50"
+              }`}
+            >
+              <PauseCircle className="size-3.5" /> Suspended
+              <span className={`rounded-full px-1.5 text-xs ${showSuspended ? "bg-white/25" : "bg-rose-100"}`}>
+                {suspendedCount}
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -230,7 +278,9 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
             <p className="font-semibold">
               {showAwaiting
                 ? "Nobody is waiting for approval"
-                : debouncedQuery
+                : showSuspended
+                  ? "No students are suspended"
+                  : debouncedQuery
                   ? `No one matches “${debouncedQuery}”`
                   : "No users found"}
             </p>
@@ -276,6 +326,7 @@ function UserRow({
   const [approving, setApproving] = useState(false)
   const [accessOpen, setAccessOpen] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [suspending, setSuspending] = useState(false)
 
   const { execute: updateRole } = usePatchCallback<
     { user: UserItem },
@@ -315,6 +366,18 @@ function UserRow({
     onSuccess: () => { setApproving(false); onMutated() },
   })
 
+  const { execute: setSuspended, loading: suspendSaving } = usePatchCallback<
+    { user: UserItem },
+    { suspended: boolean; suspendedReason?: string }
+  >(`/api/admin/users/${user.id}`, {
+    successMessage: (d) => (d.user.status === "SUSPENDED"
+      ? `${user.name} is suspended`
+      : `${user.name} is back — their suspension is lifted`),
+    errorMessage: "Could not update the account",
+    onSuccess: () => { setSuspending(false); onMutated() },
+  })
+  const isSuspended = user.role === "STUDENT" && user.status === "SUSPENDED"
+
   const { execute: deleteUser, loading: deleting } = useDeleteCallback(
     `/api/admin/users/${user.id}`,
     {
@@ -324,11 +387,11 @@ function UserRow({
     }
   )
 
-  const joined = new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+  const joined = shortDate(user.createdAt)
   const awaiting = isAwaiting(user)
 
   return (
-    <Card className={`shadow-sm py-0 transition-colors ${awaiting ? "ring-amber-300" : ""}`}>
+    <Card className={`shadow-sm py-0 transition-colors ${awaiting ? "ring-amber-300" : isSuspended ? "ring-rose-300" : ""}`}>
       <CardContent className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -372,6 +435,12 @@ function UserRow({
                     <VideoOff className="size-2.5 mr-1" /> Not recorded
                   </Badge>
                 )}
+                {isSuspended && (
+                  <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                    <PauseCircle className="size-2.5 mr-1" />
+                    Suspended{user.suspendedAt ? ` since ${shortDate(user.suspendedAt)}` : ""}
+                  </Badge>
+                )}
                 {user.role === "STUDENT" && user.status === "REJECTED" && (
                   <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
                     Not approved
@@ -387,6 +456,11 @@ function UserRow({
                 >
                   <Pencil className="size-3" /> Add their full name
                 </button>
+              )}
+              {isSuspended && user.suspendedReason && (
+                <p className="text-xs mt-1.5 rounded-md bg-rose-50 px-2.5 py-1.5 text-rose-900 break-words">
+                  <span className="font-semibold">Why suspended:</span> {user.suspendedReason}
+                </p>
               )}
               {user.signupNote && (
                 <p className="text-xs mt-1.5 rounded-md bg-muted/60 px-2.5 py-1.5 italic text-foreground/80 break-words">
@@ -407,7 +481,21 @@ function UserRow({
 
           {/* Actions — the next step stays visible; everything else is under ⋯ */}
           <div className="flex items-center justify-end gap-2 sm:shrink-0">
-            {user.role === "STUDENT" && user.status !== "ACTIVE" && (
+            {isSuspended && (
+              <Button
+                size="sm"
+                disabled={suspendSaving}
+                onClick={() => {
+                  if (window.confirm(`Lift ${user.name}'s suspension? They can sign in and use their courses again straight away.`)) {
+                    setSuspended({ suspended: false })
+                  }
+                }}
+                className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <PlayCircle className="size-3.5 mr-1" /> Lift suspension
+              </Button>
+            )}
+            {user.role === "STUDENT" && (user.status === "PENDING" || user.status === "REJECTED") && (
               <Button
                 size="sm"
                 disabled={deciding}
@@ -490,6 +578,19 @@ function UserRow({
                       : <><VideoOff className="size-4 mr-2" /> Keep out of recordings</>}
                   </DropdownMenuItem>
                 )}
+                {user.role === "STUDENT" && user.status === "ACTIVE" && (
+                  <DropdownMenuItem
+                    className="text-rose-700 focus:text-rose-700"
+                    onSelect={() => setSuspending(true)}
+                  >
+                    <PauseCircle className="size-4 mr-2" /> Suspend student…
+                  </DropdownMenuItem>
+                )}
+                {isSuspended && (
+                  <DropdownMenuItem onSelect={() => setSuspended({ suspended: false })}>
+                    <PlayCircle className="size-4 mr-2" /> Lift suspension
+                  </DropdownMenuItem>
+                )}
                 {canDelete && (
                   <>
                     <DropdownMenuSeparator />
@@ -517,6 +618,14 @@ function UserRow({
       </CardContent>
       {editing && (
         <EditNameDialog user={user} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onMutated() }} />
+      )}
+      {suspending && (
+        <SuspendDialog
+          user={user}
+          saving={suspendSaving}
+          onSuspend={(reason) => setSuspended({ suspended: true, suspendedReason: reason })}
+          onClose={() => setSuspending(false)}
+        />
       )}
       {approving && (
         <ApproveDialog
@@ -587,6 +696,63 @@ function EditNameDialog({ user, onClose, onSaved }: {
           <Button type="submit" form={`edit-name-${user.id}`} disabled={saving || !trimmed}>
             {saving ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Check className="size-4 mr-1.5" />}
             Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Suspend — pause a student (e.g. over behaviour) until staff lift it ─────
+
+function SuspendDialog({ user, saving, onSuspend, onClose }: {
+  user: UserItem
+  saving: boolean
+  onSuspend: (reason: string) => void
+  onClose: () => void
+}) {
+  const [reason, setReason] = useState("")
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Suspend {user.name}</DialogTitle>
+          <DialogDescription>
+            They&apos;re signed out straight away and can&apos;t use the website or app — classes, lessons,
+            tests or messages — until you lift the suspension. Their courses, groups and progress are
+            kept, and they get no emails or reminders while suspended.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          id={`suspend-${user.id}`}
+          className="flex flex-col gap-2"
+          onSubmit={(e) => { e.preventDefault(); onSuspend(reason.trim()) }}
+        >
+          <Label htmlFor={`suspend-reason-${user.id}`}>Reason (only staff see this)</Label>
+          <Textarea
+            id={`suspend-reason-${user.id}`}
+            autoFocus
+            value={reason}
+            maxLength={500}
+            rows={3}
+            placeholder="e.g. Inappropriate behaviour in the class WhatsApp group"
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            The student only sees that their account is paused and to get in touch.
+          </p>
+        </form>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            type="submit"
+            form={`suspend-${user.id}`}
+            disabled={saving}
+            className="bg-rose-600 hover:bg-rose-700 text-white"
+          >
+            {saving ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <PauseCircle className="size-4 mr-1.5" />}
+            Suspend
           </Button>
         </DialogFooter>
       </DialogContent>
