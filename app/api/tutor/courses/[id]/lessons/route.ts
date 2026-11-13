@@ -6,6 +6,7 @@ import { withAudit } from "@/lib/audit"
 import { can, courseContentScope } from "@/lib/permissions"
 import { isReleased, parseReleaseAt, releaseInSection } from "@/lib/lesson-release"
 import { placeTest } from "@/lib/tests"
+import { normalizeAssetUrl } from "@/lib/video-link"
 
 async function handlePOST(
   req: NextRequest,
@@ -85,7 +86,7 @@ async function handlePOST(
             type: asset.type,
             title: asset.title,
             description: asset.description ?? null,
-            fileUrl: asset.fileUrl,
+            fileUrl: normalizeAssetUrl(asset.fileUrl),
             fileName: asset.fileName,
             fileSize: asset.fileSize ?? null,
             duration: asset.duration ?? null,

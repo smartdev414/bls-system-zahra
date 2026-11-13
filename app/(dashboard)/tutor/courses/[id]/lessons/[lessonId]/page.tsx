@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProtectedVideo } from "@/components/ui/protected-video"
+import { EmbeddedVideo } from "@/components/ui/embedded-video"
+import { VideoLinkCard } from "@/components/ui/video-link-input"
+import { isVideoLink } from "@/lib/video-link"
 import { useFetch } from "@/hooks/use-fetch"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { useCoursesBase } from "@/hooks/use-courses-base"
@@ -206,6 +209,18 @@ function AssetView({ asset }: { asset: Asset }) {
       <Download className="size-3" /> Download {asset.fileName}
     </a>
   )
+
+  // A YouTube or Vimeo link: nothing of ours to download or clean.
+  if (asset.type === "VIDEO" && isVideoLink(asset.fileUrl)) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="rounded-xl overflow-hidden border">
+          <EmbeddedVideo url={asset.fileUrl} muted className="w-full aspect-video" />
+        </div>
+        <VideoLinkCard url={asset.fileUrl} />
+      </div>
+    )
+  }
 
   if (asset.type === "VIDEO") {
     return (

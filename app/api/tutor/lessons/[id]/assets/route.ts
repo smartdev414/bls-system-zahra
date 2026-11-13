@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { can, courseContentScope } from "@/lib/permissions"
+import { normalizeAssetUrl } from "@/lib/video-link"
 
 async function handlePOST(
   req: NextRequest,
@@ -38,7 +39,7 @@ async function handlePOST(
         lessonId: id,
         type: body.type as "VIDEO" | "PDF" | "IMAGE" | "AUDIO" | "SUBTITLE" | "DOCUMENT",
         title: body.title,
-        fileUrl: body.fileUrl,
+        fileUrl: normalizeAssetUrl(body.fileUrl),
         fileName: body.fileName,
         fileSize: body.fileSize ?? null,
         mimeType: body.mimeType ?? null,

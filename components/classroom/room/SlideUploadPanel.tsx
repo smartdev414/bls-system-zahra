@@ -23,13 +23,14 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import {
-  Presentation, Upload, X, Loader2, FileText, Film, Search, Clock,
+  Presentation, Upload, X, Loader2, FileText, Film, Search, Clock, Link2,
 } from "lucide-react"
 import type { UploadedSlides } from "./types"
 import { countPdfPages, registerPresentation, uploadPresentation } from "@/lib/slide-upload"
 import { byLastUsed, markPresentationUsed, readPresentationUsage } from "@/lib/recent-presentations"
 import { pickPresentationFile } from "@/lib/pick-file"
 import { cn } from "@/lib/utils"
+import { parseVideoLink, videoLinkUrl, VIDEO_LINK_LABEL, VIDEO_LINK_MIME } from "@/lib/video-link"
 
 type SessionMaterial = {
   id: string
@@ -100,6 +101,7 @@ export function SlideUploadPanel({
   const [materials, setMaterials] = useState<SessionMaterial[]>([])
   const [recents, setRecents]     = useState<RecentPresentation[]>([])
   const [query, setQuery]         = useState(rememberedQuery)
+  const [link, setLink]           = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const listRef      = useRef<HTMLDivElement>(null)
 
@@ -280,6 +282,23 @@ export function SlideUploadPanel({
     fileInputRef.current?.click()
   }
 
+  /** A YouTube or Vimeo video, played to the class in that site's player. Nothing is uploaded. */
+  const presentLink = () => {
+    const parsed = parseVideoLink(link)
+    if (!parsed) {
+      setError("That isn't a YouTube or Vimeo video link. Copy the address of the video's own page.")
+      return
+    }
+    setError("")
+    setLink("")
+    onSlidesReady({
+      kind: "video",
+      url: videoLinkUrl(parsed),
+      mimeType: VIDEO_LINK_MIME[parsed.provider],
+      fileName: VIDEO_LINK_LABEL[parsed.provider],
+    })
+  }
+
   const showSearch = items.length > SEARCH_THRESHOLD
 
   return (
@@ -386,6 +405,32 @@ export function SlideUploadPanel({
                   e.target.value = ""
                 }}
               />
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => { e.preventDefault(); presentLink() }}
+              >
+                <div className="relative flex-1 min-w-0">
+                  <Link2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500" />
+                  <input
+                    // Not type="url": people paste "youtube.com/…" without the https://.
+                    type="text"
+                    inputMode="url"
+                    value={link}
+                    onChange={(e) => { setLink(e.target.value); setError("") }}
+                    placeholder="Paste a YouTube or Vimeo link"
+                    aria-label="YouTube or Vimeo link"
+                    className="w-full rounded-xl bg-zinc-800 border border-zinc-700 pl-8 pr-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-primary/60"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!link.trim()}
+                  className="shrink-0 rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                >
+                  Play
+                </button>
+              </form>
+
               <button
                 onClick={chooseFile}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-zinc-700 hover:border-primary/60 hover:bg-primary/5 text-zinc-400 hover:text-primary transition-all text-sm font-medium"

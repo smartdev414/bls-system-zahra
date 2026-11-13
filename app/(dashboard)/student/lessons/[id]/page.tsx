@@ -22,6 +22,8 @@ import { releaseLabel } from "@/lib/lesson-release"
 import { QuizTaker } from "@/components/quiz/QuizTaker"
 import { TestTop } from "@/components/quiz/TestTop"
 import { ProtectedVideo } from "@/components/ui/protected-video"
+import { EmbeddedVideo } from "@/components/ui/embedded-video"
+import { isVideoLink } from "@/lib/video-link"
 import { cn } from "@/lib/utils"
 import { LESSON_KINDS, lessonKind } from "@/lib/lesson-kind"
 
@@ -116,6 +118,8 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   const [isCompleted, setIsCompleted] = useState(false)
   const completedRef = useRef(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Where the video is now, read when the debounced save fires.
+  const latestSecsRef = useRef(0)
   // Where the student had got to last time, once the video has jumped there —
   // shown as a small note with a way back to the start.
   const [resumedAt, setResumedAt] = useState<number | null>(null)
@@ -162,10 +166,12 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
 
   // Debounced video progress auto-save (every 10 s of playback)
   const enrollmentId = data?.enrollmentId
-  const handleTimeUpdate = useCallback(
-    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+  // Shared by uploaded videos (`<video>` events) and YouTube/Vimeo links (the
+  // embedded player's position), so both save and complete the same way.
+  const trackTime = useCallback(
+    (secs: number) => {
       if (!enrollmentId) return
-      const video = e.currentTarget
+      latestSecsRef.current = secs
       if (saveTimerRef.current) return // already scheduled
       saveTimerRef.current = setTimeout(() => {
         saveTimerRef.current = null
@@ -174,12 +180,16 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
         fetch(`/api/student/lessons/${id}/progress`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enrollmentId, watchedSecs: Math.floor(video.currentTime) }),
+          body: JSON.stringify({ enrollmentId, watchedSecs: Math.floor(latestSecsRef.current) }),
           keepalive: true,
         }).catch(() => {})
       }, 10_000)
     },
     [enrollmentId, id]
+  )
+  const handleTimeUpdate = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => trackTime(e.currentTarget.currentTime),
+    [trackTime]
   )
 
   // Pick the video up where the student stopped — unless they had all but
@@ -197,20 +207,19 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
   )
 
   // A video lesson ticks itself off once 90% of it has been watched.
-  const handleVideoProgress = useCallback(
-    (e: React.SyntheticEvent<HTMLVideoElement>) => {
-      handleTimeUpdate(e)
-      const video = e.currentTarget
+  const trackProgress = useCallback(
+    (currentTime: number, duration: number) => {
+      trackTime(currentTime)
       // The "picked up at" note has done its job once the video is under way.
-      if (resumedAt !== null && video.currentTime > resumedAt + 8) setResumedAt(null)
-      if (completedRef.current || !enrollmentId || !video.duration) return
-      if (video.currentTime / video.duration < 0.9) return
+      if (resumedAt !== null && currentTime > resumedAt + 8) setResumedAt(null)
+      if (completedRef.current || !enrollmentId || !duration) return
+      if (currentTime / duration < 0.9) return
       completedRef.current = true
       setIsCompleted(true)
       fetch(`/api/student/lessons/${id}/progress`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enrollmentId, isCompleted: true, watchedSecs: Math.floor(video.currentTime) }),
+        body: JSON.stringify({ enrollmentId, isCompleted: true, watchedSecs: Math.floor(currentTime) }),
       })
         .then((res) => {
           if (!res.ok) throw new Error()
@@ -223,7 +232,11 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
           setIsCompleted(false)
         })
     },
-    [handleTimeUpdate, resumedAt, enrollmentId, id, refetch]
+    [trackTime, resumedAt, enrollmentId, id, refetch]
+  )
+  const handleVideoProgress = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => trackProgress(e.currentTarget.currentTime, e.currentTarget.duration),
+    [trackProgress]
   )
 
   // When the video ends, count down to the next lesson; the student can stay.
@@ -434,6 +447,20 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
           {/* Video player */}
           {lesson.type === "VIDEO" && videoAsset ? (
             <div className="bg-black aspect-video w-full relative">
+              {isVideoLink(videoAsset.fileUrl) ? (
+                <EmbeddedVideo
+                  key={videoAsset.id}
+                  url={videoAsset.fileUrl}
+                  // Silent to start, like uploaded lesson videos.
+                  muted
+                  // Pick up where they stopped; the player's own timeline shows it.
+                  start={resumeFrom > 5 ? resumeFrom : undefined}
+                  className="absolute inset-0"
+                  onProgress={trackProgress}
+                  onPlay={() => setUpNextIn(null)}
+                  onEnded={() => { if (nextLesson) setUpNextIn(5) }}
+                />
+              ) : (
               <ProtectedVideo
                 key={videoAsset.id}
                 src={videoAsset.fileUrl}
@@ -447,6 +474,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 onPlay={() => setUpNextIn(null)}
                 onEnded={() => { if (nextLesson) setUpNextIn(5) }}
               />
+              )}
               {resumedAt !== null && upNextIn === null && (
                 <div className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-black/70 text-white text-xs pl-3 pr-1 py-1">
                   Picked up at {formatDuration(resumedAt)}
@@ -486,6 +514,19 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
             // Text lessons, and video lessons that hold files but no video, show the files inline.
             <div className="flex flex-col gap-6 px-6 py-6">
               {lesson.assets.map((asset) => {
+                if (asset.type === "VIDEO" && isVideoLink(asset.fileUrl)) {
+                  return (
+                    <div key={asset.id} className="rounded-xl overflow-hidden border">
+                      <EmbeddedVideo
+                        url={asset.fileUrl}
+                        muted
+                        className="w-full aspect-video"
+                        onProgress={(t) => trackTime(t)}
+                      />
+                    </div>
+                  )
+                }
+
                 if (asset.type === "VIDEO") {
                   return (
                     <div key={asset.id} className="rounded-xl overflow-hidden border bg-black">

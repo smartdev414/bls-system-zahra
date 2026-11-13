@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
-  ChevronLeft, Save, Loader2, Trash2, FolderOpen, FlaskConical, Upload, Camera,
+  ChevronLeft, Save, Loader2, Trash2, FolderOpen, FlaskConical, Upload, Camera, Link2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,8 @@ import { Separator } from "@/components/ui/separator"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
+import { VideoLinkInput } from "@/components/ui/video-link-input"
+import { isVideoLink } from "@/lib/video-link"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { useTestsBase } from "@/hooks/use-tests-base"
@@ -78,7 +80,7 @@ export default function EditLessonPage({
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
   // Video lessons can add a file by uploading it or recording it on the camera.
-  const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
+  const [videoMode, setVideoMode] = useState<"upload" | "record" | "link">("upload")
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -303,6 +305,16 @@ export default function EditLessonPage({
                       <Camera className="size-3" />
                       Record
                     </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={videoMode === "link" ? "default" : "outline"}
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => setVideoMode("link")}
+                    >
+                      <Link2 className="size-3" />
+                      YouTube / Vimeo
+                    </Button>
                   </>
                 )}
               </div>
@@ -313,7 +325,9 @@ export default function EditLessonPage({
               <div key={asset.id} className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3 overflow-hidden">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{asset.fileName}</p>
-                  <p className="text-xs text-muted-foreground">{asset.type.toLowerCase()}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {isVideoLink(asset.fileUrl) ? asset.fileUrl : asset.type.toLowerCase()}
+                  </p>
                 </div>
                 <Button
                   type="button"
@@ -332,7 +346,9 @@ export default function EditLessonPage({
               <div key={f.fileUrl} className="flex items-center gap-3 rounded-xl border bg-emerald-50 border-emerald-200 p-3 overflow-hidden">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{f.fileName}</p>
-                  <p className="text-xs text-emerald-600">Ready to save</p>
+                  <p className="text-xs text-emerald-600 truncate">
+                    {isVideoLink(f.fileUrl) ? `${f.fileUrl} · Ready to save` : "Ready to save"}
+                  </p>
                 </div>
                 <Button
                   type="button"
@@ -378,7 +394,14 @@ export default function EditLessonPage({
             />
 
             {/* Upload or record new — stays open so several files can be added before saving */}
-            {lesson.type === "VIDEO" && videoMode === "record" ? (
+            {lesson.type === "VIDEO" && videoMode === "link" ? (
+              <VideoLinkInput
+                onAdded={(f) => {
+                  setNewFiles((prev) => (prev.some((x) => x.fileUrl === f.fileUrl) ? prev : [...prev, f]))
+                  setVideoMode("upload")
+                }}
+              />
+            ) : lesson.type === "VIDEO" && videoMode === "record" ? (
               <CameraRecorder
                 uploaded={null}
                 onUploaded={(f) => {

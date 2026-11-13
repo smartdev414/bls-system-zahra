@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Save, Upload, Camera, FolderOpen, X } from "lucide-react"
+import { Save, Upload, Camera, FolderOpen, X, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,8 @@ import {
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
 import { CameraRecorder } from "@/components/ui/camera-recorder"
+import { VideoLinkInput, VideoLinkCard } from "@/components/ui/video-link-input"
+import { isVideoLink } from "@/lib/video-link"
 import { LibraryPicker, itemIcon, formatBytes } from "@/components/library/LibraryPicker"
 import type { LibraryAssetType } from "@/lib/library"
 import { TestBankPicker, type BankTest } from "@/components/tests/TestBankPicker"
@@ -49,7 +51,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
   // Files picked from the resource library, added alongside any fresh upload.
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>(initialFiles ?? [])
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
+  const [videoMode, setVideoMode] = useState<"upload" | "record" | "link">("upload")
   // A test is chosen from the test bank (the Tests menu), not built here.
   const [test, setTest] = useState<BankTest | null>(null)
   const [loading, setLoading] = useState(false)
@@ -223,6 +225,16 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
                     <Camera className="size-3" />
                     Record
                   </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={videoMode === "link" ? "default" : "outline"}
+                    className="h-7 text-xs gap-1.5"
+                    onClick={() => setVideoMode("link")}
+                  >
+                    <Link2 className="size-3" />
+                    YouTube / Vimeo
+                  </Button>
                 </>
               )}
               </div>
@@ -266,7 +278,11 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
               ]}
               onPick={(picked) => setLibraryFiles((prev) => [...prev, ...picked])}
             />
-            {type === "VIDEO" && videoMode === "record" ? (
+            {uploadedFile && isVideoLink(uploadedFile.fileUrl) ? (
+              <VideoLinkCard url={uploadedFile.fileUrl} onRemove={() => setUploadedFile(null)} />
+            ) : type === "VIDEO" && videoMode === "link" ? (
+              <VideoLinkInput onAdded={setUploadedFile} />
+            ) : type === "VIDEO" && videoMode === "record" ? (
               <CameraRecorder
                 uploaded={uploadedFile}
                 onUploaded={setUploadedFile}

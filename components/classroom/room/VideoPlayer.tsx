@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, PlayCircle } from "lucide-react"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useTutorAccess } from "@/components/tutor-access-provider"
+import { isVideoLink } from "@/lib/video-link"
+import { LinkedVideoPlayer } from "./LinkedVideoPlayer"
 
 interface VideoPlayerProps {
   isTutor: boolean
@@ -38,7 +40,15 @@ const STUDENT_DRIFT_THRESHOLD_S = 0.5
 // How often a student cross-checks its own playhead against the target.
 const STUDENT_DRIFT_POLL_MS     = 2000
 
-export function VideoPlayer({
+/**
+ * The shared classroom video. A file plays in a `<video>`; a YouTube or Vimeo
+ * link in that site's own player — same props, same sync, either way.
+ */
+export function VideoPlayer(props: VideoPlayerProps) {
+  return isVideoLink(props.url) ? <LinkedVideoPlayer {...props} /> : <FileVideoPlayer {...props} />
+}
+
+function FileVideoPlayer({
   isTutor,
   url,
   playing,
