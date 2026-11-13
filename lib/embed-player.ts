@@ -67,7 +67,7 @@ type VimeoPlayer = {
   setCurrentTime(seconds: number): Promise<number>
   setMuted(muted: boolean): Promise<boolean>
   getDuration(): Promise<number>
-  on(event: string, cb: (data: { seconds?: number; duration?: number; name?: string }) => void): void
+  on(event: string, cb: (data: { seconds?: number; duration?: number; name?: string; method?: string }) => void): void
   ready(): Promise<void>
   destroy(): Promise<void>
 }
@@ -185,7 +185,7 @@ async function createYouTube(
           }
         },
         // 2 bad id · 5 HTML5 error · 100 removed/private · 101/150 owner blocks embedding
-        onError: (e: { data: number }) => console.log("YTERR", e.data) as unknown as void || ev.onError?.(e.data === 101 || e.data === 150 ? "blocked" : "unavailable"),
+        onError: (e: { data: number }) => ev.onError?.(e.data === 101 || e.data === 150 ? "blocked" : "unavailable"),
       },
     })
   })
@@ -269,9 +269,11 @@ async function createVimeo(
     setTime(d.seconds)
     duration = d.duration ?? duration
   })
-  player.on("error", (d) => {
-    // Playback refused for want of a tap is reported as an error too; it is not one.
-    if (d.name === "NotAllowedError") return
+  player.on("error", (d: { name?: string; method?: string }) => {
+    // A refused API call (a seek past the end, a play refused for want of a
+    // tap) is reported here too, tagged with the method. Only an error from the
+    // player itself means the video can't be shown.
+    if (d.method || d.name === "NotAllowedError") return
     ev.onError?.(d.name === "PrivacyError" ? "blocked" : "unavailable")
   })
 
@@ -290,7 +292,12 @@ async function createVimeo(
   return {
     play: () => player.play().then(() => true, () => false),
     pause: () => { void player.pause().catch(() => {}) },
-    seek: (t) => { setTime(t); void player.setCurrentTime(t).catch(() => {}) },
+    seek: (t) => {
+      // Vimeo refuses a time past the end — where a late joiner lands once the tutor's video is over.
+      const to = duration ? Math.min(Math.max(0, t), Math.max(0, duration - 0.1)) : Math.max(0, t)
+      setTime(to)
+      void player.setCurrentTime(to).catch(() => {})
+    },
     setMuted: (m) => { void player.setMuted(m).catch(() => {}) },
     time: now,
     playing: () => isPlaying,

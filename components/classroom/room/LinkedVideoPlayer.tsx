@@ -79,6 +79,7 @@ function LinkedVideo({
       (p) => {
         if (cancelled) { p.destroy(); return }
         playerRef.current = p
+        ;(window as unknown as { __lv: unknown }).__lv = p // TEMP-TEST
         setReady(true)
       },
       () => { if (!cancelled) setError("unavailable") },
