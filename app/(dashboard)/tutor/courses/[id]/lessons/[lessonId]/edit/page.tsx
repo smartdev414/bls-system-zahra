@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
-  ChevronLeft, Save, Loader2, Trash2, FolderOpen, FlaskConical,
+  ChevronLeft, Save, Loader2, Trash2, FolderOpen, FlaskConical, Upload, Camera,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { FileUpload, type UploadedFile } from "@/components/ui/file-upload"
+import { CameraRecorder } from "@/components/ui/camera-recorder"
 import { LibraryPicker } from "@/components/library/LibraryPicker"
 import { useCoursesBase } from "@/hooks/use-courses-base"
 import { useTestsBase } from "@/hooks/use-tests-base"
@@ -76,6 +77,8 @@ export default function EditLessonPage({
   // Files picked from the resource library, attached on save like a new upload.
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Video lessons can add a file by uploading it or recording it on the camera.
+  const [videoMode, setVideoMode] = useState<"upload" | "record">("upload")
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -267,16 +270,42 @@ export default function EditLessonPage({
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Files</p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5"
-                onClick={() => setPickerOpen(true)}
-              >
-                <FolderOpen className="size-3" />
-                Choose from library
-              </Button>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <FolderOpen className="size-3" />
+                  Choose from library
+                </Button>
+                {lesson.type === "VIDEO" && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={videoMode === "upload" ? "default" : "outline"}
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => setVideoMode("upload")}
+                    >
+                      <Upload className="size-3" />
+                      Upload
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={videoMode === "record" ? "default" : "outline"}
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => setVideoMode("record")}
+                    >
+                      <Camera className="size-3" />
+                      Record
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Existing assets */}
@@ -348,7 +377,16 @@ export default function EditLessonPage({
               onPick={(picked) => setLibraryFiles((prev) => [...prev, ...picked])}
             />
 
-            {/* Upload new — stays open so several files can be added before saving */}
+            {/* Upload or record new — stays open so several files can be added before saving */}
+            {lesson.type === "VIDEO" && videoMode === "record" ? (
+              <CameraRecorder
+                uploaded={null}
+                onUploaded={(f) => {
+                  setNewFiles((prev) => [...prev, f])
+                  setVideoMode("upload")
+                }}
+              />
+            ) : (
             <FileUpload
               accept={LESSON_FILE_ACCEPT}
               label={
@@ -359,6 +397,7 @@ export default function EditLessonPage({
               uploaded={null}
               onUploaded={(f) => setNewFiles((prev) => [...prev, f])}
             />
+            )}
           </div>
         </>
       )}
