@@ -79,7 +79,6 @@ function LinkedVideo({
       (p) => {
         if (cancelled) { p.destroy(); return }
         playerRef.current = p
-        ;(window as unknown as { __lv: unknown }).__lv = p // TEMP-TEST
         setReady(true)
       },
       () => { if (!cancelled) setError("unavailable") },
@@ -149,7 +148,7 @@ function LinkedVideo({
           <AlertTriangle className="size-9 text-amber-500 opacity-90" />
           <p className="text-sm text-zinc-200 font-medium">
             {error === "blocked"
-              ? "This video's owner doesn't allow it to be played on other websites"
+              ? "This video can't be played here. Its owner may not allow it on other websites"
               : "This video can't be played"}
           </p>
           <p className="text-xs text-zinc-500 max-w-xs">

@@ -73,7 +73,7 @@ function Embedded({ url, className, muted, autoPlay, start, onProgress, onPlay, 
           <AlertTriangle className="size-8 text-amber-500" />
           <p className="text-sm text-zinc-200 font-medium">
             {error === "blocked"
-              ? "This video's owner doesn't allow it to be played on other websites"
+              ? "This video can't be played here. Its owner may not allow it on other websites"
               : "This video can't be played"}
           </p>
           <a
