@@ -12,7 +12,7 @@ They're stored in `~/.config/bls-qa-deafsign/accounts.env` (mode 600, outside gi
 
 There's no tutor account on live. Check tutor screens locally (`*@t.test` users), and through the admin views that show the same data. If a login fails, tell the user. Don't guess other passwords.
 
-DeafSign started on 2026-11-14 with an empty database: none of the original site's (classroom.tms.webcam) accounts exist here. Ask the user for DeafSign logins before a live QA pass.
+Deaf Signs (DeafSign) started on 2026-11-14 with an empty database: none of the original site's (classroom.tms.webcam) accounts exist here. The first admin is info@admin.com (created 2026-11-14); ask the user for its password and any other logins before a live QA pass.
 
 ## Roles and routes
 - **admin** → `/admin/*` (users, students, courses, tests, signs, leagues, sessions, settings, tickets, audit logs)
