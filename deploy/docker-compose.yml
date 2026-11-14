@@ -1,30 +1,39 @@
-# BLS production stack on the OVH server. Lives at /opt/bls on the server;
-# the CI pipeline copies this file there on every deploy (do not edit it on
-# the server — edit it in git).
+# DeafSign production stack. Shares the OVH server with the original BLS site
+# (classroom.tms.webcam, stack "bls" in /opt/bls) but has its own database,
+# web app and cron. Lives at /home/deploy/bls-zahra on the server; the CI
+# pipeline copies this file there on every deploy (edit it in git, not there).
 #
-#   /opt/bls/.env      compose settings: DOMAIN, POSTGRES_PASSWORD, IMAGE_REPO
-#   /opt/bls/app.env   the app's secrets (LiveKit, S3, Mailgun, Pusher, …)
-#   IMAGE_TAG          passed in by deploy.sh (the git commit being released)
+#   .env       compose settings: POSTGRES_PASSWORD, IMAGE_REPO, CRON
+#   app.env    the app's secrets (LiveKit, S3, Mailgun, Pusher, …)
+#   IMAGE_TAG  passed in by deploy.sh (the git commit being released)
+#
+# HTTPS: the original stack's Caddy owns ports 80/443. It loads
+# /opt/bls/sites/*.caddy; deploy.sh writes deafsign.caddy there, which proxies
+# bsl.deafsigns.co.uk to this stack's web container over the "bls_default"
+# network (alias zahra-web).
+#
+# Service names must never be "web" or "db": a service that joins
+# bls_default is reachable there by its name, and the original Caddy and cron
+# call "web:3000". Hence zahra-web / zahra-db.
 
-name: bls
+name: bls-zahra
 
 services:
-  db:
+  zahra-db:
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: bls
-      POSTGRES_DB: bls
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in /opt/bls/.env}
+      POSTGRES_USER: bls_zahra
+      POSTGRES_DB: bls_zahra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
-      # Postgres 18+ images keep data under /var/lib/postgresql/18/docker
       - pgdata:/var/lib/postgresql
-    # Reachable from the server itself only (psql / SSH tunnel), never the internet.
+    # Reachable from the server itself only (psql / SSH tunnel on 5434).
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5434:5432"
     shm_size: 256mb
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bls -d bls"]
+      test: ["CMD-SHELL", "pg_isready -U bls_zahra -d bls_zahra"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -34,44 +43,30 @@ services:
     image: ${IMAGE_REPO:?}-migrate:${IMAGE_TAG:-latest}
     profiles: ["tools"]
     environment:
-      DATABASE_URL: postgresql://bls:${POSTGRES_PASSWORD}@db:5432/bls
+      DATABASE_URL: postgresql://bls_zahra:${POSTGRES_PASSWORD}@zahra-db:5432/bls_zahra
     depends_on:
-      db:
+      zahra-db:
         condition: service_healthy
 
-  web:
+  zahra-web:
     image: ${IMAGE_REPO:?}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: app.env
     environment:
-      DATABASE_URL: postgresql://bls:${POSTGRES_PASSWORD}@db:5432/bls
+      DATABASE_URL: postgresql://bls_zahra:${POSTGRES_PASSWORD}@zahra-db:5432/bls_zahra
+    networks:
+      default: {}
+      edge:
+        aliases: [zahra-web]
     depends_on:
-      db:
+      zahra-db:
         condition: service_healthy
     logging:
       driver: json-file
       options: { max-size: "20m", max-file: "5" }
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      # BIND_IP (in .env) limits this to one server IP, for a shared server.
-      - "${BIND_IP:-0.0.0.0}:80:80"
-      - "${BIND_IP:-0.0.0.0}:443:443"
-      - "${BIND_IP:-0.0.0.0}:443:443/udp"
-    environment:
-      DOMAIN: ${DOMAIN:?set DOMAIN in /opt/bls/.env}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - web
-
-  # Automatic reminders + expired test-video clean-up, every 10 minutes
-  # (replaces the Vercel cron that was never set up).
-  cron:
+  # Automatic reminders + expired test-video clean-up, every 10 minutes.
+  zahra-cron:
     image: curlimages/curl:8.11.1
     restart: unless-stopped
     env_file: app.env
@@ -80,13 +75,17 @@ services:
       - |
         while true; do
           sleep 600
-          curl -sS -m 120 -H "Authorization: Bearer $$CRON_SECRET" http://web:3000/api/cron/reminders || true
+          curl -sS -m 120 -H "Authorization: Bearer $$CRON_SECRET" http://zahra-web:3000/api/cron/reminders || true
           echo
         done
     depends_on:
-      - web
+      - zahra-web
+
+networks:
+  # The original stack's network, where its Caddy lives.
+  edge:
+    external: true
+    name: bls_default
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:

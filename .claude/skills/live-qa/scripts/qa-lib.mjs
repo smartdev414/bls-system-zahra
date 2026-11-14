@@ -6,10 +6,10 @@
 //   ...
 //   await done()   // prints the collected console/page/network errors
 //
-// Accounts come from ~/.config/bls-qa/accounts.env (QA_<KEY>_EMAIL / _PASSWORD,
+// Accounts come from ~/.config/bls-qa-deafsign/accounts.env (QA_<KEY>_EMAIL / _PASSWORD,
 // QA_URL) or the environment; nothing secret is written anywhere else. The login
 // is done once per account and cached as a Playwright storage state in
-// ~/.config/bls-qa/state-<KEY>.json (mode 600) for 6 hours, so repeated scripts
+// ~/.config/bls-qa-deafsign/state-<KEY>.json (mode 600) for 6 hours, so repeated scripts
 // don't hammer the login endpoint.
 
 import fs from "node:fs"
@@ -17,9 +17,9 @@ import os from "node:os"
 import path from "node:path"
 import { createRequire } from "node:module"
 
-const CONF_DIR = path.join(os.homedir(), ".config", "bls-qa")
+const CONF_DIR = path.join(os.homedir(), ".config", "bls-qa-deafsign")
 loadEnvFile(path.join(CONF_DIR, "accounts.env"))
-export const BASE = new URL(process.env.QA_URL || "https://classroom.tms.webcam").origin
+export const BASE = new URL(process.env.QA_URL || "https://bsl.deafsigns.co.uk").origin
 
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
 const DESKTOP = { viewport: { width: 1366, height: 768 } }

@@ -2,22 +2,19 @@ import Link from "next/link"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
 
-// Brand assets are generated from public/tms logo.png (the 710x512 master):
-//   tms-mark.png — the three "Teach / Me / Sign" tiles only (401x387). Used at
-//                  small sizes (header, watermark) where the tagline would be
-//                  illegible. Works on light and dark backgrounds.
-//   tms-logo.png — full lockup incl. "WIDEN YOUR OPPORTUNITIES" (635x455).
-//                  Black tagline on transparent; tms-logo-dark.png is the same
-//                  with a white tagline for dark mode.
-export const LOGO_MARK_SRC = "/brand/tms-mark.png"
-export const LOGO_FULL_SRC = "/brand/tms-logo.png"
-export const LOGO_FULL_DARK_SRC = "/brand/tms-logo-dark.png"
-export const LOGO_BRAND = "Teach Me Sign"
+// Brand asset: public/brand/deafsign-logo.png (500x500, the "Deaf Signs"
+// circle on white), made from public/logo-1.jpeg. The same image serves as the
+// small mark (header, watermarks) and the full lockup (auth pages); on a dark
+// background it shows as a white tile, which is intended.
+export const LOGO_MARK_SRC = "/brand/deafsign-logo.png"
+export const LOGO_FULL_SRC = "/brand/deafsign-logo.png"
+export const LOGO_FULL_DARK_SRC = "/brand/deafsign-logo.png"
+export const LOGO_BRAND = "DeafSign"
 
-export const MARK_W = 401
-export const MARK_H = 387
-const FULL_W = 635
-const FULL_H = 455
+export const MARK_W = 500
+export const MARK_H = 500
+const FULL_W = 500
+const FULL_H = 500
 
 export function Logo({ className }: { className?: string }) {
   return (
@@ -42,9 +39,9 @@ export function Logo({ className }: { className?: string }) {
 
 // Full lockup with tagline — for roomy spots like the auth pages. Sits directly
 // on the page background; dark mode swaps to a copy with a white tagline.
-export function LogoFull({ className, width = 170 }: { className?: string; width?: number }) {
+export function LogoFull({ className, width = 140 }: { className?: string; width?: number }) {
   const img = {
-    alt: `${LOGO_BRAND} — Widen your opportunities`,
+    alt: LOGO_BRAND,
     width: FULL_W,
     height: FULL_H,
     sizes: `${width}px`,

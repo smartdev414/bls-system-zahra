@@ -1,6 +1,9 @@
-# Caddy fetches and renews the HTTPS certificate for $DOMAIN automatically
-# (the domain's DNS A record must point at this server).
-{$DOMAIN} {
+# DeafSign site block, loaded by the ORIGINAL stack's Caddy (it owns ports
+# 80/443 on this server). deploy.sh installs this file as
+# /opt/bls/sites/deafsign.caddy, with __DOMAIN__ replaced by DOMAIN from
+# .env, and reloads that Caddy. Caddy gets the HTTPS certificate itself
+# once the domain's DNS A record points at 198.244.201.81.
+__DOMAIN__ {
 	encode zstd gzip
-	reverse_proxy web:3000
+	reverse_proxy zahra-web:3000
 }

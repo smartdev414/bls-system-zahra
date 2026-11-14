@@ -25,12 +25,12 @@ export function buildIcs(event: CalendarEvent): string {
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Teach Me Sign//Classes//EN",
+    "PRODID:-//DeafSign//Classes//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",
     // Stable per class, so adding it again updates the event instead of doubling it.
-    `UID:${event.id}@teachmesign`,
+    `UID:${event.id}@deafsign`,
     `DTSTAMP:${stamp(new Date())}`,
     `DTSTART:${stamp(event.start)}`,
     `DTEND:${stamp(end)}`,

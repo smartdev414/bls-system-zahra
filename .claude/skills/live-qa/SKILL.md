@@ -1,6 +1,6 @@
 ---
 name: live-qa
-description: QA a live web platform in a real browser, either one feature at a time or the whole site. Walk each flow as every role on desktop and phone, find bugs and anything hard to use or hard to understand, fix it in the codebase on your own judgment, and verify the fix. Use this whenever the user asks to test, QA, check, audit, review or "make sure X works" on the live/production site or on a feature; when they ask to improve the UI/UX or make a feature easier or clearer; when they give an app URL plus logins; or right after building a BLS feature, to check it as a teacher and as a student. Use it even if they don't say "QA", e.g. "go through the new handouts feature and make it easier", "check classroom.tms.webcam works on phones", "is the test bank clear for teachers?".
+description: QA a live web platform in a real browser, either one feature at a time or the whole site. Walk each flow as every role on desktop and phone, find bugs and anything hard to use or hard to understand, fix it in the codebase on your own judgment, and verify the fix. Use this whenever the user asks to test, QA, check, audit, review or "make sure X works" on the live/production site or on a feature; when they ask to improve the UI/UX or make a feature easier or clearer; when they give an app URL plus logins; or right after building a BLS feature, to check it as a teacher and as a student. Use it even if they don't say "QA", e.g. "go through the new handouts feature and make it easier", "check bsl.deafsigns.co.uk works on phones", "is the test bank clear for teachers?".
 ---
 
 # Live QA: find, improve, verify
@@ -9,11 +9,11 @@ The goal is that every feature **works, is easy to use, and is easy to understan
 
 For the BLS platform, the users are sign-language teachers and students. Judge every screen through their eyes. Could someone do the job without thinking, without help, on a 390px-wide phone, with a finger? Would they understand what each word means?
 
-If there are notes for this app in `references/` (`references/bls-system.md` for classroom.tms.webcam), read them first. They hold the accounts, routes, feature map, local test setup and deploy rules.
+If there are notes for this app in `references/` (`references/bls-system.md` for bsl.deafsigns.co.uk), read them first. They hold the accounts, routes, feature map, local test setup and deploy rules.
 
 ## 0. Inputs and ground rules
 
-**Logins.** For BLS, the QA accounts are already saved in `~/.config/bls-qa/accounts.env` (see the notes for which role each one has), so don't ask for them. For any other app, ask once for the URL, the logins and each account's role, in one short message. Keep passwords out of every file you write, and out of commits, reports, screenshot names and chat. `scripts/qa-lib.mjs` reads the accounts file itself. `sweep.mjs` takes `QA_EMAIL`/`QA_PASSWORD` from the environment: `set -a; . ~/.config/bls-qa/accounts.env; set +a; QA_EMAIL=$QA_A_EMAIL QA_PASSWORD=$QA_A_PASSWORD node …`.
+**Logins.** For BLS, the QA accounts are already saved in `~/.config/bls-qa-deafsign/accounts.env` (see the notes for which role each one has), so don't ask for them. For any other app, ask once for the URL, the logins and each account's role, in one short message. Keep passwords out of every file you write, and out of commits, reports, screenshot names and chat. `scripts/qa-lib.mjs` reads the accounts file itself. `sweep.mjs` takes `QA_EMAIL`/`QA_PASSWORD` from the environment: `set -a; . ~/.config/bls-qa-deafsign/accounts.env; set +a; QA_EMAIL=$QA_A_EMAIL QA_PASSWORD=$QA_A_PASSWORD node …`.
 
 **The live site holds real users' data.** Breaking production or messaging real people is far worse than missing a bug. On the live site:
 

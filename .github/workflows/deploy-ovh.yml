@@ -1,9 +1,13 @@
-# Every push to main goes live on the OVH server (classroom.tms.webcam):
+# Every push to main goes live on the OVH server (bsl.deafsigns.co.uk):
 # copy the code to the server, build it there, apply database migrations,
 # restart. If the new version fails its health check, the old one stays.
 #
+# This is the DeafSign copy of the BLS platform. It shares the server with
+# the original site (classroom.tms.webcam, /opt/bls) but deploys only its own
+# stack in /home/deploy/bls-zahra and never restarts the original.
+#
 # Needs one repository secret: OVH_SSH_KEY (private key of the "deploy" user).
-# Rollback by hand on the server: /opt/bls/deploy.sh <older-sha>  (SKIP_PULL=yes)
+# Rollback by hand on the server: SKIP_PULL=yes ~/bls-zahra/deploy.sh <older-sha>
 name: Deploy to OVH
 
 on:
@@ -12,8 +16,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-ovh
+  group: deploy-ovh-zahra
   cancel-in-progress: false
+
+env:
+  SITE_URL: https://bsl.deafsigns.co.uk
+  REMOTE_DIR: /home/deploy/bls-zahra
 
 jobs:
   deploy:
@@ -35,15 +43,23 @@ jobs:
 
       - name: Copy code
         run: |
-          rsync -az --delete --exclude .git --exclude node_modules --exclude .next ./ ovh:/opt/bls/src/
+          rsync -az --delete --exclude .git --exclude node_modules --exclude .next ./ "ovh:$REMOTE_DIR/src/"
 
       - name: Build and release
-        run: ssh ovh "bash /opt/bls/src/deploy/release.sh ${GITHUB_SHA::7}"
+        run: ssh ovh "bash $REMOTE_DIR/src/deploy/release.sh ${GITHUB_SHA::7}"
 
       # The source is only needed for the build; don't leave it on the server.
+      # (No "docker builder prune" here: it would also wipe the build cache of
+      # the original site, which may be building at the same time.)
       - name: Remove the source from the server
         if: always()
-        run: ssh ovh "rm -rf /opt/bls/src && docker builder prune -af > /dev/null"
+        run: ssh ovh "rm -rf $REMOTE_DIR/src"
 
+      - name: Check the app on the server
+        run: ssh ovh "docker exec bls-zahra-zahra-web-1 node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status);process.exit(r.ok?0:1)})\""
+
+      # Fails until the domain's DNS points at 198.244.201.81; warning only.
       - name: Check the live site
-        run: curl -fsS --retry 5 --retry-delay 5 --retry-all-errors https://classroom.tms.webcam/api/health
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$SITE_URL/api/health" \
+            || echo "::warning::$SITE_URL is not reachable yet (DNS A record must point at 198.244.201.81)."

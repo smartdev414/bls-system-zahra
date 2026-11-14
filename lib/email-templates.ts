@@ -1,5 +1,5 @@
 /**
- * Teach Me Sign Student Space — Email Templates
+ * DeafSign — Email Templates
  *
  * All templates share a consistent professional layout using the platform's
  * primary colour schema:
@@ -13,9 +13,9 @@ import { NotificationType } from "@/app/generated/prisma/enums"
 import { publicAppUrl } from "@/lib/publicUrl"
 
 // ─── Brand ──────────────────────────────────────────────────────────────────
-export const BRAND = "Teach Me Sign Student Space Platform"
+export const BRAND = "DeafSign"
 const APP_URL  = publicAppUrl()
-const LOGO_URL = `${APP_URL}/brand/tms-mark.png`
+const LOGO_URL = `${APP_URL}/brand/deafsign-logo.png`
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 const PRIMARY       = "#7C3AED"
@@ -65,7 +65,7 @@ ${previewText ? `<span style="display:none;max-height:0;overflow:hidden;mso-hide
               <td style="text-align:center">
                 <!-- Logo mark (absolute URL — email clients can't resolve relative paths) -->
                 <div style="display:inline-block;background:#fff;border-radius:12px;padding:8px;margin-bottom:12px">
-                  <img src="${LOGO_URL}" width="64" height="62" alt="${BRAND}" style="display:block;border:0;width:64px;height:62px" />
+                  <img src="${LOGO_URL}" width="64" height="64" alt="${BRAND}" style="display:block;border:0;width:64px;height:64px" />
                 </div>
                 <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.3px">${BRAND}</div>
                 <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:0.5px;text-transform:uppercase">British Sign Language Learning</div>
@@ -360,7 +360,7 @@ export function tutorInviteEmail(
   const content = `
     <div style="margin-bottom:16px">${badge("You're Invited!", PRIMARY)}</div>
     <h2 style="margin:0 0 12px;font-size:20px;font-weight:700;color:${TEXT_MAIN}">Join ${BRAND}</h2>
-    ${bodyText(`<strong>${tutorName}</strong> has invited you to join the ${BRAND} as a student. Click the button below to create your free account and get started learning British Sign Language.`)}
+    ${bodyText(`<strong>${tutorName}</strong> has invited you to join ${BRAND} as a student. Click the button below to create your free account and get started learning British Sign Language.`)}
     ${ctaButton("Accept Invitation & Sign Up", inviteUrl)}
     ${divider()}
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">

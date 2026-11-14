@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next"
 import { APP_NAME, THEME_COLOR } from "@/lib/pwa"
 
 // Lets phones "install" the site to the home screen. Icons are generated from
-// public/brand/tms-mark.png into public/icons (white square, mark centred; the
+// public/brand/deafsign-logo.png into public/icons (white square, mark centred; the
 // maskable one keeps the mark inside the 80% safe circle).
 //
 // start_url "/" redirects to /login, which proxy.ts forwards a signed-in user

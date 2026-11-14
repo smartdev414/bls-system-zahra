@@ -1,5 +1,5 @@
 /*
- * Teach Me Sign service worker.
+ * DeafSign service worker.
  *
  * Deliberately tiny. It exists so the site can be installed to a phone's home
  * screen and receive web push. It does NOT cache pages, assets or API
@@ -16,7 +16,7 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 const OFFLINE_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Offline · Teach Me Sign</title>
+<title>Offline · DeafSign</title>
 <style>
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
     font-family:system-ui,-apple-system,sans-serif;background:#f7f5fc;color:#1f1633;text-align:center;padding:16px}
@@ -45,7 +45,7 @@ self.addEventListener("push", (event) => {
   } catch {
     data = { body: event.data ? event.data.text() : "" }
   }
-  const title = data.title || "Teach Me Sign"
+  const title = data.title || "DeafSign"
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || "",

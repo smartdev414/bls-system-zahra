@@ -1,9 +1,9 @@
-# BLS platform (classroom.tms.webcam)
+# BLS platform (bsl.deafsigns.co.uk)
 
-A Next.js app in `/opt/tae/bls-system`, live at https://classroom.tms.webcam ("Teach Me Sign"). It's a British Sign Language school: tutors teach live classes and build courses, and students take lessons, tests and leagues. The users are teachers and students, not engineers. The owner's standing rule is **easy to use and easy to understand, UX before clever workflow**: one obvious action, sensible defaults, the control on the thing itself, and no option-heavy dialogs.
+A Next.js app in `/opt/tae/bls/bls-system-zahra`, live at https://bsl.deafsigns.co.uk ("DeafSign"). It's a British Sign Language school: tutors teach live classes and build courses, and students take lessons, tests and leagues. The users are teachers and students, not engineers. The owner's standing rule is **easy to use and easy to understand, UX before clever workflow**: one obvious action, sensible defaults, the control on the thing itself, and no option-heavy dialogs.
 
 ## QA accounts
-They're stored in `~/.config/bls-qa/accounts.env` (mode 600, outside git). `qa-lib.mjs` loads it automatically.
+They're stored in `~/.config/bls-qa-deafsign/accounts.env` (mode 600, outside git). `qa-lib.mjs` loads it automatically.
 
 | Key | Role | Lands on |
 |---|---|---|
@@ -11,6 +11,8 @@ They're stored in `~/.config/bls-qa/accounts.env` (mode 600, outside git). `qa-l
 | `B` | student (Billy Johnson, booked into BSL Level 4 Mon evening classes) | `/student` |
 
 There's no tutor account on live. Check tutor screens locally (`*@t.test` users), and through the admin views that show the same data. If a login fails, tell the user. Don't guess other passwords.
+
+DeafSign started on 2026-11-14 with an empty database: none of the original site's (classroom.tms.webcam) accounts exist here. Ask the user for DeafSign logins before a live QA pass.
 
 ## Roles and routes
 - **admin** → `/admin/*` (users, students, courses, tests, signs, leagues, sessions, settings, tickets, audit logs)
@@ -42,12 +44,12 @@ Each line gives the feature, who uses it, and its main entry points. The user's 
 
 ## Local verification
 - DB: the docker container `bls-test-db` on 127.0.0.1:55432 (user `postgres`, password `test`; `docker start bls-test-db`). Make a fresh copy for each run: `docker exec bls-test-db createdb -U postgres -T trophy_test qa_<date>`. `trophy_test` has the current schema plus seeded data: `admin@t.test`, `tutor@t.test`, `s1@rem.test`…, all `Passw0rd!`, open sign requests, reflection tests and trophies. Its quiz attempts were seeded without LessonProgress, so "0 of N lessons" next to passed tests is a data artifact there. Add any missing case with plain SQL into the copy, never into a shared one.
-- A stale `next dev` from an old session holds the repo's dev lock. Run from a copy: `rsync -a --exclude node_modules --exclude .next --exclude .git --exclude '.env*' /opt/tae/bls-system/ <scratch>/app/`, symlink `node_modules`, then `DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/<db> NEXT_PUBLIC_PUSHER_KEY=dummy NEXT_PUBLIC_PUSHER_CLUSTER=eu npx next dev --webpack -p 4100` (Turbopack rejects the symlink). Re-run the rsync after each edit. Stop it with `pkill -f "next dev --webpack -p 4100"` in a command of its own, because pkill also kills the shell that runs it.
+- A stale `next dev` from an old session holds the repo's dev lock. Run from a copy: `rsync -a --exclude node_modules --exclude .next --exclude .git --exclude '.env*' /opt/tae/bls/bls-system-zahra/ <scratch>/app/`, symlink `node_modules`, then `DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/<db> NEXT_PUBLIC_PUSHER_KEY=dummy NEXT_PUBLIC_PUSHER_CLUSTER=eu npx next dev --webpack -p 4100` (Turbopack rejects the symlink). Re-run the rsync after each edit. Stop it with `pkill -f "next dev --webpack -p 4100"` in a command of its own, because pkill also kills the shell that runs it.
 - Point `qa-lib.mjs` at it with `QA_URL=http://localhost:4100` and local keys, e.g. `QA_L_EMAIL=admin@t.test QA_L_PASSWORD='Passw0rd!'` → `openAs("L")`. Use keys other than A/B so the cached live sessions aren't mixed up.
 - Checks: `npx tsc --noEmit`, `npx eslint <changed files>`. `app/(dashboard)/student/courses/page.tsx` already had one set-state-in-effect lint error before 2026-11-09.
 
 ## Deploy
-Pushing to `main` on GitHub (`origin`) runs the "Deploy to OVH" GitHub Actions workflow (`.github/workflows/deploy-ovh.yml`), which builds the image and releases it on the server. It only runs while the repo variable `OVH_DEPLOY=on` is set. Ask before the first push in a session. After pushing, wait a few minutes, then check the live site once (don't poll). The mobile app (`/opt/tae/bls-system-mobile`) is separate and doesn't get these fixes.
+Pushing to `main` on GitHub (`origin`) runs the "Deploy to OVH" GitHub Actions workflow (`.github/workflows/deploy-ovh.yml`), which builds the image and releases it on the server. It only runs while the repo variable `OVH_DEPLOY=on` is set. Ask before the first push in a session. After pushing, wait a few minutes, then check the live site once (don't poll). The mobile app (`/opt/tae/bls/bls-system-zahra-mobile`) is separate and doesn't get these fixes.
 
 ## Known issues (to check they're still there before reporting)
 - The footer links `/privacy` and `/terms` (`components/layout/footer.tsx`) return 404. Writing those pages needs real policy text from the user. Seen 2026-10-28 and still there 2026-11-09.

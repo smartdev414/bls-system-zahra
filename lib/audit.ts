@@ -170,7 +170,7 @@ async function sendDevAlert(p: DevAlertParams): Promise<void> {
   }
 
   <p style="margin:20px 0 0;font-size:11px;color:#6272a4">
-    This alert was generated automatically by Teach Me Sign audit middleware.
+    This alert was generated automatically by DeafSign audit middleware.
     Review the Admin → API Logs page for full history.
   </p>
 </div>`
