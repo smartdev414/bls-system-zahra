@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 export const LOGO_MARK_SRC = "/brand/deafsign-logo.png"
 export const LOGO_FULL_SRC = "/brand/deafsign-logo.png"
 export const LOGO_FULL_DARK_SRC = "/brand/deafsign-logo.png"
-export const LOGO_BRAND = "DeafSign"
+export const LOGO_BRAND = "Deaf Signs"
 
 export const MARK_W = 500
 export const MARK_H = 500

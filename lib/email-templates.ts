@@ -1,5 +1,5 @@
 /**
- * DeafSign — Email Templates
+ * Deaf Signs — Email Templates
  *
  * All templates share a consistent professional layout using the platform's
  * primary colour schema:
@@ -13,7 +13,7 @@ import { NotificationType } from "@/app/generated/prisma/enums"
 import { publicAppUrl } from "@/lib/publicUrl"
 
 // ─── Brand ──────────────────────────────────────────────────────────────────
-export const BRAND = "DeafSign"
+export const BRAND = "Deaf Signs"
 const APP_URL  = publicAppUrl()
 const LOGO_URL = `${APP_URL}/brand/deafsign-logo.png`
 

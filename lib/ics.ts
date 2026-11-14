@@ -25,7 +25,7 @@ export function buildIcs(event: CalendarEvent): string {
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//DeafSign//Classes//EN",
+    "PRODID:-//Deaf Signs//Classes//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",

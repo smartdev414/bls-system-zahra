@@ -14,7 +14,7 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col xl:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-muted-foreground text-sm max-xl:text-center">
           <Hand className="size-4 text-primary shrink-0" />
-          <span>© {new Date().getFullYear()} DeafSign. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} Deaf Signs. All rights reserved.</span>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
           <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>

@@ -167,8 +167,8 @@ async function handlePATCH(
           "ACCOUNT_APPROVED",
           "Your account is approved",
           courses.length > 0
-            ? `Welcome to DeafSign! Your account has been approved and you've been added to ${onCourses} — sign in to start learning.`
-            : "Welcome to DeafSign! Your account has been approved — sign in to start learning.",
+            ? `Welcome to Deaf Signs! Your account has been approved and you've been added to ${onCourses} — sign in to start learning.`
+            : "Welcome to Deaf Signs! Your account has been approved — sign in to start learning.",
           courses.length === 1 ? `/student/lessons?courseId=${courses[0].id}` : "/student",
         )
       } else {

@@ -4,7 +4,7 @@
  * Required environment variables:
  *   MAILGUN_API_KEY    — your Mailgun private API key
  *   MAILGUN_DOMAIN     — your sending domain, e.g. mg.bslplatform.com
- *   MAILGUN_FROM       — sender address, e.g. DeafSign <noreply@mg.bslplatform.com>
+ *   MAILGUN_FROM       — sender address, e.g. Deaf Signs <noreply@mg.bslplatform.com>
  *   MAILGUN_API_BASE   — (optional) defaults to https://api.mailgun.net/v3  (EU: https://api.eu.mailgun.net/v3)
  */
 
@@ -21,7 +21,7 @@ export async function sendEmail(
 ): Promise<void> {
   const apiKey  = process.env.MAILGUN_API_KEY
   const domain  = process.env.MAILGUN_DOMAIN
-  const from    = process.env.MAILGUN_FROM ?? `DeafSign <noreply@${domain}>`
+  const from    = process.env.MAILGUN_FROM ?? `Deaf Signs <noreply@${domain}>`
   const apiBase = process.env.MAILGUN_API_BASE ?? "https://api.mailgun.net/v3"
 
   if (!apiKey || !domain) {
