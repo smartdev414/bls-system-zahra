@@ -97,7 +97,7 @@ export default function ReceptiveLogPage() {
           Receptive log
         </h1>
         <p className="text-muted-foreground mt-1">
-          Log the time you spend outside class watching signing: TV with signing, BSL films, Deaf events, meeting Deaf people.
+          Log the time you spend on BSL outside class: TV with signing (See Hear, LUMO TV…), BSL films, Deaf events, meeting Deaf people, practice tests.
           Your teachers can see this log.
         </p>
       </div>
@@ -117,7 +117,7 @@ export default function ReceptiveLogPage() {
             <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-primary" /></div>
           ) : !data?.entries.length ? (
             <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">
-              Nothing logged yet. Add your first entry: what you watched or who you met, and for how long.
+              Nothing logged yet. Add your first entry: what you watched or did, when, for how long, and what it was about.
             </CardContent></Card>
           ) : (
             <ReceptiveEntryList entries={data.entries} onEdit={setEditing} onDelete={remove} busyId={busyId} />

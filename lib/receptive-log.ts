@@ -2,7 +2,7 @@
 // signing (TV with signing, Deaf events, meeting Deaf people...). Shared by the
 // student's own page, their teachers' view and the API. No server imports here.
 
-export const RECEPTIVE_ACTIVITIES = ["TV", "FILM", "ONLINE", "DEAF_EVENT", "MET_DEAF", "OTHER"] as const
+export const RECEPTIVE_ACTIVITIES = ["TV", "FILM", "ONLINE", "DEAF_EVENT", "MET_DEAF", "PRACTICE", "OTHER"] as const
 export type ReceptiveActivity = (typeof RECEPTIVE_ACTIVITIES)[number]
 
 export const ACTIVITY_LABEL: Record<ReceptiveActivity, string> = {
@@ -11,17 +11,19 @@ export const ACTIVITY_LABEL: Record<ReceptiveActivity, string> = {
   ONLINE: "Online / social media",
   DEAF_EVENT: "Deaf club or event",
   MET_DEAF: "Met Deaf people",
+  PRACTICE: "Practice test / online course",
   OTHER: "Other",
 }
 
-/** Placeholder for "what did you watch / where", per activity. */
-export const ACTIVITY_HINT: Record<ReceptiveActivity, string> = {
-  TV: "e.g. BBC News with in-vision signer",
-  FILM: "e.g. BSL Zone short film",
-  ONLINE: "e.g. a Deaf vlogger on YouTube",
-  DEAF_EVENT: "e.g. Deaf club social night",
-  MET_DEAF: "e.g. coffee with a Deaf neighbour",
-  OTHER: "What did you do?",
+/** Placeholders for "Name" and "Resource", per activity, in the style of the paper log. */
+export const ACTIVITY_HINT: Record<ReceptiveActivity, { name: string; resource: string }> = {
+  TV: { name: "e.g. See Hear - Episode 22", resource: "e.g. See Hear" },
+  FILM: { name: "e.g. a BSL Zone short film", resource: "e.g. BSL Zone" },
+  ONLINE: { name: "e.g. LUMO TV - Episode 21", resource: "e.g. YouTube" },
+  DEAF_EVENT: { name: "e.g. Deaf club social night", resource: "e.g. local Deaf club" },
+  MET_DEAF: { name: "e.g. coffee with a Deaf friend", resource: "e.g. in person" },
+  PRACTICE: { name: "e.g. Practice test \u201cafternoon tea\u201d", resource: "e.g. Signature Learning Hub" },
+  OTHER: { name: "What did you do?", resource: "Where?" },
 }
 
 export type ReceptiveEntry = {
@@ -30,6 +32,7 @@ export type ReceptiveEntry = {
   date: string
   activity: ReceptiveActivity
   title: string
+  resource: string | null
   minutes: number
   notes: string | null
 }
@@ -44,6 +47,7 @@ export type ReceptiveTotals = {
 
 export const MAX_MINUTES = 24 * 60
 export const MAX_TITLE = 200
+export const MAX_RESOURCE = 120
 export const MAX_NOTES = 2000
 
 /** Today in the UK, "YYYY-MM-DD". */
@@ -80,7 +84,7 @@ export function totalsOf(entries: Array<{ date: string; minutes: number }>, toda
   return { totalMinutes, last7Minutes, last30Minutes, entries: entries.length, lastDate }
 }
 
-export type ReceptiveInput = { date: string; activity: ReceptiveActivity; title: string; minutes: number; notes: string | null }
+export type ReceptiveInput = { date: string; activity: ReceptiveActivity; title: string; resource: string | null; minutes: number; notes: string | null }
 
 /** Checks a body from the student; returns the clean entry or a message to show them. */
 export function parseReceptiveInput(body: unknown, today = ukToday()): ReceptiveInput | { error: string } {
@@ -96,20 +100,32 @@ export function parseReceptiveInput(body: unknown, today = ukToday()): Receptive
   if (!RECEPTIVE_ACTIVITIES.includes(activity)) return { error: "Choose what kind of activity it was" }
 
   const title = typeof b.title === "string" ? b.title.trim() : ""
-  if (!title) return { error: "Say what you watched or who you met" }
+  if (!title) return { error: "Give it a name: what you watched, or the event" }
   if (title.length > MAX_TITLE) return { error: `Keep the description under ${MAX_TITLE} characters` }
 
   const minutes = typeof b.minutes === "number" ? Math.round(b.minutes) : NaN
   if (!Number.isFinite(minutes) || minutes < 1) return { error: "Enter how long it was" }
   if (minutes > MAX_MINUTES) return { error: "That's more than a day — check the time" }
 
-  const rawNotes = typeof b.notes === "string" ? b.notes.trim() : ""
-  if (rawNotes.length > MAX_NOTES) return { error: `Keep your notes under ${MAX_NOTES} characters` }
+  const resource = typeof b.resource === "string" ? b.resource.trim() : ""
+  if (resource.length > MAX_RESOURCE) return { error: `Keep the resource under ${MAX_RESOURCE} characters` }
 
-  return { date, activity, title, minutes, notes: rawNotes || null }
+  // The description is the evidence teachers look at, so it is required.
+  const notes = typeof b.notes === "string" ? b.notes.trim() : ""
+  if (!notes) return { error: "Add a content description: what it was about and any new vocabulary" }
+  if (notes.length > MAX_NOTES) return { error: `Keep the description under ${MAX_NOTES} characters` }
+
+  return { date, activity, title, resource: resource || null, minutes, notes }
 }
 
-/** CSV of entries for teachers who still want a spreadsheet. */
+/** "2026-09-14" → "14-Sep-26", as on the paper log. */
+export const sheetDate = (day: string) => {
+  const [y, m, d] = day.split("-")
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m) - 1]
+  return `${d}-${mon}-${y.slice(2)}`
+}
+
+/** CSV in the same columns as the paper log (plus the activity), for teachers who want the spreadsheet. */
 export function receptiveCsv(entries: ReceptiveEntry[]): string {
   const cell = (v: string | number) => {
     const s = String(v)
@@ -117,9 +133,11 @@ export function receptiveCsv(entries: ReceptiveEntry[]): string {
     const safe = /^[=+\-@]/.test(s) ? `'${s}` : s
     return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
   }
-  const rows = [["Date", "Activity", "What / who", "Minutes", "Hours", "Notes"]]
+  const rows = [["Name", "Date", "Hours", "Resource", "Activity", "Content description"]]
   for (const e of [...entries].sort((a, b) => a.date.localeCompare(b.date))) {
-    rows.push([e.date, ACTIVITY_LABEL[e.activity], e.title, String(e.minutes), (e.minutes / 60).toFixed(2), e.notes ?? ""])
+    rows.push([e.title, sheetDate(e.date), String(Math.round((e.minutes / 60) * 100) / 100), e.resource ?? "", ACTIVITY_LABEL[e.activity], e.notes ?? ""])
   }
+  const total = entries.reduce((n, e) => n + e.minutes, 0)
+  rows.push(["Total", "", String(Math.round((total / 60) * 100) / 100), "", "", ""])
   return rows.map((r) => r.map(cell).join(",")).join("\r\n")
 }

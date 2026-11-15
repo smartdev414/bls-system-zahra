@@ -1604,6 +1604,7 @@ enum ReceptiveActivity {
   ONLINE // online video, social media, vlog
   DEAF_EVENT // Deaf club, social, theatre, event
   MET_DEAF // meeting or chatting with Deaf people
+  PRACTICE // practice test or online course (e.g. Signature Learning Hub)
   OTHER
 }
 
@@ -1613,10 +1614,12 @@ model ReceptiveLog {
   // The day it happened (no time of day).
   date      DateTime          @db.Date
   activity  ReceptiveActivity
-  // What they watched, or where and with whom.
+  // "Name" on the paper log: what they watched, or the event / who they met.
   title     String
+  // Where it came from: See Hear, BSL Zone, Signature Learning Hub...
+  resource  String?
   minutes   Int
-  // What they noticed or learned: new signs, how it went.
+  // "Content description": what it was about, new vocabulary, a test score.
   notes     String?
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt

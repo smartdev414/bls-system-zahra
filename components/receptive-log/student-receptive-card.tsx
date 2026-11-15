@@ -39,7 +39,7 @@ export function StudentReceptiveCard({ studentId, studentName }: { studentId: st
           <span>
             Receptive log
             <span className="block text-[11px] font-normal text-muted-foreground mt-0.5">
-              Signing they watched or took part in outside class, as logged by the student
+              BSL they watched, practised or took part in outside class, as logged by the student
             </span>
           </span>
           {entries.length > 0 && (

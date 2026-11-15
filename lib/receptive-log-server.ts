@@ -1,9 +1,9 @@
 import prisma from "@/lib/prisma"
 import { totalsOf, type ReceptiveActivity, type ReceptiveEntry, type ReceptiveTotals } from "@/lib/receptive-log"
 
-const ENTRY_SELECT = { id: true, date: true, activity: true, title: true, minutes: true, notes: true } as const
+const ENTRY_SELECT = { id: true, date: true, activity: true, title: true, resource: true, minutes: true, notes: true } as const
 
-type Row = { id: string; date: Date; activity: string; title: string; minutes: number; notes: string | null }
+type Row = { id: string; date: Date; activity: string; title: string; resource: string | null; minutes: number; notes: string | null }
 
 /** "date" is a DATE column: Prisma hands it back as UTC midnight. */
 export const toEntry = (r: Row): ReceptiveEntry => ({
@@ -11,6 +11,7 @@ export const toEntry = (r: Row): ReceptiveEntry => ({
   date: r.date.toISOString().slice(0, 10),
   activity: r.activity as ReceptiveActivity,
   title: r.title,
+  resource: r.resource,
   minutes: r.minutes,
   notes: r.notes,
 })

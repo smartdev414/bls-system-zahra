@@ -1,6 +1,6 @@
 "use client"
 
-import { Clapperboard, Globe, HandHeart, MoreHorizontal, Pencil, Trash2, Tv, Users } from "lucide-react"
+import { Clapperboard, ClipboardCheck, Globe, HandHeart, MoreHorizontal, Pencil, Trash2, Tv, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ACTIVITY_LABEL, hoursLabel, type ReceptiveActivity, type ReceptiveEntry, type ReceptiveTotals } from "@/lib/receptive-log"
 
@@ -10,6 +10,7 @@ export const ACTIVITY_LOOK: Record<ReceptiveActivity, { icon: typeof Tv; color: 
   ONLINE: { icon: Globe, color: "text-teal-600 bg-teal-50 dark:bg-teal-950/40" },
   DEAF_EVENT: { icon: Users, color: "text-amber-600 bg-amber-50 dark:bg-amber-950/40" },
   MET_DEAF: { icon: HandHeart, color: "text-rose-600 bg-rose-50 dark:bg-rose-950/40" },
+  PRACTICE: { icon: ClipboardCheck, color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40" },
   OTHER: { icon: MoreHorizontal, color: "text-muted-foreground bg-muted" },
 }
 
@@ -76,7 +77,7 @@ export function ReceptiveEntryList({ entries, onEdit, onDelete, busyId }: Props)
                       <p className="text-sm font-medium break-words min-w-0">{e.title}</p>
                       <span className="text-sm font-bold tabular-nums shrink-0">{hoursLabel(e.minutes)}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground">{ACTIVITY_LABEL[e.activity]} · {dayLabel(e.date)}</p>
+                    <p className="text-xs text-muted-foreground">{[e.resource, ACTIVITY_LABEL[e.activity], dayLabel(e.date)].filter(Boolean).join(" · ")}</p>
                     {e.notes && <p className="text-sm mt-1.5 whitespace-pre-wrap break-words text-foreground/90">{e.notes}</p>}
                   </div>
                   {(onEdit || onDelete) && (
