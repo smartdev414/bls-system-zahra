@@ -83,13 +83,13 @@ export function ReceptiveEntryList({ entries, onEdit, onDelete, busyId }: Props)
                   {(onEdit || onDelete) && (
                     <div className="flex shrink-0 -mr-2">
                       {onEdit && (
-                        <Button variant="ghost" size="icon" className="size-8" aria-label={`Edit ${e.title}`} onClick={() => onEdit(e)}>
+                        <Button variant="ghost" size="icon" className="size-10 sm:size-8" aria-label={`Edit ${e.title}`} onClick={() => onEdit(e)}>
                           <Pencil className="size-3.5" />
                         </Button>
                       )}
                       {onDelete && (
                         <Button
-                          variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive"
+                          variant="ghost" size="icon" className="size-10 sm:size-8 text-muted-foreground hover:text-destructive"
                           aria-label={`Delete ${e.title}`} disabled={busyId === e.id} onClick={() => onDelete(e)}
                         >
                           <Trash2 className="size-3.5" />
