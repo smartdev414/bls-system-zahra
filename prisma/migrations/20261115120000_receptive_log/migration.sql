@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "ReceptiveActivity" AS ENUM ('TV', 'FILM', 'ONLINE', 'DEAF_EVENT', 'MET_DEAF', 'PRACTICE', 'OTHER');
+CREATE TYPE "ReceptiveActivity" AS ENUM ('TV', 'FILM', 'ONLINE', 'DEAF_EVENT', 'MET_DEAF', 'OTHER');
 
 -- CreateTable
 CREATE TABLE "ReceptiveLog" (
@@ -8,7 +8,6 @@ CREATE TABLE "ReceptiveLog" (
     "date" DATE NOT NULL,
     "activity" "ReceptiveActivity" NOT NULL,
     "title" TEXT NOT NULL,
-    "resource" TEXT,
     "minutes" INTEGER NOT NULL,
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
