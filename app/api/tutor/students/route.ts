@@ -6,6 +6,8 @@ import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
 import { joinedClassOf } from "@/lib/session-access"
 import { learningSummary, type LearningCounts } from "@/lib/student-activity"
+import { receptiveTotals } from "@/lib/receptive-log-server"
+import type { ReceptiveTotals } from "@/lib/receptive-log"
 import { engagementOf, isOnline, latest, type Engagement } from "@/lib/engagement"
 import { activity, courseTests, statusOf, testStatuses, UNFINISHED, type TestStatus } from "@/lib/test-progress"
 
@@ -98,6 +100,7 @@ async function handleGET(req: NextRequest) {
       lastRemindedAt: string | null
       testsDone: number
       testsUnfinished: number
+      receptive: ReceptiveTotals | null
       courses: Array<{
         id: string
         title: string
@@ -116,7 +119,7 @@ async function handleGET(req: NextRequest) {
     const blank = {
       lastSeenAt: null, activeDates: [], lastRemindedAt: null, testsDone: 0, testsUnfinished: 0,
       lastLoginAt: null, lastStudiedAt: null, studyDates: [], learning30d: null,
-      engagement: "never" as Engagement, online: false,
+      engagement: "never" as Engagement, online: false, receptive: null,
     }
 
     for (const enrollment of enrollments) {
@@ -198,7 +201,7 @@ async function handleGET(req: NextRequest) {
     const students = [...studentMap.values()]
     // When each was last on the platform and last reminded to catch up.
     const ids = students.map((s) => s.id)
-    const [seen, learning, stamps, reminders] = await Promise.all([
+    const [seen, learning, stamps, reminders, receptive] = await Promise.all([
       activity(ids),
       learningSummary(ids),
       ids.length > 0
@@ -211,6 +214,7 @@ async function handleGET(req: NextRequest) {
             _max: { createdAt: true },
           })
         : [],
+      receptiveTotals(ids),
     ])
     const remindedAt = new Map(reminders.map((r) => [r.userId, r._max.createdAt]))
     const stampOf = new Map(stamps.map((u) => [u.id, u]))
@@ -230,6 +234,7 @@ async function handleGET(req: NextRequest) {
       s.engagement = engagementOf({ lastSeenAt: lastSeen, lastStudiedAt: l?.lastStudiedAt })
       s.online = isOnline(u?.lastActiveAt)
       s.lastRemindedAt = remindedAt.get(s.id)?.toISOString() ?? null
+      s.receptive = receptive.get(s.id) ?? null
     }
     return NextResponse.json({ students, total: students.length })
   } catch (err) {

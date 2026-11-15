@@ -292,6 +292,7 @@ model User {
   trophies                Trophy[]                 @relation("TrophiesReceived")
   trophiesGiven           Trophy[]                 @relation("TrophiesGiven")
   loginEvents             LoginEvent[]
+  receptiveLogs           ReceptiveLog[]
 }
 
 enum LoginMethod {
@@ -1592,4 +1593,35 @@ model Trophy {
 
   @@index([studentId])
   @@index([courseId])
+}
+
+// Receptive log (DeafSign): what a student did outside class to watch and take
+// in signing — TV with signing, Deaf events, meeting Deaf people — and for how
+// long. Students keep their own; their teachers and staff can read it.
+enum ReceptiveActivity {
+  TV // TV programme with signing (in-vision signer, BSL Zone, See Hear...)
+  FILM // film or video in BSL
+  ONLINE // online video, social media, vlog
+  DEAF_EVENT // Deaf club, social, theatre, event
+  MET_DEAF // meeting or chatting with Deaf people
+  OTHER
+}
+
+model ReceptiveLog {
+  id        String            @id @default(cuid())
+  userId    String
+  // The day it happened (no time of day).
+  date      DateTime          @db.Date
+  activity  ReceptiveActivity
+  // What they watched, or where and with whom.
+  title     String
+  minutes   Int
+  // What they noticed or learned: new signs, how it went.
+  notes     String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
 }

@@ -7,7 +7,7 @@ import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare, Clapperboard,
   Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
-  CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy, MessageSquarePlus, LogIn,
+  CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy, MessageSquarePlus, LogIn, Eye,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
@@ -64,6 +64,7 @@ const studentNav: NavEntry[] = [
     label: "Learning", icon: BookOpen, items: [
       { label: "Courses", href: "/student/courses", icon: BookOpen },
       { label: "Tests", href: "/student/tests", icon: FlaskConical },
+      { label: "Receptive log", href: "/student/receptive-log", icon: Eye },
       { label: "Leagues", href: "/student/leagues", icon: Trophy },
       { label: "Certifications", href: "/student/certifications", icon: ShieldCheck },
     ],

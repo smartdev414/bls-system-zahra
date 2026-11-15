@@ -34,7 +34,10 @@ echo "==> Applying database migrations"
 docker compose --profile tools run --rm -T migrate
 
 echo "==> Starting web"
-SERVICES="zahra-web"; [ "${CRON:-on}" = "off" ] || SERVICES="$SERVICES zahra-cron"
+# db-allow.conf holds the IPs allowed through db-gateway (server only, not in
+# git). Created empty (= nobody allowed) so the bind mount is never a folder.
+[ -f db-allow.conf ] || : > db-allow.conf
+SERVICES="zahra-web db-gateway"; [ "${CRON:-on}" = "off" ] || SERVICES="$SERVICES zahra-cron"
 if [ "${CRON:-on}" = "off" ]; then docker compose stop zahra-cron 2>/dev/null || true; fi
 if docker compose up -d --wait --wait-timeout 180 $SERVICES; then
   echo "$TAG" > .current-tag

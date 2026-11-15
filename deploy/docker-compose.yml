@@ -81,6 +81,23 @@ services:
     depends_on:
       - zahra-web
 
+  # Direct DB access (DbGate etc.) for allow-listed IPs: public ports 15432
+  # (original "bls" DB) and 15434 (this stack's DB). See db-gateway.conf.
+  db-gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${PUBLIC_IP:-198.244.201.81}:15432:15432"
+      - "${PUBLIC_IP:-198.244.201.81}:15434:15434"
+    volumes:
+      - ./db-gateway.conf:/etc/nginx/nginx.conf:ro
+      - ./db-allow.conf:/etc/nginx/db-allow.conf:ro
+    networks:
+      default: {}
+      edge: {}
+    depends_on:
+      - zahra-db
+
 networks:
   # The original stack's network, where its Caddy lives.
   edge:

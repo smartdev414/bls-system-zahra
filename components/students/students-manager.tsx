@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { hoursLabel, type ReceptiveTotals } from "@/lib/receptive-log"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   Users, Search, BookOpen, Loader2, ChevronDown, ChevronUp,
-  CalendarPlus, Check, Filter, ArrowUpDown, FolderOpen,
+  CalendarPlus, Check, Filter, ArrowUpDown, FolderOpen, Eye,
   UserPlus, ClipboardCheck, BellRing, Clock, LogIn, GraduationCap, Activity, ArrowRight, UserX
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -131,6 +132,8 @@ type Student = {
   lastRemindedAt: string | null
   testsDone: number
   testsUnfinished: number
+  /** Receptive log totals (time outside class watching signing); null if nothing logged. */
+  receptive: ReceptiveTotals | null
   courses: CourseProgress[]
 }
 
@@ -151,7 +154,7 @@ const PAGE_SIZE = 50
 // Student · Level · Courses · Activity · Tests · Progress · actions
 const COLUMNS = "sm:grid-cols-[1fr_56px_56px_132px_104px_90px_40px]"
 
-type SortKey = "name-asc" | "name-desc" | "joined-desc" | "joined-asc" | "progress-desc" | "progress-asc" | "tests-unfinished" | "seen-oldest" | "studied-oldest" | "studied-recent"
+type SortKey = "name-asc" | "name-desc" | "joined-desc" | "joined-asc" | "progress-desc" | "progress-asc" | "tests-unfinished" | "seen-oldest" | "studied-oldest" | "studied-recent" | "receptive-desc"
 
 const SORT_LABELS: Record<SortKey, string> = {
   "name-asc": "Name A→Z",
@@ -164,6 +167,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   "seen-oldest": "Not seen for longest",
   "studied-oldest": "Not studied for longest",
   "studied-recent": "Studied most recently",
+  "receptive-desc": "Most receptive hours (30 days)",
 }
 
 function EngagementPill({ student }: { student: Student }) {
@@ -330,6 +334,8 @@ export function StudentsManager() {
           const studied = (s: Student) => (s.lastStudiedAt ? new Date(s.lastStudiedAt).getTime() : 0)
           return sortKey === "studied-oldest" ? studied(a) - studied(b) : studied(b) - studied(a)
         }
+        case "receptive-desc":
+          return (b.receptive?.last30Minutes ?? 0) - (a.receptive?.last30Minutes ?? 0) || a.name.localeCompare(b.name)
         default: return 0
       }
     })
@@ -683,6 +689,18 @@ export function StudentsManager() {
                             })}
                           </div>
                         )}
+                        <p className="flex items-center gap-1.5">
+                          <Eye className="size-3.5 text-muted-foreground shrink-0" />
+                          <span>
+                            Receptive log{" "}
+                            {student.receptive
+                              ? <>
+                                  <span className="font-medium">{hoursLabel(student.receptive.last30Minutes)}</span> in the last 30 days
+                                  {" · "}{hoursLabel(student.receptive.totalMinutes)} in all
+                                </>
+                              : <span className="text-muted-foreground">— nothing logged yet</span>}
+                          </span>
+                        </p>
                         <p className="flex items-center gap-1.5 text-muted-foreground">
                           <BellRing className="size-3.5 shrink-0" />
                           {student.lastRemindedAt

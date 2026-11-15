@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { useFetch } from "@/hooks/use-fetch"
+import { StudentReceptiveCard } from "@/components/receptive-log/student-receptive-card"
 import { levelColor, type CourseLevel } from "@/lib/levels"
 import {
   ENGAGEMENT_LOOK, FAILURE_LABEL, LOGIN_METHOD_LABEL, agoLabel, deviceOf, type Engagement,
@@ -221,6 +222,8 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
             <CardHeader><CardTitle className="text-sm">Last 12 weeks</CardTitle></CardHeader>
             <CardContent><ActivityCalendar days={data.days} /></CardContent>
           </Card>
+
+          <StudentReceptiveCard studentId={student.id} studentName={student.name} />
 
           <Card className="shadow-sm gap-0">
             <CardHeader className="pb-3"><CardTitle className="text-sm">Learning activity</CardTitle></CardHeader>

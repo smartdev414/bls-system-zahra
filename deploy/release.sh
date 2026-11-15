@@ -22,7 +22,7 @@ DOCKER_BUILDKIT=1 nice docker build -q -f deploy/web.Dockerfile --target web \
 DOCKER_BUILDKIT=1 nice docker build -q -f deploy/web.Dockerfile --target migrate -t "bls-zahra-migrate:$TAG" .
 
 # Stack files come from git, so edit them there, not on the server.
-cp deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh deploy/backup.sh "$HOME_DIR/"
+cp deploy/docker-compose.yml deploy/Caddyfile deploy/db-gateway.conf deploy/deploy.sh deploy/backup.sh "$HOME_DIR/"
 
 SKIP_PULL=yes "$HOME_DIR/deploy.sh" "$TAG"
 # The workflow then deletes the source dir (it holds a copy of the source).

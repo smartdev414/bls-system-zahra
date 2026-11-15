@@ -59,6 +59,23 @@ SKIP_PULL=yes ./deploy.sh <older-sha>                         # roll back (first
 
 GitHub needs one secret: `OVH_SSH_KEY` (the private key of the `deploy` user).
 
+## Direct database access (DbGate etc.)
+
+The `db-gateway` container ([deploy/db-gateway.conf](../deploy/db-gateway.conf)) publishes both databases on the
+server's public IP, for allow-listed client IPs only. Everyone else is refused before reaching Postgres.
+
+| | Host | Port | User / database |
+|---|---|---|---|
+| Original (Teach Me Sign) | `198.244.201.81` | `15432` | `bls` / `bls` |
+| Deaf Signs | `198.244.201.81` | `15434` | `bls_zahra` / `bls_zahra` |
+
+Passwords are `POSTGRES_PASSWORD` in `/opt/bls/.env` and `~/bls-zahra/.env`. The connection is not TLS-encrypted
+(login uses SCRAM, so the password itself is never sent in clear).
+
+Allowed IPs are in `~/bls-zahra/db-allow.conf` on the server (not in git), one `allow 1.2.3.4;` line each.
+After editing: `cd ~/bls-zahra && docker compose exec db-gateway nginx -s reload`. To shut direct access off
+completely: `docker compose stop db-gateway` (it starts again on the next deploy unless removed from git).
+
 ## How the database was created
 
 The migrations in `prisma/migrations/` start from a baseline and can't build an empty database. On 2026-11-14 the
