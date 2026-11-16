@@ -30,7 +30,15 @@ export type EmbedPlayerEvents = {
   onTime?: (time: number, duration: number) => void
   /** The video cannot be played here: removed, private, or its owner blocks embedding. */
   onError?: (reason: "unavailable" | "blocked") => void
+  /** Captions were turned on or off, or switched language. See {@link Captions}. */
+  onCaptions?: (captions: Captions) => void
 }
+
+/**
+ * The caption state of a player: `null` when off, otherwise the track's
+ * language code — or `""` when they are on but the language isn't known.
+ */
+export type Captions = string | null
 
 export type EmbedPlayer = {
   /** Resolves false when the browser refused to start it without a tap. */
@@ -38,6 +46,8 @@ export type EmbedPlayer = {
   pause: () => void
   seek: (time: number) => void
   setMuted: (muted: boolean) => void
+  /** Turn captions off (`null`), on in a language, or on in the default track (`""`). */
+  setCaptions: (captions: Captions) => void
   /** Last known position, in seconds. */
   time: () => number
   playing: () => boolean
@@ -59,6 +69,13 @@ type YTPlayer = {
   getPlayerState(): number
   getIframe(): HTMLIFrameElement
   destroy(): void
+  // Not in YouTube's published reference, but long-standing and what its own
+  // CC button drives. Optional-called: if YouTube ever drops them, caption
+  // following stops and nothing else breaks.
+  getOption?(module: string, option: string): unknown
+  setOption?(module: string, option: string, value: unknown): void
+  loadModule?(module: string): void
+  unloadModule?(module: string): void
 }
 
 type VimeoPlayer = {
@@ -67,7 +84,10 @@ type VimeoPlayer = {
   setCurrentTime(seconds: number): Promise<number>
   setMuted(muted: boolean): Promise<boolean>
   getDuration(): Promise<number>
-  on(event: string, cb: (data: { seconds?: number; duration?: number; name?: string; method?: string }) => void): void
+  enableTextTrack(language: string, kind?: string): Promise<unknown>
+  disableTextTrack(): Promise<void>
+  getTextTracks(): Promise<{ language: string; kind: string; mode: string }[]>
+  on(event: string, cb: (data: { seconds?: number; duration?: number; name?: string; method?: string; language?: string | null }) => void): void
   ready(): Promise<void>
   destroy(): Promise<void>
 }
@@ -191,6 +211,19 @@ async function createYouTube(
   })
   fillHost(player.getIframe())
 
+  // Captions: the track YouTube is showing, or null. With captions off the
+  // module is unloaded and the read comes back empty or throws.
+  const readCaptions = (): Captions => {
+    try {
+      const track = player.getOption?.("captions", "track") as { languageCode?: string } | undefined
+      if (!track || typeof track !== "object" || !("languageCode" in track)) return null
+      return track.languageCode ?? ""
+    } catch {
+      return null
+    }
+  }
+  let lastCaptions: Captions = null
+
   // YouTube has no "seeked" event: a jump shows up as the time moving by more
   // than the clock did since the last look.
   const poll = setInterval(() => {
@@ -202,6 +235,12 @@ async function createYouTube(
     lastTime = t
     lastPoll = now
     ev.onTime?.(t, player.getDuration() || 0)
+    // Nor a captions event: same trick, look once a second.
+    const c = readCaptions()
+    if (c !== lastCaptions) {
+      lastCaptions = c
+      ev.onCaptions?.(c)
+    }
   }, 1000)
 
   return {
@@ -218,6 +257,17 @@ async function createYouTube(
     pause: () => player.pauseVideo(),
     seek: (t) => { player.seekTo(t, true); lastTime = t; lastPoll = Date.now() },
     setMuted: (m) => (m ? player.mute() : player.unMute()),
+    setCaptions: (c) => {
+      try {
+        if (c === null) {
+          player.setOption?.("captions", "track", {})
+          player.unloadModule?.("captions")
+          return
+        }
+        player.loadModule?.("captions")
+        if (c) player.setOption?.("captions", "track", { languageCode: c })
+      } catch { /* this video has no captions, or the player isn't ready */ }
+    },
     time: () => player.getCurrentTime() ?? lastTime,
     playing: () => isPlaying,
     iframe: () => player.getIframe(),
@@ -269,6 +319,11 @@ async function createVimeo(
     setTime(d.seconds)
     duration = d.duration ?? duration
   })
+  let captions: Captions = null
+  player.on("texttrackchange", (d) => {
+    captions = d.language ?? null
+    ev.onCaptions?.(captions)
+  })
   player.on("error", (d: { name?: string; method?: string }) => {
     // A refused API call (a seek past the end, a play refused for want of a
     // tap) is reported here too, tagged with the method. Only an error from the
@@ -299,6 +354,15 @@ async function createVimeo(
       void player.setCurrentTime(to).catch(() => {})
     },
     setMuted: (m) => { void player.setMuted(m).catch(() => {}) },
+    setCaptions: (c) => {
+      if (c === captions) return
+      if (c === null) { void player.disableTextTrack().catch(() => {}); return }
+      void (async () => {
+        const tracks = await player.getTextTracks().catch(() => [])
+        const pick = tracks.find((t) => t.language === c) ?? (c === "" ? tracks[0] : undefined)
+        if (pick) await player.enableTextTrack(pick.language, pick.kind).catch(() => {})
+      })()
+    },
     time: now,
     playing: () => isPlaying,
     iframe: () => mount.querySelector("iframe"),

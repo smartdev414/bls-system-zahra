@@ -6,6 +6,7 @@ import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { isVideoLink } from "@/lib/video-link"
 import { LinkedVideoPlayer } from "./LinkedVideoPlayer"
+import type { Captions } from "@/lib/embed-player"
 
 interface VideoPlayerProps {
   isTutor: boolean
@@ -32,6 +33,10 @@ interface VideoPlayerProps {
    * own box is the right rectangle. Must be a stable reference.
    */
   onContentElement?: (el: HTMLElement | null) => void
+
+  /** YouTube/Vimeo links only: the tutor's captions, which students copy. */
+  captions?: Captions
+  onCaptions?: (captions: Captions) => void
 }
 
 // Threshold above which a student re-seeks to the tutor's position. Anything

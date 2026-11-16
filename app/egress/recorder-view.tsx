@@ -90,6 +90,8 @@ type Stage = {
   playing: boolean
   currentTime: number
   asOf: number
+  /** The tutor's captions on a YouTube/Vimeo video; undefined = not heard. */
+  captions?: string | null
 }
 const EMPTY_STAGE: Stage = { kind: null, url: null, page: 1, playing: false, currentTime: 0, asOf: 0 }
 
@@ -303,7 +305,9 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
         case "video_state":
           setStage((s) => ({ ...s, playing: data.playing, currentTime: data.currentTime, asOf: data.ts })); break
         case "video_sync_response":
-          setStage({ ...EMPTY_STAGE, kind: "video", url: data.url, playing: data.playing, currentTime: data.currentTime, asOf: data.ts }); break
+          setStage({ ...EMPTY_STAGE, kind: "video", url: data.url, playing: data.playing, currentTime: data.currentTime, asOf: data.ts, captions: data.captions }); break
+        case "video_captions":
+          setStage((s) => ({ ...s, captions: data.captions })); break
         case "stop":
         case "video_stop":
         case "sync_idle":
@@ -504,6 +508,7 @@ function RecordingStage({ sessionId }: { sessionId: string | null }) {
         asOf={stage.asOf}
         onPlayPause={noop}
         onSeek={noop}
+        captions={stage.captions}
         onContentElement={setStageContentEl}
       />
     )

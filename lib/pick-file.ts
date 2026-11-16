@@ -74,18 +74,19 @@ type WindowWithPicker = Window & {
   showOpenFilePicker?: (options?: OpenFilePickerOptions) => Promise<FileSystemFileHandleLike[]>
 }
 
+/**
+ * ONE group, never several. Chrome on macOS turns each group into an entry in
+ * the dialog's "Format" dropdown and preselects the first, so with separate
+ * "Slides" and "Video" groups every .mp4 showed up greyed out and unclickable —
+ * teachers reported it as "I can't upload video any more".
+ */
 const ACCEPT: FilePickerAcceptType[] = [
   {
-    description: "Slides",
+    description: "Slides and video",
     accept: {
       "application/pdf": [".pdf"],
       "application/vnd.ms-powerpoint": [".ppt"],
       "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
-    },
-  },
-  {
-    description: "Video",
-    accept: {
       "video/mp4": [".mp4"],
       "video/quicktime": [".mov"],
       "video/webm": [".webm"],

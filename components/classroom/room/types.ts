@@ -63,7 +63,10 @@ export type PptAction =
   | { action: "video_start"; url: string }
   | { action: "video_state"; playing: boolean; currentTime: number; ts: number }
   | { action: "video_stop" }
-  | { action: "video_sync_response"; url: string; playing: boolean; currentTime: number; ts: number }
+  // The tutor turned captions on/off on a YouTube/Vimeo video: null = off,
+  // otherwise the language code ("" = on, language unknown).
+  | { action: "video_captions"; captions: string | null }
+  | { action: "video_sync_response"; url: string; playing: boolean; currentTime: number; ts: number; captions?: string | null }
 
 /**
  * The tutor's hand pointer.

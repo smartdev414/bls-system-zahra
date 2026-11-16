@@ -527,7 +527,12 @@ export function ClassroomRoom({
   const [videoPlaying,     setVideoPlaying]     = useState(false)
   const [videoCurrentTime, setVideoCurrentTime] = useState(0)
   const [videoAsOf,        setVideoAsOf]        = useState(() => Date.now())
-  const videoStateRef = useRef({ url: "", playing: false, currentTime: 0, ts: 0 })
+  // The tutor's captions on a YouTube/Vimeo video; students copy them.
+  // undefined = not heard yet (the student's player keeps its own default).
+  const [videoCaptions,    setVideoCaptions]    = useState<string | null | undefined>(undefined)
+  const videoStateRef = useRef<{ url: string; playing: boolean; currentTime: number; ts: number; captions?: string | null }>(
+    { url: "", playing: false, currentTime: 0, ts: 0 },
+  )
 
   // ── Stage state from the server ────────────────────────────────────────────
   // The data channel only carries "from now on", so it cannot tell a student
@@ -1188,6 +1193,12 @@ export function ClassroomRoom({
         setVideoPlaying(false)
         setVideoCurrentTime(0)
         setVideoAsOf(Date.now())
+        setVideoCaptions(undefined)
+        return
+      }
+
+      if (data.action === "video_captions" && !isTutor) {
+        setVideoCaptions(data.captions)
         return
       }
 
@@ -1230,6 +1241,7 @@ export function ClassroomRoom({
             playing: v.playing,
             currentTime: v.currentTime,
             ts: v.ts,
+            captions: v.captions,
           }
           sendPpt(enc.encode(JSON.stringify(response)), { reliable: true })
           return
@@ -1267,6 +1279,7 @@ export function ClassroomRoom({
         setVideoPlaying(data.playing)
         setVideoCurrentTime(data.currentTime)
         setVideoAsOf(data.ts)
+        if (data.captions !== undefined) setVideoCaptions(data.captions)
         return
       }
     } catch { /* ignore malformed */ }
@@ -2355,6 +2368,7 @@ export function ClassroomRoom({
     setVideoPlaying(false)
     setVideoCurrentTime(0)
     setVideoAsOf(now)
+    setVideoCaptions(undefined)
     videoStateRef.current = { url, playing: false, currentTime: 0, ts: now }
 
     safeSendPpt({ action: "video_start", url })
@@ -2522,7 +2536,7 @@ export function ClassroomRoom({
     if (!isTutor) return
     const ts = Date.now()
     const url = videoStateRef.current.url || pptUrl || ""
-    videoStateRef.current = { url, playing, currentTime, ts }
+    videoStateRef.current = { ...videoStateRef.current, url, playing, currentTime, ts }
     safeSendPpt({ action: "video_state", playing, currentTime, ts })
     // Long debounce: a late joiner only needs a position within a few seconds,
     // and the tutor's live broadcasts correct them the moment they arrive.
@@ -2537,6 +2551,13 @@ export function ClassroomRoom({
   const handleVideoPlayPause = useCallback((playing: boolean, currentTime: number) => {
     broadcastVideoState(playing, currentTime)
   }, [broadcastVideoState])
+
+  // The tutor turned captions on or off in the YouTube/Vimeo player: students follow.
+  const handleVideoCaptions = useCallback((captions: string | null) => {
+    if (!isTutor) return
+    videoStateRef.current = { ...videoStateRef.current, captions }
+    safeSendPpt({ action: "video_captions", captions })
+  }, [isTutor, safeSendPpt])
 
   const handleVideoSeek = useCallback((currentTime: number) => {
     // Preserve whatever the tutor's player is actually doing (it may still be
@@ -4826,6 +4847,8 @@ export function ClassroomRoom({
                     asOf={videoAsOf}
                     onPlayPause={handleVideoPlayPause}
                     onSeek={handleVideoSeek}
+                    captions={videoCaptions}
+                    onCaptions={handleVideoCaptions}
                     onContentElement={handleSlideContentElement}
                   />
                 ) : (

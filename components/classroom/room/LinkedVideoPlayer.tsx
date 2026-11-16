@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, PlayCircle, Volume2, VolumeX } from "lucide-react"
 import { parseVideoLink, videoLinkUrl } from "@/lib/video-link"
-import { createEmbedPlayer, type EmbedPlayer } from "@/lib/embed-player"
+import { createEmbedPlayer, type Captions, type EmbedPlayer } from "@/lib/embed-player"
 
 /**
  * The classroom's shared video when the tutor gave a YouTube or Vimeo link
@@ -17,6 +17,9 @@ import { createEmbedPlayer, type EmbedPlayer } from "@/lib/embed-player"
  *     relied on to give. A sound button sits in the corner instead.
  *   - Students cannot touch the player (a clear layer covers it), so they
  *     cannot pause or skip away from the class.
+ *   - Captions follow the tutor's: when the tutor turns them on or off (or
+ *     changes language) in their player, every student's player does the same.
+ *     Students have no CC button of their own, the cover layer blocks it.
  *   - The drift threshold is wider: a seek in an embedded player rebuffers, so
  *     correcting every half second of jitter would stutter.
  */
@@ -30,6 +33,10 @@ interface Props {
   onPlayPause: (playing: boolean, currentTime: number) => void
   onSeek: (currentTime: number) => void
   onContentElement?: (el: HTMLElement | null) => void
+  /** Students: the tutor's captions, to copy. `undefined` = not heard yet, leave the player's own default. */
+  captions?: Captions
+  /** Tutor: their captions changed. */
+  onCaptions?: (captions: Captions) => void
 }
 
 const STUDENT_DRIFT_THRESHOLD_S = 1.0
@@ -42,6 +49,7 @@ export function LinkedVideoPlayer(props: Props) {
 
 function LinkedVideo({
   isTutor, url, playing, currentTime, asOf, onPlayPause, onSeek, onContentElement,
+  captions, onCaptions,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
@@ -51,8 +59,8 @@ function LinkedVideo({
   const [needsUnblock, setNeedsUnblock] = useState(false)
   const [muted, setMuted] = useState(!isTutor)
 
-  const cb = useRef({ onPlayPause, onSeek })
-  useEffect(() => { cb.current = { onPlayPause, onSeek } })
+  const cb = useRef({ onPlayPause, onSeek, onCaptions })
+  useEffect(() => { cb.current = { onPlayPause, onSeek, onCaptions } })
 
   const link = parseVideoLink(url)
   const key = link ? videoLinkUrl(link) : null
@@ -72,6 +80,7 @@ function LinkedVideo({
             onPlay: (t) => cb.current.onPlayPause(true, t),
             onPause: (t) => cb.current.onPlayPause(false, t),
             onSeek: (t) => cb.current.onSeek(t),
+            onCaptions: (c) => cb.current.onCaptions?.(c),
             onError: (r) => { if (!cancelled) setError(r) },
           }
         : { onError: (r) => { if (!cancelled) setError(r) } },
@@ -113,6 +122,19 @@ function LinkedVideo({
     const interval = setInterval(() => void apply(), STUDENT_DRIFT_POLL_MS)
     return () => { cancelled = true; clearInterval(interval) }
   }, [isTutor, ready, playing, currentTime, asOf])
+
+  // ── Students: captions as the tutor has them ────────────────────────────────
+  // Applied when the tutor's choice arrives, and once more a few seconds later:
+  // YouTube may switch on its own default track (the viewer's account setting)
+  // after the video starts, which would otherwise win.
+  useEffect(() => {
+    if (isTutor || !ready || captions === undefined) return
+    const player = playerRef.current
+    if (!player) return
+    player.setCaptions(captions)
+    const again = setTimeout(() => player.setCaptions(captions), 3000)
+    return () => clearTimeout(again)
+  }, [isTutor, ready, captions, playing])
 
   useEffect(() => {
     onContentElement?.(frameRef.current)
