@@ -28,6 +28,32 @@ export function isPptxFile(file: File): boolean {
 }
 
 /**
+ * Some browsers (notably Windows Chrome/Edge) hand over `.mp4` / Office files
+ * with an empty or generic MIME. The presign route keys off the MIME, so guess
+ * from the extension before we talk to the server.
+ */
+const EXT_MIME: Record<string, string> = {
+  pdf:  "application/pdf",
+  ppt:  "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  mp4:  "video/mp4",
+  mov:  "video/quicktime",
+  webm: "video/webm",
+}
+
+export function presentationMime(file: File): string {
+  if (
+    file.type === "application/pdf" ||
+    file.type.startsWith("video/") ||
+    isPptxFile(file)
+  ) {
+    return file.type
+  }
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+  return EXT_MIME[ext] ?? file.type
+}
+
+/**
  * Upload a slide deck or video and register it as the session's presentation.
  * Resolves with everything the classroom needs to start presenting it.
  */
@@ -36,12 +62,15 @@ export async function uploadPresentation(
   file: File,
   onProgress: UploadProgress = () => {},
 ): Promise<UploadedSlides> {
-  const isVideo = file.type.startsWith("video/")
-  const isPptx  = isPptxFile(file)
+  const mime = presentationMime(file)
+  const isVideo = mime.startsWith("video/")
+  const isPptx  =
+    mime === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    mime === "application/vnd.ms-powerpoint"
 
   let registerUrl  = ""
   let registerName = file.name
-  let registerMime = file.type
+  let registerMime = mime
   let registerSize: number | null = file.size
 
   if (isPptx) {
@@ -99,7 +128,7 @@ export async function uploadPresentation(
     const presignRes = await fetch(`/api/tutor/sessions/${sessionId}/slides/presign`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName: file.name, mimeType: file.type }),
+      body: JSON.stringify({ fileName: file.name, mimeType: mime }),
     })
     if (!presignRes.ok) {
       const err = await presignRes.json().catch(() => ({}))
@@ -112,7 +141,7 @@ export async function uploadPresentation(
     onProgress(isVideo ? "Uploading video…" : "Uploading file…")
     const uploadRes = await fetch(uploadUrl, {
       method: "PUT",
-      headers: { "Content-Type": file.type },
+      headers: { "Content-Type": mime },
       body: file,
     })
     if (!uploadRes.ok) throw new Error("Upload to storage failed")
@@ -136,7 +165,7 @@ export async function uploadPresentation(
   onProgress("Reading slide count…")
   let total: number
 
-  if (isPptx || file.type === "application/pdf") {
+  if (isPptx || mime === "application/pdf") {
     // After PPTX conversion the registered file is always a PDF.
     total = await countPdfPages(registerUrl)
   } else {

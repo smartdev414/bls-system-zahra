@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
+import { hostedBy } from "@/lib/session-access"
 
 /**
  * Every presentation this tutor has ever put in front of a class, newest first.
@@ -14,7 +15,9 @@ import { withAudit } from "@/lib/audit"
  *
  * Presentation files live at stable public storage URLs, so a deck registered
  * against any of this tutor's sessions can be presented from any other one
- * without re-uploading a byte.
+ * without re-uploading a byte. That includes mid-class / prep-card uploads
+ * (title `__presentation__`) — those are the rows teachers actually re-use —
+ * and classes they run as a course teacher, not only ones they personally own.
  */
 
 /** Rows scanned before deduplication. Generous — a busy tutor re-presents the
@@ -48,11 +51,9 @@ async function handleGET(_req: NextRequest) {
 
     const rows = await prisma.liveSessionResource.findMany({
       where: {
-        // Scoped to sessions this tutor owns. A co-tutor invited to one lesson
-        // does not thereby get a copy of the host's whole back catalogue.
-        session: { tutorId: session.sub },
-        // The internal marker row the prep card writes is not a library item.
-        title: { not: "__presentation__" },
+        // Classes this tutor hosts (owns, or teaches via the course). A
+        // co-tutor invited to one lesson still does not get the host's catalogue.
+        session: hostedBy(session.sub),
       },
       orderBy: { createdAt: "desc" },
       take: SCAN_LIMIT,

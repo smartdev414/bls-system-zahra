@@ -35,6 +35,8 @@ import { parseVideoLink, videoLinkUrl, VIDEO_LINK_LABEL, VIDEO_LINK_MIME } from 
 type SessionMaterial = {
   id: string
   fileName: string
+  fileUrl: string | null
+  mimeType: string | null
   presentationUrl: string | null
   presentationMimeType: string | null
   totalPages: number | null
@@ -116,10 +118,15 @@ export function SlideUploadPanel({
       .then((r) => (r.ok ? r.json() : { resources: [] }))
       .then((d: { resources: SessionMaterial[] }) => {
         if (cancelled) return
+        // PDFs prepared for the stage, and videos attached as session materials.
+        // Mid-class uploads also land in "recents" via `__presentation__` rows.
         setMaterials(
-          (d.resources ?? []).filter(
-            (r) => r.presentationUrl && r.presentationMimeType === "application/pdf",
-          ),
+          (d.resources ?? []).filter((r) => {
+            if (r.presentationUrl && (r.presentationMimeType === "application/pdf" || !r.presentationMimeType)) {
+              return true
+            }
+            return !!(r.fileUrl && r.mimeType?.startsWith("video/"))
+          }),
         )
       })
       .catch(() => { /* the library still works from recents alone */ })
@@ -138,18 +145,25 @@ export function SlideUploadPanel({
   // ── One list, ordered by use ────────────────────────────────────────────────
 
   const items = useMemo<LibraryItem[]>(() => {
-    const sessionUrls = new Set(materials.map((m) => m.presentationUrl!).filter(Boolean))
+    const own: LibraryItem[] = materials.map((m) => {
+      const isVideo = !!m.mimeType?.startsWith("video/") && !m.presentationUrl
+      const url = isVideo ? m.fileUrl! : m.presentationUrl!
+      const mimeType = isVideo
+        ? m.mimeType!
+        : (m.presentationMimeType ?? "application/pdf")
+      return {
+        key: `material:${m.id}`,
+        fileName: isVideo ? m.fileName : m.fileName.replace(/\.pptx?$/i, ".pdf"),
+        url,
+        mimeType,
+        totalPages: isVideo ? null : (m.totalPages ?? null),
+        selectedPages: Array.isArray(m.selectedPages) ? m.selectedPages : null,
+        fromSessionTitle: null,
+        needsRegistering: false,
+      }
+    })
 
-    const own: LibraryItem[] = materials.map((m) => ({
-      key: `material:${m.id}`,
-      fileName: m.fileName.replace(/\.pptx?$/i, ".pdf"),
-      url: m.presentationUrl!,
-      mimeType: "application/pdf",
-      totalPages: m.totalPages ?? null,
-      selectedPages: Array.isArray(m.selectedPages) ? m.selectedPages : null,
-      fromSessionTitle: null,
-      needsRegistering: false,
-    }))
+    const sessionUrls = new Set(own.map((m) => m.url).filter(Boolean))
 
     const elsewhere: LibraryItem[] = recents
       // A deck already attached here is listed once, as this session's own.
@@ -433,10 +447,15 @@ export function SlideUploadPanel({
 
               <button
                 onClick={chooseFile}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-zinc-700 hover:border-primary/60 hover:bg-primary/5 text-zinc-400 hover:text-primary transition-all text-sm font-medium"
+                className="w-full flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl border-2 border-dashed border-zinc-700 hover:border-primary/60 hover:bg-primary/5 text-zinc-400 hover:text-primary transition-all text-sm font-medium"
               >
-                <Upload className="size-4" />
-                Choose a file from your computer
+                <span className="flex items-center gap-2">
+                  <Upload className="size-4" />
+                  Choose a file from your computer
+                </span>
+                <span className="text-[11px] font-normal text-zinc-500">
+                  PDF, PowerPoint, MP4, MOV or WebM
+                </span>
               </button>
 
               {previousSlides && (
