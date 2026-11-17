@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useTheme } from "next-themes"
-import { Accessibility, Check, Eye, RotateCcw } from "lucide-react"
+import { ALargeSmall, Check, Eye, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
@@ -131,7 +131,7 @@ export function AccessibilityMenu({
       <PopoverTrigger asChild>
         {labelled ? (
           <Button variant="outline" className={cn("gap-2", className)}>
-            <Accessibility className="size-5" />
+            <ALargeSmall className="size-4" />
             Display settings
           </Button>
         ) : (
@@ -142,7 +142,7 @@ export function AccessibilityMenu({
             title="Display settings"
             className={className}
           >
-            <Accessibility className="size-5" />
+            <ALargeSmall className="size-4" />
           </Button>
         )}
       </PopoverTrigger>
