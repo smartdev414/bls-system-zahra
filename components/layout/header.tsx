@@ -27,7 +27,6 @@ import { cn } from "@/lib/utils"
 import { useDeleteCallback } from "@/hooks/use-fetch"
 import { NotificationBell } from "@/components/ui/notification-bell"
 import { MessagesBadge } from "@/components/layout/messages-badge"
-import { RunpodCredit } from "@/components/layout/runpod-credit"
 import { OPEN_FEEDBACK_EVENT } from "@/components/feedback/feedback-button"
 import { roleLabel } from "@/lib/permissions"
 
@@ -406,8 +405,6 @@ export function Header({ role, user }: HeaderProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {role === "ADMIN" && <RunpodCredit />}
         </div>
       </div>
 
