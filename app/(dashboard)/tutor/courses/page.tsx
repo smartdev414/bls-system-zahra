@@ -100,7 +100,7 @@ export default function TutorCoursesPage() {
                       <CardTitle className="text-base leading-snug group-hover:text-primary transition-colors">
                         {course.title}
                       </CardTitle>
-                      <Badge variant="outline" className={`text-[10px] shrink-0 ${levelColorSolid[course.level]}`}>
+                      <Badge variant="outline" className={`text-[0.625rem] shrink-0 ${levelColorSolid[course.level]}`}>
                         {course.level}
                       </Badge>
                     </div>

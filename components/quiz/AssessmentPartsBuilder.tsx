@@ -50,7 +50,7 @@ export function AssessmentPartsBuilder({ testId, parts, onChange }: {
       <div className="flex items-center gap-2">
         <Clapperboard className="size-4 text-primary" />
         <h3 className="font-semibold text-sm">Parts</h3>
-        <Badge variant="outline" className="text-[10px]">
+        <Badge variant="outline" className="text-[0.625rem]">
           {parts.length} part{parts.length !== 1 ? "s" : ""}{parts.length > 0 && ` · ${marksLabel(total)}`}
         </Badge>
       </div>
@@ -75,8 +75,8 @@ export function AssessmentPartsBuilder({ testId, parts, onChange }: {
             <p className="font-semibold">Part {i + 1}</p>
             <div className="flex items-center gap-2">
               {part.id && !part.dirty
-                ? <Badge variant="outline" className="text-[10px]">Saved</Badge>
-                : <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">Not saved</Badge>}
+                ? <Badge variant="outline" className="text-[0.625rem]">Saved</Badge>
+                : <Badge variant="outline" className="text-[0.625rem] bg-amber-50 text-amber-700 border-amber-200">Not saved</Badge>}
               <Button
                 type="button" size="icon" variant="ghost" className="size-8 text-muted-foreground"
                 aria-label={`Delete part ${i + 1}`} title="Delete this part"

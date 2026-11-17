@@ -145,7 +145,7 @@ export default function TutorProfilePage() {
                   {tutor.qualifications.map((q) => (
                     <span
                       key={q}
-                      className="text-[11px] font-medium bg-white/15 text-white/90 rounded-full px-2.5 py-0.5"
+                      className="text-[0.6875rem] font-medium bg-white/15 text-white/90 rounded-full px-2.5 py-0.5"
                     >
                       {q}
                     </span>
@@ -183,7 +183,7 @@ export default function TutorProfilePage() {
             </div>
             <div>
               <p className="text-xl font-black leading-none">{value}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{sub ?? label}</p>
+              <p className="text-[0.6875rem] text-muted-foreground mt-0.5">{sub ?? label}</p>
             </div>
           </div>
         ))}
@@ -315,12 +315,12 @@ function TutorReviewSection({
                 <div className="flex items-start gap-3">
                   <Avatar className="size-8 shrink-0">
                     {review.student.avatarUrl && <AvatarImage src={review.student.avatarUrl} alt={review.student.name} />}
-                    <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
+                    <AvatarFallback className="text-[0.625rem] bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold">{review.student.name}</p>
-                      <p className="text-[11px] text-muted-foreground shrink-0">
+                      <p className="text-[0.6875rem] text-muted-foreground shrink-0">
                         {new Date(review.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                       </p>
                     </div>
@@ -389,13 +389,13 @@ function ProfileCourseCard({
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
           <div className="absolute bottom-2 left-2">
-            <Badge className={`text-[10px] border backdrop-blur-sm bg-white/90 ${levelColor[course.level]}`}>
+            <Badge className={`text-[0.625rem] border backdrop-blur-sm bg-white/90 ${levelColor[course.level]}`}>
               {course.level}
             </Badge>
           </div>
           {isCompleted && (
             <div className="absolute top-2 right-2">
-              <Badge className="bg-emerald-500 text-white text-[10px] gap-1">
+              <Badge className="bg-emerald-500 text-white text-[0.625rem] gap-1">
                 <CheckCircle2 className="size-2.5" /> Done
               </Badge>
             </div>
@@ -407,7 +407,7 @@ function ProfileCourseCard({
       <div className="flex flex-col flex-1 px-4 pt-3 pb-4 gap-2.5">
         <div>
           <h3 className="font-bold text-sm leading-snug line-clamp-2">{course.title}</h3>
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1.5">
+          <div className="flex items-center gap-3 text-[0.6875rem] text-muted-foreground mt-1.5">
             <span className="flex items-center gap-1"><BookOpen className="size-3" /> {course.lessonCount} lessons</span>
             <span className="flex items-center gap-1"><Users className="size-3" /> {course.enrollmentCount}</span>
             {course.avgRating && (
@@ -423,7 +423,7 @@ function ProfileCourseCard({
         {course.isEnrolled && course.progress && (
           <div className="space-y-1">
             <Progress value={completion} className={`h-1.5 ${isCompleted ? "[&>div]:bg-emerald-500" : ""}`} />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-[0.625rem] text-muted-foreground">
               <span>{course.progress.completedLessons}/{course.progress.totalLessons} lessons</span>
               <span className={`font-bold ${isCompleted ? "text-emerald-600" : "text-foreground"}`}>{completion}%</span>
             </div>

@@ -87,9 +87,9 @@ function EngagementBadge({ engagement, online }: { engagement: Engagement; onlin
 function Stat({ label, value, sub, icon: Icon }: { label: string; value: string | number; sub?: string; icon: typeof Clock }) {
   return (
     <div className="rounded-xl border bg-card p-3 flex flex-col gap-1 min-w-0">
-      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Icon className="size-3.5 shrink-0" /> {label}</p>
+      <p className="text-[0.6875rem] text-muted-foreground flex items-center gap-1.5"><Icon className="size-3.5 shrink-0" /> {label}</p>
       <p className="text-lg font-black leading-tight tabular-nums truncate">{value}</p>
-      {sub && <p className="text-[11px] leading-snug text-muted-foreground">{sub}</p>}
+      {sub && <p className="text-[0.6875rem] leading-snug text-muted-foreground">{sub}</p>}
     </div>
   )
 }
@@ -119,7 +119,7 @@ function ActivityCalendar({ days }: { days: ActivityData["days"] }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-[3px] overflow-x-auto pb-1">
-        <div className="flex flex-col gap-[3px] pr-1 text-[9px] text-muted-foreground">
+        <div className="flex flex-col gap-[3px] pr-1 text-[0.5625rem] text-muted-foreground">
           {["Mon", "", "Wed", "", "Fri", "", "Sun"].map((l, i) => <span key={i} className="h-3 leading-3">{l}</span>)}
         </div>
         {weeks.map((w, i) => (
@@ -134,7 +134,7 @@ function ActivityCalendar({ days }: { days: ActivityData["days"] }) {
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-3 flex-wrap text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-3 flex-wrap text-[0.6875rem] text-muted-foreground">
         <span className="flex items-center gap-1"><span className="size-3 rounded-[3px] bg-muted" /> Not on</span>
         <span className="flex items-center gap-1"><span className="size-3 rounded-[3px] bg-amber-300 dark:bg-amber-700" /> Signed in, no learning</span>
         <span className="flex items-center gap-1">
@@ -186,9 +186,9 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-black tracking-tight truncate">{student.name}</h1>
               {student.bslLevel && (
-                <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${levelColor[student.bslLevel as CourseLevel] ?? ""}`}>{student.bslLevel}</Badge>
+                <Badge variant="outline" className={`text-[0.625rem] h-5 px-1.5 ${levelColor[student.bslLevel as CourseLevel] ?? ""}`}>{student.bslLevel}</Badge>
               )}
-              {student.status !== "ACTIVE" && <Badge variant="outline" className="text-[10px] h-5">{student.status.toLowerCase()}</Badge>}
+              {student.status !== "ACTIVE" && <Badge variant="outline" className="text-[0.625rem] h-5">{student.status.toLowerCase()}</Badge>}
             </div>
             <p className="text-sm text-muted-foreground">
               <span className="break-all">{student.email}</span>
@@ -241,7 +241,7 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
                         <p className="text-sm font-medium truncate">{t.title}</p>
                         <p className="text-xs text-muted-foreground truncate">{t.detail ?? look.label}</p>
                       </div>
-                      <time className="text-[11px] text-muted-foreground shrink-0 text-right" dateTime={t.at} title={fullDate(t.at)}>
+                      <time className="text-[0.6875rem] text-muted-foreground shrink-0 text-right" dateTime={t.at} title={fullDate(t.at)}>
                         {agoLabel(t.at)}
                       </time>
                     </li>
@@ -268,7 +268,7 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
                       <span className="text-xs font-semibold tabular-nums">{c.completion}%</span>
                     </div>
                     <Progress value={c.completion} className="h-1.5" />
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[0.6875rem] text-muted-foreground">
                       {[
                         c.totalLessons > 0 && `${c.completedLessons}/${c.totalLessons} lessons`,
                         c.totalTests > 0 && `${c.testsDone}/${c.totalTests} homework tests`,
@@ -276,7 +276,7 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
                       ].filter(Boolean).join(" · ") || "Nothing released yet"}
                     </p>
                     {(c.closed || c.behindClass || c.inactive) && (
-                      <p className={`text-[11px] font-semibold ${c.closed ? "text-muted-foreground" : "text-rose-600"}`}>
+                      <p className={`text-[0.6875rem] font-semibold ${c.closed ? "text-muted-foreground" : "text-rose-600"}`}>
                         {c.closed ? "Course finished" : c.behindClass ? "Behind the class" : "No course work for a week"}
                       </p>
                     )}
@@ -291,7 +291,7 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
               <CardTitle className="text-sm flex items-center justify-between gap-2">
                 Sign-in history
                 {failed30 > 0 && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600">
+                  <span className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold text-red-600">
                     <ShieldAlert className="size-3.5" /> {failed30} failed in 30 days
                   </span>
                 )}
@@ -310,7 +310,7 @@ export function StudentActivityView({ studentId }: { studentId: string }) {
                       : <XCircle className="size-4 text-red-600 shrink-0 mt-0.5" />}
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium">{fullDate(l.createdAt)}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">
+                      <p className="text-[0.6875rem] text-muted-foreground truncate">
                         {l.success ? LOGIN_METHOD_LABEL[l.method] ?? l.method : FAILURE_LABEL[l.failureReason ?? ""] ?? "Failed"}
                         {" · "}{deviceOf(l.userAgent, l.client)}
                         {showIp && l.ip ? ` · ${l.ip}` : ""}

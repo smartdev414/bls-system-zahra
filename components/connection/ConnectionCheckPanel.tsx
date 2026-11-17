@@ -66,7 +66,7 @@ function CheckRow({ result }: { result: CheckResult }) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold">{result.title}</p>
             {result.state === "fail" && !result.essential && (
-              <Badge variant="outline" className="text-[10px]">Not needed for class</Badge>
+              <Badge variant="outline" className="text-[0.625rem]">Not needed for class</Badge>
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{result.summary}</p>
@@ -85,7 +85,7 @@ function CheckRow({ result }: { result: CheckResult }) {
         )}
       </div>
       {open && hasDetail && (
-        <pre className="mx-3.5 mb-3.5 max-h-64 overflow-auto rounded-lg bg-muted/60 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words">
+        <pre className="mx-3.5 mb-3.5 max-h-64 overflow-auto rounded-lg bg-muted/60 p-3 text-[0.6875rem] leading-relaxed whitespace-pre-wrap break-words">
           {result.detail.join("\n")}
         </pre>
       )}
@@ -124,7 +124,7 @@ function ModePicker({
             <span className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-semibold">{NETWORK_MODE_LABELS[m]}</span>
               {recommended === m && (
-                <Badge className="text-[10px]">Recommended for this network</Badge>
+                <Badge className="text-[0.625rem]">Recommended for this network</Badge>
               )}
             </span>
             <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -306,7 +306,7 @@ export function ConnectionCheckPanel() {
           )}
         </div>
         {showReport && run && (
-          <pre className="mt-4 max-h-80 overflow-auto rounded-lg bg-muted/60 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words">
+          <pre className="mt-4 max-h-80 overflow-auto rounded-lg bg-muted/60 p-3 text-[0.6875rem] leading-relaxed whitespace-pre-wrap break-words">
             {buildItReport(run, { appHost: config?.appHost ?? null, userAgent: navigator.userAgent })}
           </pre>
         )}

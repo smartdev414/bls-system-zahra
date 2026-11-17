@@ -103,7 +103,7 @@ function CommentItem({
   return (
     <div className="flex gap-3">
       <Avatar className="size-7 shrink-0 mt-0.5">
-        <AvatarFallback className={`text-[10px] font-bold ${isAdmin ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+        <AvatarFallback className={`text-[0.625rem] font-bold ${isAdmin ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
           {initials}
         </AvatarFallback>
       </Avatar>
@@ -111,7 +111,7 @@ function CommentItem({
         <div className="flex items-center gap-2 mb-1">
           <span className="text-xs font-semibold">{comment.author.name}</span>
           {isAdmin && (
-            <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-primary/20">
+            <Badge variant="outline" className="text-[0.5625rem] h-4 px-1.5 bg-primary/10 text-primary border-primary/20">
               Admin
             </Badge>
           )}
@@ -268,7 +268,7 @@ export function TicketDetail({
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium truncate">{a.fileName}</p>
-                          {a.fileSize && <p className="text-[10px] text-muted-foreground">{formatBytes(a.fileSize)}</p>}
+                          {a.fileSize && <p className="text-[0.625rem] text-muted-foreground">{formatBytes(a.fileSize)}</p>}
                         </div>
                         <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
                       </a>
@@ -336,7 +336,7 @@ export function TicketDetail({
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate">{ticket.submitter.name}</p>
                   <p className="text-xs text-muted-foreground truncate">{ticket.submitter.email}</p>
-                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 mt-0.5 capitalize">
+                  <Badge variant="outline" className="text-[0.5625rem] h-4 px-1.5 mt-0.5 capitalize">
                     {ticket.submitter.role.toLowerCase()}
                   </Badge>
                 </div>

@@ -123,7 +123,7 @@ export function ReflectionCriteriaBuilder({ testId, criteria, onChange }: {
       <div className="flex flex-wrap items-center gap-2">
         <ListChecks className="size-4 text-primary" />
         <h3 className="text-sm font-semibold">Criteria</h3>
-        <Badge variant="outline" className="text-[10px]">{picked} of {total} for this assessment</Badge>
+        <Badge variant="outline" className="text-[0.625rem]">{picked} of {total} for this assessment</Badge>
         {total > 1 && (
           <div className="ml-auto flex gap-1">
             <Button type="button" variant="ghost" size="sm" onClick={() => setAll(false)}>Tick all</Button>

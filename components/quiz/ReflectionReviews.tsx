@@ -48,7 +48,7 @@ function StudentAvatar({ student, className }: { student: { name: string; avatar
   return (
     <Avatar className={cn("size-8 shrink-0", className)}>
       {student.avatarUrl && <AvatarImage src={student.avatarUrl} alt={student.name} />}
-      <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">{initials(student.name)}</AvatarFallback>
+      <AvatarFallback className="bg-primary/10 text-[0.625rem] font-semibold text-primary">{initials(student.name)}</AvatarFallback>
     </Avatar>
   )
 }

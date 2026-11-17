@@ -193,7 +193,7 @@ export function BreakoutsPanel({
               {active ? "Breakout rooms are live" : "Set up breakout rooms"}
             </h2>
             {active && (
-              <span className="flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full">
+              <span className="flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[0.625rem] font-bold px-2 py-0.5 rounded-full">
                 <span className="relative flex size-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
@@ -278,7 +278,7 @@ export function BreakoutsPanel({
                   if (typeof extendMin === "number" && extendMin > 0) onExtend(extendMin)
                 }}
                 disabled={!(typeof extendMin === "number" && extendMin > 0)}
-                className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-[11px] font-semibold bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-[0.6875rem] font-semibold bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Give every group more time — nobody is sent back to the main room"
               >
                 Add min
@@ -287,7 +287,7 @@ export function BreakoutsPanel({
                 <button
                   key={n}
                   onClick={() => onExtend(n)}
-                  className="px-2 h-7 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+                  className="px-2 h-7 rounded-lg text-[0.6875rem] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
                   title={`Add ${n} minutes`}
                 >
                   +{n}
@@ -358,10 +358,10 @@ export function BreakoutsPanel({
             )}
           >
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+              <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-zinc-400">
                 Not yet assigned · {unassigned.length}
               </p>
-              <p className="text-[10px] text-zinc-500">Drag into a group below, or drag back here to remove.</p>
+              <p className="text-[0.625rem] text-zinc-500">Drag into a group below, or drag back here to remove.</p>
             </div>
             {unassigned.length === 0 ? (
               <p className="text-xs text-zinc-600 italic px-1">Everyone has a group.</p>
@@ -433,12 +433,12 @@ export function BreakoutsPanel({
                         </button>
                       </>
                     )}
-                    <span className="text-[10px] text-zinc-500 font-mono">{g.memberIds.length}</span>
+                    <span className="text-[0.625rem] text-zinc-500 font-mono">{g.memberIds.length}</span>
                     {active && (
                       isVisiting ? (
                         <button
                           onClick={() => onVisit(null)}
-                          className="flex items-center gap-1 px-2 h-6 rounded-md text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
+                          className="flex items-center gap-1 px-2 h-6 rounded-md text-[0.625rem] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
                           title="Leave this group — students stop hearing you"
                         >
                           <LogOut className="size-3" />
@@ -448,7 +448,7 @@ export function BreakoutsPanel({
                         <button
                           onClick={() => onVisit(g.id)}
                           disabled={g.memberIds.length === 0}
-                          className="flex items-center gap-1 px-2 h-6 rounded-md text-[10px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="flex items-center gap-1 px-2 h-6 rounded-md text-[0.625rem] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
                           title="Join this group — your audio goes to its students and you hear theirs"
                         >
                           <LogIn className="size-3" />
@@ -471,7 +471,7 @@ export function BreakoutsPanel({
                     )}
                   >
                     {memberChips.length === 0 ? (
-                      <p className="text-[11px] text-zinc-600 italic">Drop students here</p>
+                      <p className="text-[0.6875rem] text-zinc-600 italic">Drop students here</p>
                     ) : (
                       memberChips.map((m) => (
                         <StudentChip
@@ -517,12 +517,12 @@ function StudentChip({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={cn(
-        "flex items-center gap-1.5 px-2 h-7 rounded-full text-[11px] font-medium bg-zinc-800 text-zinc-200 border border-zinc-700 cursor-grab active:cursor-grabbing hover:bg-zinc-700",
+        "flex items-center gap-1.5 px-2 h-7 rounded-full text-[0.6875rem] font-medium bg-zinc-800 text-zinc-200 border border-zinc-700 cursor-grab active:cursor-grabbing hover:bg-zinc-700",
         dragging && "opacity-40"
       )}
       title="Drag to another group"
     >
-      <span className="size-4 rounded-full bg-primary/30 text-[9px] font-bold flex items-center justify-center text-primary">
+      <span className="size-4 rounded-full bg-primary/30 text-[0.5625rem] font-bold flex items-center justify-center text-primary">
         {name[0]?.toUpperCase()}
       </span>
       <span className="truncate max-w-[10ch]">{name}</span>

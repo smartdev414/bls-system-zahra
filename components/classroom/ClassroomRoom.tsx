@@ -4500,7 +4500,7 @@ export function ClassroomRoom({
           <span className="font-bold text-sm truncate max-w-[40vw] sm:max-w-xs">{sessionTitle}</span>
           {isTutor && recordingActive && (
             <span
-              className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/55 border border-white/15 text-[10px] font-semibold text-white shrink-0"
+              className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/55 border border-white/15 text-[0.625rem] font-semibold text-white shrink-0"
               aria-live="polite"
             >
               <span
@@ -4514,7 +4514,7 @@ export function ClassroomRoom({
           )}
           {!isTutor && roomIsRecording && (
             <span
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/55 border border-white/15 text-[10px] font-semibold text-white shrink-0"
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/55 border border-white/15 text-[0.625rem] font-semibold text-white shrink-0"
               title="This lesson is being recorded — only the teacher and what they share, not you"
               aria-live="polite"
             >
@@ -4524,7 +4524,7 @@ export function ClassroomRoom({
             </span>
           )}
           {pptActive && (
-            <span className="hidden sm:flex items-center gap-1 text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap">
+            <span className="hidden sm:flex items-center gap-1 text-[0.625rem] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap">
               <Presentation className="size-3" />
               Presenting
             </span>
@@ -4566,7 +4566,7 @@ export function ClassroomRoom({
                 <Hand className="size-3" />
                 <span className="hidden sm:inline">Raised Hands</span>
                 {raisedHands.length > 0 && (
-                  <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[10px] font-bold text-zinc-950 flex items-center justify-center">
+                  <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[0.625rem] font-bold text-zinc-950 flex items-center justify-center">
                     {raisedHands.length}
                   </span>
                 )}
@@ -4596,7 +4596,7 @@ export function ClassroomRoom({
                 <UserPlus className="size-3" />
                 <span className="hidden sm:inline">Requests</span>
                 {pendingRequests.length > 0 && (
-                  <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[10px] font-bold text-zinc-950 flex items-center justify-center">
+                  <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[0.625rem] font-bold text-zinc-950 flex items-center justify-center">
                     {pendingRequests.length}
                   </span>
                 )}
@@ -4636,7 +4636,7 @@ export function ClassroomRoom({
               <MessageSquare className="size-3.5" />
               <span className="hidden sm:inline">Chat</span>
               {chatUnread > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-[11px] font-bold text-white ring-2 ring-zinc-900 flex items-center justify-center">
+                <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-[0.6875rem] font-bold text-white ring-2 ring-zinc-900 flex items-center justify-center">
                   {chatUnread > 99 ? "99+" : chatUnread}
                 </span>
               )}
@@ -4676,7 +4676,7 @@ export function ClassroomRoom({
           {breakoutEndsAt && <BreakoutCountdown endsAt={breakoutEndsAt} closing={!!breakoutClosingAt} />}
           <button
             onClick={() => handleVisitBreakout(null)}
-            className="text-[11px] font-semibold text-emerald-200 hover:text-white bg-emerald-500/25 hover:bg-emerald-500/50 rounded-full px-2.5 py-0.5 transition-colors"
+            className="text-[0.6875rem] font-semibold text-emerald-200 hover:text-white bg-emerald-500/25 hover:bg-emerald-500/50 rounded-full px-2.5 py-0.5 transition-colors"
             title="Leave this group and go back to the main room"
           >
             Leave group
@@ -4711,14 +4711,14 @@ export function ClassroomRoom({
               <span className="text-xs text-sky-100">{r.name}</span>
               <button
                 onClick={() => { void handleAcceptSpeak(r.identity, r.name) }}
-                className="flex items-center gap-0.5 text-[11px] font-semibold text-emerald-200 hover:text-white bg-emerald-500/30 hover:bg-emerald-500/60 rounded-full px-1.5 py-0.5 transition-colors"
+                className="flex items-center gap-0.5 text-[0.6875rem] font-semibold text-emerald-200 hover:text-white bg-emerald-500/30 hover:bg-emerald-500/60 rounded-full px-1.5 py-0.5 transition-colors"
                 title={`Accept ${r.name}'s request and turn their microphone on`}
               >
                 <Check className="size-3" /> Accept
               </button>
               <button
                 onClick={() => handleDenySpeak(r.identity, r.name)}
-                className="flex items-center gap-0.5 text-[11px] font-semibold text-rose-200 hover:text-white bg-rose-500/30 hover:bg-rose-500/60 rounded-full px-1.5 py-0.5 transition-colors"
+                className="flex items-center gap-0.5 text-[0.6875rem] font-semibold text-rose-200 hover:text-white bg-rose-500/30 hover:bg-rose-500/60 rounded-full px-1.5 py-0.5 transition-colors"
                 title={`Decline ${r.name}'s request`}
               >
                 <X className="size-3" /> Deny

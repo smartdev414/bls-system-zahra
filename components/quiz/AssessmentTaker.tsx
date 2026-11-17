@@ -417,7 +417,7 @@ export function AssessmentTaker({ lessonId, enrollmentId, data, refetch, onCompl
           <>
             {part.question && (
               <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">The questions</p>
+                <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">The questions</p>
                 <p className="whitespace-pre-wrap">{part.question}</p>
               </div>
             )}
@@ -432,7 +432,7 @@ export function AssessmentTaker({ lessonId, enrollmentId, data, refetch, onCompl
             </p>
             {part.question && (
               <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">The questions</p>
+                <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">The questions</p>
                 <p className="whitespace-pre-wrap">{part.question}</p>
               </div>
             )}
@@ -533,7 +533,7 @@ export function AssessmentTaker({ lessonId, enrollmentId, data, refetch, onCompl
           { label: "Attempts", value: settings.maxAttempts === null ? "Unlimited" : `${attempts.length} of ${settings.maxAttempts}` },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-xl border bg-muted/20 px-3 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
             <p className="text-sm font-semibold mt-0.5">{value}</p>
           </div>
         ))}

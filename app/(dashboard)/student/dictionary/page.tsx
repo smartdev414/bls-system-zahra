@@ -314,18 +314,18 @@ export default function DictionaryPage() {
                     {sign.showLevel !== false && (
                       <Badge
                         variant="outline"
-                        className={`text-[10px] h-4 px-1.5 ${levelColor[sign.level]}`}
+                        className={`text-[0.625rem] h-4 px-1.5 ${levelColor[sign.level]}`}
                       >
                         {sign.level}
                       </Badge>
                     )}
                     {sign.videoUrl && (
-                      <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-1 bg-violet-50 text-violet-700 border-violet-200">
+                      <Badge variant="outline" className="text-[0.625rem] h-4 px-1.5 gap-1 bg-violet-50 text-violet-700 border-violet-200">
                         <PlayCircle className="size-2.5" /> Video
                       </Badge>
                     )}
                     {!sign.videoUrl && sign.imageUrl && (
-                      <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-1 bg-sky-50 text-sky-700 border-sky-200">
+                      <Badge variant="outline" className="text-[0.625rem] h-4 px-1.5 gap-1 bg-sky-50 text-sky-700 border-sky-200">
                         <ImageIcon className="size-2.5" /> Image
                       </Badge>
                     )}

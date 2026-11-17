@@ -27,7 +27,7 @@ function SpokenStrip({ lines }: { lines: SpokenLine[] }) {
   if (lines.length === 0) return null
   return (
     <div className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-2.5 py-1.5 flex flex-col gap-0.5" aria-live="polite">
-      <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-300/90">
+      <p className="flex items-center gap-1 text-[0.625rem] font-bold uppercase tracking-wide text-amber-300/90">
         <AudioLines className="size-3" /> Heard in this group
       </p>
       {lines.map((l) => (
@@ -106,7 +106,7 @@ export function BreakoutMonitor({
               : "Breakout monitor — observe every group"}
           </h2>
           {!focusedParticipant && (
-            <span className="hidden md:inline text-[11px] text-zinc-500 ml-1">
+            <span className="hidden md:inline text-[0.6875rem] text-zinc-500 ml-1">
               · tiles are silent — anything said aloud is captioned under the group. Click a student to listen. Click &ldquo;Visit&rdquo; to speak to their group.
             </span>
           )}
@@ -119,7 +119,7 @@ export function BreakoutMonitor({
               <button
                 key={n}
                 onClick={() => onExtend(n)}
-                className="px-2 h-7 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-sky-600 hover:text-white text-zinc-200 transition-colors"
+                className="px-2 h-7 rounded-lg text-[0.6875rem] font-semibold bg-zinc-800 hover:bg-sky-600 hover:text-white text-zinc-200 transition-colors"
                 title={`Add ${n} more minutes — groups stay exactly as they are`}
               >
                 +{n} min
@@ -168,7 +168,7 @@ export function BreakoutMonitor({
                 ) : (
                   <MicOff className="size-3 text-zinc-500" />
                 )}
-                <span className="ml-1 text-[10px] text-zinc-400">· you&rsquo;re listening silently</span>
+                <span className="ml-1 text-[0.625rem] text-zinc-400">· you&rsquo;re listening silently</span>
               </div>
               {focusedMic && isTrackReference(focusedMic) && (
                 <AudioTrack trackRef={focusedMic} />
@@ -214,11 +214,11 @@ export function BreakoutMonitor({
                       isVisiting ? "text-emerald-400" : "text-zinc-400"
                     )} />
                     <h3 className="text-sm font-bold text-white">{g.name}</h3>
-                    <span className="text-[11px] text-zinc-500">
+                    <span className="text-[0.6875rem] text-zinc-500">
                       · {members.length} student{members.length !== 1 ? "s" : ""}
                     </span>
                     {isVisiting && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      <span className="inline-flex items-center gap-1 text-[0.625rem] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                         <span className="relative flex size-1.5">
                           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                           <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
@@ -230,7 +230,7 @@ export function BreakoutMonitor({
                       <button
                         onClick={() => onNudgeGroup(g.id)}
                         disabled={members.length === 0}
-                        className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-[0.6875rem] font-semibold bg-zinc-800 hover:bg-amber-500/25 hover:text-amber-300 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
                         title="Flash a short attention alert on this group's screens"
                       >
                         <Bell className="size-3" /> Nudge
@@ -238,7 +238,7 @@ export function BreakoutMonitor({
                       {isVisiting ? (
                         <button
                           onClick={() => onVisit(null)}
-                          className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
+                          className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-[0.6875rem] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
                         >
                           <LogOut className="size-3" /> Leave group
                         </button>
@@ -246,7 +246,7 @@ export function BreakoutMonitor({
                         <button
                           onClick={() => onVisit(g.id)}
                           disabled={members.length === 0}
-                          className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-[0.6875rem] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
                           title="Enter this group — your audio goes to them and you hear theirs"
                         >
                           <LogIn className="size-3" /> Visit group
@@ -284,12 +284,12 @@ export function BreakoutMonitor({
                                 <div className="size-8 rounded-full bg-primary/15 text-primary font-bold flex items-center justify-center">
                                   {displayName[0]?.toUpperCase()}
                                 </div>
-                                <span className="text-[10px]">camera off</span>
+                                <span className="text-[0.625rem]">camera off</span>
                               </div>
                             )}
 
                             <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-1.5 pb-0.5 flex items-center gap-1">
-                              <p className="flex-1 text-[10px] text-white truncate font-medium text-left">
+                              <p className="flex-1 text-[0.625rem] text-white truncate font-medium text-left">
                                 {displayName}
                               </p>
                               {micOn ? (
@@ -300,7 +300,7 @@ export function BreakoutMonitor({
                             </div>
 
                             {talking && (
-                              <div className="absolute top-1 left-1 flex items-center gap-1 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-bold text-black">
+                              <div className="absolute top-1 left-1 flex items-center gap-1 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[0.625rem] font-bold text-black">
                                 <AudioLines className="size-3" /> Talking
                               </div>
                             )}

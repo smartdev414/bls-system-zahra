@@ -753,7 +753,7 @@ export default function TldrawBoard({
           <PencilLine className="size-3.5 text-amber-400" />
           <span className="text-xs font-bold text-white">Whiteboard</span>
           {!canWrite && (
-            <span className="text-[10px] font-medium text-zinc-400 bg-zinc-700/80 px-1.5 py-0.5 rounded-md ml-1">
+            <span className="text-[0.625rem] font-medium text-zinc-400 bg-zinc-700/80 px-1.5 py-0.5 rounded-md ml-1">
               View only
             </span>
           )}

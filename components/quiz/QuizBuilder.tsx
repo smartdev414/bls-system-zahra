@@ -606,12 +606,12 @@ function QuestionCard({
         </button>
         <div className="flex items-center gap-1 shrink-0">
           {status === "saved" && (
-            <Badge variant="outline" className="hidden sm:inline-flex text-[10px] text-emerald-700 border-emerald-200 bg-emerald-50">
+            <Badge variant="outline" className="hidden sm:inline-flex text-[0.625rem] text-emerald-700 border-emerald-200 bg-emerald-50">
               <CheckCircle2 className="size-3 mr-1" /> Saved
             </Badge>
           )}
           {status && status !== "saved" && (
-            <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-200 bg-amber-50">
+            <Badge variant="outline" className="text-[0.625rem] text-amber-700 border-amber-200 bg-amber-50">
               {status === "new" ? "Not saved" : "Unsaved changes"}
             </Badge>
           )}
@@ -1049,7 +1049,7 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary, 
       <div className="flex items-center gap-2">
         <FlaskConical className="size-4 text-primary" />
         <h3 className="font-semibold text-sm">Test Questions</h3>
-        <Badge variant="outline" className="text-[10px]">
+        <Badge variant="outline" className="text-[0.625rem]">
           {questions.length} question{questions.length !== 1 ? "s" : ""}
         </Badge>
       </div>

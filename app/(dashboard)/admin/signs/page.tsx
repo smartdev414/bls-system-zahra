@@ -142,7 +142,7 @@ export default function AdminSignsPage() {
             <Link href="/admin/signs/record">
               <Video className="size-4 mr-1.5" /> Record videos
               {openRequests > 0 && (
-                <Badge className="ml-1.5 h-5 bg-amber-500 px-1.5 text-[11px] hover:bg-amber-500">
+                <Badge className="ml-1.5 h-5 bg-amber-500 px-1.5 text-[0.6875rem] hover:bg-amber-500">
                   {openRequests} asked for
                 </Badge>
               )}
@@ -580,18 +580,18 @@ function SignRow({ sign, categories, onMutated }: { sign: Sign; categories: stri
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-0.5">
                 <p className="font-semibold">{sign.word}</p>
-                <Badge variant="outline" className={`text-[10px] ${levelColor[sign.level]}`}>
+                <Badge variant="outline" className={`text-[0.625rem] ${levelColor[sign.level]}`}>
                   {sign.level}
                 </Badge>
-                <Badge variant="secondary" className="text-[10px]">{sign.category}</Badge>
+                <Badge variant="secondary" className="text-[0.625rem]">{sign.category}</Badge>
                 {sign.videoUrl && (
-                  <Badge variant="outline" className="text-[10px] gap-1 bg-violet-50 text-violet-700 border-violet-200">
+                  <Badge variant="outline" className="text-[0.625rem] gap-1 bg-violet-50 text-violet-700 border-violet-200">
                     <Video className="size-2.5" /> Video
                   </Badge>
                 )}
                 <VideoCleanBadge url={sign.videoUrl} />
                 {sign.imageUrl && (
-                  <Badge variant="outline" className="text-[10px] gap-1 bg-sky-50 text-sky-700 border-sky-200">
+                  <Badge variant="outline" className="text-[0.625rem] gap-1 bg-sky-50 text-sky-700 border-sky-200">
                     <ImageIcon className="size-2.5" /> Image
                   </Badge>
                 )}

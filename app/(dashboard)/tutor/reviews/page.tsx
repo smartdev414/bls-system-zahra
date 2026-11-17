@@ -95,12 +95,12 @@ export default function TutorReviewsPage() {
                 <div className="flex items-start gap-3">
                   <Avatar className="size-9 shrink-0">
                     {review.student.avatarUrl && <AvatarImage src={review.student.avatarUrl} alt={review.student.name} />}
-                    <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
+                    <AvatarFallback className="text-[0.625rem] bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <p className="text-sm font-semibold">{review.student.name}</p>
-                      <p className="text-[11px] text-muted-foreground shrink-0">
+                      <p className="text-[0.6875rem] text-muted-foreground shrink-0">
                         {new Date(review.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                       </p>
                     </div>

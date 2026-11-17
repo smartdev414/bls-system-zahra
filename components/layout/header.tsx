@@ -6,10 +6,9 @@ import { useState } from "react"
 import {
   BookOpen, FlaskConical, Library, Video, Users,
   LayoutDashboard, Settings, LogOut, ChevronDown, ShieldCheck, Tag, FolderOpen, MessageSquare, Clapperboard,
-  Sun, Moon, Activity, Ticket, Star, Menu, X, Wifi,
+  Activity, Ticket, Star, Menu, X, Wifi,
   CalendarDays, UserPlus, Headset, GraduationCap, MapPin, Trophy, MessageSquarePlus, LogIn, Eye,
 } from "lucide-react"
-import { useTheme } from "next-themes"
 import { Logo } from "@/components/layout/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +26,7 @@ import { cn } from "@/lib/utils"
 import { useDeleteCallback } from "@/hooks/use-fetch"
 import { NotificationBell } from "@/components/ui/notification-bell"
 import { MessagesBadge } from "@/components/layout/messages-badge"
+import { AccessibilityMenu } from "@/components/accessibility/accessibility-menu"
 import { OPEN_FEEDBACK_EVENT } from "@/components/feedback/feedback-button"
 import { roleLabel } from "@/lib/permissions"
 
@@ -182,21 +182,6 @@ type HeaderProps = {
   }
 }
 
-function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme()
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-      aria-label="Toggle theme"
-    >
-      <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-      <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-    </Button>
-  )
-}
-
 export function Header({ role, user }: HeaderProps) {
   const pathname = usePathname()
   const isMessagesRole = role === "STUDENT" || role === "TUTOR"
@@ -309,10 +294,11 @@ export function Header({ role, user }: HeaderProps) {
           </nav>
         </div>
 
-        {/* Right: theme + notifications + avatar */}
+        {/* Right: display settings + notifications + avatar */}
         <div className="flex items-center gap-1">
-          {/* Theme toggle — UI utility, lives outside the user cluster */}
-          <ThemeToggle />
+          {/* Display settings (theme, text size, contrast) — replaces the old
+              sun/moon toggle; the theme is the first choice inside it. */}
+          <AccessibilityMenu />
 
           <Separator orientation="vertical" className="h-5 mx-1" />
 
@@ -333,7 +319,7 @@ export function Header({ role, user }: HeaderProps) {
                   <span className="text-sm font-medium max-w-30 truncate leading-tight">
                     {user.name}
                   </span>
-                  <Badge variant="secondary" className="text-[10px] h-3.5 px-1 leading-none mt-0.5">
+                  <Badge variant="secondary" className="text-[0.625rem] h-3.5 px-1 leading-none mt-0.5">
                     {roleLabel(role)}
                   </Badge>
                 </div>
@@ -346,7 +332,7 @@ export function Header({ role, user }: HeaderProps) {
                 <div className="flex flex-col gap-0.5">
                   <span className="font-semibold text-sm">{user.name}</span>
                   <span className="text-xs text-muted-foreground truncate">{user.email}</span>
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 w-fit mt-0.5">
+                  <Badge variant="secondary" className="text-[0.625rem] h-4 px-1.5 w-fit mt-0.5">
                     {roleLabel(role)}
                   </Badge>
                 </div>
@@ -414,6 +400,8 @@ export function Header({ role, user }: HeaderProps) {
       {mobileNavOpen && (
         <div className="lg:hidden absolute top-16 inset-x-0 max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-t bg-background/95 backdrop-blur-md shadow-lg">
           <nav className="max-w-7xl mx-auto px-3 py-2 flex flex-col">
+            {/* Labelled here too, so people who need it can find it by name. */}
+            <AccessibilityMenu labelled className="mb-2 w-full justify-start" />
             {[...navItems.flatMap((entry) => (isGroup(entry) ? entry.items : [entry])), ...dropdownNavItems].map(({ label, href, icon: Icon }) => {
               const isActive = isActiveHref(pathname, href)
               return (

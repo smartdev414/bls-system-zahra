@@ -79,7 +79,7 @@ function LogRow({ log }: { log: LogEntry }) {
           {format(new Date(log.createdAt), "dd MMM HH:mm:ss")}
         </td>
         <td className="px-4 py-3">
-          <Badge variant="outline" className={`font-mono text-[11px] ${METHOD_COLORS[log.method] ?? ""}`}>
+          <Badge variant="outline" className={`font-mono text-[0.6875rem] ${METHOD_COLORS[log.method] ?? ""}`}>
             {log.method}
           </Badge>
         </td>
@@ -92,7 +92,7 @@ function LogRow({ log }: { log: LogEntry }) {
             <span className="flex flex-col gap-0.5">
               <span className="font-medium truncate max-w-[160px]">{log.userEmail}</span>
               {log.userRole && (
-                <Badge variant="outline" className={`text-[10px] w-fit ${ROLE_COLORS[log.userRole] ?? ""}`}>
+                <Badge variant="outline" className={`text-[0.625rem] w-fit ${ROLE_COLORS[log.userRole] ?? ""}`}>
                   {log.userRole}
                 </Badge>
               )}
@@ -140,12 +140,12 @@ function LogRow({ log }: { log: LogEntry }) {
               </div>
               <div className="col-span-2">
                 <p className="text-muted-foreground font-medium mb-1">User Agent</p>
-                <p className="font-mono text-[11px] break-all">{log.userAgent ?? "—"}</p>
+                <p className="font-mono text-[0.6875rem] break-all">{log.userAgent ?? "—"}</p>
               </div>
               {log.errorMessage && (
                 <div className="col-span-3">
                   <p className="text-rose-600 font-medium mb-1">Error</p>
-                  <pre className="font-mono text-[11px] whitespace-pre-wrap bg-rose-50 border border-rose-200 rounded p-3 text-rose-800">
+                  <pre className="font-mono text-[0.6875rem] whitespace-pre-wrap bg-rose-50 border border-rose-200 rounded p-3 text-rose-800">
                     {log.errorMessage}
                   </pre>
                 </div>

@@ -136,10 +136,10 @@ function TutorCard({ tutor }: { tutor: Tutor }) {
               <div className="flex items-center gap-1 mt-0.5">
                 <Star className="size-3 fill-amber-400 text-amber-400" />
                 <span className="text-xs font-semibold">{tutor.avgRating}</span>
-                <span className="text-[10px] text-muted-foreground">({tutor.reviewCount})</span>
+                <span className="text-[0.625rem] text-muted-foreground">({tutor.reviewCount})</span>
               </div>
             ) : (
-              <p className="text-[11px] text-muted-foreground mt-0.5">New tutor</p>
+              <p className="text-[0.6875rem] text-muted-foreground mt-0.5">New tutor</p>
             )}
           </div>
         </div>
@@ -157,12 +157,12 @@ function TutorCard({ tutor }: { tutor: Tutor }) {
         {tutor.qualifications.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             {tutor.qualifications.slice(0, 3).map((q) => (
-              <Badge key={q} variant="secondary" className="text-[10px] h-5 px-1.5 font-medium">
+              <Badge key={q} variant="secondary" className="text-[0.625rem] h-5 px-1.5 font-medium">
                 {q}
               </Badge>
             ))}
             {tutor.qualifications.length > 3 && (
-              <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+              <Badge variant="secondary" className="text-[0.625rem] h-5 px-1.5">
                 +{tutor.qualifications.length - 3}
               </Badge>
             )}
@@ -170,7 +170,7 @@ function TutorCard({ tutor }: { tutor: Tutor }) {
         )}
 
         {/* Stats */}
-        <div className="flex items-center gap-4 text-[11px] text-muted-foreground pt-3 border-t">
+        <div className="flex items-center gap-4 text-[0.6875rem] text-muted-foreground pt-3 border-t">
           <span className="flex items-center gap-1">
             <BookOpen className="size-3" /> {tutor.courseCount} courses
           </span>

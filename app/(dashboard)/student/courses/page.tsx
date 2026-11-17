@@ -210,7 +210,7 @@ export default function StudentCoursesPage() {
                     {data.invitedByTutor.avatarUrl && (
                       <AvatarImage src={data.invitedByTutor.avatarUrl} alt={data.invitedByTutor.name} />
                     )}
-                    <AvatarFallback className="text-[9px] bg-primary/10 text-primary font-bold">
+                    <AvatarFallback className="text-[0.5625rem] bg-primary/10 text-primary font-bold">
                       {data.invitedByTutor.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
@@ -261,13 +261,13 @@ function CourseThumb({ course, className = "" }: { course: Course; className?: s
         <>
           <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover bg-muted" />
           <div className="absolute bottom-2 left-2">
-            <Badge className={`text-[10px] border shadow-sm ${levelColor[course.level]}`}>{course.level}</Badge>
+            <Badge className={`text-[0.625rem] border shadow-sm ${levelColor[course.level]}`}>{course.level}</Badge>
           </div>
         </>
       ) : (
         <div className={`w-full h-full flex flex-col items-center justify-center gap-1 border ${levelColor[course.level]}`}>
           <span className="text-xl sm:text-3xl font-black tracking-tight">{course.level}</span>
-          <span className="hidden sm:block text-[11px] font-semibold uppercase tracking-wider opacity-70">BSL course</span>
+          <span className="hidden sm:block text-[0.6875rem] font-semibold uppercase tracking-wider opacity-70">BSL course</span>
         </div>
       )}
     </div>
@@ -284,7 +284,7 @@ function TutorLine({ tutor }: { tutor: Course["tutor"] }) {
     <Link href={`/student/tutors/${tutor.id}`} className="flex items-center gap-1.5 group/tutor w-fit max-w-full">
       <Avatar className="size-5 shrink-0">
         {tutor.avatarUrl && <AvatarImage src={tutor.avatarUrl} alt={tutor.name} />}
-        <AvatarFallback className="text-[8px] bg-primary/10 text-primary font-bold">
+        <AvatarFallback className="text-[0.5rem] bg-primary/10 text-primary font-bold">
           {tutor.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
         </AvatarFallback>
       </Avatar>

@@ -195,7 +195,7 @@ export function CaptionComposer({ onSend, onClose, sent, captionsHidden }: Props
     >
       {editing ? (
         <div className="flex flex-col gap-2">
-          <label className="text-[11px] font-medium text-white/70 px-1" htmlFor="prepared-captions">
+          <label className="text-[0.6875rem] font-medium text-white/70 px-1" htmlFor="prepared-captions">
             Prepared captions — one per line. Saved to your library; click one to send it straight away.
           </label>
           <textarea
@@ -231,7 +231,7 @@ export function CaptionComposer({ onSend, onClose, sent, captionsHidden }: Props
           {/* What went out — the tutor sees it here as well as in the captions. */}
           {sent.length > 0 && (
             <div className="flex flex-col gap-0.5 px-1" aria-live="polite">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">Sent to the class</p>
+              <p className="text-[0.625rem] font-bold uppercase tracking-wide text-white/40">Sent to the class</p>
               {sent.map((l, i) => (
                 <p
                   key={l.id}
@@ -247,7 +247,7 @@ export function CaptionComposer({ onSend, onClose, sent, captionsHidden }: Props
             </div>
           )}
           {captionsHidden && (
-            <p className="px-1 text-[11px] text-amber-300/90">
+            <p className="px-1 text-[0.6875rem] text-amber-300/90">
               Captions are turned off on your screen, so you won&apos;t see these at the bottom — the class still does.
             </p>
           )}
@@ -294,7 +294,7 @@ export function CaptionComposer({ onSend, onClose, sent, captionsHidden }: Props
                 title="Replace what you typed with this correction"
               >
                 Use
-                <kbd className="rounded bg-black/30 px-1 text-[10px] font-medium text-white/80">Tab</kbd>
+                <kbd className="rounded bg-black/30 px-1 text-[0.625rem] font-medium text-white/80">Tab</kbd>
               </button>
               <button
                 type="button"

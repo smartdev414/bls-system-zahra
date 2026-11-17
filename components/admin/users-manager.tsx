@@ -407,42 +407,42 @@ function UserRow({
                   type="button"
                   onClick={() => setEditing(true)}
                   title="Edit name"
-                  className="group inline-flex items-center gap-1.5 rounded font-semibold text-[15px] leading-tight text-left hover:text-primary"
+                  className="group inline-flex items-center gap-1.5 rounded font-semibold text-[0.9375rem] leading-tight text-left hover:text-primary"
                 >
                   <span className="break-words">{user.name}</span>
                   <Pencil className="size-3.5 shrink-0 text-muted-foreground/60 group-hover:text-primary" />
                 </button>
-                <Badge variant="outline" className={`text-[10px] ${roleColor[user.role]}`}>
+                <Badge variant="outline" className={`text-[0.625rem] ${roleColor[user.role]}`}>
                   {roleLabel(user.role)}
                 </Badge>
                 {user.bslLevel && (
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-[0.625rem]">
                     {user.bslLevel.replace(/^L(\d)$/, "Level $1")}
                   </Badge>
                 )}
                 {user.role === "TUTOR" && user.isVerified && (
-                  <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                  <Badge variant="outline" className="text-[0.625rem] bg-emerald-50 text-emerald-700 border-emerald-200">
                     <UserCheck className="size-2.5 mr-1" /> Verified
                   </Badge>
                 )}
                 {awaiting && (
-                  <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                  <Badge variant="outline" className="text-[0.625rem] bg-amber-50 text-amber-700 border-amber-200">
                     <Clock className="size-2.5 mr-1" /> Waiting for approval
                   </Badge>
                 )}
                 {user.recordingOptOut && (
-                  <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-700 border-slate-300">
+                  <Badge variant="outline" className="text-[0.625rem] bg-slate-100 text-slate-700 border-slate-300">
                     <VideoOff className="size-2.5 mr-1" /> Not recorded
                   </Badge>
                 )}
                 {isSuspended && (
-                  <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                  <Badge variant="outline" className="text-[0.625rem] bg-rose-50 text-rose-700 border-rose-200">
                     <PauseCircle className="size-2.5 mr-1" />
                     Suspended{user.suspendedAt ? ` since ${shortDate(user.suspendedAt)}` : ""}
                   </Badge>
                 )}
                 {user.role === "STUDENT" && user.status === "REJECTED" && (
-                  <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                  <Badge variant="outline" className="text-[0.625rem] bg-rose-50 text-rose-700 border-rose-200">
                     Not approved
                   </Badge>
                 )}

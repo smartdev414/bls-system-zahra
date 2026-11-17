@@ -204,7 +204,7 @@ export function SlideTray({
         aria-label="Show slide tray"
       >
         <PanelRightOpen className="size-4 text-zinc-400" />
-        <span className="[writing-mode:vertical-rl] rotate-180 text-[10px] text-zinc-500 font-medium tracking-wide">
+        <span className="[writing-mode:vertical-rl] rotate-180 text-[0.625rem] text-zinc-500 font-medium tracking-wide">
           Slides
         </span>
       </button>
@@ -214,7 +214,7 @@ export function SlideTray({
   return (
     <div className="h-full w-36 shrink-0 flex flex-col bg-zinc-900 border-l border-zinc-800 overflow-hidden">
       <div className="flex items-center justify-between gap-1 px-2 h-9 border-b border-zinc-800 shrink-0">
-        <span className="text-[11px] font-semibold text-zinc-300 tabular-nums">
+        <span className="text-[0.6875rem] font-semibold text-zinc-300 tabular-nums">
           {selectedSlides.length}/{totalPages}
         </span>
         <button
@@ -260,7 +260,7 @@ export function SlideTray({
                 >
                   <div data-thumb className="w-full h-full relative overflow-hidden bg-white" />
                   {!isIncluded && (
-                    <span className="absolute inset-x-0 bottom-0 text-[8.5px] font-semibold text-white bg-rose-600/85 py-[1px] text-center uppercase tracking-wider pointer-events-none">
+                    <span className="absolute inset-x-0 bottom-0 text-[0.53125rem] font-semibold text-white bg-rose-600/85 py-[1px] text-center uppercase tracking-wider pointer-events-none">
                       Excluded
                     </span>
                   )}
@@ -281,7 +281,7 @@ export function SlideTray({
                   {isIncluded ? <Check className="size-3" /> : <Plus className="size-3" />}
                 </button>
 
-                <span className="absolute bottom-1 left-1 text-[9px] font-mono bg-black/65 text-white px-1 rounded pointer-events-none">
+                <span className="absolute bottom-1 left-1 text-[0.5625rem] font-mono bg-black/65 text-white px-1 rounded pointer-events-none">
                   {n}
                 </span>
               </div>
@@ -294,7 +294,7 @@ export function SlideTray({
             </div>
           )}
           {loadError && (
-            <div className="text-center text-[10px] text-rose-400 py-3 px-1">
+            <div className="text-center text-[0.625rem] text-rose-400 py-3 px-1">
               {loadError}
             </div>
           )}

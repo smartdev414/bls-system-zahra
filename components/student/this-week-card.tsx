@@ -96,7 +96,7 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
 
         {/* ── Next class ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-2">
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Your next class</h3>
+          <h3 className="text-[0.6875rem] font-bold uppercase tracking-wider text-muted-foreground">Your next class</h3>
           {nextClass ? (
             <div className={`rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3 ${isLive ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30" : "bg-muted/30"}`}>
               <div className={`rounded-full p-2.5 shrink-0 self-start sm:self-center ${isLive ? "bg-emerald-100 text-emerald-700" : inPerson ? "bg-orange-100 text-orange-700" : "bg-primary/10 text-primary"}`}>
@@ -147,7 +147,7 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
 
         {/* ── Homework ───────────────────────────────────────────────── */}
         <section className="flex flex-col gap-2">
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Homework</h3>
+          <h3 className="text-[0.6875rem] font-bold uppercase tracking-wider text-muted-foreground">Homework</h3>
           {homework.length > 0 ? (
             <div className="flex flex-col divide-y rounded-xl border overflow-hidden">
               {homework.map((lesson) => {
@@ -164,7 +164,7 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
                       <p className="text-xs text-muted-foreground truncate">{lesson.courseTitle}</p>
                     </div>
                     {lesson.isNew && (
-                      <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 shrink-0">New</Badge>
+                      <Badge variant="outline" className="text-[0.625rem] bg-primary/10 text-primary border-primary/20 shrink-0">New</Badge>
                     )}
                     <ChevronRight className="size-4 text-muted-foreground shrink-0" />
                   </Link>
@@ -203,7 +203,7 @@ export function ThisWeekCard({ data, loading, hasCourse }: {
             <Separator />
             <section className="flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1 min-w-0">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Missed something?</h3>
+                <h3 className="text-[0.6875rem] font-bold uppercase tracking-wider text-muted-foreground">Missed something?</h3>
                 <p className="text-sm mt-1">
                   <span className="font-semibold">{lastRecording.title}</span>
                   <span className="text-muted-foreground"> · {whenLabel(lastRecording.scheduledAt).split(",")[0]}</span>

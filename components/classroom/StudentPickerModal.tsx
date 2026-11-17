@@ -215,7 +215,7 @@ export function StudentPickerModal({
           {!hideGroups && groups.length > 0 && !search.trim() && (
             <div>
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
+                <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
               </div>
               {groups.map((group) => {
                 const groupSelected = group.members.length > 0 && group.members.every((m) => localSelected.has(m.id))
@@ -246,7 +246,7 @@ export function StudentPickerModal({
                         {group.tutorName && (
                           <span className="text-xs text-muted-foreground truncate">{group.tutorName}</span>
                         )}
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                        <Badge variant="secondary" className="text-[0.625rem] h-4 px-1.5">
                           {group.members.length} student{group.members.length !== 1 ? "s" : ""}
                         </Badge>
                         {isExpanded
@@ -270,7 +270,7 @@ export function StudentPickerModal({
                                 {isSelected && <Check className="size-2 text-white" />}
                               </div>
                               <Avatar className="size-5 shrink-0">
-                                <AvatarFallback className="bg-primary/10 text-primary text-[8px]">{initials(member.name)}</AvatarFallback>
+                                <AvatarFallback className="bg-primary/10 text-primary text-[0.5rem]">{initials(member.name)}</AvatarFallback>
                               </Avatar>
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-medium truncate">{member.name}</p>
@@ -291,7 +291,7 @@ export function StudentPickerModal({
           <div>
             {((!hideGroups && groups.length > 0) || !search.trim()) && (
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">
                   {search.trim() ? "Search Results" : "All Students"}
                 </p>
               </div>
@@ -317,7 +317,7 @@ export function StudentPickerModal({
                       {isSelected && <Check className="size-2.5 text-white" />}
                     </div>
                     <Avatar className="size-7 shrink-0">
-                      <AvatarFallback className="bg-primary/10 text-primary text-[10px]">{initials(student.name)}</AvatarFallback>
+                      <AvatarFallback className="bg-primary/10 text-primary text-[0.625rem]">{initials(student.name)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{student.name}</p>

@@ -158,7 +158,7 @@ export function TutorPickerModal({
                     {isSelected && <Check className="size-2.5 text-white" />}
                   </div>
                   <Avatar className="size-7 shrink-0">
-                    <AvatarFallback className="bg-primary/10 text-primary text-[10px]">{initials(tutor.name)}</AvatarFallback>
+                    <AvatarFallback className="bg-primary/10 text-primary text-[0.625rem]">{initials(tutor.name)}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{tutor.name}</p>

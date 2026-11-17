@@ -173,7 +173,7 @@ const SORT_LABELS: Record<SortKey, string> = {
 function EngagementPill({ student }: { student: Student }) {
   const look = ENGAGEMENT_LOOK[student.engagement]
   return (
-    <span title={look.hint} className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold leading-none w-fit ${look.className}`}>
+    <span title={look.hint} className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[0.625rem] font-semibold leading-none w-fit ${look.className}`}>
       <span className={`size-1.5 rounded-full ${look.dot}`} />
       {look.label === "Signing in, not studying" ? "Not studying" : look.label}
     </span>
@@ -479,17 +479,17 @@ export function StudentsManager() {
                     <p className={`text-xl font-black leading-none ${count > 0 ? card.iconColor : "text-muted-foreground"}`}>{count}</p>
                     <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
                   </div>
-                  <span className="text-[10px] font-semibold text-muted-foreground shrink-0">{active ? "Show all" : "Show"}</span>
+                  <span className="text-[0.625rem] font-semibold text-muted-foreground shrink-0">{active ? "Show all" : "Show"}</span>
                 </button>
               )
             })}
           </div>
           ))}
-          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+          <p className="text-[0.6875rem] text-muted-foreground flex items-center gap-1.5">
             <Activity className="size-3 shrink-0" />
             &ldquo;Studying&rdquo; means a lesson, test, live class, league game or self-reflection in the last{` ${STUDY_WINDOW_DAYS} days `}&mdash; not just signing in.
           </p>
-          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+          <p className="text-[0.6875rem] text-muted-foreground flex items-center gap-1.5">
             <BellRing className="size-3 shrink-0" />
             Students with tests not finished get an email reminder automatically every 2 days until they finish. Click a student to see each test.
           </p>
@@ -504,7 +504,7 @@ export function StudentsManager() {
       ) : paginated.length ? (
         <Card className="shadow-sm overflow-hidden py-0 gap-0">
           {/* Column headers */}
-          <div className={`hidden sm:grid ${COLUMNS} gap-3 px-4 py-2 border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>
+          <div className={`hidden sm:grid ${COLUMNS} gap-3 px-4 py-2 border-b bg-muted/30 text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground`}>
             <span>Student</span>
             <span>Level</span>
             <span className="text-center">Courses</span>
@@ -535,7 +535,7 @@ export function StudentsManager() {
                       <span className="relative shrink-0">
                         <Avatar className="size-7">
                           {student.avatarUrl && <AvatarImage src={student.avatarUrl} alt={student.name} />}
-                          <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[10px]">
+                          <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[0.625rem]">
                             {initials}
                           </AvatarFallback>
                         </Avatar>
@@ -547,7 +547,7 @@ export function StudentsManager() {
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-medium truncate leading-none">{student.name}</span>
                           {(student.source === "invited" || student.source === "both") && (
-                            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-sky-50 text-sky-600 border-sky-200">
+                            <span className="shrink-0 text-[0.625rem] font-semibold px-1.5 py-0.5 rounded-full border bg-sky-50 text-sky-600 border-sky-200">
                               Invited
                             </span>
                           )}
@@ -557,7 +557,7 @@ export function StudentsManager() {
                         </div>
                         <p className="text-xs text-muted-foreground truncate mt-0.5">{student.email}</p>
                         {/* Phones: the two things that matter most, under the name. */}
-                        <p className="sm:hidden text-[11px] mt-0.5 flex flex-wrap items-center gap-x-1">
+                        <p className="sm:hidden text-[0.6875rem] mt-0.5 flex flex-wrap items-center gap-x-1">
                           <EngagementPill student={student} />
                           <span className={seenClass(student.lastSeenAt)}>Seen {seenLabel(student.lastSeenAt).toLowerCase()}</span>
                           {student.testsUnfinished > 0 && <span className="text-red-600 font-semibold"> · {student.testsUnfinished} test{student.testsUnfinished === 1 ? "" : "s"} not finished</span>}
@@ -568,7 +568,7 @@ export function StudentsManager() {
                     {/* Level */}
                     <div className="hidden sm:flex">
                       {student.bslLevel ? (
-                        <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${levelColor[student.bslLevel as CourseLevel] ?? ""}`}>
+                        <Badge variant="outline" className={`text-[0.625rem] h-5 px-1.5 ${levelColor[student.bslLevel as CourseLevel] ?? ""}`}>
                           {student.bslLevel}
                         </Badge>
                       ) : (
@@ -583,7 +583,7 @@ export function StudentsManager() {
                     </div>
 
                     {/* Activity: are they studying, and when were they last on */}
-                    <div className="hidden sm:flex flex-col gap-1 text-[11px] leading-tight min-w-0">
+                    <div className="hidden sm:flex flex-col gap-1 text-[0.6875rem] leading-tight min-w-0">
                       <EngagementPill student={student} />
                       <span
                         className={seenClass(student.lastSeenAt)}
@@ -604,15 +604,15 @@ export function StudentsManager() {
                         <>
                           <span>{student.testsDone} of {student.testsDone + student.testsUnfinished} done</span>
                           {student.testsUnfinished > 0
-                            ? <span className="text-[11px] text-red-600 font-semibold">{student.testsUnfinished} not finished</span>
-                            : <span className="text-[11px] text-emerald-700 font-medium">All done</span>}
+                            ? <span className="text-[0.6875rem] text-red-600 font-semibold">{student.testsUnfinished} not finished</span>
+                            : <span className="text-[0.6875rem] text-emerald-700 font-medium">All done</span>}
                         </>
                       )}
                     </div>
 
                     {/* Progress */}
                     <div className="hidden sm:flex flex-col gap-1">
-                      <span className="text-[11px] font-medium">{overallCompletion}%</span>
+                      <span className="text-[0.6875rem] font-medium">{overallCompletion}%</span>
                       <Progress value={overallCompletion} className="h-1.5 w-full" />
                     </div>
 
@@ -681,7 +681,7 @@ export function StudentsManager() {
                                 <span
                                   key={d}
                                   title={studied ? "Studied this day" : "Signed in, no learning"}
-                                  className={`rounded border px-1.5 py-0.5 text-[10px] ${studied ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-background text-muted-foreground"}`}
+                                  className={`rounded border px-1.5 py-0.5 text-[0.625rem] ${studied ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-background text-muted-foreground"}`}
                                 >
                                   {shortDay(d)}
                                 </span>
@@ -710,7 +710,7 @@ export function StudentsManager() {
                         </p>
                       </div>
                       <div className="px-4 py-1.5 border-b border-dashed">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">
                           Enrolled Courses
                         </p>
                       </div>
@@ -746,7 +746,7 @@ export function StudentsManager() {
                             </Button>
                           )}
                           <div className="flex flex-col items-end gap-1 w-20 shrink-0 ml-auto">
-                            <span className="text-[11px] font-semibold">{course.completion}%</span>
+                            <span className="text-[0.6875rem] font-semibold">{course.completion}%</span>
                             <Progress value={course.completion} className="h-1.5 w-full" />
                           </div>
                           </div>
@@ -766,7 +766,7 @@ export function StudentsManager() {
                                     {t.score !== null && (t.status === "PASSED" || t.status === "NOT_PASSED") && (
                                       <span className="text-muted-foreground shrink-0">{t.score}%</span>
                                     )}
-                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${look.className}`}>
+                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[0.625rem] font-semibold ${look.className}`}>
                                       {look.label}
                                     </span>
                                   </Link>

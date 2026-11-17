@@ -42,7 +42,7 @@ export default function ItRequirementsPage() {
       </div>
 
       <header className="mt-6">
-        <p className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-[0.6875rem] font-semibold text-primary">
           <ShieldCheck className="size-3.5" /> For network &amp; information-security teams
         </p>
         <h1 className="mt-3 text-3xl font-black leading-tight">Network requirements</h1>

@@ -187,7 +187,7 @@ export function PinnedVideoArea({
         {/* Discoverability hint: only shown when spotlight is available but not active */}
         {showSpotlight && !spotlightActive && !notRecorded && (
           <span
-            className="hidden md:flex items-center gap-1 text-[10px] text-white/70 bg-black/40 px-2 py-1 rounded-full backdrop-blur-sm pointer-events-none"
+            className="hidden md:flex items-center gap-1 text-[0.625rem] text-white/70 bg-black/40 px-2 py-1 rounded-full backdrop-blur-sm pointer-events-none"
             aria-hidden
           >
             <Info className="size-3" />

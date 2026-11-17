@@ -538,7 +538,7 @@ function ConversationRow({
           <p className={cn("text-sm truncate", conv.unreadCount > 0 ? "font-bold" : "font-medium")}>
             {conv.other.name}
           </p>
-          <span className="text-[10px] text-muted-foreground shrink-0">
+          <span className="text-[0.625rem] text-muted-foreground shrink-0">
             {relativeTime(conv.lastMessageAt)}
           </span>
         </div>
@@ -550,7 +550,7 @@ function ConversationRow({
             {conv.lastMessage?.content ?? "No messages yet"}
           </p>
           {conv.unreadCount > 0 && (
-            <Badge className="h-4 min-w-4 px-1 text-[10px] shrink-0 bg-primary">
+            <Badge className="h-4 min-w-4 px-1 text-[0.625rem] shrink-0 bg-primary">
               {conv.unreadCount}
             </Badge>
           )}
@@ -584,7 +584,7 @@ function MessageBubble({
         {!isMine && showAvatar && (
           <Avatar className="size-7">
             <AvatarImage src={message.sender.avatarUrl ?? undefined} />
-            <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">
+            <AvatarFallback className="bg-primary/10 text-primary text-[0.625rem] font-bold">
               {initials(message.sender.name)}
             </AvatarFallback>
           </Avatar>
@@ -605,7 +605,7 @@ function MessageBubble({
         </div>
 
         <div className="flex items-center gap-1 px-1">
-          <span className="text-[10px] text-muted-foreground">{time}</span>
+          <span className="text-[0.625rem] text-muted-foreground">{time}</span>
           {isMine && !failed && (
             sending
               ? <Loader2 className="size-3 animate-spin text-muted-foreground" />
@@ -619,16 +619,16 @@ function MessageBubble({
         {isMine && failed && (
           <div className="flex items-center gap-1.5 px-1">
             <AlertCircle className="size-3 text-rose-500 shrink-0" />
-            <span className="text-[10px] text-rose-500">Failed to send</span>
+            <span className="text-[0.625rem] text-rose-500">Failed to send</span>
             <button
               onClick={onRetry}
-              className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+              className="text-[0.625rem] text-primary hover:underline flex items-center gap-0.5"
             >
               <RotateCcw className="size-2.5" /> Retry
             </button>
             <button
               onClick={onDismiss}
-              className="text-[10px] text-muted-foreground hover:underline flex items-center gap-0.5"
+              className="text-[0.625rem] text-muted-foreground hover:underline flex items-center gap-0.5"
             >
               <X className="size-2.5" /> Dismiss
             </button>

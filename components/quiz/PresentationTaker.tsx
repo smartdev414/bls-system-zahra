@@ -162,7 +162,7 @@ export function PresentationTaker({ lessonId, enrollmentId, data, refetch, nextH
 
       {/* The task */}
       <div className="rounded-xl border p-4 flex flex-col gap-3">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+        <p className="text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">
           The task · {marksLabel(maxMarks(task))}
         </p>
         {task.question && <p className="text-sm whitespace-pre-wrap">{task.question}</p>}

@@ -225,7 +225,7 @@ export default function LessonsPage() {
                             Unlocks {lesson.releaseAt ? releaseLabel(lesson.releaseAt) : "later"}
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 bg-amber-50 text-amber-700 border-amber-200 shrink-0">
+                        <Badge variant="outline" className="text-[0.625rem] h-5 px-1.5 gap-1 bg-amber-50 text-amber-700 border-amber-200 shrink-0">
                           <Lock className="size-2.5" /> Locked
                         </Badge>
                       </div>
@@ -274,10 +274,10 @@ export default function LessonsPage() {
                       {/* Badges */}
                       <div className="flex items-center gap-2 shrink-0">
                         {isUpNext && (
-                          <Badge className="text-[10px] h-5 px-1.5">Up next</Badge>
+                          <Badge className="text-[0.625rem] h-5 px-1.5">Up next</Badge>
                         )}
                         {lesson.isFree && (
-                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">Free</Badge>
+                          <Badge variant="outline" className="text-[0.625rem] h-5 px-1.5">Free</Badge>
                         )}
                         <ChevronRight className="size-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>

@@ -14,11 +14,11 @@ export function mapsUrl(venue: string) {
  */
 export function ClassFormatBadge({ inPerson, className = "" }: { inPerson: boolean; className?: string }) {
   return inPerson ? (
-    <Badge variant="outline" className={`text-[10px] gap-1 bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900 ${className}`}>
+    <Badge variant="outline" className={`text-[0.625rem] gap-1 bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900 ${className}`}>
       <MapPin className="size-2.5" /> Face to face
     </Badge>
   ) : (
-    <Badge variant="outline" className={`text-[10px] gap-1 bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900 ${className}`}>
+    <Badge variant="outline" className={`text-[0.625rem] gap-1 bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900 ${className}`}>
       <Video className="size-2.5" /> Online
     </Badge>
   )

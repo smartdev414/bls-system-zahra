@@ -178,7 +178,7 @@ function ThumbnailEditor({
       ) : (
         <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground">
           <Camera className="size-6" />
-          <span className="text-[10px] font-medium">No thumbnail</span>
+          <span className="text-[0.625rem] font-medium">No thumbnail</span>
         </div>
       )}
 
@@ -194,7 +194,7 @@ function ThumbnailEditor({
         ) : (
           <>
             <Camera className="size-5 text-white" />
-            <span className="text-[11px] font-semibold text-white">
+            <span className="text-[0.6875rem] font-semibold text-white">
               {preview ? "Change" : "Upload"}
             </span>
           </>
@@ -821,10 +821,10 @@ function SectionBlock({
             >
               <span className="text-xs font-bold text-muted-foreground shrink-0">Section {number}</span>
               <span className="font-semibold text-sm truncate">{section.title}</span>
-              <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">{section.lessons.length} lesson{section.lessons.length === 1 ? "" : "s"}</Badge>
-              <Badge variant="outline" className="text-[10px] shrink-0 sm:hidden">{section.lessons.length}</Badge>
+              <Badge variant="outline" className="text-[0.625rem] shrink-0 hidden sm:inline-flex">{section.lessons.length} lesson{section.lessons.length === 1 ? "" : "s"}</Badge>
+              <Badge variant="outline" className="text-[0.625rem] shrink-0 sm:hidden">{section.lessons.length}</Badge>
               {/* One date for the section, shown once rather than on every lesson. */}
-              <ReleaseBadge releaseAt={sharedRelease(section)} className="text-[10px] shrink-0 hidden sm:inline-flex" />
+              <ReleaseBadge releaseAt={sharedRelease(section)} className="text-[0.625rem] shrink-0 hidden sm:inline-flex" />
               {isCollapsed ? <ChevronDown className="size-4 text-muted-foreground shrink-0 ml-auto" /> : <ChevronUp className="size-4 text-muted-foreground shrink-0 ml-auto" />}
             </button>
             {canEdit && <div className="flex items-center gap-0.5 pr-1 sm:pr-2 shrink-0">
@@ -961,8 +961,8 @@ function LessonRow({
         <p className="text-sm font-medium truncate">{number}. {lesson.title}</p>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
           <span>{label}</span>
-          {lesson.isFree && <Badge variant="outline" className="text-[10px] h-4 px-1">Free</Badge>}
-          {!hideRelease && <ReleaseBadge releaseAt={lesson.releaseAt} className="text-[10px] h-4 px-1" />}
+          {lesson.isFree && <Badge variant="outline" className="text-[0.625rem] h-4 px-1">Free</Badge>}
+          {!hideRelease && <ReleaseBadge releaseAt={lesson.releaseAt} className="text-[0.625rem] h-4 px-1" />}
           {lesson.assets.length > 0 && <span>· {lesson.assets.length} file{lesson.assets.length !== 1 ? "s" : ""}</span>}
           {lesson.assets.map((asset) => <VideoCleanBadge key={asset.id} url={asset.fileUrl} />)}
         </div>

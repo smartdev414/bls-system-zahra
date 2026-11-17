@@ -41,7 +41,7 @@ export function MessagesBadge({ userId }: { userId: string }) {
   if (count === 0) return null
 
   return (
-    <span className="ml-1 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold min-w-[16px] h-4 px-1 leading-none">
+    <span className="ml-1 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[0.625rem] font-bold min-w-[16px] h-4 px-1 leading-none">
       {count > 99 ? "99+" : count}
     </span>
   )

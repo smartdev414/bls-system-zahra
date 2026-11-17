@@ -54,11 +54,11 @@ export function BreakoutSelfStage({
           trackRef={ownCam}
           className={localCameraClassName(true, "w-full h-full object-contain")}
         />
-        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/70 backdrop-blur-sm text-white text-[0.625rem] font-bold px-2 py-0.5 rounded-full">
           <Users2 className="size-3 text-primary" />
           {groupName} · You
         </div>
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-zinc-400 bg-black/60 rounded-full px-3 py-1 backdrop-blur-sm whitespace-nowrap">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[0.6875rem] text-zinc-400 bg-black/60 rounded-full px-3 py-1 backdrop-blur-sm whitespace-nowrap">
           Waiting for your group — they&apos;ll appear here when their cameras are on
         </div>
       </div>
@@ -85,7 +85,7 @@ export function BreakoutSelfStage({
         <Camera className={compact ? "size-3.5" : "size-4"} />
         {busy ? "Starting camera…" : "Turn on my camera"}
       </button>
-      <p className={cn("text-zinc-500 max-w-sm", compact ? "text-[11px]" : "text-xs")}>
+      <p className={cn("text-zinc-500 max-w-sm", compact ? "text-[0.6875rem]" : "text-xs")}>
         Your group-mates appear here as soon as their cameras are on.
       </p>
     </div>

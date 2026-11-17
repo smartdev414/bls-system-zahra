@@ -154,13 +154,13 @@ export function InviteCoTutorModal({
                     {isSelected && <Check className="size-2.5 text-white" />}
                   </div>
                   <Avatar className="size-7 shrink-0">
-                    <AvatarFallback className="bg-primary/10 text-primary text-[10px]">{initials(tutor.name)}</AvatarFallback>
+                    <AvatarFallback className="bg-primary/10 text-primary text-[0.625rem]">{initials(tutor.name)}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{tutor.name}</p>
                     <p className="text-xs text-muted-foreground truncate">{tutor.email}</p>
                   </div>
-                  {added && <Badge variant="secondary" className="text-[10px] h-4 px-1.5 shrink-0">Added</Badge>}
+                  {added && <Badge variant="secondary" className="text-[0.625rem] h-4 px-1.5 shrink-0">Added</Badge>}
                 </button>
               )
             })

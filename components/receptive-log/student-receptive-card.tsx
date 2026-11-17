@@ -38,7 +38,7 @@ export function StudentReceptiveCard({ studentId, studentName }: { studentId: st
         <CardTitle className="text-sm flex items-center justify-between gap-2 flex-wrap">
           <span>
             Receptive log
-            <span className="block text-[11px] font-normal text-muted-foreground mt-0.5">
+            <span className="block text-[0.6875rem] font-normal text-muted-foreground mt-0.5">
               BSL they watched, practised or took part in outside class, as logged by the student
             </span>
           </span>

@@ -97,7 +97,7 @@ function TicketRow({ ticket, basePath }: { ticket: TicketItem; basePath: string 
 
       {/* Badges */}
       <div className="hidden sm:flex items-center gap-2 shrink-0">
-        <Badge variant="outline" className={`text-[10px] gap-1 ${status.color}`}>
+        <Badge variant="outline" className={`text-[0.625rem] gap-1 ${status.color}`}>
           <StatusIcon className="size-2.5" />
           {status.label}
         </Badge>
@@ -155,18 +155,18 @@ export function MyTicketsList({ basePath }: Props) {
             <div className="flex gap-3 shrink-0">
               <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-16">
                 <p className="text-2xl font-black">{data.total}</p>
-                <p className="text-[11px] text-primary-foreground/70 mt-0.5">Total</p>
+                <p className="text-[0.6875rem] text-primary-foreground/70 mt-0.5">Total</p>
               </div>
               {openCount > 0 && (
                 <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-16">
                   <p className="text-2xl font-black">{openCount}</p>
-                  <p className="text-[11px] text-primary-foreground/70 mt-0.5">Open</p>
+                  <p className="text-[0.6875rem] text-primary-foreground/70 mt-0.5">Open</p>
                 </div>
               )}
               {resolvedCount > 0 && (
                 <div className="rounded-xl bg-white/10 px-4 py-2.5 text-center min-w-16">
                   <p className="text-2xl font-black">{resolvedCount}</p>
-                  <p className="text-[11px] text-primary-foreground/70 mt-0.5">Resolved</p>
+                  <p className="text-[0.6875rem] text-primary-foreground/70 mt-0.5">Resolved</p>
                 </div>
               )}
             </div>

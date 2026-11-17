@@ -31,7 +31,7 @@ export function ReceptiveTotalsRow({ totals }: { totals: ReceptiveTotals }) {
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
       {tiles.map((t) => (
         <div key={t.label} className="rounded-xl border bg-card p-3 min-w-0">
-          <p className="text-[11px] text-muted-foreground">{t.label}</p>
+          <p className="text-[0.6875rem] text-muted-foreground">{t.label}</p>
           <p className="text-lg font-black leading-tight tabular-nums truncate">{t.value}</p>
         </div>
       ))}

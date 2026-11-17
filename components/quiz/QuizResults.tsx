@@ -183,7 +183,7 @@ function MarkedAnswer({ lessonId, question, answer, tutorMarks, studentName, onC
       {isSign ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student</span>
+            <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Student</span>
             {answer.videoUrl
               ? <ProtectedVideo src={answer.videoUrl} controls playsInline className="w-full aspect-video rounded-md border bg-black" />
               : <p className="rounded-md border px-2 py-4 text-center text-muted-foreground">
@@ -191,7 +191,7 @@ function MarkedAnswer({ lessonId, question, answer, tutorMarks, studentName, onC
                 </p>}
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">The sign done right</span>
+            <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">The sign done right</span>
             {question.answerVideoUrl && (isVideoMedia(question.answerVideoUrl, question.answerMediaType ?? "video")
               ? <ProtectedVideo src={question.answerVideoUrl} controls playsInline className="w-full aspect-video rounded-md border border-emerald-300 bg-black" />
               // eslint-disable-next-line @next/next/no-img-element
@@ -202,7 +202,7 @@ function MarkedAnswer({ lessonId, question, answer, tutorMarks, studentName, onC
         // An assessment's part: the answers filmed, against the answer sheet.
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-3xl">
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student&apos;s answers</span>
+            <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Student&apos;s answers</span>
             {answer.videoUrl
               ? <ProtectedVideo src={answer.videoUrl} controls playsInline className="w-full aspect-video rounded-md border bg-black" />
               : <p className="rounded-md border px-2 py-4 text-center text-muted-foreground">
@@ -211,7 +211,7 @@ function MarkedAnswer({ lessonId, question, answer, tutorMarks, studentName, onC
           </div>
           {question.modelAnswer ? (
             <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-emerald-900 self-start">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Answer sheet</span>
+              <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">Answer sheet</span>
               <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
             </div>
           ) : <div />}
@@ -231,11 +231,11 @@ function MarkedAnswer({ lessonId, question, answer, tutorMarks, studentName, onC
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
           <div className="rounded-md border bg-background px-2 py-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student</span>
+            <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Student</span>
             <p className={cn("whitespace-pre-wrap", !answer.answerText && "text-muted-foreground")}>{answer.answerText || "Not answered"}</p>
           </div>
           <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-emerald-900">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Model answer</span>
+            <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">Model answer</span>
             <p className="whitespace-pre-wrap">{question.modelAnswer}</p>
           </div>
         </div>
@@ -325,7 +325,7 @@ function StudentAttempts({ lessonId, student, questions, marking, onReset, onMar
             </span>
             <span className="flex items-center gap-2">
               {attempt.selfMarked === false && (
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                <Badge variant="outline" className="text-[0.625rem] bg-amber-50 text-amber-700 border-amber-200">
                   {marking.tutorMarks ? "To mark" : <>Student hasn&apos;t marked it yet</>}
                 </Badge>
               )}
@@ -504,7 +504,7 @@ export function QuizResults({ lessonId, questions, marking }: {
           { label: "Pass mark", value: `${test.passMark}%` },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-xl border bg-muted/20 px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
             <p className="text-lg font-black mt-0.5">{value}</p>
           </div>
         ))}
@@ -563,7 +563,7 @@ export function QuizResults({ lessonId, questions, marking }: {
 
       {/* Students */}
       <div className="rounded-xl border overflow-hidden">
-        <div className={`hidden sm:grid ${COLUMNS} items-center gap-3 px-4 py-2 border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>
+        <div className={`hidden sm:grid ${COLUMNS} items-center gap-3 px-4 py-2 border-b bg-muted/30 text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground`}>
           <span>Student</span>
           <span>Best</span>
           <span>Latest</span>
@@ -589,7 +589,7 @@ export function QuizResults({ lessonId, questions, marking }: {
                   <div className="flex items-center gap-2.5 min-w-0">
                     <Avatar className="size-7 shrink-0">
                       {student.avatarUrl && <AvatarImage src={student.avatarUrl} alt={student.name} />}
-                      <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[10px]">
+                      <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[0.625rem]">
                         {initials(student.name)}
                       </AvatarFallback>
                     </Avatar>
@@ -612,7 +612,7 @@ export function QuizResults({ lessonId, questions, marking }: {
                     {student.lastAttemptAt ? shortDate(student.lastAttemptAt) : "—"}
                   </span>
 
-                  <Badge variant="outline" className={cn("text-[10px] justify-self-start", STATUS[student.status].className)}>
+                  <Badge variant="outline" className={cn("text-[0.625rem] justify-self-start", STATUS[student.status].className)}>
                     {student.awaitingMarks ? (marking.tutorMarks ? "To mark" : "Not marked yet") : STATUS[student.status].label}
                     {/* On a phone the score columns are hidden, so it rides along here. */}
                     {student.bestScore !== null && <span className="sm:hidden ml-1">· {student.bestScore}%</span>}

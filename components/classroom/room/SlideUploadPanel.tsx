@@ -395,7 +395,7 @@ export function SlideUploadPanel({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{item.fileName}</span>
                       {item.fromSessionTitle && (
-                        <span className="flex items-center gap-1 text-[10px] text-zinc-500 truncate">
+                        <span className="flex items-center gap-1 text-[0.625rem] text-zinc-500 truncate">
                           <Clock className="size-2.5 shrink-0" />
                           {item.fromSessionTitle}
                         </span>
@@ -453,7 +453,7 @@ export function SlideUploadPanel({
                   <Upload className="size-4" />
                   Choose a file from your computer
                 </span>
-                <span className="text-[11px] font-normal text-zinc-500">
+                <span className="text-[0.6875rem] font-normal text-zinc-500">
                   PDF, PowerPoint, MP4, MOV or WebM
                 </span>
               </button>

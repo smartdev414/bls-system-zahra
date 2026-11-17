@@ -117,7 +117,7 @@ function buildMonthGrid(year: number, month: number): Date[][] {
 function TutorAvatar({ name }: { name: string }) {
   const initials = name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
   return (
-    <div className="size-7 rounded-full bg-linear-to-br from-primary/30 to-primary/10 flex items-center justify-center font-bold text-primary text-[10px] shrink-0">
+    <div className="size-7 rounded-full bg-linear-to-br from-primary/30 to-primary/10 flex items-center justify-center font-bold text-primary text-[0.625rem] shrink-0">
       {initials}
     </div>
   )
@@ -184,17 +184,17 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
             <span className="text-xs font-bold uppercase tracking-wide">Happening now</span>
           </div>
           {canJoin ? (
-            <Button asChild size="sm" className="h-6 text-[11px] px-3 bg-white text-emerald-700 hover:bg-white/90 gap-1">
+            <Button asChild size="sm" className="h-6 text-[0.6875rem] px-3 bg-white text-emerald-700 hover:bg-white/90 gap-1">
               <Link href={`/student/classroom/${session.id}`}>
                 <Radio className="size-2.5" /> Join
               </Link>
             </Button>
           ) : hasPending ? (
-            <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">Request Pending</span>
+            <span className="text-[0.625rem] font-semibold bg-white/20 px-2 py-0.5 rounded-full">Request Pending</span>
           ) : wasRejected ? (
-            <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">Request Declined</span>
+            <span className="text-[0.625rem] font-semibold bg-white/20 px-2 py-0.5 rounded-full">Request Declined</span>
           ) : (
-            <Button size="sm" className="h-6 text-[11px] px-3 bg-white text-emerald-700 hover:bg-white/90 gap-1" onClick={() => setRequestOpen(true)}>
+            <Button size="sm" className="h-6 text-[0.6875rem] px-3 bg-white text-emerald-700 hover:bg-white/90 gap-1" onClick={() => setRequestOpen(true)}>
               <Send className="size-2.5" /> Request to Join
             </Button>
           )}
@@ -234,23 +234,23 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
         {/* Meta grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-muted/40 rounded-xl px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Date</p>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Date</p>
             <p className="text-xs font-semibold">
               {scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
             </p>
           </div>
           <div className="bg-muted/40 rounded-xl px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Time</p>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Time</p>
             <p className="text-xs font-semibold">
               {scheduled.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
             </p>
           </div>
           <div className="bg-muted/40 rounded-xl px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Duration</p>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Duration</p>
             <p className="text-xs font-semibold">{session.durationMins} min</p>
           </div>
           <div className="bg-muted/40 rounded-xl px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Students</p>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Students</p>
             <p className="text-xs font-semibold">
               {session.attendeeCount}{session.maxStudents ? ` / ${session.maxStudents}` : " joined"}
             </p>
@@ -259,7 +259,7 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
 
         {inPerson && (
           <div className="rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-900 px-3 py-2.5 flex flex-col gap-0.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-800/80 dark:text-orange-300/80">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-orange-800/80 dark:text-orange-300/80">
               Face to face — not online
             </p>
             <VenueLink venue={session.venue} className="text-sm" />
@@ -272,7 +272,7 @@ function SessionCard({ session, onMutated }: { session: LiveSession; onMutated?:
             <TutorAvatar name={session.tutor.name} />
             <div>
               <p className="text-xs font-semibold leading-tight">{session.tutor.name}</p>
-              <p className="text-[10px] text-muted-foreground">Tutor</p>
+              <p className="text-[0.625rem] text-muted-foreground">Tutor</p>
             </div>
           </div>
 
@@ -447,7 +447,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutat
         <div className="rounded-2xl border border-border overflow-hidden">
           <div className="grid grid-cols-7 bg-muted/50 border-b border-border">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-              <div key={d} className="py-2 text-center text-[11px] font-semibold text-muted-foreground">{d}</div>
+              <div key={d} className="py-2 text-center text-[0.6875rem] font-semibold text-muted-foreground">{d}</div>
             ))}
           </div>
 
@@ -472,7 +472,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutat
                   >
                     <div className="flex justify-end mb-1">
                       <span className={cn(
-                        "size-6 flex items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+                        "size-6 flex items-center justify-center rounded-full text-[0.6875rem] font-semibold transition-colors",
                         isToday && "bg-primary text-primary-foreground",
                         !isToday && isThisMonth && "text-foreground group-hover:text-primary",
                         !isToday && !isThisMonth && "text-muted-foreground/40"
@@ -484,14 +484,14 @@ function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutat
                     <div className="flex flex-col gap-0.5">
                       {daySessions.slice(0, 3).map((s) => (
                         <div key={s.id} className={cn(
-                          "text-[10px] font-medium px-1.5 py-0.5 rounded-md truncate leading-tight",
+                          "text-[0.625rem] font-medium px-1.5 py-0.5 rounded-md truncate leading-tight",
                           STATUS[s.status].chip
                         )}>
                           {formatTime(s.scheduledAt)} {s.title}
                         </div>
                       ))}
                       {daySessions.length > 3 && (
-                        <span className="text-[10px] text-muted-foreground pl-1 font-medium">
+                        <span className="text-[0.625rem] text-muted-foreground pl-1 font-medium">
                           +{daySessions.length - 3} more
                         </span>
                       )}
@@ -537,7 +537,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutat
                   <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold truncate">{s.title}</p>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[0.625rem] text-muted-foreground">
                       {s.tutor.name} · {formatTime(s.scheduledAt)}
                     </p>
                   </div>
@@ -569,7 +569,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: LiveSession[]; onMutat
                   <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold truncate group-hover:text-primary transition-colors">{s.title}</p>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[0.625rem] text-muted-foreground">
                       {new Date(s.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                       {" · "}{s.tutor.name}
                     </p>
@@ -631,9 +631,9 @@ function SessionsSidebar({ sessions }: { sessions: LiveSession[] }) {
                 <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate">{s.title}</p>
-                  <p className="text-[10px] text-muted-foreground">{s.tutor.name} · {formatTime(s.scheduledAt)}</p>
+                  <p className="text-[0.625rem] text-muted-foreground">{s.tutor.name} · {formatTime(s.scheduledAt)}</p>
                 </div>
-                <Badge variant="outline" className={cn("text-[10px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
+                <Badge variant="outline" className={cn("text-[0.625rem] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
                   {STATUS[s.status].label}
                 </Badge>
               </div>
@@ -656,7 +656,7 @@ function SessionsSidebar({ sessions }: { sessions: LiveSession[] }) {
                 <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate">{s.title}</p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[0.625rem] text-muted-foreground">
                     {new Date(s.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                     {" · "}{s.tutor.name}
                   </p>
@@ -766,7 +766,7 @@ function ListView({ sessions, onMutated }: { sessions: LiveSession[]; onMutated:
               <Icon className="size-3.5" />
               {label}
               <span className={cn(
-                "text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none",
+                "text-[0.625rem] rounded-full px-1.5 py-0.5 font-bold leading-none",
                 tab === id ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
               )}>
                 {counts[id]}

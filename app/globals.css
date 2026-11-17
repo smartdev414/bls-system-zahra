@@ -120,6 +120,114 @@
   --sidebar-ring: oklch(0.72 0.2 290);
 }
 
+/* ── Display settings (components/accessibility/accessibility-menu.tsx) ── */
+
+/* Yellow scheme: black text on soft yellow cuts glare for low vision
+   (e.g. Usher syndrome) and is easier for some dyslexic readers. */
+.yellow {
+  --background: oklch(0.95 0.11 100);
+  --foreground: oklch(0.13 0 0);
+  --card: oklch(0.975 0.07 100);
+  --card-foreground: oklch(0.13 0 0);
+  --popover: oklch(0.975 0.07 100);
+  --popover-foreground: oklch(0.13 0 0);
+  --primary: oklch(0.38 0.2 290);
+  --primary-foreground: oklch(0.99 0.02 100);
+  --secondary: oklch(0.89 0.12 95);
+  --secondary-foreground: oklch(0.13 0 0);
+  --muted: oklch(0.91 0.11 98);
+  --muted-foreground: oklch(0.3 0.02 90);
+  --accent: oklch(0.89 0.12 95);
+  --accent-foreground: oklch(0.13 0 0);
+  --destructive: oklch(0.48 0.2 27);
+  --border: oklch(0.45 0.05 95);
+  --input: oklch(0.45 0.05 95);
+  --ring: oklch(0.38 0.2 290);
+  --sidebar: oklch(0.93 0.11 100);
+  --sidebar-foreground: oklch(0.13 0 0);
+  --sidebar-primary: oklch(0.38 0.2 290);
+  --sidebar-primary-foreground: oklch(0.99 0.02 100);
+  --sidebar-accent: oklch(0.89 0.12 95);
+  --sidebar-accent-foreground: oklch(0.13 0 0);
+  --sidebar-border: oklch(0.45 0.05 95);
+  --sidebar-ring: oklch(0.38 0.2 290);
+}
+
+/* High contrast: full-strength text, darker secondary text, firm borders. */
+html[data-high-contrast]:not(.dark) {
+  --foreground: oklch(0 0 0);
+  --card-foreground: oklch(0 0 0);
+  --popover-foreground: oklch(0 0 0);
+  --muted-foreground: oklch(0.3 0 0);
+  --border: oklch(0.45 0 0);
+  --input: oklch(0.4 0 0);
+  --primary: oklch(0.42 0.22 290);
+  --ring: oklch(0.42 0.22 290);
+}
+html[data-high-contrast].dark {
+  --background: oklch(0 0 0);
+  --card: oklch(0.14 0 0);
+  --popover: oklch(0.14 0 0);
+  --foreground: oklch(1 0 0);
+  --card-foreground: oklch(1 0 0);
+  --popover-foreground: oklch(1 0 0);
+  --muted-foreground: oklch(0.88 0 0);
+  --border: oklch(1 0 0 / 55%);
+  --input: oklch(1 0 0 / 60%);
+  --primary: oklch(0.8 0.16 290);
+  --ring: oklch(0.8 0.16 290);
+}
+html[data-high-contrast].yellow {
+  --muted-foreground: oklch(0.2 0 0);
+  --border: oklch(0.2 0 0);
+  --input: oklch(0.2 0 0);
+}
+html[data-high-contrast] :focus-visible {
+  outline: 3px solid var(--ring) !important;
+  outline-offset: 2px;
+}
+
+/* Colour-blind safe (red-green, the common kinds): success greens become
+   blue, which stays distinct from the red used for errors. */
+html[data-colour-vision="red-green"] {
+  --color-emerald-50: oklch(97% 0.014 254.604);
+  --color-emerald-100: oklch(93.2% 0.032 255.585);
+  --color-emerald-200: oklch(88.2% 0.059 254.128);
+  --color-emerald-300: oklch(80.9% 0.105 251.813);
+  --color-emerald-400: oklch(70.7% 0.165 254.624);
+  --color-emerald-500: oklch(62.3% 0.214 259.815);
+  --color-emerald-600: oklch(54.6% 0.245 262.881);
+  --color-emerald-700: oklch(48.8% 0.243 264.376);
+  --color-emerald-800: oklch(42.4% 0.199 265.638);
+  --color-emerald-900: oklch(37.9% 0.146 265.522);
+  --color-emerald-950: oklch(28.2% 0.091 267.935);
+  --color-green-50: oklch(97% 0.014 254.604);
+  --color-green-100: oklch(93.2% 0.032 255.585);
+  --color-green-200: oklch(88.2% 0.059 254.128);
+  --color-green-300: oklch(80.9% 0.105 251.813);
+  --color-green-400: oklch(70.7% 0.165 254.624);
+  --color-green-500: oklch(62.3% 0.214 259.815);
+  --color-green-600: oklch(54.6% 0.245 262.881);
+  --color-green-700: oklch(48.8% 0.243 264.376);
+  --color-green-800: oklch(42.4% 0.199 265.638);
+  --color-green-900: oklch(37.9% 0.146 265.522);
+  --color-green-950: oklch(28.2% 0.091 267.935);
+}
+
+html[data-reduce-motion] *,
+html[data-reduce-motion] *::before,
+html[data-reduce-motion] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-underline-links] a:not([role="button"]):not([data-slot="button"]):not(header a) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

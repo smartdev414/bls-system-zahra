@@ -144,7 +144,7 @@ export function SegmentedVideoPlayer({
         />
 
         {hasMultiple && (
-          <div className="absolute top-2 right-2 pointer-events-none rounded-full bg-black/65 backdrop-blur-sm text-white text-[11px] font-semibold px-2.5 py-1 shadow">
+          <div className="absolute top-2 right-2 pointer-events-none rounded-full bg-black/65 backdrop-blur-sm text-white text-[0.6875rem] font-semibold px-2.5 py-1 shadow">
             Part {index + 1} of {total}
           </div>
         )}

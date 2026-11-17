@@ -283,7 +283,7 @@ export function ParticipantsPanel({
           <ChevronDown className="size-3 text-zinc-500 rotate-90 shrink-0" />
           <Users className="size-3.5 text-primary shrink-0" />
           <span
-            className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider whitespace-nowrap"
+            className="text-[0.6875rem] font-bold text-zinc-300 uppercase tracking-wider whitespace-nowrap"
             style={{ writingMode: "vertical-rl" }}
           >
             {allParticipants.length} in room
@@ -298,7 +298,7 @@ export function ParticipantsPanel({
         title="Show the class"
       >
         <Users className="size-3.5 text-primary shrink-0" />
-        <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+        <span className="text-[0.6875rem] font-bold text-zinc-300 uppercase tracking-wider">
           Participants · {allParticipants.length}
         </span>
         <ChevronDown className="size-3 text-zinc-500 rotate-180 ml-1" />
@@ -315,7 +315,7 @@ export function ParticipantsPanel({
         {view === "gallery" ? (
           <div className="flex items-center gap-1.5 min-w-0 flex-1 text-zinc-300">
             <Users className="size-3.5 text-primary shrink-0" />
-            <span className="text-[11px] font-bold truncate">
+            <span className="text-[0.6875rem] font-bold truncate">
               Gallery · {allParticipants.length}
             </span>
           </div>
@@ -326,7 +326,7 @@ export function ParticipantsPanel({
             title="Hide the class"
           >
             <Users className="size-3.5 text-primary shrink-0" />
-            <span className="text-[11px] font-bold truncate">
+            <span className="text-[0.6875rem] font-bold truncate">
               Class · {allParticipants.length}
             </span>
             <ChevronDown
@@ -339,7 +339,7 @@ export function ParticipantsPanel({
           <button
             type="button"
             onClick={onToggleView}
-            className="shrink-0 h-6 px-2 rounded-md flex items-center gap-1 text-[11px] font-semibold text-zinc-200 bg-zinc-800 hover:bg-zinc-700 transition-colors"
+            className="shrink-0 h-6 px-2 rounded-md flex items-center gap-1 text-[0.6875rem] font-semibold text-zinc-200 bg-zinc-800 hover:bg-zinc-700 transition-colors"
             title={
               view === "gallery"
                 ? "Spotlight view — put the stage back"
@@ -592,7 +592,7 @@ export function ParticipantsPanel({
                   the class is small enough to afford them. */}
               {isPinned && !dense && (
                 <div
-                  className="absolute top-1 bg-primary text-primary-foreground text-[8px] px-1.5 py-0.5 rounded-full font-bold"
+                  className="absolute top-1 bg-primary text-primary-foreground text-[0.5rem] px-1.5 py-0.5 rounded-full font-bold"
                   style={{
                     // A raised hand (or your own raise-hand button) takes this
                     // corner; the border already marks the pin, so just slide
@@ -614,7 +614,7 @@ export function ParticipantsPanel({
                     "absolute z-10 bg-emerald-600/90 text-white font-bold flex items-center gap-0.5",
                     dense
                       ? "top-0.5 left-0.5 rounded p-0.5"
-                      : "bottom-7 left-1 text-[8px] px-1.5 py-0.5 rounded-full",
+                      : "bottom-7 left-1 text-[0.5rem] px-1.5 py-0.5 rounded-full",
                   )}
                   title={isLocal ? "You are sharing your screen" : `${displayName} is sharing their screen`}
                 >
@@ -624,7 +624,7 @@ export function ParticipantsPanel({
               )}
 
               {isTutor && !dense && (
-                <div className="absolute top-1 right-1 text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30 z-10">
+                <div className="absolute top-1 right-1 text-[0.5rem] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30 z-10">
                   Tutor
                 </div>
               )}
@@ -638,7 +638,7 @@ export function ParticipantsPanel({
                 <div
                   className={cn(
                     "absolute top-1 left-1 z-10 rounded-full font-bold border border-black/30 shadow-sm shadow-black/40",
-                    dense ? "size-2.5" : "text-[10px] leading-none px-2 py-1 max-w-[80%] truncate",
+                    dense ? "size-2.5" : "text-[0.625rem] leading-none px-2 py-1 max-w-[80%] truncate",
                   )}
                   // Solid fill with dark text: a tinted chip in its own colour
                   // vanished against a bright camera feed.
@@ -796,7 +796,7 @@ function ContextMenu({
       style={{ left: x, top: y }}
       role="menu"
     >
-      <div className="px-3 py-1.5 text-[10px] text-zinc-500 uppercase tracking-wide border-b border-zinc-800 mb-1 truncate">
+      <div className="px-3 py-1.5 text-[0.625rem] text-zinc-500 uppercase tracking-wide border-b border-zinc-800 mb-1 truncate">
         {menu.name}
       </div>
 

@@ -210,7 +210,7 @@ export default function TestsPage() {
                     </Link>
                     <div className="flex items-center gap-1 shrink-0">
                       {test.level && (
-                        <Badge variant="outline" className={cn("text-[10px]", levelColor[test.level])}>{levelLabel[test.level]}</Badge>
+                        <Badge variant="outline" className={cn("text-[0.625rem]", levelColor[test.level])}>{levelLabel[test.level]}</Badge>
                       )}
                       {canChange && (
                         <DropdownMenu>

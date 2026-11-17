@@ -143,7 +143,7 @@ export default function AdminDashboard() {
                         <p className="text-sm font-semibold truncate">{u.name}</p>
                         <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                       </div>
-                      <Badge variant="outline" className={`text-[10px] shrink-0 ${roleColor[u.role]}`}>
+                      <Badge variant="outline" className={`text-[0.625rem] shrink-0 ${roleColor[u.role]}`}>
                         {u.role.charAt(0) + u.role.slice(1).toLowerCase()}
                       </Badge>
                     </div>

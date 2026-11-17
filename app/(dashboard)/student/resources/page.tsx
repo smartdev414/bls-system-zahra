@@ -204,7 +204,7 @@ export default function ResourcesPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
-                              <Badge variant="outline" className={`text-[10px] ${cfg.className}`}>
+                              <Badge variant="outline" className={`text-[0.625rem] ${cfg.className}`}>
                                 {cfg.label}
                               </Badge>
                             </div>

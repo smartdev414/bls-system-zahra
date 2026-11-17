@@ -32,7 +32,7 @@ export function AttemptHistory({ attempts }: { attempts: AttemptSummary[] }) {
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-[10px]",
+                  "text-[0.625rem]",
                   a.passed
                     ? "bg-emerald-100 text-emerald-700 border-emerald-200"
                     : "bg-rose-100 text-rose-700 border-rose-200"

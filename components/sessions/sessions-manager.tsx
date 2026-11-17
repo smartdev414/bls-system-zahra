@@ -1149,7 +1149,7 @@ function SessionCard({
         {/* Meta row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-muted/40 rounded-xl px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Date</p>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Date</p>
             <div className="flex flex-wrap items-center gap-1.5">
               <p className="text-xs font-semibold">
                 {scheduled.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
@@ -1167,13 +1167,13 @@ function SessionCard({
             </div>
           </div>
           <div className="bg-muted/40 rounded-xl px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Time</p>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Time</p>
             <p className="text-xs font-semibold">
               {scheduled.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
             </p>
           </div>
           <div className="bg-muted/40 rounded-xl px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Duration</p>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Duration</p>
             <p className="text-xs font-semibold">{session.durationMins} min</p>
           </div>
           <button
@@ -1182,7 +1182,7 @@ function SessionCard({
             title="See who attended"
             className="group/att bg-muted/40 hover:bg-muted rounded-xl px-3 py-2 text-left transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Students</p>
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Students</p>
             <p className="text-xs font-semibold flex items-center gap-1">
               {session.attendeeCount}{session.maxStudents ? ` / ${session.maxStudents}` : " joined"}
               <ChevronRight className="size-3 ml-auto text-muted-foreground group-hover/att:text-foreground transition-colors" />
@@ -1439,7 +1439,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
           {/* Day headers */}
           <div className="grid grid-cols-7 bg-muted/50 border-b border-border">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-              <div key={d} className="py-2 text-center text-[11px] font-semibold text-muted-foreground">
+              <div key={d} className="py-2 text-center text-[0.6875rem] font-semibold text-muted-foreground">
                 {d}
               </div>
             ))}
@@ -1468,7 +1468,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
                     {/* Date number */}
                     <div className="flex justify-end mb-1">
                       <span className={cn(
-                        "size-6 flex items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+                        "size-6 flex items-center justify-center rounded-full text-[0.6875rem] font-semibold transition-colors",
                         isToday && "bg-primary text-primary-foreground",
                         !isToday && isThisMonth && "text-foreground group-hover:text-primary",
                         !isToday && !isThisMonth && "text-muted-foreground/40"
@@ -1483,7 +1483,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
                         <div
                           key={s.id}
                           className={cn(
-                            "text-[10px] font-medium px-1.5 py-0.5 rounded-md truncate leading-tight",
+                            "text-[0.625rem] font-medium px-1.5 py-0.5 rounded-md truncate leading-tight",
                             STATUS[s.status].chip
                           )}
                         >
@@ -1491,7 +1491,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
                         </div>
                       ))}
                       {daySessions.length > 3 && (
-                        <span className="text-[9px] text-muted-foreground pl-1 font-medium">
+                        <span className="text-[0.5625rem] text-muted-foreground pl-1 font-medium">
                           +{daySessions.length - 3} more
                         </span>
                       )}
@@ -1541,11 +1541,11 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
                   <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold truncate">{s.title}</p>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[0.625rem] text-muted-foreground">
                       {formatTime(s.scheduledAt)} · {s.durationMins} min{s.week ? ` · Week ${s.week}` : ""}
                     </p>
                   </div>
-                  <Badge variant="outline" className={cn("text-[9px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
+                  <Badge variant="outline" className={cn("text-[0.5625rem] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
                     {STATUS[s.status].label}
                   </Badge>
                 </div>
@@ -1579,7 +1579,7 @@ function BigCalendar({ sessions, onMutated }: { sessions: SessionItem[]; onMutat
                   <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold truncate group-hover:text-primary transition-colors">{s.title}</p>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[0.625rem] text-muted-foreground">
                       {new Date(s.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                       {" · "}{formatTime(s.scheduledAt)}{s.week ? ` · Week ${s.week}` : ""}
                     </p>
@@ -1641,9 +1641,9 @@ function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onM
                 <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate">{s.title}</p>
-                  <p className="text-[10px] text-muted-foreground">{formatTime(s.scheduledAt)} · {s.durationMins} min{s.week ? ` · Week ${s.week}` : ""}</p>
+                  <p className="text-[0.625rem] text-muted-foreground">{formatTime(s.scheduledAt)} · {s.durationMins} min{s.week ? ` · Week ${s.week}` : ""}</p>
                 </div>
-                <Badge variant="outline" className={cn("text-[9px] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
+                <Badge variant="outline" className={cn("text-[0.5625rem] px-1 h-4 shrink-0", STATUS[s.status].badge)}>
                   {STATUS[s.status].label}
                 </Badge>
               </div>
@@ -1666,7 +1666,7 @@ function SessionsSidebar({ sessions, onMutated }: { sessions: SessionItem[]; onM
                 <div className={cn("w-0.5 self-stretch rounded-full shrink-0 mt-0.5", STATUS[s.status].dot.replace("animate-pulse", ""))} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate">{s.title}</p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[0.625rem] text-muted-foreground">
                     {new Date(s.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                     {" · "}{formatTime(s.scheduledAt)}{s.week ? ` · Week ${s.week}` : ""}
                   </p>

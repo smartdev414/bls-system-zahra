@@ -342,7 +342,7 @@ export function SlidePrepCard({ sessionId }: { sessionId: string }) {
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm truncate">{item.fileName}</span>
                         {item.sessionTitle && item.sessionId !== sessionId && (
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground truncate">
+                          <span className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground truncate">
                             <Clock className="size-2.5 shrink-0" />
                             {item.sessionTitle}
                           </span>

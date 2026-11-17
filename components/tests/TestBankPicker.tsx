@@ -118,7 +118,7 @@ export function TestBankPicker({ value, onChange, createHref, kind }: {
                   </p>
                 </div>
                 {test.level && (
-                  <Badge variant="outline" className={cn("shrink-0 text-[10px]", levelColor[test.level])}>{levelLabel[test.level]}</Badge>
+                  <Badge variant="outline" className={cn("shrink-0 text-[0.625rem]", levelColor[test.level])}>{levelLabel[test.level]}</Badge>
                 )}
               </button>
             )

@@ -41,8 +41,8 @@ export function PresentationTaskBuilder({ tasks, onChange }: {
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-2 font-semibold"><Presentation className="size-4 text-primary" /> The task</p>
         {task.id && !task.dirty
-          ? <Badge variant="outline" className="text-[10px]">Saved</Badge>
-          : <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">Not saved</Badge>}
+          ? <Badge variant="outline" className="text-[0.625rem]">Saved</Badge>
+          : <Badge variant="outline" className="text-[0.625rem] bg-amber-50 text-amber-700 border-amber-200">Not saved</Badge>}
       </div>
 
       <p className="text-sm text-muted-foreground">

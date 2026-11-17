@@ -134,7 +134,7 @@ function CertCard({ program: p }: { program: CertProgram }) {
       <div className="p-4 flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <Badge variant="outline" className={`text-[10px] mb-1.5 ${levelColor[p.level]}`}>
+            <Badge variant="outline" className={`text-[0.625rem] mb-1.5 ${levelColor[p.level]}`}>
               {p.level}
             </Badge>
             <h3 className="font-bold text-sm leading-snug">{p.title}</h3>
@@ -156,14 +156,14 @@ function CertCard({ program: p }: { program: CertProgram }) {
             const Icon = stepIcon[t] ?? BookOpen
             return <Icon key={t} className="size-3.5 text-muted-foreground" />
           })}
-          <span className="text-[11px] text-muted-foreground">{p.stepCount} steps</span>
+          <span className="text-[0.6875rem] text-muted-foreground">{p.stepCount} steps</span>
         </div>
 
         {/* Progress */}
         {p.enrollment && (
           <div className="space-y-1">
             <Progress value={p.enrollment.progress} className={`h-1.5 ${isCompleted ? "[&>div]:bg-emerald-500" : ""}`} />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-[0.625rem] text-muted-foreground">
               <span>{p.enrollment.passedCount}/{p.enrollment.totalSteps} steps passed</span>
               <span className={`font-bold ${isCompleted ? "text-emerald-600" : "text-foreground"}`}>{p.enrollment.progress}%</span>
             </div>

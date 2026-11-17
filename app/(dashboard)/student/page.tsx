@@ -217,7 +217,7 @@ export default function StudentDashboardPage() {
                         {i > 0 && <Separator className="mb-4" />}
                         <div className="flex gap-3 items-start">
                           <div className="bg-muted flex flex-col items-center justify-center rounded-xl px-3 py-2 shrink-0 min-w-12">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase">{month}</span>
+                            <span className="text-[0.625rem] font-bold text-muted-foreground uppercase">{month}</span>
                             <span className="text-lg font-black leading-tight">{day}</span>
                           </div>
                           <div className="flex-1 min-w-0">

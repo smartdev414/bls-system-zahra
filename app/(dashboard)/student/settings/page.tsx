@@ -448,7 +448,7 @@ export default function StudentSettingsPage() {
               <div className="divide-y rounded-xl border overflow-hidden">
                 {[
                   { icon: User,         label: "Account Type",   value: <Badge variant="secondary" className="capitalize">{user?.role.toLowerCase()}</Badge> },
-                  { icon: Mail,         label: "Email Address",  value: <span className="flex flex-wrap items-center gap-2 text-sm"><span className="break-all">{user?.email}</span><Badge variant="outline" className="gap-1 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
+                  { icon: Mail,         label: "Email Address",  value: <span className="flex flex-wrap items-center gap-2 text-sm"><span className="break-all">{user?.email}</span><Badge variant="outline" className="gap-1 text-[0.625rem] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
                   { icon: Calendar,     label: "Member Since",   value: <span className="text-sm">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—"}</span> },
                   ...(user?.bslLevel ? [{ icon: GraduationCap, label: "BSL Level", value: <Badge variant="outline" className={cn("text-xs", levelColor[user.bslLevel])}>{user.bslLevel}</Badge> }] : []),
                 ].map(({ icon: Icon, label, value }) => (
@@ -659,7 +659,7 @@ function CertificationsSection() {
                 </div>
                 <div className="w-20 shrink-0">
                   <Progress value={p.enrollment?.progress ?? 0} className="h-1.5" />
-                  <p className="text-[10px] text-muted-foreground text-right mt-0.5">{p.enrollment?.progress}%</p>
+                  <p className="text-[0.625rem] text-muted-foreground text-right mt-0.5">{p.enrollment?.progress}%</p>
                 </div>
                 <ArrowRight className="size-4 text-muted-foreground shrink-0" />
               </Link>

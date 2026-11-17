@@ -199,7 +199,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
           {/* Left panel: groups list */}
           <div className="w-56 border-r flex flex-col shrink-0">
             <div className="px-3 py-2 border-b">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
+              <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
             </div>
             <ScrollArea className="flex-1">
               {groupsLoading ? (
@@ -237,7 +237,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                           onClick={() => setSelectedGroup(group)}
                         >
                           <span className="flex-1 truncate">{group.name}</span>
-                          <Badge variant="secondary" className="shrink-0 text-[10px] h-4 px-1">{group.members.length}</Badge>
+                          <Badge variant="secondary" className="shrink-0 text-[0.625rem] h-4 px-1">{group.members.length}</Badge>
                           <span className={!canEditGroups || group.canEdit === false ? "hidden" : "hidden group-hover/row:flex items-center gap-0.5 shrink-0"}>
                             <span
                               role="button"
@@ -319,16 +319,16 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                   {currentGroup.members.length > 0 && (
                     <div className="shrink-0 max-h-48 overflow-y-auto border-b">
                       <div className="px-4 py-1.5 bg-muted/30">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Members</p>
+                        <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">Members</p>
                       </div>
                       {currentGroup.members.map((member) => (
                         <div key={member.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-muted/20 group/member">
                           <Avatar className="size-6 shrink-0">
-                            <AvatarFallback className="bg-primary/10 text-primary text-[9px]">{initials(member.name)}</AvatarFallback>
+                            <AvatarFallback className="bg-primary/10 text-primary text-[0.5625rem]">{initials(member.name)}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium truncate">{member.name}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{member.email}</p>
+                            <p className="text-[0.625rem] text-muted-foreground truncate">{member.email}</p>
                           </div>
                           {!readOnly && (
                             <Button
@@ -368,16 +368,16 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                         filteredNonMembers.map((student) => (
                           <div key={student.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-muted/20 group/add">
                             <Avatar className="size-6 shrink-0">
-                              <AvatarFallback className="bg-primary/10 text-primary text-[9px]">{initials(student.name)}</AvatarFallback>
+                              <AvatarFallback className="bg-primary/10 text-primary text-[0.5625rem]">{initials(student.name)}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-medium truncate">{student.name}</p>
-                              <p className="text-[10px] text-muted-foreground truncate">{student.email}</p>
+                              <p className="text-[0.625rem] text-muted-foreground truncate">{student.email}</p>
                             </div>
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-6 text-[10px] px-2 gap-1 opacity-0 group-hover/add:opacity-100"
+                              className="h-6 text-[0.625rem] px-2 gap-1 opacity-0 group-hover/add:opacity-100"
                               disabled={busy}
                               onClick={() => addMember(student.id)}
                             >

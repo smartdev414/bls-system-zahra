@@ -89,7 +89,7 @@ export function FeedbackRecorder({ lessonId, answerId, studentVideoUrl, feedback
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">Your feedback</span>
+      <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-primary">Your feedback</span>
       {feedbackVideoUrl ? (
         <>
           <ProtectedVideo src={feedbackVideoUrl} controls playsInline className="w-full max-w-xl aspect-video rounded-md border border-primary/40 bg-black" />

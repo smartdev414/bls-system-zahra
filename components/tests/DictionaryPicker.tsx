@@ -56,7 +56,7 @@ function SignThumb({ sign }: { sign: DictionarySign }) {
   if (sign.videoUrl) {
     return <ProtectedVideo src={sign.videoUrl} muted playsInline preload="metadata" className="w-full h-full object-cover" />
   }
-  return <span className="text-[10px] text-muted-foreground px-1 text-center">No video or picture</span>
+  return <span className="text-[0.625rem] text-muted-foreground px-1 text-center">No video or picture</span>
 }
 
 function PickerBody({ onOpenChange, onPick, multiple = true, description, initialLevel }: Omit<Props, "open">) {
@@ -220,7 +220,7 @@ function PickerBody({ onOpenChange, onPick, multiple = true, description, initia
                   </div>
                   <div className="px-2 py-1.5 min-w-0">
                     <p className="text-sm font-semibold truncate">{sign.word}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{sign.category} · {levelLabel[sign.level]}</p>
+                    <p className="text-[0.6875rem] text-muted-foreground truncate">{sign.category} · {levelLabel[sign.level]}</p>
                   </div>
                   {multiple && (
                     <span

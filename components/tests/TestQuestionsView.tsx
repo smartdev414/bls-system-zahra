@@ -93,17 +93,17 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
               <p className="font-semibold">Part {i + 1} <span className="font-normal text-muted-foreground">· {marksLabel(maxMarks(q))}</span></p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">The questions</p>
+                  <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">The questions</p>
                   {q.questionsVideoUrl && <Media url={q.questionsVideoUrl} type="video" alt="" className="w-full aspect-video rounded-lg border" />}
                   {q.question && <p className="text-sm whitespace-pre-wrap">{q.question}</p>}
                 </div>
                 <div className="flex flex-col gap-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">The part</p>
+                  <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">The part</p>
                   {q.imageUrl && <Media url={q.imageUrl} type={q.mediaType} alt="" className="w-full aspect-video rounded-lg border" />}
                 </div>
               </div>
               <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Answer sheet</p>
+                <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">Answer sheet</p>
                 <p className="whitespace-pre-wrap">{q.modelAnswer}</p>
               </div>
             </div>
@@ -137,13 +137,13 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
               )}
               {q.type === "WRITTEN" && (
                 <div className="ml-6 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Model answer · students mark themselves 0–{maxMarks(q)}</p>
+                  <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">Model answer · students mark themselves 0–{maxMarks(q)}</p>
                   <p className="whitespace-pre-wrap mt-0.5">{q.modelAnswer}</p>
                 </div>
               )}
               {q.type === "SIGN" && (
                 <div className="ml-6 flex flex-col gap-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">The sign done right · students film themselves and tick or cross</p>
+                  <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">The sign done right · students film themselves and tick or cross</p>
                   {q.answerVideoUrl && (
                     <Media url={q.answerVideoUrl} type="video" alt={q.question} className="rounded-lg max-h-48 border self-start" />
                   )}
@@ -171,7 +171,7 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
                         : <Circle className="size-3.5 shrink-0 text-muted-foreground" />}
                       {opt.text && <span className="text-xs">{opt.text}</span>}
                       {opt.isCorrect && (
-                        <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Correct</span>
+                        <span className="ml-auto text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">Correct</span>
                       )}
                     </div>
                   </div>

@@ -240,7 +240,7 @@ function ClassList({
             {showInviteOnly && s.visibility === "INVITE_ONLY" ? " · invited students only" : ""}
           </span>
           {s.status === "LIVE" ? (
-            <Badge variant="outline" className="text-[10px] shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200">Live now</Badge>
+            <Badge variant="outline" className="text-[0.625rem] shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200">Live now</Badge>
           ) : s.canManage && calendar && !picked ? (
             <Button
               variant="ghost"
@@ -518,7 +518,7 @@ export function CourseGroups({
                 ["That's it", "— students see the lessons and their class."],
               ].map(([title, text], i) => (
                 <li key={title} className="flex gap-2 @xl:flex-1">
-                  <span className="size-4.5 shrink-0 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center">
+                  <span className="size-4.5 shrink-0 rounded-full bg-primary/10 text-primary text-[0.625rem] font-bold flex items-center justify-center">
                     {i + 1}
                   </span>
                   <span className="text-muted-foreground">
@@ -572,7 +572,7 @@ export function CourseGroups({
                           {list.length} student{list.length === 1 ? "" : "s"}
                         </span>
                         {behind.length > 0 && (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1 bg-amber-100 text-amber-700 border-amber-200">
+                          <Badge variant="outline" className="text-[0.625rem] h-4 px-1 bg-amber-100 text-amber-700 border-amber-200">
                             {behind.length} behind
                           </Badge>
                         )}
@@ -607,7 +607,7 @@ export function CourseGroups({
                   <div className="border-t">
                     {group.sessions.length > 0 && (
                       <>
-                        <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        <p className="px-4 pt-3 pb-1 text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">
                           Class times
                         </p>
                         <ClassList sessions={group.sessions} onChanged={() => void refetchGroups()} />

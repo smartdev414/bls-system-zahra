@@ -32,7 +32,7 @@ export function OwnScreenShare({
         <button
           type="button"
           onClick={() => setPreview(false)}
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full bg-black/75 backdrop-blur-sm ring-1 ring-white/15 px-3 py-1 text-[11px] font-medium text-white/90 hover:text-white"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full bg-black/75 backdrop-blur-sm ring-1 ring-white/15 px-3 py-1 text-[0.6875rem] font-medium text-white/90 hover:text-white"
           title="Hide the preview of your own screen"
         >
           <EyeOff className="size-3.5" />

@@ -247,13 +247,13 @@ function SavedBadge({ url }: { url: string | null | undefined }) {
   if (state === "failed") return <VideoCleanBadge url={url} />
   if (state === "processing") {
     return (
-      <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[10px] text-sky-700">
+      <Badge variant="outline" className="gap-1 border-sky-200 bg-sky-50 text-[0.625rem] text-sky-700">
         <Loader2 className="size-2.5 animate-spin" /> Saved — finishing the background, usually 1–3 minutes. You can carry on or leave this page.
       </Badge>
     )
   }
   return (
-    <Badge variant="outline" className="gap-1 border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
+    <Badge variant="outline" className="gap-1 border-emerald-200 bg-emerald-50 text-[0.625rem] text-emerald-700">
       <Check className="size-2.5" /> {url && state === "done" ? "Ready — students can see it. Recording again replaces it" : "Saved — recording again replaces it"}
     </Badge>
   )
@@ -261,7 +261,7 @@ function SavedBadge({ url }: { url: string | null | undefined }) {
 
 function Key({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+    <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-muted-foreground">
       {children}
     </kbd>
   )
@@ -950,10 +950,10 @@ export function SignRecordingStudio({ words, onRecorded, onClose, maxTakeSeconds
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-4xl font-black tracking-tight">{current.word}</p>
                   {current.level && (
-                    <Badge variant="outline" className={`text-[10px] ${levelColor[current.level]}`}>{current.level}</Badge>
+                    <Badge variant="outline" className={`text-[0.625rem] ${levelColor[current.level]}`}>{current.level}</Badge>
                   )}
                   {(current.category ?? chosenCategory(current)) && (
-                    <Badge variant="secondary" className="text-[10px]">{current.category ?? chosenCategory(current)}</Badge>
+                    <Badge variant="secondary" className="text-[0.625rem]">{current.category ?? chosenCategory(current)}</Badge>
                   )}
                   {statuses[current.id] === "saved" && <SavedBadge url={cleanUrls[current.id]} />}
                 </div>

@@ -233,7 +233,7 @@ export function SlidePicker({
         <div className="flex items-start justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
           <div className="min-w-0">
             <h3 className="font-bold text-sm text-white">Choose slides to present</h3>
-            <p className="text-[11px] text-zinc-400 mt-0.5 truncate" title={fileName}>
+            <p className="text-[0.6875rem] text-zinc-400 mt-0.5 truncate" title={fileName}>
               {fileName} · {totalPages} slide{totalPages !== 1 ? "s" : ""}
             </p>
           </div>
@@ -258,7 +258,7 @@ export function SlidePicker({
             {allSelected ? "Deselect all" : "Select all"}
           </button>
 
-          <p className="text-[11px] text-zinc-500 ml-2 hidden sm:block">
+          <p className="text-[0.6875rem] text-zinc-500 ml-2 hidden sm:block">
             Click a slide to include/exclude. Scroll through to review.
           </p>
 
@@ -302,7 +302,7 @@ export function SlidePicker({
                     >
                       {isSelected ? <Check className="size-4" /> : <span className="text-sm font-bold">+</span>}
                     </span>
-                    <span className="text-[10px] font-mono text-zinc-500">{n}</span>
+                    <span className="text-[0.625rem] font-mono text-zinc-500">{n}</span>
                   </button>
 
                   {/* Slide preview — click to toggle too */}
@@ -347,7 +347,7 @@ export function SlidePicker({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-zinc-800 shrink-0">
-          <span className="text-[11px] text-zinc-500 tabular-nums">
+          <span className="text-[0.6875rem] text-zinc-500 tabular-nums">
             {renderedCount < totalPages && !loadError
               ? `Loaded ${renderedCount} / ${totalPages} preview${totalPages !== 1 ? "s" : ""}`
               : "\u00A0"}

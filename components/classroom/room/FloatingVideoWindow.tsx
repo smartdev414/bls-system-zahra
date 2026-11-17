@@ -188,7 +188,7 @@ export function FloatingVideoWindow({
             <div className="size-12 rounded-full bg-primary/15 flex items-center justify-center text-primary text-lg font-bold">
               {displayName[0]?.toUpperCase()}
             </div>
-            <span className="flex items-center gap-1 text-[10px] text-zinc-500">
+            <span className="flex items-center gap-1 text-[0.625rem] text-zinc-500">
               <Camera className="size-3" />
               Camera off
             </span>

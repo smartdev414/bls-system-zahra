@@ -119,7 +119,7 @@ export default function RegisterPage() {
                       >
                         <Icon className="size-5" />
                         <span className="text-sm font-semibold">{label}</span>
-                        <span className="text-[11px] leading-tight">{desc}</span>
+                        <span className="text-[0.6875rem] leading-tight">{desc}</span>
                       </button>
                     )
                   })}

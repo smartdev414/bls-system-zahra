@@ -268,16 +268,16 @@ function CourseRow({ course, onMutated, onEditTeachers, onCopy, onEditDetails, o
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <Badge variant="outline" className={`text-[10px] gap-1 ${cfg.className}`}>
+                <Badge variant="outline" className={`text-[0.625rem] gap-1 ${cfg.className}`}>
                   <StatusIcon className="size-2.5" /> {cfg.label}
                 </Badge>
-                <Badge variant="outline" className={`text-[10px] ${levelColorSolid[course.level]}`}>
+                <Badge variant="outline" className={`text-[0.625rem] ${levelColorSolid[course.level]}`}>
                   {course.level}
                 </Badge>
                 <ClassFormatBadge inPerson={course.format === "IN_PERSON"} />
                 <CourseClosedBadge closesAt={course.closesAt} />
                 {course.category && (
-                  <Badge variant="secondary" className="text-[10px]">{course.category.name}</Badge>
+                  <Badge variant="secondary" className="text-[0.625rem]">{course.category.name}</Badge>
                 )}
               </div>
               <p className="font-semibold leading-snug">{course.title}</p>

@@ -138,7 +138,7 @@ export default function VerifyCertificatePage() {
 
           {/* Footer */}
           <div className="px-8 py-4 bg-muted/30 border-t text-center">
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[0.625rem] text-muted-foreground">
               Verified by BSL Platform &middot; This certificate confirms the holder has passed all required assessments.
             </p>
           </div>

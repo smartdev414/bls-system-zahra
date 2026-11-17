@@ -143,7 +143,7 @@ function DeviceToggle({
       )}
     >
       <span className="size-5">{enabled ? iconOn : iconOff}</span>
-      <span className="text-[10px] font-semibold">{label}</span>
+      <span className="text-[0.625rem] font-semibold">{label}</span>
     </button>
   )
 }
@@ -231,7 +231,7 @@ function TutorEntryScreen({
           <div>
             <Badge
               variant="outline"
-              className="text-[10px] mb-3 gap-1 border-emerald-300 text-emerald-600 bg-emerald-50 dark:bg-emerald-950"
+              className="text-[0.625rem] mb-3 gap-1 border-emerald-300 text-emerald-600 bg-emerald-50 dark:bg-emerald-950"
             >
               <Radio className="size-3" /> Tutor lobby
             </Badge>
@@ -249,7 +249,7 @@ function TutorEntryScreen({
               <div className="flex items-center gap-1.5 bg-muted/40 rounded-lg px-3 py-2">
                 <Clock className="size-3.5 shrink-0 text-primary" />
                 <div>
-                  <p className="text-[10px] font-medium text-muted-foreground">Duration</p>
+                  <p className="text-[0.625rem] font-medium text-muted-foreground">Duration</p>
                   <p className="font-semibold text-foreground">{session.durationMins} min</p>
                 </div>
               </div>

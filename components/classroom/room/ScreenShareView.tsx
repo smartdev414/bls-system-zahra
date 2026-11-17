@@ -261,7 +261,7 @@ function RemoteScreenShareView({
           type="button"
           onClick={reset}
           disabled={!zoomedIn}
-          className="min-w-14 px-1 text-[11px] font-semibold text-white/90 tabular-nums hover:text-white disabled:text-white/50 transition-colors"
+          className="min-w-14 px-1 text-[0.6875rem] font-semibold text-white/90 tabular-nums hover:text-white disabled:text-white/50 transition-colors"
           title={zoomedIn ? "Reset to fit" : "Fit to panel"}
         >
           {Math.round(zoom * 100)}%
@@ -303,7 +303,7 @@ function RemoteScreenShareView({
 
       {/* Nudge for the pan gesture — only while it's actually available. */}
       {zoomedIn && !panning && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full bg-black/70 backdrop-blur-sm px-3 py-1 text-[11px] font-medium text-white/80 pointer-events-none">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full bg-black/70 backdrop-blur-sm px-3 py-1 text-[0.6875rem] font-medium text-white/80 pointer-events-none">
           <Move className="size-3" />
           Drag to move around
         </div>

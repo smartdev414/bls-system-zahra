@@ -134,7 +134,7 @@ export default function LoginActivityPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-left">
+                <tr className="border-b bg-muted/30 text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground text-left">
                   <th className="px-4 py-2">When</th>
                   <th className="px-4 py-2">Who</th>
                   <th className="px-4 py-2">Result</th>
@@ -147,7 +147,7 @@ export default function LoginActivityPage() {
                   <tr key={e.id} className="hover:bg-muted/20">
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <p className="text-xs font-medium">{format(new Date(e.createdAt), "dd MMM yyyy HH:mm")}</p>
-                      <p className="text-[11px] text-muted-foreground">{agoLabel(e.createdAt)}</p>
+                      <p className="text-[0.6875rem] text-muted-foreground">{agoLabel(e.createdAt)}</p>
                     </td>
                     <td className="px-4 py-2.5 min-w-48">
                       {e.user ? (
@@ -157,13 +157,13 @@ export default function LoginActivityPage() {
                           ) : (
                             <span className="text-xs font-medium">{e.user.name}</span>
                           )}
-                          <span className="text-[11px] text-muted-foreground">{e.email}</span>
-                          <Badge variant="outline" className={`text-[10px] w-fit ${ROLE_COLORS[e.user.role] ?? ""}`}>{e.user.role}</Badge>
+                          <span className="text-[0.6875rem] text-muted-foreground">{e.email}</span>
+                          <Badge variant="outline" className={`text-[0.625rem] w-fit ${ROLE_COLORS[e.user.role] ?? ""}`}>{e.user.role}</Badge>
                         </div>
                       ) : (
                         <div className="flex flex-col gap-0.5">
                           <span className="text-xs font-medium">{e.email || "—"}</span>
-                          <span className="text-[11px] text-muted-foreground">No account</span>
+                          <span className="text-[0.6875rem] text-muted-foreground">No account</span>
                         </div>
                       )}
                     </td>

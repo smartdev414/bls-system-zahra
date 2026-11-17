@@ -241,7 +241,7 @@ export function NotificationBell() {
         <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
           <Bell className="size-4" />
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 min-w-[1.1rem] h-[1.1rem] rounded-full bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center px-0.5 leading-none">
+            <span className="absolute top-1 right-1 min-w-[1.1rem] h-[1.1rem] rounded-full bg-primary text-[0.5625rem] font-bold text-primary-foreground flex items-center justify-center px-0.5 leading-none">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
@@ -254,7 +254,7 @@ export function NotificationBell() {
           <div className="flex items-center gap-2">
             <span className="font-semibold text-sm">Notifications</span>
             {unreadCount > 0 && (
-              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+              <Badge variant="secondary" className="h-5 px-1.5 text-[0.625rem]">
                 {unreadCount} new
               </Badge>
             )}
@@ -311,7 +311,7 @@ export function NotificationBell() {
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                         {n.body}
                       </p>
-                      <p className="text-[10px] text-muted-foreground/70 mt-1">
+                      <p className="text-[0.625rem] text-muted-foreground/70 mt-1">
                         {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                       </p>
                     </div>

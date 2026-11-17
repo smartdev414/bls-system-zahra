@@ -490,7 +490,7 @@ function RequestRow({
               <p className="text-sm font-semibold">{request.student.name}</p>
               <p className="text-xs text-muted-foreground">{request.student.email}</p>
             </div>
-            <p className="text-[11px] text-muted-foreground shrink-0">
+            <p className="text-[0.6875rem] text-muted-foreground shrink-0">
               {new Date(request.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
             </p>
           </div>

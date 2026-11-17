@@ -63,7 +63,7 @@ export function BreakoutBanner({
           {group.name}
         </span>
         {tutorVisiting && (
-          <span className="flex items-center gap-1 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/40">
+          <span className="flex items-center gap-1 bg-emerald-500/20 text-emerald-300 text-[0.625rem] font-bold px-2 py-0.5 rounded-full border border-emerald-500/40">
             <Megaphone className="size-2.5" />
             Tutor is here
           </span>

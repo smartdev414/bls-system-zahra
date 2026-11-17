@@ -91,7 +91,7 @@ export default function SupportDashboard() {
                 <div className="min-w-0">
                   <p className="text-2xl font-black leading-none">{value ?? 0}</p>
                   <p className="text-xs font-semibold mt-1">{label}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{sub}</p>
+                  <p className="text-[0.6875rem] text-muted-foreground mt-0.5 truncate">{sub}</p>
                 </div>
               </CardContent>
             </Card>

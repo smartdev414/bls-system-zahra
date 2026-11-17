@@ -21,7 +21,7 @@ export function SelfViewInset({ trackRef }: { trackRef: TrackReference }) {
         className={localCameraClassName(true, "w-full h-full object-cover")}
       />
       <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 pb-0.5">
-        <p className="text-[10px] font-semibold text-white">You</p>
+        <p className="text-[0.625rem] font-semibold text-white">You</p>
       </div>
     </div>
   )

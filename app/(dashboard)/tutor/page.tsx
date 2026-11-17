@@ -97,7 +97,7 @@ export default function TutorDashboardPage() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-sky-900 leading-none">Invite your students</p>
-              <p className="text-[11px] text-sky-600/80 mt-0.5 truncate">Your courses get highlighted in their feed</p>
+              <p className="text-[0.6875rem] text-sky-600/80 mt-0.5 truncate">Your courses get highlighted in their feed</p>
             </div>
             <Button
               size="sm"
@@ -361,7 +361,7 @@ export default function TutorDashboardPage() {
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-semibold leading-snug">{session.title}</p>
                         {session.status === "LIVE" && (
-                          <Badge className="bg-emerald-500 text-white text-[10px] shrink-0">Live</Badge>
+                          <Badge className="bg-emerald-500 text-white text-[0.625rem] shrink-0">Live</Badge>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

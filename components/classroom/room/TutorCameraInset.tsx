@@ -71,7 +71,7 @@ export function TutorCameraInset({
             isSelf={tutorCam.participant.identity === localParticipant.identity}
           />
           {/* Bottom-left: top-left sat under the room's logo watermark. */}
-          <div className="absolute bottom-2 left-2 bg-amber-500/80 text-black text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
+          <div className="absolute bottom-2 left-2 bg-amber-500/80 text-black text-[0.625rem] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
             BSL · {name}
           </div>
         </>

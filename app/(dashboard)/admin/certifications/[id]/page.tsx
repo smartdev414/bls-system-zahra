@@ -179,7 +179,7 @@ export default function AdminCertDetailPage({ params }: { params: Promise<{ id: 
                   <div className="flex items-start gap-3">
                     <Avatar className="size-8 shrink-0">
                       {sub.student.avatarUrl && <AvatarImage src={sub.student.avatarUrl} />}
-                      <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
+                      <AvatarFallback className="text-[0.625rem] bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold">{sub.student.name}</p>
@@ -197,13 +197,13 @@ export default function AdminCertDetailPage({ params }: { params: Promise<{ id: 
                         <div className="flex flex-col gap-2">
                           <Input placeholder="Feedback (optional)" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} className="h-7 text-xs w-48" />
                           <div className="flex gap-1.5">
-                            <Button size="sm" className="h-6 text-[11px] bg-emerald-600 hover:bg-emerald-700" onClick={() => reviewSubmission(sub.id, "PASSED")}>
+                            <Button size="sm" className="h-6 text-[0.6875rem] bg-emerald-600 hover:bg-emerald-700" onClick={() => reviewSubmission(sub.id, "PASSED")}>
                               <CheckCircle2 className="size-3 mr-1" /> Pass
                             </Button>
-                            <Button size="sm" variant="outline" className="h-6 text-[11px] text-destructive" onClick={() => reviewSubmission(sub.id, "FAILED")}>
+                            <Button size="sm" variant="outline" className="h-6 text-[0.6875rem] text-destructive" onClick={() => reviewSubmission(sub.id, "FAILED")}>
                               <XCircle className="size-3 mr-1" /> Fail
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => setReviewOpen(null)}>Cancel</Button>
+                            <Button size="sm" variant="ghost" className="h-6 text-[0.6875rem]" onClick={() => setReviewOpen(null)}>Cancel</Button>
                           </div>
                         </div>
                       ) : (
@@ -283,7 +283,7 @@ export default function AdminCertDetailPage({ params }: { params: Promise<{ id: 
                   <div key={e.id} className="flex items-center gap-3 px-5 py-3">
                     <Avatar className="size-8 shrink-0">
                       {e.student.avatarUrl && <AvatarImage src={e.student.avatarUrl} />}
-                      <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
+                      <AvatarFallback className="text-[0.625rem] bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold">{e.student.name}</p>
@@ -292,9 +292,9 @@ export default function AdminCertDetailPage({ params }: { params: Promise<{ id: 
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="w-20">
                         <Progress value={progress} className={`h-1.5 ${e.status === "COMPLETED" ? "[&>div]:bg-emerald-500" : ""}`} />
-                        <p className="text-[10px] text-muted-foreground text-right mt-0.5">{passedCount}/{totalSteps}</p>
+                        <p className="text-[0.625rem] text-muted-foreground text-right mt-0.5">{passedCount}/{totalSteps}</p>
                       </div>
-                      <Badge variant="outline" className={`text-[10px] ${e.status === "COMPLETED" ? "bg-emerald-100 text-emerald-700" : e.status === "ACTIVE" ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
+                      <Badge variant="outline" className={`text-[0.625rem] ${e.status === "COMPLETED" ? "bg-emerald-100 text-emerald-700" : e.status === "ACTIVE" ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
                         {e.certificate ? "Certified" : e.status}
                       </Badge>
                     </div>
@@ -430,7 +430,7 @@ export default function AdminCertDetailPage({ params }: { params: Promise<{ id: 
                     </div>
                     <span className="flex-1 truncate">{c.title}</span>
                     {c.level && (
-                      <Badge variant="secondary" className="text-[9px] shrink-0">
+                      <Badge variant="secondary" className="text-[0.5625rem] shrink-0">
                         {c.level.charAt(0) + c.level.slice(1).toLowerCase()}
                       </Badge>
                     )}

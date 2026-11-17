@@ -162,7 +162,7 @@ export function InviteStudentsEmailModal({ onClose }: { onClose: () => void }) {
               className="flex-1 min-w-45 bg-transparent outline-none placeholder:text-muted-foreground text-sm"
             />
           </div>
-          <p className="text-xs text-muted-foreground">Press <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Enter</kbd>, <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">,</kbd> or <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Space</kbd> to add each address.</p>
+          <p className="text-xs text-muted-foreground">Press <kbd className="px-1 py-0.5 rounded bg-muted text-[0.625rem] font-mono">Enter</kbd>, <kbd className="px-1 py-0.5 rounded bg-muted text-[0.625rem] font-mono">,</kbd> or <kbd className="px-1 py-0.5 rounded bg-muted text-[0.625rem] font-mono">Space</kbd> to add each address.</p>
           <Button onClick={handleSend} disabled={sending || (emails.length === 0 && !inputValue.trim())} className="gap-1.5">
             {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             {sending ? "Sending…" : `Send Invitation${emails.length > 1 ? `s (${emails.length})` : ""}`}
@@ -190,7 +190,7 @@ export function InviteStudentsEmailModal({ onClose }: { onClose: () => void }) {
                       {" · "}Expires {new Date(inv.expiresAt).toLocaleDateString("en-GB", { dateStyle: "medium" })}
                     </p>
                   </div>
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusColor[inv.status]}`}>
+                  <span className={`text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full border ${statusColor[inv.status]}`}>
                     {inv.status}
                   </span>
                 </div>

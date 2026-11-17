@@ -303,10 +303,10 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
                           ? <ProtectedVideo src={opt.imageUrl} autoPlay muted loop playsInline controls className="w-full aspect-video object-cover" />
                           : <img src={opt.imageUrl} alt={opt.text || "Answer"} className="w-full aspect-square object-cover" />}
                         {isCorrect && (
-                          <span className="absolute top-1 right-1 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase">✓ Correct</span>
+                          <span className="absolute top-1 right-1 bg-emerald-500 text-white text-[0.5625rem] font-bold px-1.5 py-0.5 rounded-full uppercase">✓ Correct</span>
                         )}
                         {isSelected && !isCorrect && (
-                          <span className="absolute top-1 right-1 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase">✗ Your answer</span>
+                          <span className="absolute top-1 right-1 bg-rose-500 text-white text-[0.5625rem] font-bold px-1.5 py-0.5 rounded-full uppercase">✗ Your answer</span>
                         )}
                       </div>
                     )}
@@ -317,8 +317,8 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
                           ? <XCircle className="size-3.5 shrink-0 text-rose-500" />
                           : <Circle className="size-3.5 shrink-0" />)}
                       {opt.text && <span className="text-xs">{opt.text}</span>}
-                      {!opt.imageUrl && isCorrect && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Correct</span>}
-                      {!opt.imageUrl && isSelected && !isCorrect && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-rose-600">Your answer</span>}
+                      {!opt.imageUrl && isCorrect && <span className="ml-auto text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">Correct</span>}
+                      {!opt.imageUrl && isSelected && !isCorrect && <span className="ml-auto text-[0.625rem] font-semibold uppercase tracking-wide text-rose-600">Your answer</span>}
                     </div>
                   </div>
                 )
@@ -1024,7 +1024,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
           },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-xl border bg-muted/20 px-3 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
             <p className="text-sm font-semibold mt-0.5">{value}</p>
           </div>
         ))}

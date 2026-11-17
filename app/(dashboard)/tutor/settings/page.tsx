@@ -232,7 +232,7 @@ export default function TutorSettingsPage() {
                         {qualifications.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-3">
                             {qualifications.map((q) => (
-                              <span key={q} className="text-[11px] font-medium bg-white/15 text-white/90 rounded-full px-2.5 py-0.5">
+                              <span key={q} className="text-[0.6875rem] font-medium bg-white/15 text-white/90 rounded-full px-2.5 py-0.5">
                                 {q}
                               </span>
                             ))}
@@ -249,8 +249,8 @@ export default function TutorSettingsPage() {
                   </div>
                 </div>
                 <div className="bg-card border border-t-0 rounded-b-2xl px-6 py-3 flex items-center justify-between gap-3">
-                  <p className="text-[11px] text-muted-foreground">This is how students see your public profile.</p>
-                  <Badge variant="outline" className="text-[10px]">Live Preview</Badge>
+                  <p className="text-[0.6875rem] text-muted-foreground">This is how students see your public profile.</p>
+                  <Badge variant="outline" className="text-[0.625rem]">Live Preview</Badge>
                 </div>
               </div>
 
@@ -468,13 +468,13 @@ export default function TutorSettingsPage() {
                       ? <Badge variant="outline" className="gap-1 text-xs bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><BadgeCheck className="size-3" />Verified</Badge>
                       : <Badge variant="outline" className="gap-1 text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300">Pending Review</Badge>
                   },
-                  { icon: Mail, label: "Email Address", value: <span className="flex items-center gap-2 text-sm">{user?.email}<Badge variant="outline" className="gap-1 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
+                  { icon: Mail, label: "Email Address", value: <span className="flex items-center gap-2 text-sm">{user?.email}<Badge variant="outline" className="gap-1 text-[0.625rem] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="size-2.5" />Verified</Badge></span> },
                   { icon: Calendar, label: "Member Since", value: <span className="text-sm">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—"}</span> },
                   {
                     icon: GraduationCap, label: "Qualifications", value: (
                       <div className="flex flex-wrap gap-1 justify-end">
                         {(user?.tutorProfile?.qualifications ?? []).length > 0
-                          ? user!.tutorProfile!.qualifications.map((q) => <Badge key={q} variant="secondary" className="text-[10px]">{q}</Badge>)
+                          ? user!.tutorProfile!.qualifications.map((q) => <Badge key={q} variant="secondary" className="text-[0.625rem]">{q}</Badge>)
                           : <span className="text-sm text-muted-foreground">None added</span>
                         }
                       </div>

@@ -409,7 +409,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
         const coursesBase = testsBase.startsWith("/admin") ? "/admin/courses" : "/tutor/courses"
         return (
           <div key={p.lessonId} className="flex flex-wrap items-center gap-3 rounded-xl border bg-background p-3">
-            <Badge variant="outline" className={cn("text-[10px] shrink-0", levelColor[p.course.level])}>{levelLabel[p.course.level]}</Badge>
+            <Badge variant="outline" className={cn("text-[0.625rem] shrink-0", levelColor[p.course.level])}>{levelLabel[p.course.level]}</Badge>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate">
                 {p.course.title}

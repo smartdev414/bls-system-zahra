@@ -98,18 +98,18 @@ function TicketRow({ ticket, basePath }: { ticket: TicketItem; basePath: string 
       {/* Submitter */}
       <div className="hidden md:flex items-center gap-2 shrink-0 w-40">
         <Avatar className="size-6 shrink-0">
-          <AvatarFallback className="text-[10px] font-semibold bg-primary/10 text-primary">{initials}</AvatarFallback>
+          <AvatarFallback className="text-[0.625rem] font-semibold bg-primary/10 text-primary">{initials}</AvatarFallback>
         </Avatar>
         <div className="min-w-0">
           <p className="text-xs font-medium truncate">{ticket.submitter.name}</p>
-          <p className="text-[10px] text-muted-foreground truncate capitalize">{ticket.submitter.role.toLowerCase()}</p>
+          <p className="text-[0.625rem] text-muted-foreground truncate capitalize">{ticket.submitter.role.toLowerCase()}</p>
         </div>
       </div>
 
       {/* Badges */}
       <div className="hidden lg:flex items-center gap-2 shrink-0">
-        <Badge variant="outline" className={`text-[10px] ${priority.color}`}>{priority.label}</Badge>
-        <Badge variant="outline" className={`text-[10px] gap-1 ${status.color}`}>
+        <Badge variant="outline" className={`text-[0.625rem] ${priority.color}`}>{priority.label}</Badge>
+        <Badge variant="outline" className={`text-[0.625rem] gap-1 ${status.color}`}>
           <StatusIcon className="size-2.5" />
           {status.label}
         </Badge>

@@ -11,7 +11,7 @@ export function WeekBadge({ week, className }: { week: number | null | undefined
   const label = weekLabel(week)
   if (!label) return null
   return (
-    <Badge variant="outline" className={cn("text-[10px] shrink-0 bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-900", className)}>
+    <Badge variant="outline" className={cn("text-[0.625rem] shrink-0 bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-900", className)}>
       {label}
     </Badge>
   )
@@ -96,7 +96,7 @@ export function WeekPicker({ sessionId, week, date, onSaved, later = [] }: {
       aria-label={`Course week of the class on ${date}`}
       title="Which week of the course this class is"
       className={cn(
-        "h-6 shrink-0 cursor-pointer rounded-md border px-1.5 text-[11px] font-semibold outline-none focus:ring-1 focus:ring-ring disabled:opacity-60",
+        "h-6 shrink-0 cursor-pointer rounded-md border px-1.5 text-[0.6875rem] font-semibold outline-none focus:ring-1 focus:ring-ring disabled:opacity-60",
         value
           ? "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-900"
           : "border-dashed text-muted-foreground bg-transparent",

@@ -21,16 +21,16 @@ function RaisedHandRow({
     .slice(0, 2)
   return (
     <div className="px-4 py-2.5 flex items-center gap-2.5">
-      <span className="w-4 shrink-0 text-[11px] font-bold text-amber-400 text-center">
+      <span className="w-4 shrink-0 text-[0.6875rem] font-bold text-amber-400 text-center">
         {position}
       </span>
-      <div className="size-8 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center text-[11px] font-bold shrink-0">
+      <div className="size-8 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center text-[0.6875rem] font-bold shrink-0">
         {initials}
       </div>
       <p className="flex-1 min-w-0 text-xs font-semibold text-zinc-100 truncate">{hand.name}</p>
       <button
         onClick={() => onLower(hand.identity)}
-        className="h-6 px-2 text-[11px] rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800 flex items-center gap-1 shrink-0"
+        className="h-6 px-2 text-[0.6875rem] rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800 flex items-center gap-1 shrink-0"
         title={`Lower ${hand.name}'s hand`}
       >
         Lower
@@ -78,7 +78,7 @@ export function RaisedHandsPopover({
           {raisedHands.length > 1 && (
             <button
               onClick={onLowerAllHands}
-              className="text-[11px] font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/30 border border-amber-500/40 px-2 py-0.5 rounded-full transition-colors"
+              className="text-[0.6875rem] font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/30 border border-amber-500/40 px-2 py-0.5 rounded-full transition-colors"
               title="Lower every raised hand"
             >
               Lower all

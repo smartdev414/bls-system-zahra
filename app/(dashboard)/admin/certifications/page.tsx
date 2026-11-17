@@ -112,10 +112,10 @@ export default function AdminCertificationsPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline" className={`text-[10px] ${statusColor[p.status]}`}>
+                      <Badge variant="outline" className={`text-[0.625rem] ${statusColor[p.status]}`}>
                         {p.status.charAt(0) + p.status.slice(1).toLowerCase()}
                       </Badge>
-                      <Badge variant="secondary" className={`text-[10px] ${levelColorSolid[p.level]}`}>
+                      <Badge variant="secondary" className={`text-[0.625rem] ${levelColorSolid[p.level]}`}>
                         {p.level}
                       </Badge>
                     </div>
@@ -154,7 +154,7 @@ export default function AdminCertificationsPage() {
                   <p className="text-xs text-muted-foreground line-clamp-2">{p.description}</p>
                 )}
 
-                <div className="flex items-center gap-4 text-[11px] text-muted-foreground pt-2 border-t">
+                <div className="flex items-center gap-4 text-[0.6875rem] text-muted-foreground pt-2 border-t">
                   <span className="flex items-center gap-1"><BookOpen className="size-3" /> {p.stepCount} steps</span>
                   <span className="flex items-center gap-1"><Users className="size-3" /> {p.enrollmentCount} enrolled</span>
                   <span className="flex items-center gap-1"><CheckCircle2 className="size-3" /> {p.completedCount} completed</span>

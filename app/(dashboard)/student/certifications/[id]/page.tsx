@@ -108,8 +108,8 @@ export default function StudentCertDetailPage() {
           <div className="absolute -right-10 -top-10 size-48 rounded-full bg-white/5" />
           <div className="relative">
             <div className="flex items-center gap-2 mb-2">
-              <Badge className={`text-[10px] ${levelColorSolid[program.level as CourseLevel]} border`}>{program.level}</Badge>
-              {isCompleted && <Badge className="bg-white/20 text-white border-0 text-[10px] gap-1"><CheckCircle2 className="size-2.5" /> Certified</Badge>}
+              <Badge className={`text-[0.625rem] ${levelColorSolid[program.level as CourseLevel]} border`}>{program.level}</Badge>
+              {isCompleted && <Badge className="bg-white/20 text-white border-0 text-[0.625rem] gap-1"><CheckCircle2 className="size-2.5" /> Certified</Badge>}
             </div>
             <h1 className="text-2xl font-black tracking-tight">{program.title}</h1>
             {program.description && <p className="text-sm text-white/75 mt-2 max-w-lg leading-relaxed">{program.description}</p>}
@@ -192,7 +192,7 @@ export default function StudentCertDetailPage() {
                       {/* Header */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-sm font-bold">{step.title}</h3>
-                        <Badge variant="outline" className={`text-[10px] ${sCfg.color} gap-0.5`}>
+                        <Badge variant="outline" className={`text-[0.625rem] ${sCfg.color} gap-0.5`}>
                           <StatusIcon className="size-2.5" /> {sCfg.label}
                         </Badge>
                       </div>
@@ -202,7 +202,7 @@ export default function StudentCertDetailPage() {
                         <div className={`rounded p-0.5 ${stepTypeColor[step.type]}`}>
                           <Icon className="size-3" />
                         </div>
-                        <span className="text-[11px] text-muted-foreground">{stepTypeLabel[step.type]}</span>
+                        <span className="text-[0.6875rem] text-muted-foreground">{stepTypeLabel[step.type]}</span>
                       </div>
 
                       {step.description && (
@@ -287,7 +287,7 @@ export default function StudentCertDetailPage() {
                       )}
 
                       {isLocked && (
-                        <p className="text-[11px] text-muted-foreground mt-2 flex items-center gap-1">
+                        <p className="text-[0.6875rem] text-muted-foreground mt-2 flex items-center gap-1">
                           <Lock className="size-3" /> Complete previous steps to unlock
                         </p>
                       )}

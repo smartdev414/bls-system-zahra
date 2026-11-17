@@ -22,14 +22,14 @@ function JoinRequestRow({
   return (
     <div className="px-4 py-3 flex flex-col gap-2">
       <div className="flex items-start gap-2.5">
-        <div className="size-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0">
+        <div className="size-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[0.6875rem] font-bold shrink-0">
           {initials}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-zinc-100 truncate">{request.student.name}</p>
-          <p className="text-[10px] text-zinc-500 truncate">{request.student.email}</p>
+          <p className="text-[0.625rem] text-zinc-500 truncate">{request.student.email}</p>
           {request.message && (
-            <p className="mt-1.5 text-[11px] text-zinc-300 bg-zinc-800/60 rounded-md px-2 py-1.5 leading-snug">
+            <p className="mt-1.5 text-[0.6875rem] text-zinc-300 bg-zinc-800/60 rounded-md px-2 py-1.5 leading-snug">
               &ldquo;{request.message}&rdquo;
             </p>
           )}
@@ -39,14 +39,14 @@ function JoinRequestRow({
         <button
           disabled={disabled}
           onClick={() => onAction(request.id, "reject")}
-          className="h-6 px-2 text-[11px] rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 flex items-center gap-1"
+          className="h-6 px-2 text-[0.6875rem] rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 flex items-center gap-1"
         >
           <XCircle className="size-3" /> Decline
         </button>
         <button
           disabled={disabled}
           onClick={() => onAction(request.id, "approve")}
-          className="h-6 px-2 text-[11px] rounded-md bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 flex items-center gap-1"
+          className="h-6 px-2 text-[0.6875rem] rounded-md bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 flex items-center gap-1"
         >
           <Check className="size-3" /> Approve
         </button>

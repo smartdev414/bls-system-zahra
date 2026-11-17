@@ -199,13 +199,13 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
         urgent ? "border-rose-300 bg-rose-50 text-rose-700" : "bg-background"
       )}
     >
-      <p className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+      <p className="flex items-center justify-center gap-1.5 text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">
         <Timer className="size-3.5" /> Timer
       </p>
       <p className="text-4xl font-black tabular-nums leading-tight" role="timer" aria-label={`${secondsLeft} seconds left`}>
         {secondsLeft}
       </p>
-      {!ready && <p className="text-[11px] text-muted-foreground">Starts when the sign ends</p>}
+      {!ready && <p className="text-[0.6875rem] text-muted-foreground">Starts when the sign ends</p>}
       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
           className={cn("h-full rounded-full", urgent ? "bg-rose-500" : "bg-primary")}
@@ -433,7 +433,7 @@ function SignItRound({ lessonId, sign, number, total, videoUrl, onVideo, onNext 
       </div>
 
       <div className="rounded-xl border bg-muted/20 px-4 py-6 text-center">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sign this word</p>
+        <p className="text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">Sign this word</p>
         <p className="mt-1 text-4xl font-black break-words">{sign.word}</p>
       </div>
 
@@ -522,7 +522,7 @@ export function Review({ questions, answers, answersRevealed, onBack, test }: {
               )}
             >
               {signs && word && <p className="font-semibold break-words">{word}</p>}
-              {signs && <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">The sign</p>}
+              {signs && <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">The sign</p>}
               <SignMedia sign={q} />
               {picks && (
                 <div className="flex items-start gap-2 text-sm">
@@ -896,7 +896,7 @@ export function SignTestTaker({ lessonId, enrollmentId, data, refetch, onComplet
           },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-xl border bg-muted/20 px-3 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
             <p className="text-sm font-semibold mt-0.5">{value}</p>
           </div>
         ))}

@@ -141,7 +141,7 @@ function PdfPageCanvas({ pdf, pageNumber, total }: { pdf: PdfDocument; pageNumbe
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </div>
       )}
-      <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+      <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[0.6875rem] font-medium text-white">
         Page {pageNumber} of {total}
       </span>
     </div>

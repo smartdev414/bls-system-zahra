@@ -108,7 +108,7 @@ export default function SupportEnrolmentsPage() {
                         {c.tutor.name} · {c.enrollmentCount} enrolled
                       </p>
                     </div>
-                    <Badge variant="outline" className={`text-[10px] shrink-0 ${levelColorSolid[c.level]}`}>
+                    <Badge variant="outline" className={`text-[0.625rem] shrink-0 ${levelColorSolid[c.level]}`}>
                       {c.level}
                     </Badge>
                   </button>
@@ -272,7 +272,7 @@ function CourseEnrolments({ course }: { course: CourseItem }) {
               >
                 <Avatar className="size-6 shrink-0">
                   {s.avatarUrl && <AvatarImage src={s.avatarUrl} alt={s.name} />}
-                  <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
+                  <AvatarFallback className="bg-primary/10 text-primary text-[0.625rem] font-semibold">
                     {initialsOf(s.name)}
                   </AvatarFallback>
                 </Avatar>

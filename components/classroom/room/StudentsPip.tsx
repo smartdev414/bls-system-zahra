@@ -166,7 +166,7 @@ export function StudentsPipPortal({
                     <Camera className="size-3" />
                   </div>
                 )}
-                <span className="absolute bottom-0.5 left-1 max-w-[90%] truncate text-[11px] font-medium bg-black/60 rounded px-1">
+                <span className="absolute bottom-0.5 left-1 max-w-[90%] truncate text-[0.6875rem] font-medium bg-black/60 rounded px-1">
                   {name}
                 </span>
                 {hand && (

@@ -300,7 +300,7 @@ export default function TutorLibraryPage() {
               {COURSE_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
           ) : item.level ? (
-            <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold", levelColorSolid[item.level])}>
+            <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[0.625rem] font-semibold", levelColorSolid[item.level])}>
               {item.level}
             </span>
           ) : null

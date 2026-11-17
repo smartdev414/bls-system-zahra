@@ -159,7 +159,7 @@ export default function TestsPage() {
                   <CardContent className="p-3 sm:p-5 flex flex-col gap-1.5 sm:gap-2">
                     <div className="flex items-center gap-1.5 sm:gap-2">
                       <Icon className="size-4 text-primary shrink-0 hidden sm:block" />
-                      <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+                      <p className="text-[0.625rem] sm:text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
                     </div>
                     <p className="text-2xl sm:text-3xl font-black">{value}</p>
                     {label === "Passed" && (

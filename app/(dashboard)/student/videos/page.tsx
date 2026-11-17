@@ -85,7 +85,7 @@ export default function MyVideosPage() {
                       {" · "}{shortDate(r.recordedAt)}
                     </p>
                     {r.correct !== null && (
-                      <Badge variant="outline" className={r.correct ? "self-start text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200" : "self-start text-[10px] bg-rose-50 text-rose-700 border-rose-200"}>
+                      <Badge variant="outline" className={r.correct ? "self-start text-[0.625rem] bg-emerald-50 text-emerald-700 border-emerald-200" : "self-start text-[0.625rem] bg-rose-50 text-rose-700 border-rose-200"}>
                         {r.correct ? "✓ Correct" : "✗ Not right"}
                       </Badge>
                     )}

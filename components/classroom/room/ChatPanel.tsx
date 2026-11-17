@@ -215,7 +215,7 @@ function AttachmentPreview({ attachment, isTutor }: { attachment: ChatAttachment
       <div className="flex items-center gap-2 px-2.5 py-2 text-xs border-t border-white/10">
         <FileIcon mimeType={attachment.mimeType} className="size-3.5 shrink-0 opacity-70" />
         <span className="truncate flex-1 min-w-0">{attachment.fileName}</span>
-        <span className="text-[10px] opacity-60 shrink-0">{formatBytes(attachment.fileSize)}</span>
+        <span className="text-[0.625rem] opacity-60 shrink-0">{formatBytes(attachment.fileSize)}</span>
       </div>
       {canTakeFile && (
         <div className="flex border-t border-white/10 divide-x divide-white/10">
@@ -223,7 +223,7 @@ function AttachmentPreview({ attachment, isTutor }: { attachment: ChatAttachment
             href={mediaSrc(attachment.fileUrl)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium hover:bg-white/5 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[0.6875rem] font-medium hover:bg-white/5 transition-colors"
           >
             Open
           </a>
@@ -232,7 +232,7 @@ function AttachmentPreview({ attachment, isTutor }: { attachment: ChatAttachment
             download={attachment.fileName}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-medium hover:bg-white/5 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[0.6875rem] font-medium hover:bg-white/5 transition-colors"
           >
             <Download className="size-3" />
             Download
@@ -255,7 +255,7 @@ function MessageBubble({
     return (
       <div className="flex flex-col items-center gap-0.5 my-1">
         <span className="text-2xl">{msg.text}</span>
-        <span className={cn("text-[10px]", t.timeText)}>
+        <span className={cn("text-[0.625rem]", t.timeText)}>
           {msg.from}{showGroup && msg.groupName && ` · ${msg.groupName}`} · {time}
         </span>
       </div>
@@ -264,7 +264,7 @@ function MessageBubble({
 
   if (msg.type === "system") {
     return (
-      <div className={cn("flex items-center justify-center gap-1.5 text-[11px] py-0.5", t.systemText)}>
+      <div className={cn("flex items-center justify-center gap-1.5 text-[0.6875rem] py-0.5", t.systemText)}>
         <Hand className="size-3" />
         <span>{msg.text}</span>
         <span className="opacity-70">· {time}</span>
@@ -283,7 +283,7 @@ function MessageBubble({
       )}
     >
       {(!isOwn || (showGroup && msg.groupName)) && (
-        <span className={cn("text-[11px] font-semibold px-1 leading-none", t.senderName)}>
+        <span className={cn("text-[0.6875rem] font-semibold px-1 leading-none", t.senderName)}>
           {!isOwn && msg.from}
           {/* Teachers see every group's chat in one list; say which group. */}
           {showGroup && msg.groupName && (
@@ -306,7 +306,7 @@ function MessageBubble({
           <span className="opacity-60 italic">Empty message</span>
         )}
       </div>
-      <span className={cn("text-[10px] px-1", t.timeText)}>{time}</span>
+      <span className={cn("text-[0.625rem] px-1", t.timeText)}>{time}</span>
     </div>
   )
 }
@@ -589,14 +589,14 @@ export function ChatPanel({
         >
           <MessageSquare className="size-4 text-primary" />
           {unread > 0 && (
-            <span className="absolute top-1.5 right-1 size-3.5 rounded-full bg-primary text-primary-foreground text-[8px] font-bold flex items-center justify-center">
+            <span className="absolute top-1.5 right-1 size-3.5 rounded-full bg-primary text-primary-foreground text-[0.5rem] font-bold flex items-center justify-center">
               {unread}
             </span>
           )}
         </button>
         <div className="flex-1 flex items-center justify-center">
           <span
-            className={cn("text-[10px] font-bold uppercase tracking-widest", t.headerText)}
+            className={cn("text-[0.625rem] font-bold uppercase tracking-widest", t.headerText)}
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
           >
             Live Chat{unread > 0 ? ` · ${unread} new` : ""}
@@ -625,7 +625,7 @@ export function ChatPanel({
             {uploading ? "Upload in progress…" : "Drop to attach"}
           </p>
           {!uploading && (
-            <p className={cn("text-[11px] max-w-52", t.headerSub)}>
+            <p className={cn("text-[0.6875rem] max-w-52", t.headerSub)}>
               {audienceLabel ? `Shared with ${audienceLabel} when you send` : "Everyone can open or download it once you send"}
             </p>
           )}
@@ -639,7 +639,7 @@ export function ChatPanel({
           <MessageSquare className="size-4 text-primary shrink-0" />
           <span className={cn("font-bold text-sm", t.headerText)}>Live Chat</span>
           {unread > 0 && (
-            <span className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-bounce">
+            <span className="bg-primary text-primary-foreground text-[0.625rem] font-bold px-1.5 py-0.5 rounded-full animate-bounce">
               {unread}
             </span>
           )}
@@ -666,7 +666,7 @@ export function ChatPanel({
                 t.panel, t.border,
               )}
             >
-              <p className={cn("px-3 py-1 text-[10px] uppercase tracking-wide", t.headerSub)}>Appearance</p>
+              <p className={cn("px-3 py-1 text-[0.625rem] uppercase tracking-wide", t.headerSub)}>Appearance</p>
               {CHAT_THEME_OPTIONS.map(({ name, label, icon: Icon }) => (
                 <button
                   key={name}
@@ -700,12 +700,12 @@ export function ChatPanel({
       {raisedHands.length > 0 && (
         <div className="shrink-0 px-3 py-2 bg-amber-500/15 border-b border-amber-500/30 flex items-center gap-2 flex-wrap">
           <Hand className="size-3.5 text-amber-400 shrink-0 animate-bounce" />
-          <span className="text-[11px] font-semibold text-amber-400">Raised:</span>
+          <span className="text-[0.6875rem] font-semibold text-amber-400">Raised:</span>
           {raisedHands.map((h) => (
             <span
               key={h.identity}
               className={cn(
-                "flex items-center gap-1 text-[11px] text-amber-300 bg-amber-500/20 rounded-full",
+                "flex items-center gap-1 text-[0.6875rem] text-amber-300 bg-amber-500/20 rounded-full",
                 isTutor && onLowerHand ? "pl-2 pr-0.5 py-0.5" : "px-2 py-0.5",
               )}
             >
@@ -725,7 +725,7 @@ export function ChatPanel({
           {isTutor && onLowerAllHands && raisedHands.length > 1 && (
             <button
               onClick={onLowerAllHands}
-              className="text-[11px] font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/30 border border-amber-500/40 px-2 py-0.5 rounded-full transition-colors ml-auto"
+              className="text-[0.6875rem] font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/30 border border-amber-500/40 px-2 py-0.5 rounded-full transition-colors ml-auto"
               title="Lower every raised hand"
             >
               Lower all
@@ -745,7 +745,7 @@ export function ChatPanel({
             <p className="text-xs text-center opacity-70 max-w-48">
               Chat is how everyone communicates here. Say hello! 👋
             </p>
-            <p className="text-[11px] text-center opacity-50 max-w-52">
+            <p className="text-[0.6875rem] text-center opacity-50 max-w-52">
               Use the paperclip or drag a file here to share it — everyone can open or download it.
             </p>
           </div>
@@ -771,7 +771,7 @@ export function ChatPanel({
       {/* The placeholder disappears once you type, and "who will see this?" is
           exactly the question in a breakout — so say it where it stays put. */}
       {audienceLabel && (
-        <div className={cn("shrink-0 px-3 pt-2 text-[11px] leading-none", t.timeText)} aria-live="polite">
+        <div className={cn("shrink-0 px-3 pt-2 text-[0.6875rem] leading-none", t.timeText)} aria-live="polite">
           Messages go to <span className="font-semibold">{audienceLabel}</span>
         </div>
       )}
@@ -802,7 +802,7 @@ export function ChatPanel({
                 />
               </div>
             </div>
-            <span className={cn("text-[10px] shrink-0 tabular-nums", t.pendingMeta)}>{uploadPercent}%</span>
+            <span className={cn("text-[0.625rem] shrink-0 tabular-nums", t.pendingMeta)}>{uploadPercent}%</span>
             <button
               onClick={cancelUpload}
               className={cn("shrink-0 hover:text-rose-400 transition-colors", t.pendingMeta)}
@@ -820,7 +820,7 @@ export function ChatPanel({
           <div className={cn("flex items-center gap-2 flex-1 min-w-0 rounded-lg border px-2.5 py-1.5", t.pendingChip)}>
             <FileIcon mimeType={pendingAttachment.mimeType} className={cn("size-3.5 shrink-0", t.pendingMeta)} />
             <span className={cn("text-xs truncate flex-1", t.pendingName)}>{pendingAttachment.fileName}</span>
-            <span className={cn("text-[10px] shrink-0", t.pendingMeta)}>{formatBytes(pendingAttachment.fileSize)}</span>
+            <span className={cn("text-[0.625rem] shrink-0", t.pendingMeta)}>{formatBytes(pendingAttachment.fileSize)}</span>
             <button
               onClick={() => setPendingAttachment(null)}
               className={cn("shrink-0 hover:text-rose-400 transition-colors", t.pendingMeta)}

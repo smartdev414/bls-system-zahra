@@ -154,7 +154,7 @@ function DeviceToggle({
       )}
     >
       <span className="size-5">{enabled ? iconOn : iconOff}</span>
-      <span className="text-[10px] font-semibold">{label}</span>
+      <span className="text-[0.625rem] font-semibold">{label}</span>
     </button>
   )
 }
@@ -288,7 +288,7 @@ function EntryScreen({
           </div>
 
           <div className="absolute top-4 right-4 z-10">
-            <span className="flex items-center gap-1 bg-black/50 text-white/80 text-[10px] px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 bg-black/50 text-white/80 text-[0.625rem] px-2 py-0.5 rounded-full">
               <MicOff className="size-2.5" /> Mic controlled by tutor
             </span>
           </div>
@@ -302,7 +302,7 @@ function EntryScreen({
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-[10px] mb-3 gap-1",
+                  "text-[0.625rem] mb-3 gap-1",
                   session.status === "LIVE"
                     ? "border-emerald-300 text-emerald-600 bg-emerald-50 dark:bg-emerald-950"
                     : "border-amber-300 text-amber-600 bg-amber-50 dark:bg-amber-950"
@@ -336,14 +336,14 @@ function EntryScreen({
               <div className="flex items-center gap-1.5 bg-muted/40 rounded-lg px-3 py-2">
                 <Clock className="size-3.5 shrink-0 text-primary" />
                 <div>
-                  <p className="text-[10px] font-medium text-muted-foreground">Time</p>
+                  <p className="text-[0.625rem] font-medium text-muted-foreground">Time</p>
                   <p className="font-semibold text-foreground">{scheduledTime}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 bg-muted/40 rounded-lg px-3 py-2">
                 <Clock className="size-3.5 shrink-0 text-primary" />
                 <div>
-                  <p className="text-[10px] font-medium text-muted-foreground">Duration</p>
+                  <p className="text-[0.625rem] font-medium text-muted-foreground">Duration</p>
                   <p className="font-semibold text-foreground">{session.durationMins} min</p>
                 </div>
               </div>
@@ -466,7 +466,7 @@ function EntryScreen({
               </Button>
             )}
             {isPrivate && !canJoin && (
-              <p className="text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">
+              <p className="text-[0.625rem] text-center text-muted-foreground flex items-center justify-center gap-1">
                 <Lock className="size-3" /> Invite-only session
               </p>
             )}

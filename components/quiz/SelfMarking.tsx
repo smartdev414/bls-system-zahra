@@ -70,7 +70,7 @@ export function TeacherFeedback({ answer }: { answer?: MarkAnswer }) {
   if (!answer?.feedbackVideoUrl) return null
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Your teacher&apos;s feedback</p>
+      <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-primary">Your teacher&apos;s feedback</p>
       <ProtectedVideo src={answer.feedbackVideoUrl} controls playsInline className="w-full aspect-video rounded-lg border border-primary/40 bg-black" />
     </div>
   )
@@ -79,7 +79,7 @@ export function TeacherFeedback({ answer }: { answer?: MarkAnswer }) {
 /** What the student wrote or signed, side by side with the model answer. */
 export function AnswerAndModel({ question, answer }: { question: MarkQuestion; answer?: MarkAnswer }) {
   const box = "rounded-lg border px-3 py-2 text-sm flex flex-col gap-1"
-  const label = "text-[10px] font-semibold uppercase tracking-wide"
+  const label = "text-[0.625rem] font-semibold uppercase tracking-wide"
   if (question.filmed) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -131,11 +131,11 @@ export function AnswerAndModel({ question, answer }: { question: MarkQuestion; a
 
 /** The marks given, as a badge: "2 / 3 marks", or a tick or cross for a signed answer. */
 export function MarksBadge({ question, answer }: { question: MarkQuestion; answer?: MarkAnswer }) {
-  if (answer?.marks === null || answer?.marks === undefined) return <Badge variant="outline" className="text-[10px]">Not marked yet</Badge>
+  if (answer?.marks === null || answer?.marks === undefined) return <Badge variant="outline" className="text-[0.625rem]">Not marked yet</Badge>
   const max = maxMarks(question)
   const full = answer.marks === max
   return (
-    <Badge variant="outline" className={cn("text-[10px]", full ? "bg-emerald-50 text-emerald-700 border-emerald-200" : answer.marks > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-rose-50 text-rose-700 border-rose-200")}>
+    <Badge variant="outline" className={cn("text-[0.625rem]", full ? "bg-emerald-50 text-emerald-700 border-emerald-200" : answer.marks > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-rose-50 text-rose-700 border-rose-200")}>
       {question.type === "SIGN" ? (full ? "✓ Correct" : "✗ Not right") : `${answer.marks} / ${max} marks`}
       {answer.markedByTutor && " · marked by your teacher"}
     </Badge>

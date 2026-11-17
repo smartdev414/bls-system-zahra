@@ -160,7 +160,7 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
       <div className="flex items-center gap-2">
         <Hand className="size-4 text-primary" />
         <h3 className="font-semibold text-sm">{kind === "FINGERSPELLING" ? "Words to fingerspell" : "Signs"}</h3>
-        <Badge variant="outline" className="text-[10px]">{signs.length}</Badge>
+        <Badge variant="outline" className="text-[0.625rem]">{signs.length}</Badge>
         {selectable.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
             {chosen.length > 0 && (
@@ -199,14 +199,14 @@ export function SignListBuilder({ kind, testId, signs, onChange, onAddFromDictio
                     <button
                       type="button"
                       onClick={() => film(unfilmed, sign.uid)}
-                      className="flex size-full flex-col items-center justify-center gap-1 text-[11px] font-medium text-primary hover:bg-primary/10"
+                      className="flex size-full flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium text-primary hover:bg-primary/10"
                     >
                       <Camera className="size-4" /> Record
                     </button>
-                  ) : <span className="text-[10px] text-muted-foreground">No video</span>
+                  ) : <span className="text-[0.625rem] text-muted-foreground">No video</span>
                 )}
               {sign.questionImageUploading && (
-                <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-muted/90 text-[10px] text-muted-foreground">
+                <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-muted/90 text-[0.625rem] text-muted-foreground">
                   <Loader2 className="size-5 animate-spin" /> Uploading…
                 </span>
               )}

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 
 export function DifficultyBadge({ difficulty, className }: { difficulty: LeagueDifficulty; className?: string }) {
   return (
-    <Badge variant="outline" className={cn("text-[11px]", DIFFICULTY_INFO[difficulty].badge, className)}>
+    <Badge variant="outline" className={cn("text-[0.6875rem]", DIFFICULTY_INFO[difficulty].badge, className)}>
       {DIFFICULTY_INFO[difficulty].label}
     </Badge>
   )
@@ -65,7 +65,7 @@ export function LeagueTable({ rows, empty, className }: { rows: TableRow[]; empt
               <span className="min-w-0 flex-1 truncate">{r.name}</span>
               {r.hidden && (
                 <span
-                  className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground shrink-0"
+                  className="flex items-center gap-1 text-[0.6875rem] font-normal text-muted-foreground shrink-0"
                   title={r.isYou ? "Other students can't see your name or score" : "Other students can't see this student on the table"}
                 >
                   <EyeOff className="size-3.5" /> Private

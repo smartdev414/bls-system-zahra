@@ -44,7 +44,7 @@ function ordinal(n: number) {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
-const badge = "text-[10px] h-4 px-1 shrink-0"
+const badge = "text-[0.625rem] h-4 px-1 shrink-0"
 
 /**
  * The class at a glance, best first: each student's place, how much of what has
@@ -81,7 +81,7 @@ export function StudentProgressTable({
     // Sized by its own width, not the screen's: in a narrow column the progress
     // columns fold into one line under the student's name.
     <div className="@container">
-      <div className={`hidden @xl:grid ${COLUMNS} items-center gap-3 px-4 py-2 border-b bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground`}>
+      <div className={`hidden @xl:grid ${COLUMNS} items-center gap-3 px-4 py-2 border-b bg-muted/30 text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground`}>
         <span title="Place in the class">#</span>
         <span>Student</span>
         <span>Progress</span>
@@ -103,7 +103,7 @@ export function StudentProgressTable({
             <div className="flex items-center gap-2.5 min-w-0">
               <Avatar className="size-7 shrink-0">
                 {student.avatarUrl && <AvatarImage src={student.avatarUrl} alt={student.name} />}
-                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[10px]">
+                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-[0.625rem]">
                   {initials(student.name)}
                 </AvatarFallback>
               </Avatar>
@@ -184,7 +184,7 @@ export function StudentProgressTable({
             <div className="hidden @xl:block text-xs">
               <span className={student.lastActiveAt ? "" : "text-muted-foreground"}>{lastActive(student.lastActiveAt)}</span>
               {student.lastRemindedAt && (
-                <span className="block text-[11px] text-muted-foreground">
+                <span className="block text-[0.6875rem] text-muted-foreground">
                   Reminded {shortDate(student.lastRemindedAt)}
                   {student.reminderCount > 1 ? ` (×${student.reminderCount})` : ""}
                 </span>

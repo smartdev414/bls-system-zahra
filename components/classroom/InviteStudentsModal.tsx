@@ -174,7 +174,7 @@ export function InviteStudentsModal({
           {groups.length > 0 && !search.trim() && (
             <div>
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
+                <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
               </div>
               {groups.map((group) => {
                 const groupAvailable = group.members.filter((m) => !alreadyInvited.has(m.id))
@@ -203,7 +203,7 @@ export function InviteStudentsModal({
                         onClick={() => toggleGroupExpand(group.id)}
                       >
                         <span className="text-sm font-medium">{group.name}</span>
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                        <Badge variant="secondary" className="text-[0.625rem] h-4 px-1.5">
                           {groupAvailable.length} available
                         </Badge>
                         {isExpanded ? <ChevronDown className="size-3.5 text-muted-foreground ml-auto" /> : <ChevronRight className="size-3.5 text-muted-foreground ml-auto" />}
@@ -227,12 +227,12 @@ export function InviteStudentsModal({
                                 {isSelected && <Check className="size-2 text-white" />}
                               </div>
                               <Avatar className="size-5 shrink-0">
-                                <AvatarFallback className="bg-primary/10 text-primary text-[8px]">{initials(member.name)}</AvatarFallback>
+                                <AvatarFallback className="bg-primary/10 text-primary text-[0.5rem]">{initials(member.name)}</AvatarFallback>
                               </Avatar>
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-medium truncate">{member.name}</p>
                               </div>
-                              {invited && <Badge variant="secondary" className="text-[9px] h-3.5 px-1">Invited</Badge>}
+                              {invited && <Badge variant="secondary" className="text-[0.5625rem] h-3.5 px-1">Invited</Badge>}
                             </button>
                           )
                         })}
@@ -249,7 +249,7 @@ export function InviteStudentsModal({
           <div>
             {(groups.length > 0 || !search.trim()) && (
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">
                   {search.trim() ? "Search Results" : "All Students"}
                 </p>
               </div>
@@ -273,13 +273,13 @@ export function InviteStudentsModal({
                       {isSelected && <Check className="size-2.5 text-white" />}
                     </div>
                     <Avatar className="size-7 shrink-0">
-                      <AvatarFallback className="bg-primary/10 text-primary text-[10px]">{initials(student.name)}</AvatarFallback>
+                      <AvatarFallback className="bg-primary/10 text-primary text-[0.625rem]">{initials(student.name)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{student.name}</p>
                       <p className="text-xs text-muted-foreground truncate">{student.email}</p>
                     </div>
-                    {invited && <Badge variant="secondary" className="text-[10px] h-4 px-1.5 shrink-0">Invited</Badge>}
+                    {invited && <Badge variant="secondary" className="text-[0.625rem] h-4 px-1.5 shrink-0">Invited</Badge>}
                   </button>
                 )
               })

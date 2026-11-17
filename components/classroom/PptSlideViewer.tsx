@@ -238,7 +238,7 @@ function PptxViewer({ fileUrl, currentPage, onTotalPages, onContentElement }: Pr
       )}
 
       {status === "ready" && hasNodeErrors && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-amber-50 border border-amber-300 text-amber-900 text-[11px] px-3 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 max-w-[90%]">
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-amber-50 border border-amber-300 text-amber-900 text-[0.6875rem] px-3 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 max-w-[90%]">
           <AlertCircle className="size-3.5 shrink-0" />
           <span className="truncate">Some images couldn&apos;t be rendered (EMF/WMF graphics aren&apos;t supported). Export as PNG/JPG in PowerPoint and re-upload.</span>
         </div>

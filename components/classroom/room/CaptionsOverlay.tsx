@@ -353,7 +353,7 @@ export function CaptionsOverlay({
             className={cn(
               "pointer-events-auto flex items-center gap-1.5 rounded-full px-3 py-1",
               "bg-black/45 hover:bg-black/75 backdrop-blur-sm border border-white/10",
-              "text-[11px] font-medium text-white/60 hover:text-white transition-colors",
+              "text-[0.6875rem] font-medium text-white/60 hover:text-white transition-colors",
             )}
             title="Read back what was said"
           >
@@ -393,7 +393,7 @@ export function CaptionsOverlay({
                     type="button"
                     onClick={() => writeLineChoice(n)}
                     className={cn(
-                      "rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors",
+                      "rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold transition-colors",
                       lineCount === n ? "bg-white text-zinc-900" : "text-white/70 hover:text-white",
                     )}
                     aria-pressed={lineCount === n}

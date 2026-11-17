@@ -139,7 +139,7 @@ export function RequestSignDialog({ initialWord, onClose, onShowSign }: {
                   ) : (
                     <span className="truncate font-medium">{r.word}</span>
                   )}
-                  <Badge variant="outline" className={cn("shrink-0 text-[10px]", (r.held ? HELD : STATUS[r.status]).className)}>
+                  <Badge variant="outline" className={cn("shrink-0 text-[0.625rem]", (r.held ? HELD : STATUS[r.status]).className)}>
                     {(r.held ? HELD : STATUS[r.status]).label}
                   </Badge>
                 </li>

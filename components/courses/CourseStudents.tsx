@@ -41,9 +41,9 @@ export function CourseStudents({
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <h2 className="font-bold flex items-center gap-2">
           <Users className="size-4 text-primary" /> Students
-          {data && <Badge variant="outline" className="text-[10px]">{data.total}</Badge>}
+          {data && <Badge variant="outline" className="text-[0.625rem]">{data.total}</Badge>}
           {behind.length > 0 && (
-            <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-700 border-amber-200">
+            <Badge variant="outline" className="text-[0.625rem] bg-amber-100 text-amber-700 border-amber-200">
               {behind.length} behind
             </Badge>
           )}

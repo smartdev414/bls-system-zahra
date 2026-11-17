@@ -357,7 +357,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
           {sections.map((sec, si) => (
             <div key={sec.id}>
               <div className="px-4 py-2 bg-muted/30 border-b">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-muted-foreground">
                   {si + 1}. {sec.title}
                 </p>
               </div>
@@ -376,7 +376,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                       <span className="flex-1 min-w-0">
                         <span className="block leading-snug truncate">{li + 1}. {l.title}</span>
                         {l.releaseAt && (
-                          <span className="block text-[10px] leading-tight">Unlocks {releaseLabel(l.releaseAt)}</span>
+                          <span className="block text-[0.625rem] leading-tight">Unlocks {releaseLabel(l.releaseAt)}</span>
                         )}
                       </span>
                     </div>
@@ -682,7 +682,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <LessonIcon className="size-4 text-primary shrink-0" />
-                <Badge variant="outline" className="text-[10px]">{section.title}</Badge>
+                <Badge variant="outline" className="text-[0.625rem]">{section.title}</Badge>
               </div>
               <h1 className="text-xl font-black tracking-tight">{lesson.title}</h1>
             </div>
@@ -808,7 +808,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
               <Link href={`/student/lessons/${navigation.prev.id}`}>
                 <ChevronLeft className="size-4 mr-1 shrink-0" />
                 <div className="text-left min-w-0">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Previous</p>
+                  <p className="text-[0.625rem] text-muted-foreground uppercase tracking-wide leading-none">Previous</p>
                   <p className="text-xs font-medium truncate max-w-28 sm:max-w-56 leading-tight mt-0.5">{navigation.prev.title}</p>
                 </div>
               </Link>
@@ -827,7 +827,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
             <Button asChild size="sm" className="h-auto py-1.5">
               <Link href={`/student/lessons/${navigation.next.id}`}>
                 <div className="text-right min-w-0">
-                  <p className="text-[10px] uppercase tracking-wide opacity-70 leading-none">Next</p>
+                  <p className="text-[0.625rem] uppercase tracking-wide opacity-70 leading-none">Next</p>
                   <p className="text-xs font-semibold truncate max-w-28 sm:max-w-56 leading-tight mt-0.5">{navigation.next.title}</p>
                 </div>
                 <ChevronRight className="size-4 ml-1 shrink-0" />

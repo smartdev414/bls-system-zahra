@@ -107,7 +107,7 @@ function StatusTracker({ status }: { status: keyof typeof STATUS_CONFIG }) {
               }`}>
                 {done ? <CheckCircle2 className="size-4" /> : <Icon className="size-3.5" />}
               </div>
-              <span className={`text-[10px] font-medium whitespace-nowrap ${active ? "text-primary" : done ? "text-emerald-600" : "text-muted-foreground"}`}>
+              <span className={`text-[0.625rem] font-medium whitespace-nowrap ${active ? "text-primary" : done ? "text-emerald-600" : "text-muted-foreground"}`}>
                 {cfg.label}
               </span>
             </div>
@@ -122,7 +122,7 @@ function StatusTracker({ status }: { status: keyof typeof STATUS_CONFIG }) {
           <div className="size-8 rounded-full flex items-center justify-center border-2 bg-muted border-muted-foreground/20">
             <CheckCircle2 className="size-3.5 text-muted-foreground" />
           </div>
-          <span className="text-[10px] font-medium text-muted-foreground">Closed</span>
+          <span className="text-[0.625rem] font-medium text-muted-foreground">Closed</span>
         </div>
       )}
     </div>
@@ -138,7 +138,7 @@ function CommentBubble({ comment, isOwn }: { comment: Comment; isOwn: boolean })
   return (
     <div className={`flex gap-3 ${isOwn ? "flex-row-reverse" : ""}`}>
       <Avatar className="size-7 shrink-0 mt-0.5">
-        <AvatarFallback className={`text-[10px] font-bold ${isAdmin ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+        <AvatarFallback className={`text-[0.625rem] font-bold ${isAdmin ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
           {initials}
         </AvatarFallback>
       </Avatar>
@@ -147,11 +147,11 @@ function CommentBubble({ comment, isOwn }: { comment: Comment; isOwn: boolean })
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold">{isAdmin ? "Support Team" : comment.author.name}</span>
           {isAdmin && (
-            <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-primary/20">
+            <Badge variant="outline" className="text-[0.5625rem] h-4 px-1.5 bg-primary/10 text-primary border-primary/20">
               Admin
             </Badge>
           )}
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[0.625rem] text-muted-foreground">
             {format(new Date(comment.createdAt), "dd MMM, HH:mm")}
           </span>
         </div>
@@ -302,7 +302,7 @@ export function MyTicketDetail({ params, basePath, userId }: Props) {
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium truncate">{a.fileName}</p>
-                      {a.fileSize && <p className="text-[10px] text-muted-foreground">{formatBytes(a.fileSize)}</p>}
+                      {a.fileSize && <p className="text-[0.625rem] text-muted-foreground">{formatBytes(a.fileSize)}</p>}
                     </div>
                     <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
                   </a>
@@ -362,7 +362,7 @@ export function MyTicketDetail({ params, basePath, userId }: Props) {
                 }}
               />
               <div className="flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground">Ctrl+Enter to send</p>
+                <p className="text-[0.6875rem] text-muted-foreground">Ctrl+Enter to send</p>
                 <Button
                   size="sm"
                   className="gap-1.5"
