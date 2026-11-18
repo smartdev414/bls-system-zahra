@@ -57,7 +57,7 @@ export default function AdminDashboard() {
   return (
     <div className="flex flex-col gap-8">
       {/* Banner */}
-      <div className="rounded-2xl bg-primary p-8 text-primary-foreground relative overflow-hidden">
+      <div className="hero-banner rounded-2xl bg-primary p-8 text-primary-foreground relative overflow-hidden">
         <div className="absolute -right-10 -top-10 size-48 rounded-full bg-white/5" />
         <div className="absolute -right-4 top-16 size-28 rounded-full bg-white/5" />
         <div className="relative">

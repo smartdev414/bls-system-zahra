@@ -4,11 +4,12 @@ import { cn } from "@/lib/utils"
 
 // Brand asset: public/brand/deafsign-logo.png (500x500, the "Deaf Signs"
 // circle on white), made from public/logo-1.jpeg. The same image serves as the
-// small mark (header, watermarks) and the full lockup (auth pages); on a dark
-// background it shows as a white tile, which is intended.
+// small mark (header, watermarks) and the full lockup (auth pages). The badge
+// fills ~83% of the square, so the header and auth pages crop it to a circle
+// (scaled up to just inside the white corners): on the dark and yellow themes it
+// then reads as a round badge instead of a white tile.
 export const LOGO_MARK_SRC = "/brand/deafsign-logo.png"
 export const LOGO_FULL_SRC = "/brand/deafsign-logo.png"
-export const LOGO_FULL_DARK_SRC = "/brand/deafsign-logo.png"
 export const LOGO_BRAND = "Deaf Signs"
 
 export const MARK_W = 500
@@ -19,15 +20,17 @@ const FULL_H = 500
 export function Logo({ className }: { className?: string }) {
   return (
     <Link href="/" className={cn("flex items-center gap-2.5 shrink-0", className)}>
-      <Image
-        src={LOGO_MARK_SRC}
-        alt={LOGO_BRAND}
-        width={MARK_W}
-        height={MARK_H}
-        sizes="42px"
-        className="h-10 w-auto shrink-0"
-        priority
-      />
+      <span className="size-10 shrink-0 overflow-hidden rounded-full bg-white">
+        <Image
+          src={LOGO_MARK_SRC}
+          alt={LOGO_BRAND}
+          width={MARK_W}
+          height={MARK_H}
+          sizes="48px"
+          className={cn("size-full", BADGE_SCALE)}
+          priority
+        />
+      </span>
       {/* lg–xl: the inline nav needs the room, so the wordmark steps aside. */}
       <div className="hidden sm:flex lg:hidden xl:flex flex-col leading-none">
         <span className="font-bold text-[0.9375rem] tracking-tight text-foreground">{LOGO_BRAND}</span>
@@ -37,21 +40,26 @@ export function Logo({ className }: { className?: string }) {
   )
 }
 
-// Full lockup with tagline — for roomy spots like the auth pages. Sits directly
-// on the page background; dark mode swaps to a copy with a white tagline.
+// Circle crop: the ring's outer edge sits at 83% of the image width.
+const BADGE_SCALE = "scale-[1.14]"
+
+// Large badge for roomy spots like the auth pages.
 export function LogoFull({ className, width = 140 }: { className?: string; width?: number }) {
-  const img = {
-    alt: LOGO_BRAND,
-    width: FULL_W,
-    height: FULL_H,
-    sizes: `${width}px`,
-    style: { width, height: "auto" },
-    priority: true,
-  }
   return (
-    <Link href="/" className={cn("inline-block shrink-0", className)}>
-      <Image src={LOGO_FULL_SRC} className="dark:hidden" {...img} />
-      <Image src={LOGO_FULL_DARK_SRC} className="hidden dark:block" {...img} />
+    <Link
+      href="/"
+      className={cn("inline-block shrink-0 overflow-hidden rounded-full bg-white", className)}
+      style={{ width, height: width }}
+    >
+      <Image
+        src={LOGO_FULL_SRC}
+        alt={LOGO_BRAND}
+        width={FULL_W}
+        height={FULL_H}
+        sizes={`${Math.round(width * 1.2)}px`}
+        className={cn("size-full", BADGE_SCALE)}
+        priority
+      />
     </Link>
   )
 }

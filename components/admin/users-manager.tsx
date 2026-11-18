@@ -175,7 +175,7 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
         <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
           <Clock className="size-4 shrink-0" />
           <span className="flex-1 text-sm font-semibold">Showing only people waiting for approval</span>
-          <Button size="sm" variant="outline" className="bg-white" onClick={toggleAwaiting}>Show everyone</Button>
+          <Button size="sm" variant="outline" className="bg-background" onClick={toggleAwaiting}>Show everyone</Button>
         </div>
       )}
       {showSuspended && (
@@ -184,7 +184,7 @@ export function UsersManager({ viewerRole = "ADMIN" }: { viewerRole?: AppRole } 
           <span className="flex-1 text-sm font-semibold">
             Suspended students — they can&apos;t use the website or app until you lift the suspension
           </span>
-          <Button size="sm" variant="outline" className="bg-white" onClick={() => showList(null)}>Show everyone</Button>
+          <Button size="sm" variant="outline" className="bg-background" onClick={() => showList(null)}>Show everyone</Button>
         </div>
       )}
 

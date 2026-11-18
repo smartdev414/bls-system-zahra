@@ -104,7 +104,7 @@ export default function StudentCertDetailPage() {
 
       {/* Hero */}
       <div className="rounded-2xl overflow-hidden">
-        <div className="relative bg-linear-to-br from-primary via-primary/90 to-violet-600 px-6 py-8 text-white">
+        <div className="hero-banner relative bg-linear-to-br from-primary via-primary/90 to-violet-600 px-6 py-8 text-white">
           <div className="absolute -right-10 -top-10 size-48 rounded-full bg-white/5" />
           <div className="relative">
             <div className="flex items-center gap-2 mb-2">

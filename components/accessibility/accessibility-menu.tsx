@@ -53,6 +53,33 @@ function Choice<T extends string | number>({
   )
 }
 
+/**
+ * A tiny preview of a colour scheme: page colour with a line of text and the
+ * accent, so the choice can be seen before it's picked. Fixed colours on
+ * purpose: each swatch must look the same whichever theme is active.
+ */
+function ThemeSwatch({ bg, fg, accent, split }: { bg: string; fg: string; accent: string; split?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className="relative flex h-7 w-10 flex-col justify-center gap-1 overflow-hidden rounded border border-black/25 px-1.5"
+      style={{ background: split ? "linear-gradient(135deg, #ffffff 50%, #252525 50%)" : bg }}
+    >
+      <span className="h-1 w-full rounded-full" style={{ background: split ? "#888" : fg }} />
+      <span className="h-1 w-3/5 rounded-full" style={{ background: accent }} />
+    </span>
+  )
+}
+
+function themeLabel(name: string, swatch: React.ReactNode) {
+  return (
+    <span className="flex flex-col items-center gap-1">
+      {swatch}
+      <span>{name}</span>
+    </span>
+  )
+}
+
 /** An on/off setting with a short explanation underneath. */
 function Toggle({
   label,
@@ -182,10 +209,18 @@ export function AccessibilityMenu({
           value={theme ?? "system"}
           onChange={(t) => setTheme(t)}
           options={[
-            { value: "system", label: "Auto" },
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-            { value: "yellow", label: "Yellow", aria: "Yellow (black text on yellow)" },
+            {
+              value: "system",
+              aria: "Auto (follow this device)",
+              label: themeLabel("Auto", <ThemeSwatch split bg="" fg="" accent="#8b5cf6" />),
+            },
+            { value: "light", label: themeLabel("Light", <ThemeSwatch bg="#ffffff" fg="#252525" accent="#6d3fd8" />) },
+            { value: "dark", label: themeLabel("Dark", <ThemeSwatch bg="#252525" fg="#f5f5f5" accent="#a98bfa" />) },
+            {
+              value: "yellow",
+              aria: "Yellow (black text on yellow)",
+              label: themeLabel("Yellow", <ThemeSwatch bg="#fbe98f" fg="#111111" accent="#4a1aa0" />),
+            },
           ]}
         />
 

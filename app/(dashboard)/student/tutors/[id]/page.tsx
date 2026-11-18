@@ -105,7 +105,7 @@ export default function TutorProfilePage() {
       </Link>
 
       {/* Hero */}
-      <div className="relative rounded-2xl overflow-hidden">
+      <div className="hero-banner relative rounded-2xl overflow-hidden">
         {/* Gradient background */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-violet-600" />
         <div className="absolute -right-12 -top-12 size-56 rounded-full bg-white/5" />

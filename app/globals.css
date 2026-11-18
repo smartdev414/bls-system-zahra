@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./dark-palette.css";
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
@@ -151,6 +152,18 @@
   --sidebar-accent-foreground: oklch(0.13 0 0);
   --sidebar-border: oklch(0.45 0.05 95);
   --sidebar-ring: oklch(0.38 0.2 290);
+}
+
+/* Page banners (the purple "Welcome back" / "Platform Overview" panels) are bg-primary, which
+   in dark is a bright lilac: a big glaring block, worst for the low-vision preset that picks dark.
+   In dark they use a deep violet with white text instead. */
+.dark .hero-banner {
+  --primary: oklch(0.34 0.15 290);
+  --primary-foreground: oklch(0.98 0 0);
+}
+html[data-high-contrast].dark .hero-banner {
+  --primary: oklch(0.28 0.15 290);
+  --primary-foreground: oklch(1 0 0);
 }
 
 /* High contrast: full-strength text, darker secondary text, firm borders. */

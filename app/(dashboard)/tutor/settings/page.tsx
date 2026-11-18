@@ -201,7 +201,7 @@ export default function TutorSettingsPage() {
               {/* Portfolio preview — mirrors what students see */}
               <div className="rounded-2xl overflow-hidden">
                 {/* Hero gradient */}
-                <div className="relative">
+                <div className="hero-banner relative">
                   <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-violet-600" />
                   <div className="absolute -right-12 -top-12 size-56 rounded-full bg-white/5" />
                   <div className="absolute left-1/3 -top-8 size-40 rounded-full bg-white/5" />

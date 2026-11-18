@@ -55,7 +55,7 @@ export function LeagueTable({ rows, empty, className }: { rows: TableRow[]; empt
                 className={cn(
                   "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
                   r.rank === 1 ? "bg-amber-400 text-amber-950"
-                    : r.rank === 2 ? "bg-zinc-300 text-zinc-800"
+                    : r.rank === 2 ? "bg-zinc-300 text-zinc-800 dark:text-zinc-800"
                     : r.rank === 3 ? "bg-orange-300 text-orange-950"
                     : "text-muted-foreground",
                 )}
