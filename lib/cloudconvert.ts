@@ -10,42 +10,67 @@ import { Readable } from "node:stream"
 import CloudConvert from "cloudconvert"
 import type { Job } from "cloudconvert/built/lib/JobsResource"
 
-const CC_API_KEY = process.env.CLOUDCONVERT_API_KEY ?? ""
+/**
+ * CloudConvert accounts, tried in order when one can't start a job (typically
+ * out of conversion credits): CLOUDCONVERT_API_KEY, then the optional
+ * CLOUDCONVERT_API_KEY2 and CLOUDCONVERT_API_KEY3.
+ *
+ * Jobs have to be waited on with the account that created them, so the job id
+ * carries the account through the browser round trip: no tag for the first,
+ * then each account's own tag ("fb:" kept for the second so ids issued before
+ * the third account existed still resolve).
+ */
+const ACCOUNTS = [
+  { env: "CLOUDCONVERT_API_KEY", tag: "" },
+  { env: "CLOUDCONVERT_API_KEY2", tag: "fb:" },
+  { env: "CLOUDCONVERT_API_KEY3", tag: "fb3:" },
+] as const
 
-// Second CloudConvert account, used when the primary one can't start a job
-// (typically out of conversion credits). Optional.
-const CC_FALLBACK_API_KEY = process.env.CLOUDCONVERT_API_KEY2 ?? ""
-
-// Jobs have to be waited on with the account that created them, so jobs from
-// the fallback account carry this prefix through the browser round trip.
-const FALLBACK_JOB_PREFIX = "fb:"
+type Account = number
 
 function inputFormatForFileName(fileName: string): "ppt" | "pptx" {
   return /\.ppt$/i.test(fileName) && !/\.pptx$/i.test(fileName) ? "ppt" : "pptx"
 }
 
-function getClient(fallback = false): CloudConvert {
-  const key = fallback ? CC_FALLBACK_API_KEY : CC_API_KEY
-  if (!key) {
-    throw new Error(`${fallback ? "CLOUDCONVERT_API_KEY2" : "CLOUDCONVERT_API_KEY"} is not configured`)
-  }
+const keyFor = (account: Account) => process.env[ACCOUNTS[account].env] ?? ""
+
+function getClient(account: Account = 0): CloudConvert {
+  const key = keyFor(account)
+  if (!key) throw new Error(`${ACCOUNTS[account].env} is not configured`)
   return new CloudConvert(key)
 }
 
-/** Create a job on the primary account, falling back to the second one if that fails. */
-async function createJob(sourceFileName: string): Promise<{ job: Job; fallback: boolean }> {
+/** Create a job on the first account that will take it. */
+async function createJob(sourceFileName: string): Promise<{ job: Job; account: Account }> {
   const tasks = pptxJobTasks(sourceFileName)
-  try {
-    return { job: await getClient().jobs.create({ tasks }), fallback: false }
-  } catch (err) {
-    if (!CC_FALLBACK_API_KEY) throw err
-    console.warn("[cloudconvert] primary account failed to create job; using fallback", err)
-    return { job: await getClient(true).jobs.create({ tasks }), fallback: true }
+  const configured = ACCOUNTS.map((_, i) => i).filter((i) => i === 0 || keyFor(i))
+  let lastErr: unknown
+  for (const account of configured) {
+    try {
+      return { job: await getClient(account).jobs.create({ tasks }), account }
+    } catch (err) {
+      lastErr = err
+      const next = configured[configured.indexOf(account) + 1]
+      if (next !== undefined) {
+        console.warn(`[cloudconvert] ${ACCOUNTS[account].env} failed to create job; trying ${ACCOUNTS[next].env}`, err)
+      }
+    }
   }
+  throw lastErr
 }
 
-function toJobId(job: Job, fallback: boolean): string {
-  return fallback ? `${FALLBACK_JOB_PREFIX}${job.id}` : job.id
+function toJobId(job: Job, account: Account): string {
+  return `${ACCOUNTS[account].tag}${job.id}`
+}
+
+/** The account a job id belongs to, and the id CloudConvert knows it by. */
+function fromJobId(jobId: string): { account: Account; id: string } {
+  // Longest tag first, so "fb3:" is not read as "fb:".
+  for (let account = ACCOUNTS.length - 1; account > 0; account--) {
+    const { tag } = ACCOUNTS[account]
+    if (jobId.startsWith(tag)) return { account, id: jobId.slice(tag.length) }
+  }
+  return { account: 0, id: jobId }
 }
 
 function pptxJobTasks(sourceFileName: string) {
@@ -71,7 +96,7 @@ export async function createPptxToPdfUpload(sourceFileName: string): Promise<{
   uploadUrl: string
   uploadParameters: Record<string, string>
 }> {
-  const { job, fallback } = await createJob(sourceFileName)
+  const { job, account } = await createJob(sourceFileName)
 
   const uploadTask = job.tasks?.find((t) => t.name === "import-pptx")
   const form = uploadTask?.result?.form
@@ -80,7 +105,7 @@ export async function createPptxToPdfUpload(sourceFileName: string): Promise<{
   }
 
   return {
-    jobId: toJobId(job, fallback),
+    jobId: toJobId(job, account),
     uploadUrl: form.url,
     uploadParameters: form.parameters as Record<string, string>,
   }
@@ -88,9 +113,9 @@ export async function createPptxToPdfUpload(sourceFileName: string): Promise<{
 
 /** Wait for a job started via createPptxToPdfUpload and return the PDF bytes. */
 export async function finishPptxToPdfJob(jobId: string): Promise<Buffer> {
-  const fallback = jobId.startsWith(FALLBACK_JOB_PREFIX)
-  const cloudConvert = getClient(fallback)
-  const job = await cloudConvert.jobs.wait(fallback ? jobId.slice(FALLBACK_JOB_PREFIX.length) : jobId)
+  const { account, id } = fromJobId(jobId)
+  const cloudConvert = getClient(account)
+  const job = await cloudConvert.jobs.wait(id)
 
   if (job.status !== "finished") {
     const failed = job.tasks?.find((t) => t.status === "error")
@@ -116,8 +141,8 @@ export async function convertPptxToPdf(
   sourceBuffer: Buffer,
   sourceFileName: string,
 ): Promise<Buffer> {
-  const { job, fallback } = await createJob(sourceFileName)
-  const cloudConvert = getClient(fallback)
+  const { job, account } = await createJob(sourceFileName)
+  const cloudConvert = getClient(account)
 
   const uploadTask = job.tasks?.find((t) => t.name === "import-pptx")
   if (!uploadTask) {
@@ -131,5 +156,5 @@ export async function convertPptxToPdf(
     sourceBuffer.byteLength,
   )
 
-  return finishPptxToPdfJob(toJobId(job, fallback))
+  return finishPptxToPdfJob(toJobId(job, account))
 }
