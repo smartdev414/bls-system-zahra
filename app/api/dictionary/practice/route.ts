@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { DEFAULT_ANSWER_SECONDS } from "@/lib/quiz"
-import { savedPracticeSigns, weekPracticeRound } from "@/lib/sign-practice"
+import { savedPracticeSigns, savedTestRound, weekPracticeRound } from "@/lib/sign-practice"
 
 // GET /api/dictionary/practice?set=saved|week — a round of practice signs,
 // words included: practice is marked on the student's own screen and nothing
@@ -11,6 +11,7 @@ import { savedPracticeSigns, weekPracticeRound } from "@/lib/sign-practice"
 //   saved — the student's starred signs, as flashcards.
 //   week  — this week's signs for the timed vocabulary game; the starred signs
 //           when nothing was taught this week (`source` says which it was).
+//   mine  — the starred signs only, in the timed vocabulary game.
 async function handleGET(req: NextRequest) {
   try {
     const session = await getSession()
@@ -19,8 +20,9 @@ async function handleGET(req: NextRequest) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
-    if (req.nextUrl.searchParams.get("set") === "week") {
-      const round = await weekPracticeRound(session.sub)
+    const set = req.nextUrl.searchParams.get("set")
+    if (set === "week" || set === "mine") {
+      const round = set === "week" ? await weekPracticeRound(session.sub) : await savedTestRound(session.sub)
       return NextResponse.json({ ...round, answerSeconds: DEFAULT_ANSWER_SECONDS })
     }
     return NextResponse.json({ source: "saved", signs: await savedPracticeSigns(session.sub) })

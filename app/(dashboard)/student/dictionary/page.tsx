@@ -5,7 +5,7 @@ import { useRememberedState } from "@/hooks/use-remembered-state"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
-import { Search, Library, PlayCircle, BookOpen, Loader2, Filter, Image as ImageIcon, Star, Layers, CalendarDays, MessageSquarePlus } from "lucide-react"
+import { Search, Library, PlayCircle, BookOpen, Loader2, Filter, Image as ImageIcon, Star, Layers, CalendarDays, MessageSquarePlus, Video } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -214,6 +214,13 @@ export default function DictionaryPage() {
           <Button variant="outline" onClick={() => setRequestWord("")}>
             <MessageSquarePlus className="size-4 mr-1.5" /> Ask for a sign
           </Button>
+          {savedCount > 0 && (
+            <Button variant="outline" asChild>
+              <Link href="/student/dictionary/my-signs">
+                <Star className="size-4 mr-1.5" /> Test my signs
+              </Link>
+            </Button>
+          )}
           <Button asChild className="sm:self-auto">
             <Link href="/student/dictionary/this-week">
               <CalendarDays className="size-4 mr-1.5" /> Practise this week&apos;s signs
@@ -233,11 +240,23 @@ export default function DictionaryPage() {
           </TabsList>
         </Tabs>
         {tab === "mine" && savedCount > 0 && (
-          <Button variant="outline" asChild>
-            <Link href="/student/dictionary/flashcards">
-              <Layers className="size-4 mr-1.5" /> Practise
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild>
+              <Link href="/student/dictionary/flashcards">
+                <Layers className="size-4 mr-1.5" /> Flashcards
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/student/dictionary/sign-it">
+                <Video className="size-4 mr-1.5" /> Sign it yourself
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/student/dictionary/my-signs">
+                <Star className="size-4 mr-1.5" /> Vocabulary test
+              </Link>
+            </Button>
+          </div>
         )}
       </div>
 

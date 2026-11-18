@@ -283,7 +283,7 @@ export default function EditLessonPage({
                   <FolderOpen className="size-3" />
                   Choose from library
                 </Button>
-                {lesson.type === "VIDEO" && (
+                {(
                   <>
                     <Button
                       type="button"
@@ -394,14 +394,14 @@ export default function EditLessonPage({
             />
 
             {/* Upload or record new — stays open so several files can be added before saving */}
-            {lesson.type === "VIDEO" && videoMode === "link" ? (
+            {videoMode === "link" ? (
               <VideoLinkInput
                 onAdded={(f) => {
                   setNewFiles((prev) => (prev.some((x) => x.fileUrl === f.fileUrl) ? prev : [...prev, f]))
                   setVideoMode("upload")
                 }}
               />
-            ) : lesson.type === "VIDEO" && videoMode === "record" ? (
+            ) : videoMode === "record" ? (
               <CameraRecorder
                 uploaded={null}
                 onUploaded={(f) => {

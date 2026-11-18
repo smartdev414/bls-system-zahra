@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { MAX_WEEK, parseWeek } from "@/lib/class-week"
 import prisma from "@/lib/prisma"
 import { hostScope, hostedBy } from "@/lib/session-access"
+import { shiftWeeksAfterCancel, shiftWeeksAfterRestore } from "@/lib/class-week-shift"
 import { getSession } from "@/lib/auth"
 import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { EgressClient } from "livekit-server-sdk"
@@ -118,6 +119,8 @@ async function handlePATCH(
       invitedTutorIds?: string[]
       /** The course week (1–52), or null to clear it. */
       week?: number | null
+      /** With status CANCELLED: why, shown on the course page and sent to students. */
+      cancelNote?: string | null
     }
 
     // Starting and ending a class is teaching, which every tutor does. Anything
@@ -165,6 +168,14 @@ async function handlePATCH(
     }
     if (body.status) {
       data.status = body.status
+      if (body.status === "CANCELLED") {
+        data.cancelNote = typeof body.cancelNote === "string" && body.cancelNote.trim() ? body.cancelNote.trim().slice(0, 500) : null
+        data.cancelledAt = new Date()
+      } else if (existing.status === "CANCELLED") {
+        // Put back on: it is no longer cancelled, so its note goes too.
+        data.cancelNote = null
+        data.cancelledAt = null
+      }
       console.log("[session] status transition:", existing.status, "→", body.status, "startedAt:", existing.startedAt, "endedAt:", existing.endedAt)
       if (body.status === "LIVE" && !existing.startedAt) {
         const now = new Date()
@@ -197,6 +208,15 @@ async function handlePATCH(
     }
 
     const updated = await prisma.liveSession.update({ where: { id }, data })
+
+    // Keep the course weeks in step: a cancelled class's week goes to the next
+    // class, and putting it back on moves the later ones back.
+    let renumbered = 0
+    if (body.status === "CANCELLED" && existing.status === "SCHEDULED") {
+      renumbered = await shiftWeeksAfterCancel([updated])
+    } else if (body.status === "SCHEDULED" && existing.status === "CANCELLED") {
+      renumbered = await shiftWeeksAfterRestore(updated)
+    }
 
     // Sync invites when invitedStudentIds is provided
     if (body.invitedStudentIds !== undefined && body.visibility === "INVITE_ONLY") {
@@ -307,14 +327,15 @@ async function handlePATCH(
             audienceIds,
             "SESSION_CANCELLED",
             "Live session cancelled",
-            `"${existing.title}" has been cancelled`,
+            `"${existing.title}" on ${existing.scheduledAt.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })} has been cancelled`
+              + (data.cancelNote ? `. Note: ${data.cancelNote as string}` : ""),
             `/student/classroom`,
           )
         }
       }
     }
 
-    return NextResponse.json({ session: updated })
+    return NextResponse.json({ session: updated, renumbered })
   } catch (err) {
     console.error("[PATCH /api/tutor/sessions/[id]]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

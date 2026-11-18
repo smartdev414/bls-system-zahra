@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import {
-  BellRing, CalendarClock, CalendarPlus, ChevronDown, ChevronRight, Loader2,
+  BellRing, CalendarClock, CalendarPlus, CalendarX, ChevronDown, ChevronRight, Loader2,
   Plus, Radio, UserPlus, Users, X,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { useFetch } from "@/hooks/use-fetch"
 import { StudentPickerModal } from "@/components/classroom/StudentPickerModal"
 import { StudentProgressTable, type CourseStudent } from "@/components/courses/StudentProgressTable"
@@ -29,7 +32,9 @@ type ClassSession = {
   scheduledAt: string
   durationMins: number
   week: number | null
-  status: "SCHEDULED" | "LIVE"
+  status: "SCHEDULED" | "LIVE" | "CANCELLED"
+  /** Why it was cancelled, when it was. */
+  cancelNote: string | null
   visibility: "PUBLIC" | "INVITE_ONLY"
   tutorId: string
   tutorName: string
@@ -74,7 +79,8 @@ function classDate(iso: string) {
  * One line that answers "when does this group meet?" — the weekly pattern when
  * the classes share a day and time, otherwise just the next one.
  */
-function classSummary(sessions: ClassSession[]): string | null {
+function classSummary(all: ClassSession[]): string | null {
+  const sessions = all.filter((s) => s.status !== "CANCELLED")
   if (sessions.length === 0) return null
   const dates = sessions.map((s) => new Date(s.scheduledAt))
   const sameSlot = dates.every(
@@ -93,6 +99,77 @@ function classSummary(sessions: ClassSession[]): string | null {
 
 const CLASSES_SHOWN = 3
 
+/** Still going ahead — not a cancelled class kept on the list to explain a gap. */
+const isOn = (s: ClassSession) => s.status !== "CANCELLED"
+
+/**
+ * Asks why the class (or classes) are being cancelled. The note is kept with
+ * each class, shown on this list and sent to the students.
+ */
+function CancelClassesDialog({
+  dates,
+  weekNote,
+  busy,
+  onConfirm,
+  onClose,
+}: {
+  dates: string[]
+  /** What happens to the course weeks, when the classes have them. */
+  weekNote?: string | null
+  busy: boolean
+  onConfirm: (note: string) => void
+  onClose: () => void
+}) {
+  const [note, setNote] = useState("")
+  const n = dates.length
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cancel {n === 1 ? "this class" : `${n} classes`}?</DialogTitle>
+          <DialogDescription>
+            {n === 1 ? dates[0] : dates.slice(0, 6).join("; ") + (n > 6 ? ` and ${n - 6} more` : "")}.
+            {" "}The students are told {n === 1 ? "it is" : "they are"} cancelled, with your note.
+            {weekNote && <><br /><span className="mt-1 inline-block">{weekNote}</span></>}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="cancel-note">Note (optional)</Label>
+          <Textarea
+            id="cancel-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={500}
+            rows={3}
+            placeholder="e.g. Bank holiday — we carry on next week"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={onClose}>Keep</Button>
+          <Button variant="destructive" disabled={busy} onClick={() => onConfirm(note.trim())}>
+            {busy && <Loader2 className="size-3 mr-1 animate-spin" />}
+            Cancel {n === 1 ? "class" : `${n} classes`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * "The next class becomes Week 5…" — what cancelling these does to the course
+ * weeks (the server moves the later classes up so no lesson is skipped).
+ */
+function weekShiftNote(cancelling: ClassSession[], all: ClassSession[]): string | null {
+  const dropped = new Set(cancelling.map((s) => s.id))
+  const withWeek = cancelling.filter((s) => s.week != null)
+  if (withWeek.length === 0) return null
+  const first = withWeek[0].scheduledAt
+  const next = all.find((s) => s.status === "SCHEDULED" && !dropped.has(s.id) && s.week != null && s.scheduledAt > first)
+  if (!next) return null
+  return `The classes after move up a week to keep the lessons in order: ${classDate(next.scheduledAt)} becomes Week ${withWeek[0].week}.`
+}
+
 function ClassList({
   sessions,
   onChanged,
@@ -104,15 +181,23 @@ function ClassList({
   showInviteOnly?: boolean
 }) {
   const [showAll, setShowAll] = useState(false)
-  const [cancelling, setCancelling] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
   // Classes ticked to cancel together; null when not choosing.
   const [picked, setPicked] = useState<Set<string> | null>(null)
+  // The classes the cancel dialog is asking about.
+  const [confirming, setConfirming] = useState<ClassSession[] | null>(null)
   const [cancellingMany, setCancellingMany] = useState(false)
   // A teacher with a view-only calendar sees the classes but cancels none.
   const { calendar } = useTutorAccess()
   const cancellable = sessions.filter((s) => s.status === "SCHEDULED" && s.canManage && calendar)
   const shown = showAll || picked ? sessions : sessions.slice(0, CLASSES_SHOWN)
   const allPicked = picked !== null && cancellable.length > 0 && cancellable.every((s) => picked.has(s.id))
+  // Two classes at the same time are almost always a weekly run scheduled twice.
+  const doubled = useMemo(() => {
+    const seen = new Map<string, number>()
+    for (const s of sessions) if (isOn(s)) seen.set(s.scheduledAt, (seen.get(s.scheduledAt) ?? 0) + 1)
+    return new Set([...seen].filter(([, n]) => n > 1).map(([at]) => at))
+  }, [sessions])
 
   function pick(id: string, on: boolean) {
     setPicked((prev) => {
@@ -123,50 +208,62 @@ function ClassList({
     })
   }
 
-  async function cancelPicked() {
-    if (!picked || picked.size === 0) return
-    const n = picked.size
-    if (!window.confirm(`Cancel ${n} class${n === 1 ? "" : "es"}? The students are told they are cancelled.`)) return
+  async function cancel(list: ClassSession[], note: string) {
     setCancellingMany(true)
     try {
       const res = await fetch("/api/tutor/sessions/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: [...picked] }),
+        body: JSON.stringify({ ids: list.map((s) => s.id), note }),
       })
       if (!res.ok) throw new Error()
-      const { cancelled } = await res.json() as { cancelled: number }
-      toast.success(`${cancelled} class${cancelled === 1 ? "" : "es"} cancelled`)
+      const { cancelled, renumbered } = await res.json() as { cancelled: number; renumbered?: number }
+      toast.success(`${cancelled} class${cancelled === 1 ? "" : "es"} cancelled`, {
+        description: renumbered ? `The ${renumbered} class${renumbered === 1 ? "" : "es"} after moved up a week, so no lesson is skipped.` : undefined,
+      })
       setPicked(null)
+      setConfirming(null)
       onChanged()
     } catch {
-      toast.error("Could not cancel the classes")
+      toast.error(list.length === 1 ? "Could not cancel the class" : "Could not cancel the classes")
     } finally {
       setCancellingMany(false)
     }
   }
 
-  async function cancel(s: ClassSession) {
-    if (!window.confirm(`Cancel the class on ${classDate(s.scheduledAt)}? The students are told it is cancelled.`)) return
-    setCancelling(s.id)
+  async function restore(s: ClassSession) {
+    if (!window.confirm(`Put the class on ${classDate(s.scheduledAt)} back on? It will run as normal.`)) return
+    setBusyId(s.id)
     try {
       const res = await fetch(`/api/tutor/sessions/${s.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "CANCELLED" }),
+        body: JSON.stringify({ status: "SCHEDULED" }),
       })
       if (!res.ok) throw new Error()
-      toast.success("Class cancelled")
+      const { renumbered } = await res.json() as { renumbered?: number }
+      toast.success("Class back on", {
+        description: renumbered ? `The ${renumbered} class${renumbered === 1 ? "" : "es"} after moved back a week.` : undefined,
+      })
       onChanged()
     } catch {
-      toast.error("Could not cancel the class")
+      toast.error("Could not put the class back on")
     } finally {
-      setCancelling(null)
+      setBusyId(null)
     }
   }
 
   return (
     <div className="divide-y">
+      {confirming && (
+        <CancelClassesDialog
+          dates={confirming.map((s) => classDate(s.scheduledAt))}
+          weekNote={weekShiftNote(confirming, sessions)}
+          busy={cancellingMany}
+          onConfirm={(note) => void cancel(confirming, note)}
+          onClose={() => setConfirming(null)}
+        />
+      )}
       {cancellable.length > 1 && (
         picked ? (
           <div className="flex items-center gap-2.5 px-4 py-2 text-sm bg-muted/30">
@@ -183,9 +280,8 @@ function ClassList({
               size="sm"
               className="h-7 px-2 text-xs shrink-0"
               disabled={picked.size === 0 || cancellingMany}
-              onClick={() => void cancelPicked()}
+              onClick={() => setConfirming(sessions.filter((s) => picked.has(s.id)))}
             >
-              {cancellingMany && <Loader2 className="size-3 mr-1 animate-spin" />}
               Cancel {picked.size > 0 ? picked.size : ""} class{picked.size === 1 ? "" : "es"}
             </Button>
             <Button
@@ -210,7 +306,31 @@ function ClassList({
           </div>
         )
       )}
-      {shown.map((s) => (
+      {shown.map((s) => s.status === "CANCELLED" ? (
+        // Kept on the list so a missing week is explained, not just gone.
+        <div key={s.id} className="flex items-center gap-2.5 px-4 py-2 text-sm bg-muted/20">
+          {picked && <Checkbox checked={false} disabled aria-hidden />}
+          <CalendarX className="size-3.5 text-destructive/70 shrink-0" />
+          <span className="font-medium text-muted-foreground line-through">{classDate(s.scheduledAt)}</span>
+          <WeekBadge week={s.week} className="opacity-60" />
+          <span className="text-xs text-muted-foreground flex-1 min-w-0 truncate" title={s.cancelNote ?? undefined}>
+            <Badge variant="outline" className="text-[0.625rem] mr-1.5 bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900">Cancelled</Badge>
+            {s.cancelNote ?? ""}
+          </span>
+          {s.canManage && calendar && !picked && new Date(s.scheduledAt) > new Date() && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground shrink-0"
+              disabled={busyId === s.id}
+              onClick={() => void restore(s)}
+              aria-label={`Put the class on ${classDate(s.scheduledAt)} back on`}
+            >
+              {busyId === s.id ? <Loader2 className="size-3 animate-spin" /> : "Restore"}
+            </Button>
+          )}
+        </div>
+      ) : (
         <div key={s.id} className="flex items-center gap-2.5 px-4 py-2 text-sm">
           {picked && (
             <Checkbox
@@ -231,7 +351,7 @@ function ClassList({
                 week={s.week}
                 date={classDate(s.scheduledAt)}
                 onSaved={onChanged}
-                later={sessions.slice(sessions.indexOf(s) + 1).filter((x) => x.canManage).map((x) => x.id)}
+                later={sessions.slice(sessions.indexOf(s) + 1).filter((x) => x.canManage && isOn(x)).map((x) => x.id)}
               />
             )
             : <WeekBadge week={s.week} />}
@@ -239,6 +359,15 @@ function ClassList({
             {s.durationMins} min · {s.tutorName}
             {showInviteOnly && s.visibility === "INVITE_ONLY" ? " · invited students only" : ""}
           </span>
+          {doubled.has(s.scheduledAt) && (
+            <Badge
+              variant="outline"
+              className="text-[0.625rem] shrink-0 bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900"
+              title="Another class is booked at the same time — probably scheduled twice. Cancel one of them."
+            >
+              Booked twice
+            </Badge>
+          )}
           {s.status === "LIVE" ? (
             <Badge variant="outline" className="text-[0.625rem] shrink-0 bg-emerald-100 text-emerald-700 border-emerald-200">Live now</Badge>
           ) : s.canManage && calendar && !picked ? (
@@ -246,11 +375,11 @@ function ClassList({
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive shrink-0"
-              disabled={cancelling === s.id}
-              onClick={() => cancel(s)}
+              disabled={cancellingMany}
+              onClick={() => setConfirming([s])}
               aria-label={`Cancel class on ${classDate(s.scheduledAt)}`}
             >
-              {cancelling === s.id ? <Loader2 className="size-3 animate-spin" /> : "Cancel"}
+              Cancel
             </Button>
           ) : null}
         </div>
@@ -290,7 +419,7 @@ export function CourseGroups({
   // An admin may have made groups or students view only for this teacher.
   const access = useTutorAccess()
   const { data: groupData, loading: groupsLoading, refetch: refetchGroups } = useFetch<GroupsData>(
-    `/api/tutor/courses/${courseId}/groups`,
+    `/api/tutor/courses/${courseId}/groups?cancelled=1`,
     { errorMessage: "Could not load groups" },
   )
 
@@ -358,8 +487,8 @@ export function CourseGroups({
    * other classes use. The person then only has to confirm or change the date.
    */
   function classDefaults(target: string): ClassDefaults {
-    const own = groups.find((g) => g.id === target)?.sessions ?? (target === WHOLE_COURSE ? courseSessions : [])
-    const all = [...groups.flatMap((g) => g.sessions), ...courseSessions]
+    const own = (groups.find((g) => g.id === target)?.sessions ?? (target === WHOLE_COURSE ? courseSessions : [])).filter(isOn)
+    const all = [...groups.flatMap((g) => g.sessions), ...courseSessions].filter(isOn)
       .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
     const lastOwn = own.length > 0 ? own[own.length - 1] : null
     const ref = lastOwn ?? (all.length > 0 ? all[all.length - 1] : null)

@@ -7,6 +7,7 @@ import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
 import { notifySessionStatusChange } from "@/lib/live-session-status"
+import { shiftWeeksAfterCancel } from "@/lib/class-week-shift"
 
 // Students need to know which days are off, in the school's time.
 const classDate = (d: Date) => d.toLocaleString("en-GB", {
@@ -26,21 +27,25 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
-    const body = await req.json().catch(() => ({})) as { ids?: unknown }
+    const body = await req.json().catch(() => ({})) as { ids?: unknown; note?: unknown }
     const ids = Array.isArray(body.ids) ? body.ids.filter((v): v is string => typeof v === "string") : []
+    const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null
     if (ids.length === 0) return NextResponse.json({ message: "No classes chosen" }, { status: 400 })
 
     const sessions = await prisma.liveSession.findMany({
       where: { id: { in: ids }, status: "SCHEDULED", ...hostScope(session) },
       orderBy: { scheduledAt: "asc" },
-      select: { id: true, title: true, scheduledAt: true, tutorId: true, courseId: true, visibility: true },
+      select: { id: true, title: true, scheduledAt: true, tutorId: true, courseId: true, groupId: true, week: true, visibility: true },
     })
     if (sessions.length === 0) return NextResponse.json({ cancelled: 0 })
 
     await prisma.liveSession.updateMany({
       where: { id: { in: sessions.map((s) => s.id) }, status: "SCHEDULED" },
-      data: { status: "CANCELLED" },
+      data: { status: "CANCELLED", cancelNote: note, cancelledAt: new Date() },
     })
+
+    // The lessons move on: the next class takes a cancelled class's week.
+    const renumbered = await shiftWeeksAfterCancel(sessions)
 
     for (const s of sessions) void notifySessionStatusChange(s.id, "CANCELLED", s.title, s.tutorId)
 
@@ -62,14 +67,15 @@ async function handlePOST(req: NextRequest) {
         audienceIds,
         "SESSION_CANCELLED",
         sessions.length === 1 ? "Live session cancelled" : `${sessions.length} live sessions cancelled`,
-        sessions.length === 1
+        (sessions.length === 1
           ? `"${sessions[0].title}" on ${classDate(sessions[0].scheduledAt)} has been cancelled`
-          : `${sessions.length} classes of "${titles.join('", "')}" have been cancelled: ${sessions.map((s) => classDate(s.scheduledAt)).join("; ")}`,
+          : `${sessions.length} classes of "${titles.join('", "')}" have been cancelled: ${sessions.map((s) => classDate(s.scheduledAt)).join("; ")}`)
+          + (note ? `. Note: ${note}` : ""),
         `/student/classroom`,
       )
     }
 
-    return NextResponse.json({ cancelled: sessions.length })
+    return NextResponse.json({ cancelled: sessions.length, renumbered })
   } catch (err) {
     console.error("[POST /api/tutor/sessions/cancel]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

@@ -720,6 +720,10 @@ model LiveSession {
   // so the teacher knows which slides to use. Numbered on when a weekly
   // series is scheduled; changed per class from the course page.
   week            Int?
+  // Why the class was cancelled, shown with it on the course page and sent to
+  // the students, so a missing date is never a mystery. Cleared on restore.
+  cancelNote      String?
+  cancelledAt     DateTime?
   createdAt       DateTime              @default(now())
 
   tutor        User                     @relation("TutorLiveSessions", fields: [tutorId], references: [id])

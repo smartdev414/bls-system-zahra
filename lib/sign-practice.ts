@@ -99,8 +99,7 @@ async function weekSignIds(studentId: string, allSigns: { id: string; word: stri
 /**
  * A round of the timed vocabulary game: this week's signs, or — when nothing
  * new was taught this week — the student's starred signs. Each sign comes with
- * words to pick from, the wrong ones drawn from the rest of the round and then
- * from the dictionary, so even a short round has the full six.
+ * words to pick from (see `withChoices`).
  */
 export async function weekPracticeRound(studentId: string): Promise<{ source: "week" | "saved"; signs: PracticeSign[] }> {
   const allSigns = await prisma.sign.findMany({ select: { id: true, word: true } })
@@ -117,9 +116,30 @@ export async function weekPracticeRound(studentId: string): Promise<{ source: "w
     signs = await savedPracticeSigns(studentId)
   }
 
+  return { source, signs: withChoices(signs, allSigns) }
+}
+
+/**
+ * A round of the timed vocabulary game on the student's starred signs only
+ * ("Test my signs") — for going over the signs they picked out themselves.
+ */
+export async function savedTestRound(studentId: string): Promise<{ source: "saved"; signs: PracticeSign[] }> {
+  const [signs, allSigns] = await Promise.all([
+    savedPracticeSigns(studentId),
+    prisma.sign.findMany({ select: { id: true, word: true } }),
+  ])
+  return { source: "saved", signs: withChoices(signs, allSigns) }
+}
+
+/**
+ * Words to pick from for each sign: the right one and wrong ones drawn from the
+ * rest of the round and then from the dictionary, so even a short round has the
+ * full six.
+ */
+function withChoices(signs: PracticeSign[], allSigns: { word: string }[]): PracticeSign[] {
   const roundWords = signs.map((s) => s.answer)
   const dictionaryWords = shuffled(allSigns.map((s) => s.word))
-  const withChoices = signs.map((sign) => {
+  return signs.map((sign) => {
     const others: string[] = []
     for (const word of [...shuffled(roundWords), ...dictionaryWords]) {
       if (others.length >= VOCABULARY_CHOICES - 1) break
@@ -127,6 +147,4 @@ export async function weekPracticeRound(studentId: string): Promise<{ source: "w
     }
     return { ...sign, choices: shuffled([sign.answer, ...others]) }
   })
-
-  return { source, signs: withChoices }
 }

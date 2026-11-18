@@ -203,7 +203,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
                   <FolderOpen className="size-3" />
                   Choose from library
                 </Button>
-              {type === "VIDEO" && !uploadedFile && (
+              {!uploadedFile && (
                 <>
                   <Button
                     type="button"
@@ -280,9 +280,9 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
             />
             {uploadedFile && isVideoLink(uploadedFile.fileUrl) ? (
               <VideoLinkCard url={uploadedFile.fileUrl} onRemove={() => setUploadedFile(null)} />
-            ) : type === "VIDEO" && videoMode === "link" ? (
+            ) : videoMode === "link" ? (
               <VideoLinkInput onAdded={setUploadedFile} />
-            ) : type === "VIDEO" && videoMode === "record" ? (
+            ) : videoMode === "record" ? (
               <CameraRecorder
                 uploaded={uploadedFile}
                 onUploaded={setUploadedFile}

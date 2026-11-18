@@ -31,7 +31,7 @@ async function findManagedCourse(session: { role: string; sub: string }, id: str
 }
 
 // GET /api/tutor/courses/[id]/groups
-async function handleGET(_req: NextRequest, { params }: RouteContext) {
+async function handleGET(req: NextRequest, { params }: RouteContext) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
@@ -44,6 +44,9 @@ async function handleGET(_req: NextRequest, { params }: RouteContext) {
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })
 
     const staff = isStaff(session.role)
+    // Older clients (the mobile app) don't know a cancelled class, so they only
+    // get them when they ask.
+    const withCancelled = req.nextUrl.searchParams.get("cancelled") === "1"
 
     const [links, sessions] = await Promise.all([
       prisma.courseGroup.findMany({
@@ -60,9 +63,19 @@ async function handleGET(_req: NextRequest, { params }: RouteContext) {
           },
         },
       }),
-      // Every class still to come on this course, whoever is taking it.
+      // Every class still to come on this course, whoever is taking it — and
+      // the ones cancelled from four weeks back on, so a missing date shows as
+      // cancelled (with why) instead of just not being there.
       prisma.liveSession.findMany({
-        where: { courseId: id, status: { in: ["SCHEDULED", "LIVE"] } },
+        where: {
+          courseId: id,
+          OR: [
+            { status: { in: ["SCHEDULED", "LIVE"] } },
+            ...(withCancelled
+              ? [{ status: "CANCELLED" as const, scheduledAt: { gte: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000) } }]
+              : []),
+          ],
+        },
         orderBy: { scheduledAt: "asc" },
         select: {
           id: true,
@@ -71,6 +84,7 @@ async function handleGET(_req: NextRequest, { params }: RouteContext) {
           durationMins: true,
           week: true,
           status: true,
+          cancelNote: true,
           visibility: true,
           groupId: true,
           tutorId: true,
@@ -88,6 +102,7 @@ async function handleGET(_req: NextRequest, { params }: RouteContext) {
       durationMins: s.durationMins,
       week: s.week,
       status: s.status,
+      cancelNote: s.cancelNote,
       visibility: s.visibility,
       tutorId: s.tutorId,
       tutorName: s.tutor.name,
