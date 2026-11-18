@@ -102,14 +102,17 @@ export default function ResetPasswordPage() {
       <main className="flex-1 flex flex-col items-center justify-center gap-5 px-4 py-12">
         <LogoFull />
 
-        {loading && (
+        {/* Until the token check has answered, keep showing the spinner. The
+            server-rendered HTML is produced before that check runs, so testing
+            `loading` alone shipped the "invalid" card to every visitor. */}
+        {(loading || (!data && !error)) && (
           <div className="flex flex-col items-center gap-3 text-muted-foreground">
             <Loader2 className="size-8 animate-spin text-primary" />
             <p className="text-sm">Validating your reset link…</p>
           </div>
         )}
 
-        {!loading && (error || !data) && (
+        {!loading && error && (
           <Card className="w-full max-w-md shadow-lg text-center">
             <CardContent className="pt-10 pb-8 flex flex-col items-center gap-4">
               <div className="size-16 rounded-full bg-destructive/10 flex items-center justify-center">

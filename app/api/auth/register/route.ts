@@ -43,7 +43,10 @@ async function handlePOST(req: NextRequest) {
       invite = { id: fullInvite.id, tutorId: fullInvite.tutorId }
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } })
+    // Case-insensitive, so John@x.com can't open a second account beside john@x.com.
+    const existing = await prisma.user.findFirst({
+      where: { email: { equals: email.trim(), mode: "insensitive" } },
+    })
     if (existing) {
       return NextResponse.json(
         { message: "An account with this email already exists" },

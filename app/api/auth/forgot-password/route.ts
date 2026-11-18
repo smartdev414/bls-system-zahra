@@ -19,8 +19,10 @@ async function handlePOST(req: NextRequest) {
       )
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    // Phones often capitalise the first letter of the address; match it the way
+    // the person meant it rather than byte for byte.
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email.trim(), mode: "insensitive" } },
       select: { id: true, name: true, email: true },
     })
 

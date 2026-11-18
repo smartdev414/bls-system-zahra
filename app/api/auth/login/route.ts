@@ -16,7 +16,10 @@ async function handlePOST(req: NextRequest) {
       )
     }
 
-    const user = await prisma.user.findUnique({ where: { email } })
+    // Match the address however it was capitalised (phones add a capital).
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: String(email).trim(), mode: "insensitive" } },
+    })
 
     if (!user) {
       await recordLogin(req, { method: "PASSWORD", email, success: false, failureReason: "unknown-email" })
