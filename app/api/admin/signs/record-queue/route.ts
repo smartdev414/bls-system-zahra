@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { requestedToFilm } from "@/lib/sign-requests"
+import { levelFromQuery } from "@/lib/levels"
 
 const PAGE_SIZE = 50
 
@@ -17,7 +18,7 @@ async function handleGET(req: NextRequest) {
     if (session.role !== "ADMIN") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const category = req.nextUrl.searchParams.get("category")?.trim() ?? ""
-    const level = req.nextUrl.searchParams.get("level")?.toUpperCase().trim() ?? ""
+    const level = levelFromQuery(req.nextUrl.searchParams.get("level"))
     const after = req.nextUrl.searchParams.get("after") ?? ""
 
     const where = {

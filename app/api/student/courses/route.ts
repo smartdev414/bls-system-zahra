@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { studentVisibleCourses } from "@/lib/course-visibility"
+import { levelFromQuery } from "@/lib/levels"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -11,7 +12,7 @@ async function handleGET(req: NextRequest) {
     if (session.role !== "STUDENT") return NextResponse.json({ message: "Forbidden" }, { status: 403 })
 
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
-    const level = req.nextUrl.searchParams.get("level")?.toUpperCase().trim() ?? ""
+    const level = levelFromQuery(req.nextUrl.searchParams.get("level"))
     const tutorId = req.nextUrl.searchParams.get("tutorId")?.trim() ?? ""
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
     const limit = 12

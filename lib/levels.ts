@@ -41,3 +41,10 @@ export function parseLevel(value: unknown): CourseLevel | null | undefined {
   if (value === null || value === "" || value === undefined) return null
   return COURSE_LEVELS.includes(value as CourseLevel) ? (value as CourseLevel) : undefined
 }
+
+/** A `?level=` filter, matched ignoring case (l1, L1, introduction). Anything else: no filter. */
+export function levelFromQuery(value: string | null | undefined): CourseLevel | undefined {
+  const v = value?.trim().toLowerCase()
+  if (!v) return undefined
+  return COURSE_LEVELS.find((l) => l.toLowerCase() === v)
+}

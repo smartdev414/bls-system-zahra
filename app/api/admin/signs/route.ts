@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { fulfilSignRequests } from "@/lib/sign-requests"
+import { levelFromQuery } from "@/lib/levels"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -12,7 +13,7 @@ async function handleGET(req: NextRequest) {
 
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
     const category = req.nextUrl.searchParams.get("category")?.trim() ?? ""
-    const level = req.nextUrl.searchParams.get("level")?.toUpperCase().trim() ?? ""
+    const level = levelFromQuery(req.nextUrl.searchParams.get("level"))
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1"))
     const limit = 20
     const skip = (page - 1) * limit
