@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
 import { openCourses } from "@/lib/course-closing"
+import { toItem } from "@/app/api/admin/student-resources/shared"
 
 async function handleGET(req: NextRequest) {
   try {
@@ -25,6 +26,7 @@ async function handleGET(req: NextRequest) {
           select: {
             id: true,
             title: true,
+            level: true,
             sections: {
               orderBy: { order: "asc" },
               include: {
@@ -76,7 +78,15 @@ async function handleGET(req: NextRequest) {
       )
     )
 
-    return NextResponse.json({ resources, total: resources.length })
+    // The school's extra material (exam samples, videos, slides), filed in
+    // folders. Level-specific items only reach students on a course of that level.
+    const levels = [...new Set(enrollments.map((e) => e.course.level))]
+    const library = await prisma.studentResource.findMany({
+      where: { OR: [{ level: null }, { level: { in: levels } }] },
+      orderBy: { createdAt: "desc" },
+    })
+
+    return NextResponse.json({ resources, total: resources.length, library: library.map(toItem) })
   } catch (err) {
     console.error("[GET /api/student/resources]", err)
     return NextResponse.json({ message: "Internal server error" }, { status: 500 })

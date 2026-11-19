@@ -286,6 +286,7 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   liveSessionChatMessages LiveSessionChatMessage[] @relation("LiveSessionChatMessages")
   libraryFiles            LibraryFile[]            @relation("TutorLibraryFiles")
+  studentResources        StudentResource[]        @relation("StudentResourcesAdded")
   preparedCaptions        PreparedCaption[]        @relation("TutorPreparedCaptions")
   videoCleanJobs          VideoCleanJob[]
   savedSigns              SavedSign[]
@@ -1032,6 +1033,40 @@ model LibraryFile {
 
   @@unique([tutorId, fileUrl])
   @@index([tutorId, createdAt])
+}
+
+// Extra practice material for students, outside their lessons: exam samples,
+// YouTube videos, slides to read. Admins add it on /admin/student-resources;
+// students find it in folders on /student/resources.
+enum StudentResourceFolder {
+  EXAM_SAMPLES
+  VIDEO_LESSONS
+  SLIDES
+  PRACTICE
+  LINKS
+}
+
+model StudentResource {
+  id          String                @id @default(cuid())
+  folder      StudentResourceFolder
+  title       String
+  description String?
+  // An uploaded file's storage URL, or a web link (YouTube/Vimeo in the
+  // canonical form lib/video-link.ts stores, or any other https page).
+  url         String
+  isLink      Boolean               @default(false)
+  fileName    String?
+  fileSize    Int?
+  mimeType    String?
+  // Shown only to students on a course of this level. Null = every student.
+  level       CourseLevel?
+  addedById   String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  addedBy User? @relation("StudentResourcesAdded", fields: [addedById], references: [id], onDelete: SetNull)
+
+  @@index([folder, createdAt])
 }
 
 // Captions a tutor writes ahead of time in their library and sends into the

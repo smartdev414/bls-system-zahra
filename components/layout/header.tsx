@@ -89,6 +89,7 @@ const adminNav: NavEntry[] = [
     label: "Content", icon: BookOpen, items: [
       { label: "Courses", href: "/admin/courses", icon: BookOpen },
       { label: "Library", href: "/admin/library", icon: FolderOpen },
+      { label: "Student resources", href: "/admin/student-resources", icon: FolderOpen },
       { label: "Tests", href: "/admin/tests", icon: FlaskConical },
       { label: "Leagues", href: "/admin/leagues", icon: Trophy },
     ],
