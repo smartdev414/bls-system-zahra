@@ -65,8 +65,10 @@ async function handlePOST(
     const isOwnerTutor = session.role === "TUTOR" && (
       session.sub === liveSession.tutorId || (await isSessionHost(session, id))
     )
+    // Support staff can be invited too (an interpreter for the class); they
+    // join as a co-teacher, never as the owner.
     const isCoTutor =
-      session.role === "TUTOR" &&
+      (session.role === "TUTOR" || session.role === "SUPPORT") &&
       !isOwnerTutor &&
       !!(await prisma.liveSessionCoTutor.findUnique({
         where: { sessionId_tutorId: { sessionId: id, tutorId: session.sub } },

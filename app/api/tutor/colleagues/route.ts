@@ -27,9 +27,15 @@ async function handleGET(req: NextRequest) {
       : {}
 
     const tutors = await prisma.user.findMany({
-      where: { role: "TUTOR", id: { not: session.sub }, ...nameEmailFilter },
-      select: { id: true, name: true, email: true, avatarUrl: true },
-      orderBy: { name: "asc" },
+      // Support staff are listed too: they join a class as its interpreter.
+      where: {
+        role: { in: ["TUTOR", "SUPPORT"] },
+        status: "ACTIVE",
+        id: { not: session.sub },
+        ...nameEmailFilter,
+      },
+      select: { id: true, name: true, email: true, avatarUrl: true, role: true },
+      orderBy: [{ role: "desc" }, { name: "asc" }],
     })
 
     return NextResponse.json({ tutors, total: tutors.length })

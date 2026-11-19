@@ -190,8 +190,9 @@ export async function assertCanAccessSession(
   if (auth.role === "ADMIN") return { liveSession, isTutor: true }
 
   const isOwner = auth.role === "TUTOR" && auth.sub === liveSession.tutorId
+  // Co-teachers are tutors, or support staff invited as the class's interpreter.
   const isCoTutor =
-    auth.role === "TUTOR" &&
+    (auth.role === "TUTOR" || auth.role === "SUPPORT") &&
     liveSession.coTutors.some((c) => c.tutorId === auth.sub)
 
   if (isOwner || isCoTutor) return { liveSession, isTutor: true }

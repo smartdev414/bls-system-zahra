@@ -43,11 +43,12 @@ async function handlePOST(
       return NextResponse.json({ message: "Session is no longer active" }, { status: 400 })
     }
 
-    // Only invite real tutors, never the owner, and de-dupe.
+    // Only invite real tutors — or support staff, who come in as the class's
+    // interpreter — never the owner, and de-dupe.
     const candidateIds = [...new Set(requested)].filter((tid) => tid !== liveSession.tutorId)
     const tutors = await prisma.user.findMany({
-      where: { id: { in: candidateIds }, role: "TUTOR" },
-      select: { id: true },
+      where: { id: { in: candidateIds }, role: { in: ["TUTOR", "SUPPORT"] }, status: "ACTIVE" },
+      select: { id: true, role: true },
     })
     const tutorIds = tutors.map((t) => t.id)
     if (tutorIds.length === 0) {
@@ -63,13 +64,24 @@ async function handlePOST(
     // it does not land there is nothing else telling the other teacher they are
     // expected, so the host has to be told rather than shown a success message
     // for something that did not happen.
-    const notified = await createNotifications(
-      tutorIds,
-      "SESSION_COTUTOR_INVITE",
-      "You've been added as a co-teacher",
-      `${session.name} invited you to co-teach "${liveSession.title}". Open the classroom to join.`,
-      `/tutor/classroom/${id}`,
+    // Each role opens the classroom from its own dashboard.
+    const byHome = new Map<string, string[]>()
+    for (const t of tutors) {
+      const home = t.role === "SUPPORT" ? "/support" : "/tutor"
+      byHome.set(home, [...(byHome.get(home) ?? []), t.id])
+    }
+    const sent = await Promise.all(
+      [...byHome].map(([home, ids]) =>
+        createNotifications(
+          ids,
+          "SESSION_COTUTOR_INVITE",
+          "You've been added as a co-teacher",
+          `${session.name} invited you to co-teach "${liveSession.title}". Open the classroom to join.`,
+          `${home}/classroom/${id}`,
+        ),
+      ),
     )
+    const notified = sent.every(Boolean)
 
     // Instant pull-in: ping each invitee's personal channel so an online tutor
     // gets a toast with a "Join now" link straight away, rather than waiting to

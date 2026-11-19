@@ -125,6 +125,8 @@ type SessionItem = {
   // True when the current tutor was invited to co-teach this session (not the
   // owner). Co-tutors can open/join but not edit, cancel, start, or duplicate.
   isCoTutor?: boolean
+  /** Staff only: this support member was invited to the class (as its interpreter). */
+  invitedToJoin?: boolean
   // Owning tutor — only sent to staff, who schedule on a tutor's behalf.
   tutorId?: string
   tutorName?: string | null
@@ -1128,6 +1130,15 @@ function SessionCard({
             <Button asChild size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
               <Link href={`${scope.basePath}/classroom/${session.id}`}>
                 <MonitorPlay className="size-3.5" /> {session.isCoTutor ? "Join Classroom" : "Open Classroom"}
+              </Link>
+            </Button>
+          )}
+          {/* Support staff don't run classes, but one invited to a class (as its
+              interpreter) joins it once the tutor has started it. */}
+          {!scope.canTeach && session.invitedToJoin && !session.inPerson && session.status === "LIVE" && (
+            <Button asChild size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
+              <Link href={`${scope.basePath}/classroom/${session.id}`}>
+                <MonitorPlay className="size-3.5" /> Join Classroom
               </Link>
             </Button>
           )}

@@ -1,7 +1,7 @@
 "use client"
 
 import { use, useState, useEffect, useCallback, useRef, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   Loader2, AlertCircle, Camera, Mic, MicOff, Video, VideoOff, Sparkles,
   Radio, ChevronLeft, Clock,
@@ -154,10 +154,12 @@ function TutorEntryScreen({
   session,
   onStart,
   starting,
+  backHref,
 }: {
   session: NonNullable<SessionInfo["session"]>
   onStart: () => void
   starting: boolean
+  backHref: string
 }) {
   const [videoEnabled, setVideoEnabled] = useState(true)
   const [audioEnabled, setAudioEnabled] = useState(false)
@@ -295,7 +297,7 @@ function TutorEntryScreen({
               )}
             </Button>
             <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-              <Link href="/tutor/sessions">
+              <Link href={backHref}>
                 <ChevronLeft className="size-4 mr-1" /> Back to Sessions
               </Link>
             </Button>
@@ -332,6 +334,11 @@ export default function TutorClassroomPage({
 }) {
   const { id } = use(params)
   const router = useRouter()
+  // Support staff invited as a class's interpreter open this same page under
+  // /support (see app/(dashboard)/support/classroom), and go back to their timetable.
+  const isSupport = usePathname()?.startsWith("/support") ?? false
+  const sessionsHref = isSupport ? "/support/timetable" : "/tutor/sessions"
+  const sessionHref = isSupport ? "/support/timetable" : `/tutor/sessions/${id}`
   const [tokenData, setTokenData] = useState<TokenData | null>(null)
   // Read once per connection, not on every render: the in-room buttons write
   // the same keys, and changing `video` / `audio` props would fight them.
@@ -409,12 +416,12 @@ export default function TutorClassroomPage({
       if (detail.status === "COMPLETED" || detail.status === "CANCELLED") {
         setEnded(true)
         toast.info("This session has ended")
-        router.replace("/tutor/sessions")
+        router.replace(sessionsHref)
       }
     }
     window.addEventListener(SESSION_STATUS_EVENT, onStatus)
     return () => window.removeEventListener(SESSION_STATUS_EVENT, onStatus)
-  }, [id, router])
+  }, [id, router, sessionsHref])
 
   // Tutor explicitly clicks "Start Session" from the lobby. Patches status if
   // still SCHEDULED then fetches a connect token. The actual room mount is
@@ -450,7 +457,7 @@ export default function TutorClassroomPage({
       return
     }
     setEnded(true)
-    router.replace(`/tutor/sessions/${id}`)
+    router.replace(sessionHref)
   }
 
   // The error screen below promises "we'll keep trying" for a link failure, so
@@ -482,7 +489,7 @@ export default function TutorClassroomPage({
     leavingDeliberatelyRef.current = true
     setLeaveDialogOpen(false)
     setEnded(true)
-    router.replace(`/tutor/sessions/${id}`)
+    router.replace(sessionHref)
   }
 
   const handleFinishSession = async () => {
@@ -497,7 +504,7 @@ export default function TutorClassroomPage({
       setLeaveDialogOpen(false)
       setEnded(true)
       setLeavingBusy(false)
-      router.replace(`/tutor/sessions/${id}`)
+      router.replace(sessionHref)
     }
   }
 
@@ -527,7 +534,7 @@ export default function TutorClassroomPage({
           <Button onClick={() => { probeNetworkNow(); setWaitingForNetwork(false); getToken({}) }}>
             Try now
           </Button>
-          <Button variant="outline" onClick={() => { leavingDeliberatelyRef.current = true; setEnded(true); router.replace(`/tutor/sessions/${id}`) }}>
+          <Button variant="outline" onClick={() => { leavingDeliberatelyRef.current = true; setEnded(true); router.replace(sessionHref) }}>
             Leave the class
           </Button>
         </div>
@@ -574,7 +581,7 @@ export default function TutorClassroomPage({
           scheduledAt={data.session.scheduledAt}
           durationMins={data.session.durationMins ?? 60}
           venue={data.session.venue}
-          backHref="/tutor/sessions"
+          backHref={sessionsHref}
         />
       )
     }
@@ -591,6 +598,7 @@ export default function TutorClassroomPage({
         session={data.session}
         onStart={handleStart}
         starting={tokenLoading}
+        backHref={sessionsHref}
       />
     )
   }

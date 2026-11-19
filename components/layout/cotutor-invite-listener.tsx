@@ -16,7 +16,14 @@ type CoTutorInvite = {
 // surfaces a toast with a one-click "Join now" action — so an online tutor is
 // pulled into a live room immediately instead of waiting to notice the
 // in-app notification. The notification + email remain the fallback.
-export function CoTutorInviteListener({ userId }: { userId: string }) {
+export function CoTutorInviteListener({
+  userId,
+  basePath = "/tutor",
+}: {
+  userId: string
+  /** Dashboard the classroom opens under: /tutor, or /support for an interpreter. */
+  basePath?: "/tutor" | "/support"
+}) {
   const router = useRouter()
 
   useEffect(() => {
@@ -37,7 +44,7 @@ export function CoTutorInviteListener({ userId }: { userId: string }) {
           duration: data.live ? 30_000 : 12_000,
           action: {
             label: data.live ? "Join now" : "Open",
-            onClick: () => router.push(`/tutor/classroom/${data.sessionId}`),
+            onClick: () => router.push(`${basePath}/classroom/${data.sessionId}`),
           },
         },
       )
@@ -48,7 +55,7 @@ export function CoTutorInviteListener({ userId }: { userId: string }) {
       ch.unbind("cotutor-invite", handler)
       pusher.unsubscribe(`private-user-${userId}`)
     }
-  }, [userId, router])
+  }, [userId, router, basePath])
 
   return null
 }

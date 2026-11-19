@@ -19,6 +19,8 @@ type Tutor = {
   name: string
   email: string
   avatarUrl: string | null
+  /** SUPPORT: support staff, invited as the class's interpreter. */
+  role?: "TUTOR" | "SUPPORT"
 }
 
 type CoTutor = { tutorId: string; tutorName: string; tutorEmail: string; invitedAt: string }
@@ -120,7 +122,7 @@ export function InviteCoTutorModal({
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search tutors..."
+              placeholder="Search tutors and support team..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 text-sm"
@@ -135,7 +137,7 @@ export function InviteCoTutorModal({
             </div>
           ) : filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              No other tutors found.
+              No other tutors or support staff found.
             </p>
           ) : (
             filtered.map((tutor) => {
@@ -160,6 +162,11 @@ export function InviteCoTutorModal({
                     <p className="text-sm font-medium truncate">{tutor.name}</p>
                     <p className="text-xs text-muted-foreground truncate">{tutor.email}</p>
                   </div>
+                  {tutor.role === "SUPPORT" && (
+                    <Badge variant="outline" className="text-[0.625rem] h-4 px-1.5 shrink-0 bg-amber-50 text-amber-700 border-amber-200">
+                      Support · Interpreter
+                    </Badge>
+                  )}
                   {added && <Badge variant="secondary" className="text-[0.625rem] h-4 px-1.5 shrink-0">Added</Badge>}
                 </button>
               )

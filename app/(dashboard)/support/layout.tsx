@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import prisma from "@/lib/prisma"
 import { isStaff } from "@/lib/permissions"
+import { CoTutorInviteListener } from "@/components/layout/cotutor-invite-listener"
+import { SessionStatusListener } from "@/components/layout/session-status-listener"
 
 export default async function SupportLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -24,6 +26,9 @@ export default async function SupportLayout({ children }: { children: React.Reac
 
   return (
     <>
+      {/* Support staff can be invited into a class as its interpreter. */}
+      <CoTutorInviteListener userId={user.id} basePath="/support" />
+      <SessionStatusListener userId={user.id} />
       <Header role="SUPPORT" user={user} />
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">{children}</main>
       <Footer />

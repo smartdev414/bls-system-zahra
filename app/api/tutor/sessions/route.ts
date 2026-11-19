@@ -144,8 +144,12 @@ async function handleGET(req: NextRequest) {
 
     // De-dupe defensively (the co-tutor route never lets the owner self-invite).
     const ownedIds = new Set(owned.map((s) => s.id))
+    // Staff see every class as "owned". One a support member was invited to (as
+    // its interpreter) is flagged, so their timetable offers Join without losing
+    // the controls they use to run the timetable.
+    const coIds = new Set(coTutorLinks.map((c) => c.sessionId))
     const merged = [
-      ...owned.map((s) => shape(s, false)),
+      ...owned.map((s) => ({ ...shape(s, false), invitedToJoin: staff && coIds.has(s.id) })),
       ...coTutorLinks
         .filter((c) => !ownedIds.has(c.sessionId))
         .map((c) => shape(c.session, true)),
