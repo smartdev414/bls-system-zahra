@@ -12,8 +12,8 @@ import { GetReady, SignRound } from "@/components/quiz/SignTestTaker"
 import { DifficultyBadge, LeagueTable, leagueWhen, seconds, type TableRow } from "@/components/leagues/league-bits"
 import { useFetch } from "@/hooks/use-fetch"
 import { LeaguePrivacySwitch } from "@/components/leagues/league-privacy-switch"
-import { DIFFICULTY_INFO, ordinal, type LeagueDifficulty } from "@/lib/leagues"
-import { newOrder, type SignQuestion } from "@/lib/quiz"
+import { DIFFICULTY_INFO, LEAGUE_WORDS_PER_GO, ordinal, type LeagueDifficulty } from "@/lib/leagues"
+import type { SignQuestion } from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 
 type LeagueData = {
@@ -29,6 +29,7 @@ type LeagueData = {
     answerSeconds: number
     signPlays: number | null
   }
+  /** Kept for app builds from before POST .../start; the website does not use it. */
   questions: SignQuestion[]
   standings: Array<TableRow & { isYou: boolean }>
   me: { rank: number | null; score: number | null; durationMs: number | null; goes: number; hidden: boolean }
@@ -57,9 +58,11 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
   const [result, setResult] = useState<Result | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [starting, setStarting] = useState(false)
   const answersRef = useRef<Record<string, string>>({})
-  const startedAtRef = useRef(0)
-  const tookMsRef = useRef(0)
+  // The ticket for this go (POST .../start): the server marks its words and
+  // times the go, so the time can't be made up on the device.
+  const goRef = useRef("")
 
   if (!data) {
     return loading ? (
@@ -93,13 +96,26 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
     }
   }
 
-  function start() {
-    answersRef.current = {}
-    setRound(newOrder(questions, round))
-    setIndex(0)
-    setResult(null)
-    setError(null)
-    setView("ready")
+  async function start() {
+    setStarting(true)
+    try {
+      const res = await fetch(`/api/student/leagues/${id}/start`, { method: "POST" })
+      const body = await res.json().catch(() => ({})) as { go?: string; questions?: SignQuestion[]; message?: string }
+      if (!res.ok || !body.go || !body.questions?.length) throw new Error(body.message ?? "Could not start the go")
+      goRef.current = body.go
+      answersRef.current = {}
+      setRound(body.questions)
+      setIndex(0)
+      setResult(null)
+      setError(null)
+      setView("ready")
+    } catch (e) {
+      toast.error(e instanceof Error && e.message !== "Failed to fetch"
+        ? e.message
+        : "Could not start the go. Check your connection and try again.")
+    } finally {
+      setStarting(false)
+    }
   }
 
   async function send() {
@@ -110,8 +126,8 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          go: goRef.current,
           answers: round.map((q) => ({ questionId: q.id, text: answersRef.current[q.id] ?? "" })),
-          durationMs: tookMsRef.current,
         }),
       })
       const body = await res.json() as Result & { message?: string }
@@ -132,13 +148,12 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
       setIndex(index + 1)
       return
     }
-    tookMsRef.current = Date.now() - startedAtRef.current
     void send()
   }
 
   // ── Playing — the same clock as a fingerspelling test ─────────────────────
   if (view === "ready") {
-    return <GetReady onDone={() => { startedAtRef.current = Date.now(); setView("playing") }} />
+    return <GetReady onDone={() => setView("playing")} />
   }
   if (view === "playing" && round[index]) {
     return (
@@ -148,6 +163,7 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
         kind="FINGERSPELLING"
         answerSeconds={league.answerSeconds}
         plays={league.signPlays}
+        typeAfterSign
         number={index + 1}
         total={round.length}
         onAnswer={answer}
@@ -201,7 +217,9 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
           </p>
         )}
         <div className="flex flex-wrap justify-center gap-3">
-          <Button onClick={start}><RotateCcw className="size-4 mr-1.5" /> Play again</Button>
+          <Button onClick={start} disabled={starting}>
+            {starting ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <RotateCcw className="size-4 mr-1.5" />} Play again
+          </Button>
           {/* The table may still be catching up with this go. */}
           <Button variant="outline" onClick={() => { void refetch(); setView("home") }}>See the table</Button>
         </div>
@@ -266,15 +284,17 @@ export default function StudentLeaguePage({ params }: { params: Promise<{ id: st
                   </div>
                 )}
                 <p className="text-sm text-muted-foreground max-w-sm">
-                  Watch each word being fingerspelled and type it. {rules.rules} Play as often as you like — only your best go counts. A quicker time wins a tie.
+                  Watch each word being fingerspelled, then type it. {rules.rules}
+                  {league.wordCount > LEAGUE_WORDS_PER_GO && ` Each go plays ${LEAGUE_WORDS_PER_GO} of the ${league.wordCount} words, picked at random.`} Play as often as you like — only your best go counts. A quicker time wins a tie.
                 </p>
                 {!league.joined ? (
                   <Button size="lg" onClick={() => setMembership(true)} disabled={busy}>
                     {busy && <Loader2 className="size-4 mr-1.5 animate-spin" />} Join this league
                   </Button>
                 ) : canPlay ? (
-                  <Button size="lg" onClick={start}>
-                    {me.goes === 0 ? "Play" : <><RotateCcw className="size-4 mr-1.5" /> Play again</>}
+                  <Button size="lg" onClick={start} disabled={starting}>
+                    {starting && <Loader2 className="size-4 mr-1.5 animate-spin" />}
+                    {me.goes === 0 ? "Play" : <>{!starting && <RotateCcw className="size-4 mr-1.5" />} Play again</>}
                   </Button>
                 ) : (
                   <p className="text-sm text-muted-foreground">The words for this league are being changed. Check back soon.</p>

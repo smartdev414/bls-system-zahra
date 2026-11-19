@@ -57,7 +57,8 @@ async function handleGET(_req: Request, { params }: { params: Promise<{ id: stri
         answerSeconds: rules.answerSeconds,
         signPlays: rules.signPlays,
       },
-      // Only members play, and only while it runs.
+      // Only members play, and only while it runs. The website starts each go
+      // with POST .../start instead; this is kept for app builds from before.
       questions: joined && open ? signQuestionsForStudent({ testKind: "FINGERSPELLING" }, words, false, false) : [],
       standings: standings.map((s) => ({
         rank: s.rank,

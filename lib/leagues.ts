@@ -45,6 +45,21 @@ export const DIFFICULTY_INFO: Record<LeagueDifficulty, {
   },
 }
 
+/**
+ * Words played in one go, picked at random from the league's test, so the
+ * same few words can't simply be learned by heart from go to go.
+ */
+export const LEAGUE_WORDS_PER_GO = 10
+
+/** The 3, 2, 1 before the first word (GetReady), left out of the time. */
+export const LEAGUE_GET_READY_MS = 3 * 800
+
+/**
+ * No one can watch a word being fingerspelled and type it in under this. A go
+ * quicker than this per word still scores, but its time does not count.
+ */
+export const LEAGUE_MIN_MS_PER_WORD = 1000
+
 export function parseDifficulty(value: unknown): LeagueDifficulty | null {
   return LEAGUE_DIFFICULTIES.includes(value as LeagueDifficulty) ? (value as LeagueDifficulty) : null
 }

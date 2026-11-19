@@ -1,8 +1,54 @@
+import { SignJWT, jwtVerify } from "jose"
 import prisma from "@/lib/prisma"
 import { READY_QUESTION } from "@/lib/tests"
+import { LEAGUE_GET_READY_MS, LEAGUE_MIN_MS_PER_WORD } from "@/lib/leagues"
 
 // Fingerspelling leagues on the server — the rules shared with the screens are
 // in lib/leagues.ts.
+
+// ─── A go, timed by the server ────────────────────────────────────────────────
+// Starting a go hands the student a signed ticket: the words picked for it and
+// when it started. Their answers come back with it, so the server marks only
+// those words and times the go itself — a time sent by the device could be
+// anything. Its own key, so a ticket can never pass for a login token.
+const GO_KEY = new TextEncoder().encode(
+  `${process.env.JWT_SECRET ?? "bsl-dev-secret-change-in-production"}:league-go`
+)
+
+export async function signLeagueGo(go: { leagueId: string; userId: string; wordIds: string[] }): Promise<string> {
+  return new SignJWT({ lg: go.leagueId, w: go.wordIds, t: Date.now() })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(go.userId)
+    .setIssuedAt()
+    .setExpirationTime("3h")
+    .sign(GO_KEY)
+}
+
+/** The ticket's words and start, when it is this student's ticket for this league. */
+export async function readLeagueGo(
+  token: unknown, leagueId: string, userId: string,
+): Promise<{ wordIds: string[]; startedAt: number } | null> {
+  if (typeof token !== "string" || !token) return null
+  try {
+    const { payload } = await jwtVerify(token, GO_KEY)
+    if (payload.lg !== leagueId || payload.sub !== userId) return null
+    if (!Array.isArray(payload.w) || typeof payload.t !== "number") return null
+    return { wordIds: payload.w.filter((w): w is string => typeof w === "string"), startedAt: payload.t }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * How long the go took, from its start to now, less the 3, 2, 1. Null when it
+ * is quicker than anyone could watch and type the words: the score stands,
+ * but the time does not count.
+ */
+export function leagueGoTime(startedAt: number, words: number, now = Date.now()): number | null {
+  const ms = now - startedAt - LEAGUE_GET_READY_MS
+  if (ms < words * LEAGUE_MIN_MS_PER_WORD) return null
+  return Math.min(ms, 24 * 60 * 60 * 1000)
+}
 
 /**
  * The words of a league must be a fingerspelling test with words in it.

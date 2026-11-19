@@ -106,7 +106,7 @@ export function LeagueFormDialog({ league, open, onOpenChange, onSaved }: {
 
           <div className="flex flex-col gap-2">
             <Label>Words</Label>
-            <p className="text-xs text-muted-foreground -mt-1">A fingerspelling test from your Tests — its words are played in a new order each go.</p>
+            <p className="text-xs text-muted-foreground -mt-1">A fingerspelling test from your Tests — each go plays up to 10 of its words, picked at random.</p>
             <TestBankPicker kind="FINGERSPELLING" value={testId} onChange={(t) => setTestId(t.id)} />
           </div>
 

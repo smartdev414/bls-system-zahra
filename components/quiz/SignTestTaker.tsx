@@ -117,12 +117,17 @@ function HighScores({ scores, className }: { scores: HighScore[]; className?: st
 
 // ─── One sign, against the clock ──────────────────────────────────────────────
 
-export function SignRound({ sign, kind, answerSeconds, plays = null, number, total, onAnswer, aside }: {
+export function SignRound({ sign, kind, answerSeconds, plays = null, typeAfterSign = false, number, total, onAnswer, aside }: {
   sign: SignQuestion
   kind: SignTestData["settings"]["kind"]
   answerSeconds: number
   /** Plays of the video before it is hidden; null = it repeats until the time is up. */
   plays?: number | null
+  /**
+   * Fingerspelling: no typing until the sign has been watched to its end once
+   * (leagues), so a word known by heart can't be typed from its first letter.
+   */
+  typeAfterSign?: boolean
   number: number
   total: number
   /** Called once: with the word given, or whatever was typed when the time ran out. */
@@ -138,6 +143,8 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
   // whether they are used up (the video is then hidden).
   const [play, setPlay] = useState(1)
   const [playsUsed, setPlaysUsed] = useState(false)
+  // Whether typing is open yet (see typeAfterSign).
+  const [seen, setSeen] = useState(!typeAfterSign)
   // A phone can refuse to start the video by itself (battery or data saver,
   // a browser setting), leaving it stuck on its first frame. A tap starts it.
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -149,6 +156,12 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
   const onAnswerRef = useRef(onAnswer)
   useEffect(() => { onAnswerRef.current = onAnswer })
 
+  // The sign has been shown in full (or can't be): typing opens.
+  function signShown() {
+    setReady(true)
+    setSeen(true)
+  }
+
   function finish(text: string) {
     if (doneRef.current) return
     doneRef.current = true
@@ -156,7 +169,7 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
   }
 
   useEffect(() => {
-    const wait = setTimeout(() => setReady(true), VIDEO_WAIT_MS)
+    const wait = setTimeout(signShown, VIDEO_WAIT_MS)
     return () => clearTimeout(wait)
   }, [])
 
@@ -221,8 +234,8 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
     <img
       src={sign.imageUrl}
       alt="The sign"
-      onLoad={() => setReady(true)}
-      onError={() => setReady(true)}
+      onLoad={signShown}
+      onError={signShown}
       className="w-full aspect-video max-h-[60vh] rounded-xl border bg-black object-contain select-none pointer-events-none"
       draggable={false}
       onContextMenu={(e) => e.preventDefault()}
@@ -234,10 +247,11 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
         src={sign.imageUrl}
         autoPlay muted playsInline
         onPlaying={() => setBlocked(false)}
-        onError={() => setReady(true)}
+        onError={signShown}
         // Not looped with the attribute: a looping video never says it has ended.
         onEnded={(e) => {
           const v = e.currentTarget
+          setSeen(true)
           const replay = () => {
             v.currentTime = 0
             startVideo()
@@ -315,13 +329,15 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
             {video}
             <form
               className="flex gap-2"
-              onSubmit={(e) => { e.preventDefault(); finish(typed) }}
+              onSubmit={(e) => { e.preventDefault(); if (seen) finish(typed) }}
             >
               <Input
                 autoFocus
                 value={typed}
                 onChange={(e) => { setTyped(e.target.value); typedRef.current = e.target.value }}
-                placeholder="Type here"
+                // Read-only rather than disabled, so it keeps the focus.
+                readOnly={!seen}
+                placeholder={seen ? "Type here" : "Watch the sign…"}
                 aria-label="Type the word being fingerspelled"
                 autoComplete="off"
                 autoCapitalize="off"
@@ -330,7 +346,7 @@ export function SignRound({ sign, kind, answerSeconds, plays = null, number, tot
                 maxLength={100}
                 className="h-14 text-center text-xl font-semibold uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal"
               />
-              <Button type="submit" className="h-14 px-5">
+              <Button type="submit" className="h-14 px-5" disabled={!seen}>
                 Next <ChevronRight className="size-4 ml-1" />
               </Button>
             </form>

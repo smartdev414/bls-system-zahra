@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react"
 import {
   Users2, Shuffle, Plus, Trash2, X, Play, Square, Pencil, Check, LogIn, LogOut, Timer,
-  TimerReset,
+  TimerReset, Megaphone,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { BreakoutGroup } from "./types"
@@ -13,6 +13,7 @@ import { BreakoutCountdown } from "./BreakoutCountdown"
 // per-connection LiveKit identity — that's what makes an assignment stick when
 // a student drops off Wi-Fi and comes back.
 type StudentInfo = { identity: string; name: string }
+type SpeakerOption = { id: string; name: string; isTeacher: boolean; isSelf: boolean }
 
 // Unattached = students not yet placed in a group (shown in a "Lobby" strip).
 function buildInitialGroups(students: StudentInfo[], groupCount: number): BreakoutGroup[] {
@@ -42,6 +43,9 @@ export function BreakoutsPanel({
   onEndNow,
   onExtend,
   closingAt,
+  speakerOptions,
+  broadcastIds,
+  onToggleBroadcast,
   onClose,
 }: {
   students: StudentInfo[]
@@ -59,6 +63,11 @@ export function BreakoutsPanel({
   /** Push the deadline out by N minutes without recreating the rooms. */
   onExtend: (minutes: number) => void
   closingAt: number | null
+  /** People who could be heard by every group (base ids), teachers first. */
+  speakerOptions: SpeakerOption[]
+  /** Who every group can hear right now. */
+  broadcastIds: string[]
+  onToggleBroadcast: (id: string) => void
   onClose: () => void
 }) {
   const nameByIdentity = useMemo(
@@ -211,6 +220,43 @@ export function BreakoutsPanel({
             <X className="size-4" />
           </button>
         </div>
+
+        {/* Speak to all groups — e.g. the interpreter, while the pairs practise */}
+        {active && speakerOptions.length > 0 && (
+          <div className="flex items-start gap-2 px-5 py-2.5 border-b border-zinc-800 shrink-0">
+            <div className="flex items-center gap-1.5 h-7 shrink-0 text-xs text-zinc-300">
+              <Megaphone className="size-3.5 text-amber-400" />
+              <span className="font-semibold">Speak to all groups</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 min-w-0">
+              {speakerOptions.map((p) => {
+                const on = broadcastIds.includes(p.id)
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => onToggleBroadcast(p.id)}
+                    aria-pressed={on}
+                    className={cn(
+                      "flex items-center gap-1 px-2.5 h-7 rounded-full text-[0.6875rem] font-semibold border transition-colors",
+                      on
+                        ? "bg-amber-500 border-amber-400 text-black hover:bg-amber-400"
+                        : "bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700",
+                    )}
+                    title={on
+                      ? `Every group can hear ${p.name}. Click to stop.`
+                      : `Let every group hear ${p.name} while they keep practising`}
+                  >
+                    {on && <Megaphone className="size-3" />}
+                    {p.isSelf ? "You" : p.name}
+                    {p.isTeacher && !p.isSelf && (
+                      <span className={cn("font-normal", on ? "text-black/70" : "text-zinc-500")}>· teacher</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="flex items-center gap-2 px-5 py-2.5 border-b border-zinc-800 shrink-0 flex-wrap">

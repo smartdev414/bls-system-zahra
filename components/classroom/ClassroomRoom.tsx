@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils"
 import { isLiveVideo } from "@/components/classroom/localCameraView"
 import {
   Radio, Users, Users2, Presentation, UserPlus, Pointer, UserMinus, AlertTriangle, RefreshCw, Monitor,
-  MessageSquare, X, Hand, Mic, Check, PencilLine, Maximize2,
+  MessageSquare, X, Hand, Mic, Check, PencilLine, Maximize2, Megaphone,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useFetch, usePatchCallback } from "@/hooks/use-fetch"
@@ -115,6 +115,7 @@ type StoredBreakouts = {
   startedAt: number | null
   durationMin: number | null
   closingAt: number | null
+  broadcastIds?: string[]
 }
 
 // What's on the shared screen, remembered per session and per tab. A class-wide
@@ -679,6 +680,9 @@ export function ClassroomRoom({
   const [breakoutStartedAt,  setBreakoutStartedAt]  = useState<number | null>(null)
   const [breakoutDurationMin,setBreakoutDurationMin]= useState<number | null>(null)
   const [breakoutClosingAt,  setBreakoutClosingAt]  = useState<number | null>(null)
+  // Base ids of people every group can hear (the interpreter, say), chosen by
+  // the tutor. Empty = each group hears only itself and a visiting tutor.
+  const [breakoutBroadcastIds, setBreakoutBroadcastIds] = useState<string[]>([])
   const [breakoutsPanelOpen, setBreakoutsPanelOpen] = useState(false)
   const [breakoutMonitorOpen,setBreakoutMonitorOpen]= useState(false)
   // Mirrors for sync_response so the handler always sees the latest values.
@@ -689,6 +693,7 @@ export function ClassroomRoom({
     startedAt: null as number | null,
     durationMin: null as number | null,
     closingAt: null as number | null,
+    broadcastIds: [] as string[],
   })
   useEffect(() => {
     breakoutStateRef.current = {
@@ -698,8 +703,9 @@ export function ClassroomRoom({
       startedAt: breakoutStartedAt,
       durationMin: breakoutDurationMin,
       closingAt: breakoutClosingAt,
+      broadcastIds: breakoutBroadcastIds,
     }
-  }, [breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt])
+  }, [breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt, breakoutBroadcastIds])
 
   // ── Breakouts survive a tutor reload ───────────────────────────────────────
   // The tutor is the only source of truth for breakouts. Without this a refresh
@@ -720,6 +726,7 @@ export function ClassroomRoom({
       setBreakoutStartedAt(saved.startedAt ?? null)
       setBreakoutDurationMin(saved.durationMin ?? null)
       setBreakoutClosingAt(saved.closingAt ?? null)
+      setBreakoutBroadcastIds(Array.isArray(saved.broadcastIds) ? saved.broadcastIds : [])
       // Reopen the monitor unless the tutor was inside a group, where it was
       // deliberately closed so they could see the room they'd walked into.
       if (!saved.visitingGroupId) setBreakoutMonitorOpen(true)
@@ -739,6 +746,7 @@ export function ClassroomRoom({
           startedAt: breakoutStartedAt,
           durationMin: breakoutDurationMin,
           closingAt: breakoutClosingAt,
+          broadcastIds: breakoutBroadcastIds,
         }
         sessionStorage.setItem(breakoutStateStorageKey(sessionId), JSON.stringify(record))
         return
@@ -748,7 +756,7 @@ export function ClassroomRoom({
       if (!hadBreakoutsRef.current) return
       sessionStorage.removeItem(breakoutStateStorageKey(sessionId))
     } catch { /* storage disabled — breakouts just won't survive a reload */ }
-  }, [isTutor, breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt, sessionId])
+  }, [isTutor, breakoutsActive, breakoutGroups, visitingGroupId, breakoutStartedAt, breakoutDurationMin, breakoutClosingAt, breakoutBroadcastIds, sessionId])
 
   // Students: keep the participant strip open during breakouts so group cameras
   // stay visible — and open the chat too. Chat is the main channel in a BSL
@@ -1717,6 +1725,7 @@ export function ClassroomRoom({
         setVisitingGroupId(data.visitingGroupId ?? null)
         setBreakoutStartedAt(data.startedAt)
         setBreakoutDurationMin(data.durationMin ?? null)
+        setBreakoutBroadcastIds([])
 
         if (!isTutor) {
           // Figure out which group the local student landed in and toast.
@@ -1810,6 +1819,25 @@ export function ClassroomRoom({
         return
       }
 
+      if (data.action === "broadcast") {
+        const before = new Set(breakoutStateRef.current.broadcastIds)
+        setBreakoutBroadcastIds(data.ids)
+        if (!isTutor) {
+          const added = data.ids.filter((id) => !before.has(id) && id !== localBaseId)
+          if (added.length > 0) {
+            const names = added.map((id) =>
+              participants.find((p) => participantBaseId(p.identity) === id)?.name || "Someone")
+            toast.info(`${names.join(" and ")} can now be heard by every group`)
+          }
+          if (data.ids.includes(localBaseId) && !before.has(localBaseId)) {
+            toast.info("Every group can hear you now", {
+              description: "The tutor asked you to speak to the whole class.",
+            })
+          }
+        }
+        return
+      }
+
       if (data.action === "stop") {
         setBreakoutsActive(false)
         setBreakoutGroups([])
@@ -1817,6 +1845,7 @@ export function ClassroomRoom({
         setBreakoutStartedAt(null)
         setBreakoutDurationMin(null)
         setBreakoutClosingAt(null)
+        setBreakoutBroadcastIds([])
         if (!isTutor) {
           toast.info("Breakouts ended — back to the main room.")
           setMessages((prev) => [
@@ -1835,18 +1864,47 @@ export function ClassroomRoom({
 
       if (data.action === "sync_request" && isTutor) {
         const snap = breakoutStateRef.current
+        // Only a teacher who is actually running breakouts answers. A co-teacher
+        // (or the tutor's second device) that joined after they started knows
+        // nothing, and its "not active" reply used to pull students out of
+        // their groups — after which they heard every other group.
+        if (!snap.active) return
         const response: BreakoutAction = {
           action: "sync_response",
-          active: snap.active,
+          active: true,
           groups: snap.groups,
           visitingGroupId: snap.visitingGroupId,
           startedAt: snap.startedAt,
           durationMin: snap.durationMin,
           closingAt: snap.closingAt,
+          broadcastIds: snap.broadcastIds,
         }
+        // Reply to the one who asked, not the whole room: everyone else is
+        // already in sync and would only get a repeat "You're in Group A" toast.
+        const asker = msg.from?.identity
         try {
-          sendBreakout(enc.encode(JSON.stringify(response)), { reliable: true })
+          sendBreakout(
+            enc.encode(JSON.stringify(response)),
+            asker ? { reliable: true, destinationIdentities: [asker] } : { reliable: true },
+          )
         } catch { /* ignore */ }
+        return
+      }
+
+      // A teacher who joined while breakouts were already running catches up
+      // from whoever is running them, so they can manage (and answer for) them.
+      if (data.action === "sync_response" && isTutor) {
+        if (!data.active || breakoutStateRef.current.active) return
+        setBreakoutsActive(true)
+        setBreakoutGroups(data.groups)
+        setVisitingGroupId(data.visitingGroupId)
+        setBreakoutStartedAt(data.startedAt)
+        setBreakoutDurationMin(data.durationMin)
+        setBreakoutClosingAt(data.closingAt ?? null)
+        setBreakoutBroadcastIds(data.broadcastIds ?? [])
+        toast.info("Breakouts are running", {
+          description: "You're in the main room. Open the monitor to see every group.",
+        })
         return
       }
 
@@ -1857,6 +1915,7 @@ export function ClassroomRoom({
         setBreakoutStartedAt(data.startedAt)
         setBreakoutDurationMin(data.durationMin)
         setBreakoutClosingAt(data.closingAt ?? null)
+        setBreakoutBroadcastIds(data.broadcastIds ?? [])
         if (data.active) {
           const ownGroup = data.groups.find((g) => g.memberIds.includes(localBaseId))
           if (ownGroup) {
@@ -1879,11 +1938,12 @@ export function ClassroomRoom({
     } catch { /* ignore malformed */ }
   })
 
-  // Student: ask the tutor for breakout state after joining, and retry a few
-  // times in case breakouts went live before we connected.
+  // Ask for breakout state after joining, and retry a few times in case
+  // breakouts went live before we connected. Teachers ask too: a co-teacher
+  // joining mid-breakout needs the groups to manage them.
   const breakoutSyncAttempts = useRef(0)
   useEffect(() => {
-    if (isTutor || connectionState !== ConnectionState.Connected) return
+    if (connectionState !== ConnectionState.Connected) return
     if (breakoutsActive) {
       breakoutSyncAttempts.current = 0
       return
@@ -3680,6 +3740,7 @@ export function ClassroomRoom({
     setBreakoutStartedAt(startedAt)
     setBreakoutDurationMin(durationMin)
     setBreakoutClosingAt(null)
+    setBreakoutBroadcastIds([])
     setBreakoutsPanelOpen(false)
     setBreakoutMonitorOpen(true)
     setParticipantsOpen(true)
@@ -3837,6 +3898,40 @@ export function ClassroomRoom({
     }
   }, [isTutor, safeSendBreakout])
 
+  /**
+   * Let someone (the interpreter, typically) be heard by every group while the
+   * class keeps practising, or stop that. `baseId` is a stable user id.
+   */
+  const handleToggleBreakoutBroadcast = useCallback((baseId: string) => {
+    if (!isTutor) return
+    const current = breakoutStateRef.current.broadcastIds
+    const on = !current.includes(baseId)
+    const ids = on ? [...current, baseId] : current.filter((id) => id !== baseId)
+    setBreakoutBroadcastIds(ids)
+    safeSendBreakout({ action: "broadcast", ids })
+
+    const live = participants.filter((p) => participantBaseId(p.identity) === baseId)
+    const name = live[0]?.name || "They"
+    if (!on) {
+      toast.info(`${name} is back to their own group only`)
+      return
+    }
+    const isTeacher = live.some((p) => p.metadata === "tutor")
+    if (!isTeacher) {
+      // A student can't publish a mic until a teacher allows it.
+      for (const p of live) {
+        if (!p.isMicrophoneEnabled) void handleSetParticipantMic(p.identity, name, true)
+      }
+    }
+    const isSelf = live.some((p) => p.identity === localParticipant.identity)
+    const micOff = live.length > 0 && live.every((p) => !p.isMicrophoneEnabled)
+    toast.success(isSelf ? "Every group can hear you now" : `Every group can hear ${name} now`, {
+      description: isTeacher && micOff
+        ? (isSelf ? "Your mic is off — turn it on to be heard." : "Their mic is off — they need to turn it on to be heard.")
+        : "Turn it off again from the breakout panel when they're done.",
+    })
+  }, [isTutor, safeSendBreakout, participants, handleSetParticipantMic, localParticipant.identity])
+
   const finalizeStopBreakouts = useCallback(() => {
     if (!isTutor) return
     void resumeAfterBreakouts()
@@ -3846,6 +3941,7 @@ export function ClassroomRoom({
     setBreakoutStartedAt(null)
     setBreakoutDurationMin(null)
     setBreakoutClosingAt(null)
+    setBreakoutBroadcastIds([])
     setBreakoutsPanelOpen(false)
     setBreakoutMonitorOpen(false)
     safeSendBreakout({ action: "stop" })
@@ -4065,8 +4161,12 @@ export function ClassroomRoom({
   // signing.
   const captionSpeakers = useMemo<ReadonlySet<string> | null>(() => {
     if (isTutor || !chatAudience) return null
-    return new Set([...chatAudience.identities, localParticipant.identity])
-  }, [isTutor, chatAudience, localParticipant.identity])
+    return new Set([
+      ...chatAudience.identities,
+      localParticipant.identity,
+      ...liveIdentitiesFor(breakoutBroadcastIds),
+    ])
+  }, [isTutor, chatAudience, localParticipant.identity, liveIdentitiesFor, breakoutBroadcastIds])
 
   useEffect(() => {
     chatAudienceRef.current = chatAudience
@@ -4124,9 +4224,12 @@ export function ClassroomRoom({
       }
       if (tutorIdentity && tutorPresentForMe) audible.add(tutorIdentity)
     }
+    // Whoever the tutor has opened up to the whole class (the interpreter, say)
+    // is heard in every group, and by the teachers wherever they are.
+    liveIdentitiesFor(breakoutBroadcastIds).forEach((id) => audible.add(id))
     audible.delete(localParticipant.identity)
     return audible
-  }, [breakoutsActive, isTutor, visitingGroupId, breakoutGroups, ownBreakoutGroup, tutorIdentity, tutorPresentForMe, liveIdentitiesFor, localParticipant.identity])
+  }, [breakoutsActive, isTutor, visitingGroupId, breakoutGroups, ownBreakoutGroup, tutorIdentity, tutorPresentForMe, liveIdentitiesFor, localParticipant.identity, breakoutBroadcastIds])
 
   // The group the tutor is sitting in right now, if any.
   const tutorVisitingGroup = useMemo(
@@ -4285,6 +4388,34 @@ export function ClassroomRoom({
 
   const studentCount = participants.filter((p) => p.metadata !== "tutor").length
 
+  // Names for the "speaking to all groups" pill; leaves out the viewer.
+  const breakoutSpeakerNames = useMemo(() => {
+    if (!breakoutsActive) return []
+    return breakoutBroadcastIds
+      .filter((id) => id !== localBaseId)
+      .map((id) => participants.find((p) => participantBaseId(p.identity) === id)?.name)
+      .filter((n): n is string => !!n)
+  }, [breakoutsActive, breakoutBroadcastIds, localBaseId, participants])
+
+  // Everyone the tutor could open up to all breakout groups: teachers first
+  // (an interpreter usually joins as a co-teacher), then students.
+  const breakoutSpeakerOptions = useMemo(() => {
+    const byBaseId = new Map<string, { id: string; name: string; isTeacher: boolean; isSelf: boolean }>()
+    for (const p of participants) {
+      if (p.isAgent) continue
+      const id = participantBaseId(p.identity)
+      if (byBaseId.has(id)) continue
+      byBaseId.set(id, {
+        id,
+        name: p.name || id,
+        isTeacher: p.metadata === "tutor",
+        isSelf: p.identity === localParticipant.identity,
+      })
+    }
+    return [...byBaseId.values()].sort((a, b) =>
+      Number(b.isTeacher) - Number(a.isTeacher) || a.name.localeCompare(b.name))
+  }, [participants, localParticipant.identity])
+
   // Should the person on the stage share it with the teacher's camera?
   //
   // Selecting a student to sign used to hand them the camera slot outright and
@@ -4438,6 +4569,9 @@ export function ClassroomRoom({
           onEndNow={finalizeStopBreakouts}
           onExtend={handleExtendBreakouts}
           closingAt={breakoutClosingAt}
+          speakerOptions={breakoutSpeakerOptions}
+          broadcastIds={breakoutBroadcastIds}
+          onToggleBroadcast={handleToggleBreakoutBroadcast}
           onClose={() => setBreakoutsPanelOpen(false)}
         />
       )}
@@ -4660,6 +4794,17 @@ export function ClassroomRoom({
             Breakouts are live — waiting for your group assignment
           </div>
         )
+      )}
+
+      {/* Who the tutor has opened up to every group (e.g. the interpreter) —
+          otherwise a voice from outside the group arrives with no explanation. */}
+      {breakoutsActive && breakoutSpeakerNames.length > 0 && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 max-w-[90%] flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/90 text-black text-[0.6875rem] font-semibold shadow-lg">
+          <Megaphone className="size-3 shrink-0" />
+          <span className="truncate">
+            {breakoutSpeakerNames.join(" and ")} {breakoutSpeakerNames.length === 1 ? "is" : "are"} speaking to all groups
+          </span>
+        </div>
       )}
 
       {/* ── Teacher breakout banner ──

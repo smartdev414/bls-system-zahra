@@ -254,7 +254,11 @@ export type BreakoutAction =
   | { action: "extend"; startedAt: number; durationMin: number; addedMin: number }
   | { action: "closing"; endsAt: number }                             // wrap-up countdown before returning to main room
   | { action: "stop" }
+  // People whose voice reaches every group (e.g. the interpreter), as base ids.
+  // A full list, not a delta, so a missed message can't leave a stale speaker.
+  | { action: "broadcast"; ids: string[] }
   | { action: "sync_request" }
+  // Sent only by a teacher whose breakouts are live, and only to whoever asked.
   | { action: "sync_response"
       active: boolean
       groups: BreakoutGroup[]
@@ -262,6 +266,7 @@ export type BreakoutAction =
       startedAt: number | null
       durationMin: number | null
       closingAt: number | null
+      broadcastIds?: string[]
     }
 
 // ─── Screen share privacy + wide ──────────────────────────────────────────────
