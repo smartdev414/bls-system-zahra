@@ -57,12 +57,15 @@ async function handleGET(req: NextRequest) {
     })
     const invitedStudentIds = new Set(invitedStudents.map((s) => s.id))
 
-    // 3. Students who joined one of this tutor's classes, whatever the class
+    // 3. Tutors: students who joined one of their classes, whatever the class
     //    was (public or invite-only, with or without a course).
+    //    Staff: every approved student, including ones approved without a
+    //    course who haven't joined a class yet. Pending and rejected sign-ups
+    //    stay on the Users page until they are approved.
     const classStudents = await prisma.user.findMany({
       where: {
         ...(isStaff(session.role)
-          ? { role: "STUDENT" as const, attendances: { some: { joinedAt: { not: null } } } }
+          ? { role: "STUDENT" as const, status: { in: ["ACTIVE" as const, "SUSPENDED" as const] } }
           : joinedClassOf(session.sub)),
         ...nameEmailFilter,
       },
