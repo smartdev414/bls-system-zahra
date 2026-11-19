@@ -6,6 +6,7 @@ import { can } from "@/lib/permissions"
 import { createNotifications } from "@/lib/notifications"
 import { triggerUserEvent } from "@/lib/pusher-server"
 import { withAudit } from "@/lib/audit"
+import { CO_TEACHER_ROLES, byCoTeacherHome } from "@/lib/co-teachers"
 
 // Manage co-teachers for a live session. Only the owning tutor (or an admin)
 // can add/remove co-tutors. Unlike student invites, co-tutors may be added to
@@ -47,7 +48,7 @@ async function handlePOST(
     // interpreter — never the owner, and de-dupe.
     const candidateIds = [...new Set(requested)].filter((tid) => tid !== liveSession.tutorId)
     const tutors = await prisma.user.findMany({
-      where: { id: { in: candidateIds }, role: { in: ["TUTOR", "SUPPORT"] }, status: "ACTIVE" },
+      where: { id: { in: candidateIds }, role: { in: [...CO_TEACHER_ROLES] }, status: "ACTIVE" },
       select: { id: true, role: true },
     })
     const tutorIds = tutors.map((t) => t.id)
@@ -65,13 +66,8 @@ async function handlePOST(
     // expected, so the host has to be told rather than shown a success message
     // for something that did not happen.
     // Each role opens the classroom from its own dashboard.
-    const byHome = new Map<string, string[]>()
-    for (const t of tutors) {
-      const home = t.role === "SUPPORT" ? "/support" : "/tutor"
-      byHome.set(home, [...(byHome.get(home) ?? []), t.id])
-    }
     const sent = await Promise.all(
-      [...byHome].map(([home, ids]) =>
+      [...byCoTeacherHome(tutors)].map(([home, ids]) =>
         createNotifications(
           ids,
           "SESSION_COTUTOR_INVITE",

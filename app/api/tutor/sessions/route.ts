@@ -14,6 +14,7 @@ import { completeOverdueLiveSessions } from "@/lib/live-session-status"
 import { usableGroups } from "@/lib/course-groups"
 import { cleanVenue } from "@/lib/course-format"
 import { isValidTimeZone, shiftReleaseAt } from "@/lib/lesson-release"
+import { CO_TEACHER_ROLES, byCoTeacherHome } from "@/lib/co-teachers"
 
 /** For callers that do not send one (older app builds). */
 const DEFAULT_TIME_ZONE = "Europe/London"
@@ -292,8 +293,9 @@ async function handlePOST(req: NextRequest) {
     const coTutorCandidateIds = [...new Set(invitedTutorIds)].filter((tid) => tid !== ownerId)
     if (coTutorCandidateIds.length > 0) {
       const tutors = await prisma.user.findMany({
-        where: { id: { in: coTutorCandidateIds }, role: "TUTOR" },
-        select: { id: true },
+        // Tutors, or support staff invited as the class's interpreter.
+        where: { id: { in: coTutorCandidateIds }, role: { in: [...CO_TEACHER_ROLES] }, status: "ACTIVE" },
+        select: { id: true, role: true },
       })
       const tutorIds = tutors.map((t) => t.id)
       if (tutorIds.length > 0) {
@@ -309,14 +311,16 @@ async function handlePOST(req: NextRequest) {
             }),
           ),
         )
-        const cotutorLink = occurrences > 1 ? "/tutor/sessions" : `/tutor/classroom/${created[0].id}`
-        void createNotifications(
-          tutorIds,
-          "SESSION_COTUTOR_INVITE",
-          occurrences > 1 ? "You've been added as a co-teacher to a weekly series" : "You've been added as a co-teacher",
-          `${session.name} invited you to co-teach "${title.trim()}" starting ${firstScheduledDate}${seriesSuffix}`,
-          cotutorLink,
-        )
+        for (const [home, ids] of byCoTeacherHome(tutors)) {
+          const listPage = home === "/support" ? "/support/timetable" : "/tutor/sessions"
+          void createNotifications(
+            ids,
+            "SESSION_COTUTOR_INVITE",
+            occurrences > 1 ? "You've been added as a co-teacher to a weekly series" : "You've been added as a co-teacher",
+            `${session.name} invited you to co-teach "${title.trim()}" starting ${firstScheduledDate}${seriesSuffix}`,
+            occurrences > 1 ? listPage : `${home}/classroom/${created[0].id}`,
+          )
+        }
         void Promise.all(
           tutorIds.map((tutorId) =>
             triggerUserEvent(tutorId, "cotutor-invite", {

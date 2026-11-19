@@ -6,6 +6,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -17,6 +18,8 @@ export type Tutor = {
   name: string
   email: string
   avatarUrl: string | null
+  /** SUPPORT: support staff, listed only when inviting co-teachers (`includeSupport`). */
+  role?: "TUTOR" | "SUPPORT"
 }
 
 function initials(name: string) {
@@ -36,6 +39,7 @@ export function TutorPickerModal({
   confirmLabel = "Confirm Selection",
   excludeIds,
   confirming = false,
+  includeSupport = false,
 }: {
   selected: Set<string>
   onConfirm: (ids: Set<string>, tutors: Tutor[]) => void
@@ -47,8 +51,12 @@ export function TutorPickerModal({
   excludeIds?: Set<string>
   /** The caller is saving the selection; block a second submit. */
   confirming?: boolean
+  /** Also list support staff, who join a class as its interpreter. */
+  includeSupport?: boolean
 }) {
-  const { data: tutorsData } = useFetch<{ tutors: Tutor[] }>("/api/tutor/colleagues")
+  const { data: tutorsData } = useFetch<{ tutors: Tutor[] }>(
+    includeSupport ? "/api/tutor/colleagues?coTeachers=1" : "/api/tutor/colleagues",
+  )
 
   const [search, setSearch] = useState("")
   const [localSelected, setLocalSelected] = useState<Set<string>>(new Set(selected))
@@ -164,6 +172,11 @@ export function TutorPickerModal({
                     <p className="text-sm font-medium truncate">{tutor.name}</p>
                     <p className="text-xs text-muted-foreground truncate">{tutor.email}</p>
                   </div>
+                  {tutor.role === "SUPPORT" && (
+                    <Badge variant="outline" className="text-[0.625rem] h-4 px-1.5 shrink-0 bg-amber-50 text-amber-700 border-amber-200">
+                      Support · Interpreter
+                    </Badge>
+                  )}
                 </button>
               )
             })

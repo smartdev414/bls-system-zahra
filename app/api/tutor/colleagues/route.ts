@@ -17,6 +17,7 @@ async function handleGET(req: NextRequest) {
     }
 
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? ""
+    const coTeachers = req.nextUrl.searchParams.get("coTeachers") === "1"
     const nameEmailFilter = q
       ? {
           OR: [
@@ -27,9 +28,11 @@ async function handleGET(req: NextRequest) {
       : {}
 
     const tutors = await prisma.user.findMany({
-      // Support staff are listed too: they join a class as its interpreter.
+      // `?coTeachers=1` (inviting someone into a class) lists support staff
+      // too, who join as the class's interpreter. Every other picker — the
+      // tutor taking a class, a course's teachers — is tutors only.
       where: {
-        role: { in: ["TUTOR", "SUPPORT"] },
+        role: { in: coTeachers ? ["TUTOR", "SUPPORT"] : ["TUTOR"] },
         status: "ACTIVE",
         id: { not: session.sub },
         ...nameEmailFilter,

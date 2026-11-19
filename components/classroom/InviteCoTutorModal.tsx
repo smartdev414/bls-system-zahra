@@ -41,7 +41,7 @@ export function InviteCoTutorModal({
   sessionTitle: string
   onClose: () => void
 }) {
-  const { data: tutorsData, loading } = useFetch<{ tutors: Tutor[] }>("/api/tutor/colleagues")
+  const { data: tutorsData, loading } = useFetch<{ tutors: Tutor[] }>("/api/tutor/colleagues?coTeachers=1")
   const { data: coTutorsData, refetch: refetchCoTutors } = useFetch<{ coTutors: CoTutor[] }>(
     `/api/tutor/sessions/${sessionId}/co-tutors`,
   )

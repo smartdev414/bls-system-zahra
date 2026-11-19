@@ -12,6 +12,7 @@ import { withAudit } from "@/lib/audit"
 import { requireTutorAccess, tutorWrite } from "@/lib/tutor-access"
 import { reconcileSessionRecording, scheduleRecordingReconcile } from "@/lib/recording"
 import { closeLiveKitRoom, notifySessionStatusChange } from "@/lib/live-session-status"
+import { CO_TEACHER_ROLES, byCoTeacherHome } from "@/lib/co-teachers"
 
 function egressClient() {
   return new EgressClient(
@@ -233,8 +234,9 @@ async function handlePATCH(
     if (body.invitedTutorIds !== undefined) {
       const candidateIds = [...new Set(body.invitedTutorIds)].filter((tid) => tid !== session.sub)
       const tutors = await prisma.user.findMany({
-        where: { id: { in: candidateIds }, role: "TUTOR" },
-        select: { id: true },
+        // Tutors, or support staff invited as the class's interpreter.
+        where: { id: { in: candidateIds }, role: { in: [...CO_TEACHER_ROLES] } },
+        select: { id: true, role: true },
       })
       const newTutorIds = new Set(tutors.map((t) => t.id))
 
@@ -263,13 +265,16 @@ async function handlePATCH(
           skipDuplicates: true,
         })
 
-        void createNotifications(
-          toAdd,
-          "SESSION_COTUTOR_INVITE",
-          "You've been added as a co-teacher",
-          `${session.name} invited you to co-teach "${updated.title}". Open the classroom to join.`,
-          `/tutor/classroom/${id}`,
-        )
+        const added = tutors.filter((t) => toAdd.includes(t.id))
+        for (const [home, ids] of byCoTeacherHome(added)) {
+          void createNotifications(
+            ids,
+            "SESSION_COTUTOR_INVITE",
+            "You've been added as a co-teacher",
+            `${session.name} invited you to co-teach "${updated.title}". Open the classroom to join.`,
+            `${home}/classroom/${id}`,
+          )
+        }
 
         const isLive = updated.status === "LIVE"
         void Promise.all(

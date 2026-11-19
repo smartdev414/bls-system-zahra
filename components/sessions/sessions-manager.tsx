@@ -918,6 +918,7 @@ function ScheduleSessionDialog({
 
       {showTutorPicker && (
         <TutorPickerModal
+          includeSupport
           selected={new Set(invitedTutors.map((t) => t.id))}
           onConfirm={(_ids, tutors) => {
             setInvitedTutors(tutors)
