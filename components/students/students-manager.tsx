@@ -34,7 +34,7 @@ import { Pagination } from "@/components/ui/pagination"
 import { ManageGroupsModal } from "@/components/classroom/ManageGroupsModal"
 import { InviteStudentsEmailModal } from "@/components/tutor/InviteStudentsEmailModal"
 import { toast } from "sonner"
-import { levelColor, type CourseLevel } from "@/lib/levels"
+import { COURSE_LEVELS, levelColor, type CourseLevel } from "@/lib/levels"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 import { ENGAGEMENT_LOOK, STUDY_WINDOW_DAYS, agoLabel, type Engagement } from "@/lib/engagement"
@@ -426,7 +426,7 @@ export function StudentsManager() {
               <DropdownMenuItem onClick={() => { setLevelFilter("ALL"); setPage(1) }}>
                 All Levels {levelFilter === "ALL" && <Check className="ml-auto size-3" />}
               </DropdownMenuItem>
-              {(["L1","L2","L3","L4","L5","L6"] as CourseLevel[]).map((l) => (
+              {COURSE_LEVELS.map((l) => (
                 <DropdownMenuItem key={l} onClick={() => { setLevelFilter(l); setPage(1) }}>
                   {l} {levelFilter === l && <Check className="ml-auto size-3" />}
                 </DropdownMenuItem>
