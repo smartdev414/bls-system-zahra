@@ -905,6 +905,7 @@ function ScheduleSessionDialog({
       {showPicker && (
         <StudentPickerModal
           selected={new Set(invitedStudents.map((s) => s.id))}
+          known={invitedStudents}
           onConfirm={(_ids: any, students: React.SetStateAction<StudentResult[]>) => {
             setInvitedStudents(students)
             setShowPicker(false)

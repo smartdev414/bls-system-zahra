@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import {
   Search, Check, Loader2, Users, ChevronRight, ChevronDown, X,
 } from "lucide-react"
@@ -31,8 +31,11 @@ type Group = {
   members: Student[]
 }
 
-type StudentsData = { students: Student[] }
+type StudentsPage = { students: Student[]; total: number; hasMore: boolean }
 type GroupsData = { groups: Group[] }
+
+/** Students fetched per page; "Show more" loads the next page. */
+const PAGE_SIZE = 25
 
 function initials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
@@ -53,6 +56,7 @@ export function StudentPickerModal({
   excludeIds,
   confirming = false,
   hideGroups = false,
+  known,
 }: {
   selected: Set<string>
   onConfirm: (ids: Set<string>, students: Student[]) => void
@@ -66,27 +70,54 @@ export function StudentPickerModal({
   confirming?: boolean
   /** Individual students only — for when whole groups are added another way. */
   hideGroups?: boolean
+  /** Details of students already in `selected`, so they are handed back on confirm even if not loaded yet. */
+  known?: Student[]
 }) {
-  const { data: studentsData } = useFetch<StudentsData>("/api/tutor/students")
   const { data: groupsData } = useFetch<GroupsData>("/api/tutor/groups")
 
   const [search, setSearch] = useState("")
-  // The list above is the students this person already works with. Typing a
-  // name also looks through every student, so somebody new can be found.
   const debouncedSearch = useDebounce(search.trim())
-  const { data: searchData } = useFetch<StudentsData>(
-    `/api/tutor/students/search?q=${encodeURIComponent(debouncedSearch)}`,
-    { immediate: debouncedSearch.length >= 2, errorMessage: false },
-  )
-  // Students ticked from a search, kept so they survive the search being cleared.
-  const [found, setFound] = useState<Map<string, Student>>(new Map())
+
+  // Every approved student, A–Z, a page at a time; typing searches on the server.
+  const [loaded, setLoaded] = useState<Student[]>([])
+  const [total, setTotal] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const requestId = useRef(0)
+
+  const loadPage = useCallback(async (q: string, pageNo: number) => {
+    const id = ++requestId.current
+    setLoading(true)
+    setLoadError(false)
+    try {
+      const params = new URLSearchParams({ page: String(pageNo), pageSize: String(PAGE_SIZE) })
+      if (q) params.set("q", q)
+      const res = await fetch(`/api/tutor/students/search?${params.toString()}`)
+      if (!res.ok) throw new Error(String(res.status))
+      const data = (await res.json()) as StudentsPage
+      if (id !== requestId.current) return // a newer search has started
+      setLoaded((prev) => (pageNo === 1 ? data.students : [...prev, ...data.students.filter((s) => !prev.some((p) => p.id === s.id))]))
+      setTotal(data.total)
+      setHasMore(data.hasMore)
+      setPage(pageNo)
+    } catch {
+      if (id === requestId.current) setLoadError(true)
+    } finally {
+      if (id === requestId.current) setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadPage(debouncedSearch, 1)
+  }, [debouncedSearch, loadPage])
+
+  // Students ticked along the way, kept so they survive a new search or page.
+  const [found, setFound] = useState<Map<string, Student>>(() => new Map((known ?? []).map((s) => [s.id, s])))
   const [localSelected, setLocalSelected] = useState<Set<string>>(new Set(selected))
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  const allStudents = useMemo(
-    () => (studentsData?.students ?? []).filter((s) => !excludeIds?.has(s.id)),
-    [studentsData, excludeIds]
-  )
   const groups = useMemo(
     () => (groupsData?.groups ?? []).map((g) => ({
       ...g,
@@ -95,17 +126,10 @@ export function StudentPickerModal({
     [groupsData, excludeIds]
   )
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return allStudents
-    const q = search.trim().toLowerCase()
-    const matches = (s: Student) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
-    const local = allStudents.filter(matches)
-    const seen = new Set(local.map((s) => s.id))
-    const extra = (debouncedSearch.length >= 2 ? searchData?.students ?? [] : []).filter(
-      (s) => !seen.has(s.id) && !excludeIds?.has(s.id) && matches(s),
-    )
-    return [...local, ...extra]
-  }, [allStudents, search, debouncedSearch, searchData, excludeIds])
+  const filtered = useMemo(
+    () => loaded.filter((s) => !excludeIds?.has(s.id)),
+    [loaded, excludeIds]
+  )
 
   function toggleStudent(id: string) {
     const student = filtered.find((s) => s.id === id)
@@ -167,7 +191,7 @@ export function StudentPickerModal({
   function handleConfirm() {
     const known = new Map<string, Student>(found)
     groups.forEach((g) => g.members.forEach((m) => known.set(m.id, m)))
-    allStudents.forEach((s) => known.set(s.id, s))
+    loaded.forEach((s) => known.set(s.id, s))
     const selectedStudents = [...localSelected].flatMap((id) => (known.has(id) ? [known.get(id)!] : []))
     onConfirm(localSelected, selectedStudents)
   }
@@ -205,7 +229,9 @@ export function StudentPickerModal({
               className="h-8 text-xs shrink-0 gap-1"
               onClick={selectAll}
             >
-              {allFilteredSelected ? <><X className="size-3" /> Deselect all</> : <><Check className="size-3" /> Select all</>}
+              {allFilteredSelected
+                ? <><X className="size-3" /> {hasMore ? "Deselect shown" : "Deselect all"}</>
+                : <><Check className="size-3" /> {hasMore ? "Select shown" : "Select all"}</>}
             </Button>
           )}
         </div>
@@ -293,14 +319,20 @@ export function StudentPickerModal({
               <div className="px-4 py-2 bg-muted/30 sticky top-0">
                 <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">
                   {search.trim() ? "Search Results" : "All Students"}
+                  {!loading || page > 1 ? ` · ${total}` : ""}
                 </p>
               </div>
             )}
-            {studentsData === null ? (
+            {loading && page === 1 && loaded.length === 0 ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="size-5 animate-spin text-primary" />
               </div>
-            ) : filtered.length === 0 ? (
+            ) : loadError && loaded.length === 0 ? (
+              <div className="text-center py-8 space-y-2">
+                <p className="text-sm text-muted-foreground">Could not load students.</p>
+                <Button size="sm" variant="outline" onClick={() => void loadPage(debouncedSearch, 1)}>Try again</Button>
+              </div>
+            ) : filtered.length === 0 && !hasMore ? (
               <p className="text-sm text-muted-foreground text-center py-8">No students found.</p>
             ) : (
               filtered.map((student) => {
@@ -326,6 +358,24 @@ export function StudentPickerModal({
                   </button>
                 )
               })
+            )}
+            {hasMore && loaded.length > 0 && (
+              <div className="px-4 py-3 flex flex-col items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={loading}
+                  onClick={() => void loadPage(debouncedSearch, page + 1)}
+                >
+                  {loading && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+                  Show more
+                </Button>
+                <p className="text-[0.6875rem] text-muted-foreground">
+                  Showing {loaded.length} of {total}
+                  {loadError ? " · could not load more, try again" : ""}
+                </p>
+              </div>
             )}
           </div>
         </ScrollArea>

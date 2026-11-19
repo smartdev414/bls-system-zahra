@@ -1,7 +1,6 @@
 import prisma from "@/lib/prisma"
 import { Prisma } from "@/app/generated/prisma/client"
-import { isStaff, courseTeachScope } from "@/lib/permissions"
-import { joinedClassOf } from "@/lib/session-access"
+import { isStaff } from "@/lib/permissions"
 import { courseRoster } from "@/lib/course-roster"
 import { isCourseClosed } from "@/lib/course-closing"
 
@@ -254,20 +253,8 @@ export async function courseProgress(userId: string) {
  * their student list.
  */
 export async function canViewStudent(session: { role: string; sub: string }, studentId: string): Promise<boolean> {
-  if (isStaff(session.role)) {
-    return (await prisma.user.count({ where: { id: studentId, role: "STUDENT" } })) > 0
-  }
-  if (session.role !== "TUTOR") return false
-  const found = await prisma.user.count({
-    where: {
-      id: studentId,
-      role: "STUDENT",
-      OR: [
-        { enrollments: { some: { course: courseTeachScope(session) } } },
-        { invitedById: session.sub },
-        joinedClassOf(session.sub),
-      ],
-    },
-  })
-  return found > 0
+  // Staff and tutors may look at any student on the platform (DeafSign: every
+  // teacher works with every student, not only their own enrolments).
+  if (!isStaff(session.role) && session.role !== "TUTOR") return false
+  return (await prisma.user.count({ where: { id: studentId, role: "STUDENT" } })) > 0
 }

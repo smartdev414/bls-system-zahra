@@ -4,7 +4,6 @@ import { getSession } from "@/lib/auth"
 import { can, courseTeachScope, isStaff } from "@/lib/permissions"
 import { withAudit } from "@/lib/audit"
 import { releasedLessons } from "@/lib/lesson-release"
-import { joinedClassOf } from "@/lib/session-access"
 import { learningSummary, type LearningCounts } from "@/lib/student-activity"
 import { receptiveTotals } from "@/lib/receptive-log-server"
 import type { ReceptiveTotals } from "@/lib/receptive-log"
@@ -57,16 +56,13 @@ async function handleGET(req: NextRequest) {
     })
     const invitedStudentIds = new Set(invitedStudents.map((s) => s.id))
 
-    // 3. Tutors: students who joined one of their classes, whatever the class
-    //    was (public or invite-only, with or without a course).
-    //    Staff: every approved student, including ones approved without a
-    //    course who haven't joined a class yet. Pending and rejected sign-ups
-    //    stay on the Users page until they are approved.
+    // 3. Every approved student on the platform, for staff and tutors alike,
+    //    including ones approved without a course who haven't joined a class.
+    //    Pending and rejected sign-ups stay on the Users page until approved.
     const classStudents = await prisma.user.findMany({
       where: {
-        ...(isStaff(session.role)
-          ? { role: "STUDENT" as const, status: { in: ["ACTIVE" as const, "SUSPENDED" as const] } }
-          : joinedClassOf(session.sub)),
+        role: "STUDENT" as const,
+        status: { in: ["ACTIVE" as const, "SUSPENDED" as const] },
         ...nameEmailFilter,
       },
       select: { id: true, name: true, email: true, avatarUrl: true, bslLevel: true, createdAt: true },
