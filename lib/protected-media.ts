@@ -60,8 +60,9 @@ export function mediaSrc(url: string): string {
 }
 
 /**
- * Link that saves the file instead of playing it. Only tutors and admins are
- * shown these, and the gateway refuses `download` from anyone else.
+ * Link that saves the file instead of playing it. Tutors and admins get these,
+ * and students only for a lesson file marked "Students can download"; the
+ * gateway refuses `download` from anyone else.
  */
 export function mediaDownloadHref(url: string): string {
   const src = mediaSrc(url)

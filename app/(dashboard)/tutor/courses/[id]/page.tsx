@@ -92,8 +92,9 @@ type CourseDetail = {
   _count: { enrollments: number }
 }
 
-// `canEdit` is false for teachers: they follow the course, admins build it.
-type CourseData = { course: CourseDetail; canEdit: boolean }
+// `canEdit` (course settings) is false for teachers: admins set courses up.
+// `canEditLessons` is also true for a teacher an admin gave the "Lessons" switch.
+type CourseData = { course: CourseDetail; canEdit: boolean; canEditLessons?: boolean }
 
 /** The one date every lesson in a section shares, when they all share one. */
 function sharedRelease(section: SectionItem): string | null {
@@ -349,6 +350,7 @@ const { execute: updateCourseStatus, loading: updating } = usePutCallback<
   if (!data) return null
 
   const { course, canEdit } = data
+  const canEditLessons = data.canEditLessons ?? canEdit
   const isPublished = course.status === "PUBLISHED"
   const teacherNames = [course.tutor, ...course.teachers]
     .filter((t, i, all) => all.findIndex((x) => x.id === t.id) === i)
@@ -472,7 +474,12 @@ return (
         </span>
       </div>
 
-      {!canEdit && (
+      {!canEdit && canEditLessons && (
+        <p className="text-sm text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">
+          This course is set up by the school. You can add and change its lessons and files.
+        </p>
+      )}
+      {!canEdit && !canEditLessons && (
         <p className="text-sm text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">
           This course is set up by the school, so its lessons are view-only for you.
           {access.groups && access.students && access.calendar && " You can still manage its groups, students and class times."}
@@ -505,16 +512,16 @@ return (
             {course.sections.length > 0 && (
               <p className="text-sm text-muted-foreground mt-0.5">{releaseSummary(course.sections)}</p>
             )}
-            {canEdit && course.sections.some((s) => s.lessons.length > 0) && (
+            {canEditLessons && course.sections.some((s) => s.lessons.length > 0) && (
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                 <GripVertical className="size-3.5 shrink-0" />
                 To move a lesson or test, hold the dots beside it and drag it up or down — even into another section.
               </p>
             )}
           </div>
-          {canEdit && (
+          {canEditLessons && (
             <div className="flex gap-2">
-              {course.sections.length > 0 && (
+              {canEdit && course.sections.length > 0 && (
                 <Button size="sm" variant="outline" onClick={() => setReleaseOpen(true)}>
                   <CalendarClock className="size-4 mr-1.5" /> Release Schedule
                 </Button>
@@ -531,7 +538,7 @@ return (
             <CardContent className="py-10 text-center">
               <Layers className="size-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">
-                {canEdit ? "No sections yet. Add your first section above." : "No lessons have been added to this course yet."}
+                {canEditLessons ? "No sections yet. Add your first section above." : "No lessons have been added to this course yet."}
               </p>
             </CardContent>
           </Card>
@@ -546,7 +553,7 @@ return (
                 laterLocked={course.sections.filter(
                   (s) => s.order > section.order && s.lessons.some((l) => l.releaseAt && new Date(l.releaseAt) > new Date()),
                 ).length}
-                canEdit={canEdit}
+                canEdit={canEditLessons}
                 isCollapsed={!!collapsed[section.id]}
                 onToggle={() => toggleSection(section.id)}
                 onAddLesson={() => openLessonDialog(section.id)}

@@ -5,6 +5,7 @@ import { Save, Upload, Camera, FolderOpen, X, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -54,6 +55,8 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
   const [videoMode, setVideoMode] = useState<"upload" | "record" | "link">("upload")
   // A test is chosen from the test bank (the Tests menu), not built here.
   const [test, setTest] = useState<BankTest | null>(null)
+  // Off by default: students watch or read the files in the lesson but get no copy.
+  const [allowDownload, setAllowDownload] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const testsBase = useTestsBase()
@@ -81,6 +84,7 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
         fileName: f.fileName,
         fileSize: f.fileSize || undefined,
         mimeType: f.mimeType || undefined,
+        allowDownload: allowDownload && !isVideoLink(f.fileUrl),
       }))
 
       const res = await fetch(`/api/tutor/courses/${courseId}/lessons`, {
@@ -296,6 +300,22 @@ export function AddLessonScreen({ courseId, sectionId, onClose, onSuccess, initi
                 onUploaded={setUploadedFile}
                 onRemove={() => setUploadedFile(null)}
               />
+            )}
+            {(uploadedFile || libraryFiles.length > 0) && !(uploadedFile && isVideoLink(uploadedFile.fileUrl) && libraryFiles.length === 0) && (
+              <label htmlFor="lesson-allow-download" className="flex items-start gap-2 text-sm cursor-pointer select-none">
+                <Checkbox
+                  id="lesson-allow-download"
+                  className="mt-0.5"
+                  checked={allowDownload}
+                  onCheckedChange={(v) => setAllowDownload(v === true)}
+                />
+                <span>
+                  Students can download {uploadedFile && libraryFiles.length === 0 ? "this file" : "these files"}
+                  <span className="block text-xs text-muted-foreground">
+                    Off: students watch or read it in the lesson only. You can change this per file later in Edit lesson.
+                  </span>
+                </span>
+              </label>
             )}
           </div>
         </>

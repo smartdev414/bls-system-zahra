@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { can } from "@/lib/permissions"
+import { lessonEditScope } from "@/lib/tutor-access"
 import {
   DESCRIPTION_GRAMMAR_MAX, DESCRIPTION_MODES, correctDescription, descriptionGrammarConfigured,
   type DescriptionMode,
@@ -39,7 +39,7 @@ function overLimit(userId: string): boolean {
 async function handlePOST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-  if (!can(session.role, "lessons.manage")) {
+  if (!(await lessonEditScope(session))) {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 })
   }
 

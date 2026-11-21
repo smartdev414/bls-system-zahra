@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { can, courseContentScope } from "@/lib/permissions"
+import { lessonEditScope } from "@/lib/tutor-access"
 
 async function handleDELETE(
   _req: Request,
@@ -11,7 +11,9 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (!can(session.role, "lessons.manage")) {
+    // Admins, or a teacher with the "Lessons" switch on a course they teach.
+    const scope = await lessonEditScope(session)
+    if (!scope) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -19,7 +21,7 @@ async function handleDELETE(
 
     // Verify ownership via lesson → section → course
     const asset = await prisma.lessonAsset.findFirst({
-      where: { id: assetId, lessonId: id, lesson: { section: { course: courseContentScope(session) } } },
+      where: { id: assetId, lessonId: id, lesson: { section: { course: scope } } },
     })
     if (!asset) return NextResponse.json({ message: "Asset not found" }, { status: 404 })
 
@@ -31,4 +33,42 @@ async function handleDELETE(
   }
 }
 
+/** Turns "students can download this file" on or off. */
+async function handlePATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; assetId: string }> }
+) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    // Admins, or a teacher with the "Lessons" switch on a course they teach.
+    const scope = await lessonEditScope(session)
+    if (!scope) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+
+    const { id, assetId } = await params
+    const body = await req.json().catch(() => ({})) as { allowDownload?: unknown }
+    if (typeof body.allowDownload !== "boolean") {
+      return NextResponse.json({ message: "allowDownload must be true or false" }, { status: 400 })
+    }
+
+    const asset = await prisma.lessonAsset.findFirst({
+      where: { id: assetId, lessonId: id, lesson: { section: { course: scope } } },
+      select: { id: true },
+    })
+    if (!asset) return NextResponse.json({ message: "Asset not found" }, { status: 404 })
+
+    const updated = await prisma.lessonAsset.update({
+      where: { id: assetId },
+      data: { allowDownload: body.allowDownload },
+    })
+    return NextResponse.json({ asset: updated })
+  } catch (err) {
+    console.error("[PATCH /api/tutor/lessons/[id]/assets/[assetId]]", err)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
+}
+
 export const DELETE = withAudit(handleDELETE)
+export const PATCH = withAudit(handlePATCH)

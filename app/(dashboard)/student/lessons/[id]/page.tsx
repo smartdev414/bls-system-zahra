@@ -24,6 +24,7 @@ import { TestTop } from "@/components/quiz/TestTop"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { EmbeddedVideo } from "@/components/ui/embedded-video"
 import { isVideoLink } from "@/lib/video-link"
+import { mediaDownloadHref } from "@/lib/protected-media"
 import { cn } from "@/lib/utils"
 import { LESSON_KINDS, lessonKind } from "@/lib/lesson-kind"
 
@@ -40,6 +41,8 @@ type Asset = {
   duration: number | null
   mimeType: string | null
   order: number
+  /** Set by the teacher per file; off means watch/read here only. */
+  allowDownload: boolean
 }
 
 type LessonNav = { id: string; title: string; sectionId: string; locked: boolean; releaseAt: string | null } | null
@@ -446,6 +449,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
           )}
           {/* Video player */}
           {lesson.type === "VIDEO" && videoAsset ? (
+            <>
             <div className="bg-black aspect-video w-full relative">
               {isVideoLink(videoAsset.fileUrl) ? (
                 <EmbeddedVideo
@@ -464,6 +468,7 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
               <ProtectedVideo
                 key={videoAsset.id}
                 src={videoAsset.fileUrl}
+                allowDownload={videoAsset.allowDownload}
                 controls
                 // Lesson videos start silent (signing needs no sound); the
                 // player's speaker button turns it on.
@@ -510,6 +515,12 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
                 </div>
               )}
             </div>
+            {videoAsset.allowDownload && !isVideoLink(videoAsset.fileUrl) && (
+              <div className="px-6 pt-3">
+                <DownloadLink asset={videoAsset} />
+              </div>
+            )}
+            </>
           ) : lesson.type === "TEXT" || (lesson.type === "VIDEO" && lesson.assets.length > 0) ? (
             // Text lessons, and video lessons that hold files but no video, show the files inline.
             <div className="flex flex-col gap-6 px-6 py-6">
@@ -529,132 +540,24 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
 
                 if (asset.type === "VIDEO") {
                   return (
-                    <div key={asset.id} className="rounded-xl overflow-hidden border bg-black">
-                      <ProtectedVideo
-                        src={asset.fileUrl}
-                        controls
-                        muted
-                        autoPlay
-                        className="w-full aspect-video"
-                        onTimeUpdate={handleTimeUpdate}
-                      />
-                    </div>
-                  )
-                }
-
-                if (asset.type === "IMAGE") {
-                  return (
-                    <div key={asset.id} className="rounded-xl overflow-hidden border">
-                      <img
-                        src={asset.fileUrl}
-                        alt={asset.title}
-                        className="w-full object-contain max-h-125"
-                      />
-                    </div>
-                  )
-                }
-
-                if (asset.type === "AUDIO") {
-                  return (
-                    <div key={asset.id} className="rounded-xl border bg-muted/20 p-4 flex flex-col gap-2">
-                      <p className="text-sm font-semibold">{asset.title}</p>
-                      <audio src={asset.fileUrl} controls className="w-full" />
-                    </div>
-                  )
-                }
-
-                if (asset.type === "PDF") {
-                  return (
                     <div key={asset.id} className="flex flex-col gap-2">
-                      <p className="text-sm font-semibold">{asset.title}</p>
-                      {/* Phone browsers don't render a PDF inside an iframe (Android
-                          shows a blank box, iOS only the first page), so on small
-                          screens the file opens in the browser's own viewer instead.
-                          Tablets get the wide layout but have the same iframe
-                          problem (an iPad shows page one only), so they get every
-                          page drawn in the page; computers keep the browser's
-                          viewer, with its zoom and search. */}
-                      {device === "tablet" ? (
-                        <PdfPages url={asset.fileUrl} title={asset.title} />
-                      ) : device === "desktop" ? (
-                        <div className="hidden md:block rounded-xl border overflow-hidden" style={{ height: "700px" }}>
-                          <iframe
-                            src={asset.fileUrl}
-                            className="w-full h-full"
-                            title={asset.title}
-                          />
-                        </div>
-                      ) : null}
-                      <a
-                        href={asset.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download={asset.fileName}
-                        className="md:hidden flex items-center gap-3 rounded-xl border p-4 hover:border-primary hover:bg-primary/5 transition-colors"
-                      >
-                        <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
-                          <FileText className="size-5 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold truncate">{asset.fileName || asset.title}</p>
-                          <p className="text-xs text-muted-foreground">Tap to open or download</p>
-                        </div>
-                        <Download className="size-4 text-primary shrink-0" />
-                      </a>
-                      <a
-                        href={asset.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download={asset.fileName}
-                        className="hidden md:inline-flex self-start items-center gap-1.5 text-xs text-primary underline underline-offset-2"
-                      >
-                        <Download className="size-3.5" />
-                        Open / download PDF
-                      </a>
-                    </div>
-                  )
-                }
-
-                if (asset.type === "DOCUMENT") {
-                  // Use Microsoft Office Online viewer for Word/Excel/PowerPoint files
-                  const officeViewer = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(asset.fileUrl)}`
-                  return (
-                    <div key={asset.id} className="flex flex-col gap-2">
-                      <p className="text-sm font-semibold">{asset.title}</p>
-                      <div className="rounded-xl border overflow-hidden" style={{ height: "700px" }}>
-                        <iframe
-                          src={officeViewer}
-                          className="w-full h-full"
-                          title={asset.title}
+                      <div className="rounded-xl overflow-hidden border bg-black">
+                        <ProtectedVideo
+                          src={asset.fileUrl}
+                          allowDownload={asset.allowDownload}
+                          controls
+                          muted
+                          autoPlay
+                          className="w-full aspect-video"
+                          onTimeUpdate={handleTimeUpdate}
                         />
                       </div>
-                      <a
-                        href={asset.fileUrl}
-                        download={asset.fileName}
-                        className="self-start text-xs text-primary underline underline-offset-2"
-                      >
-                        Download file
-                      </a>
+                      {asset.allowDownload && <DownloadLink asset={asset} />}
                     </div>
                   )
                 }
 
-                // Fallback: download link for any other type (SUBTITLE, etc.)
-                return (
-                  <div key={asset.id} className="rounded-xl border bg-muted/20 p-4 flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate">{asset.title || asset.fileName}</p>
-                      <p className="text-xs text-muted-foreground">{asset.type.toLowerCase()}</p>
-                    </div>
-                    <a
-                      href={asset.fileUrl}
-                      download={asset.fileName}
-                      className="text-xs text-primary border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/5 transition-colors shrink-0"
-                    >
-                      Download
-                    </a>
-                  </div>
-                )
+                return <LessonFile key={asset.id} asset={asset} device={device} />
               })}
             </div>
           ) : lesson.type === "QUIZ" ? (
@@ -732,7 +635,13 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
               <TabsContent value="resources">
                 {otherAssets.length > 0 ? (
                   <div className="grid gap-3">
-                    {otherAssets.map((asset) => (
+                    {otherAssets.map((asset) => !asset.allowDownload ? (
+                      // View-only: shown here, with no link to the file itself.
+                      <div key={asset.id} className="flex flex-col gap-2">
+                        <LessonFile asset={asset} device={device} />
+                        {asset.description && <p className="text-xs text-muted-foreground">{asset.description}</p>}
+                      </div>
+                    ) : (
                       <a
                         key={asset.id}
                         href={asset.fileUrl}
@@ -843,6 +752,172 @@ export default function LessonViewerPage({ params }: { params: Promise<{ id: str
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Lesson files ─────────────────────────────────────────────────────────────
+
+/** "Download …" under a file the teacher lets students keep. */
+function DownloadLink({ asset }: { asset: Asset }) {
+  return (
+    <a
+      href={asset.type === "VIDEO" ? mediaDownloadHref(asset.fileUrl) : asset.fileUrl}
+      target={asset.type === "VIDEO" ? undefined : "_blank"}
+      rel="noopener noreferrer"
+      download={asset.fileName}
+      className="self-start inline-flex items-center gap-1.5 text-xs text-primary underline underline-offset-2"
+    >
+      <Download className="size-3.5" /> Download {asset.fileName || asset.title}
+    </a>
+  )
+}
+
+/**
+ * One non-video lesson file (image, audio, PDF, document…). Download links show
+ * only when the teacher ticked "Students can download"; otherwise the file is
+ * read or played here and nothing points at the file itself.
+ */
+function LessonFile({ asset, device }: { asset: Asset; device: ReturnType<typeof useDeviceKind> }) {
+  const canDownload = asset.allowDownload
+
+  if (asset.type === "IMAGE") {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="rounded-xl overflow-hidden border">
+          <img
+            src={asset.fileUrl}
+            alt={asset.title}
+            className="w-full object-contain max-h-125"
+            onContextMenu={canDownload ? undefined : (e) => e.preventDefault()}
+            draggable={canDownload}
+          />
+        </div>
+        {canDownload && <DownloadLink asset={asset} />}
+      </div>
+    )
+  }
+
+  if (asset.type === "AUDIO") {
+    return (
+      <div className="rounded-xl border bg-muted/20 p-4 flex flex-col gap-2">
+        <p className="text-sm font-semibold">{asset.title}</p>
+        <audio
+          src={asset.fileUrl}
+          controls
+          controlsList={canDownload ? undefined : "nodownload"}
+          onContextMenu={canDownload ? undefined : (e) => e.preventDefault()}
+          className="w-full"
+        />
+        {canDownload && <DownloadLink asset={asset} />}
+      </div>
+    )
+  }
+
+  if (asset.type === "PDF") {
+    if (!canDownload) {
+      // View-only: every page drawn in the page on every device, rather than the
+      // browser's PDF viewer, which has its own save and print buttons.
+      return (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-semibold">{asset.title}</p>
+          {device === null ? null : <PdfPages url={asset.fileUrl} title={asset.title} viewOnly />}
+        </div>
+      )
+    }
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-semibold">{asset.title}</p>
+        {/* Phone browsers don't render a PDF inside an iframe (Android
+            shows a blank box, iOS only the first page), so on small
+            screens the file opens in the browser's own viewer instead.
+            Tablets get the wide layout but have the same iframe
+            problem (an iPad shows page one only), so they get every
+            page drawn in the page; computers keep the browser's
+            viewer, with its zoom and search. */}
+        {device === "tablet" ? (
+          <PdfPages url={asset.fileUrl} title={asset.title} />
+        ) : device === "desktop" ? (
+          <div className="hidden md:block rounded-xl border overflow-hidden" style={{ height: "700px" }}>
+            <iframe
+              src={asset.fileUrl}
+              className="w-full h-full"
+              title={asset.title}
+            />
+          </div>
+        ) : null}
+        <a
+          href={asset.fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          download={asset.fileName}
+          className="md:hidden flex items-center gap-3 rounded-xl border p-4 hover:border-primary hover:bg-primary/5 transition-colors"
+        >
+          <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+            <FileText className="size-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold truncate">{asset.fileName || asset.title}</p>
+            <p className="text-xs text-muted-foreground">Tap to open or download</p>
+          </div>
+          <Download className="size-4 text-primary shrink-0" />
+        </a>
+        <a
+          href={asset.fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          download={asset.fileName}
+          className="hidden md:inline-flex self-start items-center gap-1.5 text-xs text-primary underline underline-offset-2"
+        >
+          <Download className="size-3.5" />
+          Open / download PDF
+        </a>
+      </div>
+    )
+  }
+
+  if (asset.type === "DOCUMENT") {
+    // Use Microsoft Office Online viewer for Word/Excel/PowerPoint files
+    const officeViewer = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(asset.fileUrl)}`
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-semibold">{asset.title}</p>
+        <div className="rounded-xl border overflow-hidden" style={{ height: "700px" }}>
+          <iframe
+            src={officeViewer}
+            className="w-full h-full"
+            title={asset.title}
+          />
+        </div>
+        {canDownload && (
+          <a
+            href={asset.fileUrl}
+            download={asset.fileName}
+            className="self-start text-xs text-primary underline underline-offset-2"
+          >
+            Download file
+          </a>
+        )}
+      </div>
+    )
+  }
+
+  // Anything else (SUBTITLE, etc.): there is nothing to show in the page.
+  return (
+    <div className="rounded-xl border bg-muted/20 p-4 flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold truncate">{asset.title || asset.fileName}</p>
+        <p className="text-xs text-muted-foreground">{asset.type.toLowerCase()}</p>
+      </div>
+      {canDownload && (
+        <a
+          href={asset.fileUrl}
+          download={asset.fileName}
+          className="text-xs text-primary border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/5 transition-colors shrink-0"
+        >
+          Download
+        </a>
+      )}
     </div>
   )
 }

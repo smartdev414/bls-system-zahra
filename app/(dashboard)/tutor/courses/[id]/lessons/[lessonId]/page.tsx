@@ -35,6 +35,7 @@ type Asset = {
   title: string
   fileUrl: string
   fileName: string
+  allowDownload: boolean
 }
 
 type LessonFull = {
@@ -164,7 +165,14 @@ export default function ViewLessonPage({
         ) : (
           <div className="flex flex-col gap-6">
             {lesson.assets.map((asset) => (
-              <AssetView key={asset.id} asset={asset} />
+              <div key={asset.id} className="flex flex-col gap-2">
+                {!isVideoLink(asset.fileUrl) && (
+                  <Badge variant="outline" className="self-start text-[0.6875rem] font-normal">
+                    {asset.allowDownload ? "Students can download this" : "Students: view only, no download"}
+                  </Badge>
+                )}
+                <AssetView asset={asset} />
+              </div>
             ))}
           </div>
         )

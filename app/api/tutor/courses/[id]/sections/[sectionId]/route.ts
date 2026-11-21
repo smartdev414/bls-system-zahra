@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { can, courseContentScope } from "@/lib/permissions"
+import { lessonEditScope } from "@/lib/tutor-access"
 import { isValidTimeZone, parseReleaseAt, shiftReleaseAt, wallClockGapMinutes } from "@/lib/lesson-release"
 
 const DEFAULT_TIME_ZONE = "Europe/London"
@@ -14,7 +14,9 @@ async function handlePATCH(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (!can(session.role, "lessons.manage")) {
+    // Admins, or a teacher with the "Lessons" switch on a course they teach.
+    const scope = await lessonEditScope(session)
+    if (!scope) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -35,7 +37,7 @@ async function handlePATCH(
     }
 
     const section = await prisma.section.findFirst({
-      where: { id: sectionId, courseId, course: courseContentScope(session) },
+      where: { id: sectionId, courseId, course: scope },
     })
 
     if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })
@@ -88,14 +90,16 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (!can(session.role, "lessons.manage")) {
+    // Admins, or a teacher with the "Lessons" switch on a course they teach.
+    const scope = await lessonEditScope(session)
+    if (!scope) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id: courseId, sectionId } = await params
 
     const section = await prisma.section.findFirst({
-      where: { id: sectionId, courseId, course: courseContentScope(session) },
+      where: { id: sectionId, courseId, course: scope },
     })
 
     if (!section) return NextResponse.json({ message: "Section not found" }, { status: 404 })

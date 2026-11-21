@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
+import { lessonEditScope } from "@/lib/tutor-access"
+import { courseTeachScope } from "@/lib/permissions"
 import { parseReleaseAt } from "@/lib/lesson-release"
 
-async function verifyLessonOwnership(lessonId: string, session: { role: string; sub: string }) {
+async function verifyLessonOwnership(lessonId: string, scope: NonNullable<Awaited<ReturnType<typeof lessonEditScope>>>) {
   const lesson = await prisma.lesson.findFirst({
-    where: { id: lessonId, section: { course: courseContentScope(session) } },
+    where: { id: lessonId, section: { course: scope } },
     include: { section: { include: { course: { select: { tutorId: true, id: true } } } } },
   })
   return lesson
@@ -61,7 +62,7 @@ async function handleGET(
         testKind: test?.testKind ?? null,
         storyUrl: test?.storyUrl ?? null,
       },
-      canEdit: can(session.role, "lessons.manage"),
+      canEdit: (await lessonEditScope(session)) !== null,
     })
   } catch (err) {
     console.error("[GET /api/tutor/lessons/[id]]", err)
@@ -76,12 +77,14 @@ async function handlePUT(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (!can(session.role, "lessons.manage")) {
+    // Admins, or a teacher with the "Lessons" switch on a course they teach.
+    const scope = await lessonEditScope(session)
+    if (!scope) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
-    const lesson = await verifyLessonOwnership(id, session)
+    const lesson = await verifyLessonOwnership(id, scope)
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     const body = await req.json() as {
@@ -128,12 +131,14 @@ async function handleDELETE(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (!can(session.role, "lessons.manage")) {
+    // Admins, or a teacher with the "Lessons" switch on a course they teach.
+    const scope = await lessonEditScope(session)
+    if (!scope) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
-    const lesson = await verifyLessonOwnership(id, session)
+    const lesson = await verifyLessonOwnership(id, scope)
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
     await prisma.lesson.delete({ where: { id } })

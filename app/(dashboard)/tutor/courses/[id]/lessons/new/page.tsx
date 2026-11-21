@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import type { UploadedFile } from "@/components/ui/file-upload"
 import { useCoursesBase } from "@/hooks/use-courses-base"
+import { useTutorAccess } from "@/components/tutor-access-provider"
 import type { LibraryItem } from "@/lib/library"
 import { AddLessonScreen, type LessonType } from "../../AddLessonScreen"
 
@@ -24,9 +25,11 @@ export default function NewLessonPage({ params }: { params: Promise<{ id: string
   const initialType: LessonType | undefined =
     kindParam === "QUIZ" || kindParam === "VIDEO" || kindParam === "TEXT" ? kindParam : undefined
 
-  // Lessons are added by admins. In the tutor portal this page has nothing to
-  // offer, so go back to the course instead of showing a form that can't save.
-  const viewOnly = coursesBase === "/tutor/courses"
+  // Lessons are added by admins, and by teachers an admin gave the "Lessons"
+  // switch. Anyone else has nothing to do here, so go back to the course
+  // instead of showing a form that can't save.
+  const canAddLessons = useTutorAccess().lessons
+  const viewOnly = coursesBase === "/tutor/courses" && !canAddLessons
   useEffect(() => {
     if (viewOnly) router.replace(`${coursesBase}/${id}`)
   }, [viewOnly, router, coursesBase, id])

@@ -69,6 +69,8 @@ async function handleGET(req: NextRequest) {
             fileName: asset.fileName,
             fileSize: asset.fileSize,
             mimeType: asset.mimeType,
+            // Off: the card opens the lesson, where the file is shown view-only.
+            allowDownload: asset.allowDownload,
             courseId: enrollment.course.id,
             courseTitle: enrollment.course.title,
             lessonId: lesson.id,

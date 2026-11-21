@@ -447,6 +447,8 @@ model TutorProfile {
   canEditGroups   Boolean  @default(false)
   canEditStudents Boolean  @default(false)
   canDownload     Boolean  @default(false)
+  // Add and change lessons, sections and lesson files on the courses they teach.
+  canEditLessons  Boolean  @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -647,6 +649,9 @@ model LessonAsset {
   duration    Int?
   mimeType    String?
   order       Int       @default(0)
+  // Students only watch/read a lesson file unless this is on (videos are also
+  // checked by /api/media). Staff can always download, subject to their own switch.
+  allowDownload Boolean @default(false)
   createdAt   DateTime  @default(now())
 
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession, type SessionPayload } from "@/lib/auth"
+import { can, courseTeachScope } from "@/lib/permissions"
 import { FULL_ACCESS, VIEW_ONLY_MESSAGE, type TutorAccess, type TutorArea } from "@/lib/tutor-areas"
 
 export * from "@/lib/tutor-areas"
@@ -8,6 +9,7 @@ export * from "@/lib/tutor-areas"
 // Server side of the per-teacher switches described in lib/tutor-areas.ts.
 
 const COLUMN = {
+  lessons: "canEditLessons",
   tests: "canEditTests",
   calendar: "canEditCalendar",
   library: "canEditLibrary",
@@ -18,7 +20,7 @@ const COLUMN = {
 
 // A teacher with no profile row yet gets what a new profile starts with.
 const NO_ACCESS: TutorAccess = {
-  tests: false, calendar: true, library: false, groups: false, students: false, download: false,
+  lessons: false, tests: false, calendar: true, library: false, groups: false, students: false, download: false,
 }
 
 type ProfileRow = Partial<Record<(typeof COLUMN)[TutorArea], boolean>>
@@ -52,6 +54,27 @@ export async function getTutorAccess(session: Pick<SessionPayload, "role" | "sub
     select: ACCESS_SELECT,
   })
   return accessFromProfile(profile)
+}
+
+/**
+ * Which courses this person may change the lessons of (sections, lessons and
+ * lesson files), as a Prisma course `where` — or null for none.
+ *
+ * Admins: every course. A teacher with the "Lessons" switch: the courses they
+ * teach. Everyone else (support staff, other teachers): none. Course settings
+ * (title, publishing, deleting) stay admin-only and don't use this.
+ *
+ *   const scope = await lessonEditScope(session)
+ *   if (!scope) return 403
+ *   prisma.course.findFirst({ where: { id, ...scope } })
+ */
+export async function lessonEditScope(
+  session: Pick<SessionPayload, "role" | "sub">,
+): Promise<ReturnType<typeof courseTeachScope> | null> {
+  if (can(session.role, "lessons.manage")) return {}
+  if (session.role !== "TUTOR") return null
+  const access = await getTutorAccess(session)
+  return access.lessons ? courseTeachScope(session) : null
 }
 
 /**

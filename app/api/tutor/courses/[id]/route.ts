@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { createNotifications } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
+import { lessonEditScope } from "@/lib/tutor-access"
 import { isCourseVisibility, type CourseVisibility } from "@/lib/course-visibility"
 import { can, courseContentScope, courseTeachScope } from "@/lib/permissions"
 import { deleteCourseAnswerVideos, scheduleAnswerVideoDeletion } from "@/lib/test-recordings"
@@ -47,8 +48,11 @@ async function handleGET(
 
     return NextResponse.json({
       course: { ...course, teachers: course.teachers.map((t) => t.tutor) },
-      // Drives the page: without it the course is shown read-only.
+      // Drives the page: without it the course is shown read-only. Course
+      // settings are admin-only; a teacher with the "Lessons" switch may still
+      // add and change its sections and lessons.
       canEdit: can(session.role, "lessons.manage"),
+      canEditLessons: (await lessonEditScope(session)) !== null,
     })
   } catch (err) {
     console.error("[GET /api/tutor/courses/[id]]", err)

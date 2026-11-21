@@ -71,6 +71,20 @@ async function denyReason(session: SessionPayload, key: string): Promise<NextRes
   return null
 }
 
+/** Whether some lesson file stored at `key` lets students download it. */
+async function studentMayDownload(key: string): Promise<boolean> {
+  // Stored URLs end in the key, either as written or percent-encoded.
+  const encoded = key.split("/").map(encodeURIComponent).join("/")
+  const asset = await prisma.lessonAsset.findFirst({
+    where: {
+      allowDownload: true,
+      OR: [{ fileUrl: { endsWith: `/${key}` } }, { fileUrl: { endsWith: `/${encoded}` } }],
+    },
+    select: { id: true },
+  })
+  return asset !== null
+}
+
 /** The name a download is saved under: a student's recording by its date, anything else by its own name. */
 function downloadName(key: string): string | undefined {
   const recording = parseAnswerVideoKey(key)
@@ -110,11 +124,14 @@ async function handleGET(
     // Saving a copy is for teaching staff only; students watch in the player —
     // except their own recordings in tests, which are theirs to keep (denyReason
     // has already made sure a student only reaches their own).
+    // A lesson video whose teacher ticked "Students can download" is the other
+    // exception.
     const download = req.nextUrl.searchParams.has("download")
-    if (download && session.role !== "TUTOR" && session.role !== "ADMIN" && !key.startsWith("test-answers/")) {
+    const staff = session.role === "TUTOR" || session.role === "ADMIN"
+    if (download && !staff && !key.startsWith("test-answers/") && !(await studentMayDownload(key))) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
-    if (download) {
+    if (download && staff) {
       const off = await requireTutorAccess(session, "download")
       if (off) return off
     }

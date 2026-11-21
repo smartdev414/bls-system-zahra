@@ -33,7 +33,11 @@ export function useDeviceKind(): "phone" | "tablet" | "desktop" | null {
   return kind
 }
 
-export function PdfPages({ url, title }: { url: string; title: string }) {
+/**
+ * `viewOnly`: the reader has no download link to fall back on (the teacher has
+ * not allowed downloads), so errors don't point at one and right-click is off.
+ */
+export function PdfPages({ url, title, viewOnly = false }: { url: string; title: string; viewOnly?: boolean }) {
   const [pdf, setPdf] = useState<PdfDocument | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -51,15 +55,19 @@ export function PdfPages({ url, title }: { url: string; title: string }) {
         console.error("[PdfPages] could not open PDF", err)
         setError(
           err instanceof PdfOpenTimeoutError
-            ? "This file is taking too long to load — use the download link below."
-            : "This file could not be shown here — use the download link below.",
+            ? viewOnly
+              ? "This file is taking too long to load — please refresh the page to try again."
+              : "This file is taking too long to load — use the download link below."
+            : viewOnly
+              ? "This file could not be shown here — please refresh the page, or ask your teacher."
+              : "This file could not be shown here — use the download link below.",
         )
       })
     return () => {
       cancelled = true
       doc?.destroy?.()
     }
-  }, [url])
+  }, [url, viewOnly])
 
   if (error) {
     return <p className="rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">{error}</p>
@@ -73,7 +81,11 @@ export function PdfPages({ url, title }: { url: string; title: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-3" aria-label={title}>
+    <div
+      className="flex flex-col gap-3"
+      aria-label={title}
+      onContextMenu={viewOnly ? (e) => e.preventDefault() : undefined}
+    >
       {Array.from({ length: pdf.numPages }, (_, i) => (
         <PdfPageCanvas key={i} pdf={pdf} pageNumber={i + 1} total={pdf.numPages} />
       ))}

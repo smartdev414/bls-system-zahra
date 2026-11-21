@@ -9,11 +9,12 @@
  * This only narrows what the TUTOR role can already do (lib/permissions.ts);
  * staff are never limited by it.
  */
-export type TutorArea = "tests" | "calendar" | "library" | "groups" | "students" | "download"
+export type TutorArea = "lessons" | "tests" | "calendar" | "library" | "groups" | "students" | "download"
 
 export type TutorAccess = Record<TutorArea, boolean>
 
 export const TUTOR_AREAS: Array<{ area: TutorArea; label: string; hint: string }> = [
+  { area: "lessons", label: "Lessons", hint: "Add and change lessons and lesson files (PDFs, videos) on the courses they teach" },
   { area: "tests", label: "Tests", hint: "Make and change tests and leagues, and put them in courses" },
   { area: "calendar", label: "Calendar", hint: "Schedule, change and cancel classes, and invite people to them" },
   { area: "library", label: "Library", hint: "Use the school's library files in classes and tests" },
@@ -23,10 +24,11 @@ export const TUTOR_AREAS: Array<{ area: TutorArea; label: string; hint: string }
 ]
 
 export const FULL_ACCESS: TutorAccess = {
-  tests: true, calendar: true, library: true, groups: true, students: true, download: true,
+  lessons: true, tests: true, calendar: true, library: true, groups: true, students: true, download: true,
 }
 
 export const VIEW_ONLY_MESSAGE: Record<TutorArea, string> = {
+  lessons: "Lessons are view only for you. Ask an admin if you need to change them.",
   tests: "Tests are view only for you. Ask an admin if you need to change them.",
   calendar: "Your calendar is view only. Ask an admin if you need to change a class.",
   library: "The school library is view only for you. Ask an admin to use its files.",

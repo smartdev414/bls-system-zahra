@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { can, courseContentScope } from "@/lib/permissions"
+import { lessonEditScope } from "@/lib/tutor-access"
 import { normalizeAssetUrl } from "@/lib/video-link"
 
 async function handlePOST(
@@ -12,14 +12,16 @@ async function handlePOST(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (!can(session.role, "lessons.manage")) {
+    // Admins, or a teacher with the "Lessons" switch on a course they teach.
+    const scope = await lessonEditScope(session)
+    if (!scope) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
 
     const lesson = await prisma.lesson.findFirst({
-      where: { id, section: { course: courseContentScope(session) } },
+      where: { id, section: { course: scope } },
     })
     if (!lesson) return NextResponse.json({ message: "Lesson not found" }, { status: 404 })
 
@@ -30,6 +32,7 @@ async function handlePOST(
       fileName: string
       fileSize?: number
       mimeType?: string
+      allowDownload?: boolean
     }
 
     const count = await prisma.lessonAsset.count({ where: { lessonId: id } })
@@ -43,6 +46,7 @@ async function handlePOST(
         fileName: body.fileName,
         fileSize: body.fileSize ?? null,
         mimeType: body.mimeType ?? null,
+        allowDownload: body.allowDownload === true,
         order: count + 1,
       },
     })

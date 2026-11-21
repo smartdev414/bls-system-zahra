@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -36,6 +37,7 @@ type Asset = {
   fileName: string
   fileSize: number | null
   mimeType: string
+  allowDownload: boolean
 }
 
 type LessonFull = {
@@ -78,6 +80,8 @@ export default function EditLessonPage({
   const [newFiles, setNewFiles] = useState<UploadedFile[]>([])
   // Files picked from the resource library, attached on save like a new upload.
   const [libraryFiles, setLibraryFiles] = useState<UploadedFile[]>([])
+  // Files waiting for Save that students will be allowed to download (by URL).
+  const [newDownloadable, setNewDownloadable] = useState<Set<string>>(new Set())
   const [pickerOpen, setPickerOpen] = useState(false)
   // Video lessons can add a file by uploading it or recording it on the camera.
   const [videoMode, setVideoMode] = useState<"upload" | "record" | "link">("upload")
@@ -141,6 +145,7 @@ export default function EditLessonPage({
             fileName: file.fileName,
             fileSize: file.fileSize || undefined,
             mimeType: file.mimeType || undefined,
+            allowDownload: newDownloadable.has(file.fileUrl),
           }),
         })
         if (!r.ok) throw new Error(`Could not attach ${file.fileName}`)
@@ -152,6 +157,29 @@ export default function EditLessonPage({
     } finally {
       setSaving(false)
     }
+  }
+
+  // Saved straight away, like removing a file.
+  async function setAssetDownload(assetId: string, allowDownload: boolean) {
+    setAssets((a) => a.map((x) => (x.id === assetId ? { ...x, allowDownload } : x)))
+    const r = await fetch(`/api/tutor/lessons/${lessonId}/assets/${assetId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowDownload }),
+    }).catch(() => null)
+    if (!r?.ok) {
+      setAssets((a) => a.map((x) => (x.id === assetId ? { ...x, allowDownload: !allowDownload } : x)))
+      setError("Could not change the download setting")
+    }
+  }
+
+  function setNewFileDownload(fileUrl: string, allow: boolean) {
+    setNewDownloadable((prev) => {
+      const next = new Set(prev)
+      if (allow) next.add(fileUrl)
+      else next.delete(fileUrl)
+      return next
+    })
   }
 
   async function removeAsset(assetId: string) {
@@ -329,6 +357,13 @@ export default function EditLessonPage({
                     {isVideoLink(asset.fileUrl) ? asset.fileUrl : asset.type.toLowerCase()}
                   </p>
                 </div>
+                {!isVideoLink(asset.fileUrl) && (
+                  <DownloadToggle
+                    id={`dl-${asset.id}`}
+                    checked={asset.allowDownload}
+                    onChange={(v) => setAssetDownload(asset.id, v)}
+                  />
+                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -350,6 +385,13 @@ export default function EditLessonPage({
                     {isVideoLink(f.fileUrl) ? `${f.fileUrl} · Ready to save` : "Ready to save"}
                   </p>
                 </div>
+                {!isVideoLink(f.fileUrl) && (
+                  <DownloadToggle
+                    id={`dl-new-${f.fileUrl}`}
+                    checked={newDownloadable.has(f.fileUrl)}
+                    onChange={(v) => setNewFileDownload(f.fileUrl, v)}
+                  />
+                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -369,6 +411,11 @@ export default function EditLessonPage({
                   <p className="text-sm font-semibold truncate">{f.fileName}</p>
                   <p className="text-xs text-emerald-600">From library · Ready to save</p>
                 </div>
+                <DownloadToggle
+                  id={`dl-lib-${f.fileUrl}`}
+                  checked={newDownloadable.has(f.fileUrl)}
+                  onChange={(v) => setNewFileDownload(f.fileUrl, v)}
+                />
                 <Button
                   type="button"
                   variant="ghost"
@@ -426,5 +473,18 @@ export default function EditLessonPage({
       )}
 
     </div>
+  )
+}
+
+// ─── "Students can download" switch on one file ──────────────────────────────
+
+/** Off by default: students watch or read the file in the lesson but get no copy. */
+function DownloadToggle({ id, checked, onChange }: { id: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label htmlFor={id} className="flex items-center gap-1.5 shrink-0 cursor-pointer text-xs text-muted-foreground select-none">
+      <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} />
+      <span className="hidden sm:inline">Students can download</span>
+      <span className="sm:hidden">Download</span>
+    </label>
   )
 }

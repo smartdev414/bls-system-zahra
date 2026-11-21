@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
-import { can, courseContentScope } from "@/lib/permissions"
+import { lessonEditScope } from "@/lib/tutor-access"
 
 /**
  * Moves one lesson (or test) to a place in the course — later in its own
@@ -21,7 +21,9 @@ async function handlePUT(
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    if (!can(session.role, "lessons.manage")) {
+    // Admins, or a teacher with the "Lessons" switch on a course they teach.
+    const scope = await lessonEditScope(session)
+    if (!scope) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
 
@@ -34,7 +36,7 @@ async function handlePUT(
     const { lessonId, sectionId, index } = body as { lessonId: string; sectionId: string; index: number }
 
     const course = await prisma.course.findFirst({
-      where: { id: courseId, ...courseContentScope(session) },
+      where: { id: courseId, ...scope },
       select: { id: true },
     })
     if (!course) return NextResponse.json({ message: "Course not found" }, { status: 404 })

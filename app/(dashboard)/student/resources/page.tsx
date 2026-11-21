@@ -14,7 +14,7 @@ import { useRememberedState } from "@/hooks/use-remembered-state"
 import {
   FolderOpen, Search, FileText, Image as ImageIcon, Music, Loader2, BookOpen, CalendarDays,
   PlayCircle, Video, GraduationCap, Presentation, PencilLine, Link2, Files, ArrowLeft,
-  ExternalLink, Download, Play, X,
+  ExternalLink, Download, Play, X, Eye,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -46,6 +46,7 @@ type LessonResource = {
   fileName: string
   fileSize: number | null
   mimeType: string | null
+  allowDownload: boolean
   courseId: string
   courseTitle: string
   lessonId: string
@@ -81,6 +82,8 @@ type Entry = {
   fileSize: number | null
   level: StudentResourceItem["level"]
   createdAt: string | null
+  /** A lesson file its teacher keeps view-only: the card opens this lesson instead of the file. */
+  viewInLesson?: string
 }
 
 // ─── Look ─────────────────────────────────────────────────────────────────────
@@ -162,6 +165,7 @@ function lessonEntry(r: LessonResource): Entry {
     fileSize: r.fileSize,
     level: null,
     createdAt: null,
+    viewInLesson: r.allowDownload ? undefined : `/student/lessons/${r.lessonId}`,
   }
 }
 
@@ -415,10 +419,10 @@ function FileCard({ entry, showFolder }: { entry: Entry; showFolder: boolean }) 
   const type = TYPE_LOOK[entry.fileType]
   const folder = FOLDER_LOOK[entry.folder]
   const Icon = entry.kind === "link" ? Link2 : type.icon
-  const href = entry.kind === "link" ? entry.url : mediaSrc(entry.url)
+  const href = entry.viewInLesson ?? (entry.kind === "link" ? entry.url : mediaSrc(entry.url))
   const details = [entry.subtitle ?? entry.description, entry.fileSize ? formatBytes(entry.fileSize) : null].filter(Boolean).join(" · ")
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="group">
+    <a href={href} target={entry.viewInLesson ? undefined : "_blank"} rel="noopener noreferrer" className="group">
       <Card className="shadow-sm transition-all group-hover:shadow-md group-hover:border-primary h-full">
         <CardContent className="p-4 flex items-center gap-4">
           <div className={cn("rounded-xl p-3 shrink-0 transition-transform group-hover:scale-105", folder.soft)}>
@@ -430,7 +434,7 @@ function FileCard({ entry, showFolder }: { entry: Entry; showFolder: boolean }) 
             {details && <p className="text-xs text-muted-foreground truncate">{details}</p>}
           </div>
           <span className="shrink-0 text-muted-foreground group-hover:text-primary">
-            {entry.kind === "link" ? <ExternalLink className="size-4" /> : <Download className="size-4" />}
+            {entry.viewInLesson ? <Eye className="size-4" /> : entry.kind === "link" ? <ExternalLink className="size-4" /> : <Download className="size-4" />}
           </span>
         </CardContent>
       </Card>
