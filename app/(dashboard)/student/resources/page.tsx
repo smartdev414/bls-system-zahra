@@ -14,7 +14,7 @@ import { useRememberedState } from "@/hooks/use-remembered-state"
 import {
   FolderOpen, Search, FileText, Image as ImageIcon, Music, Loader2, BookOpen, CalendarDays,
   PlayCircle, Video, GraduationCap, Presentation, PencilLine, Link2, Files, ArrowLeft,
-  ExternalLink, Download, Play, X, Eye,
+  ExternalLink, Download, Play, X, Eye, Paperclip,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -32,7 +32,7 @@ import { parseVideoLink } from "@/lib/video-link"
 import { levelColor, levelLabel } from "@/lib/levels"
 import {
   FOLDER_INFO, STUDENT_RESOURCE_FOLDERS, youtubeThumbnail,
-  type StudentResourceFolder, type StudentResourceItem,
+  type StudentResourceAttachment, type StudentResourceFolder, type StudentResourceItem,
 } from "@/lib/student-resources"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -84,7 +84,12 @@ type Entry = {
   createdAt: string | null
   /** A lesson file its teacher keeps view-only: the card opens this lesson instead of the file. */
   viewInLesson?: string
+  /** Further files that go with it, e.g. the answers to an exam video. */
+  attachments: StudentResourceAttachment[]
 }
+
+/** What the player is showing: an entry, and which of its videos. */
+type Playing = { entry: Entry; url: string; kind: "embed" | "video"; title: string }
 
 // ─── Look ─────────────────────────────────────────────────────────────────────
 
@@ -149,6 +154,7 @@ function libraryEntry(r: StudentResourceItem): Entry {
     fileSize: r.fileSize,
     level: r.level,
     createdAt: r.createdAt,
+    attachments: r.attachments ?? [],
   }
 }
 
@@ -166,6 +172,7 @@ function lessonEntry(r: LessonResource): Entry {
     level: null,
     createdAt: null,
     viewInLesson: r.allowDownload ? undefined : `/student/lessons/${r.lessonId}`,
+    attachments: [],
   }
 }
 
@@ -184,12 +191,14 @@ function handoutEntry(h: Handout): Entry {
     fileSize: h.fileSize,
     level: null,
     createdAt: h.session.scheduledAt,
+    attachments: [],
   }
 }
 
 function matches(e: Entry, q: string) {
   if (!q) return true
-  return [e.title, e.subtitle, e.description].some((s) => s?.toLowerCase().includes(q))
+  return [e.title, e.subtitle, e.description, ...e.attachments.map((a) => a.title)]
+    .some((s) => s?.toLowerCase().includes(q))
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -197,7 +206,7 @@ function matches(e: Entry, q: string) {
 export default function ResourcesPage() {
   const [query, setQuery] = useRememberedState("query", "")
   const [openFolder, setOpenFolder] = useRememberedState<FolderKey | "ALL" | null>("folder", null)
-  const [playing, setPlaying] = useState<Entry | null>(null)
+  const [playing, setPlaying] = useState<Playing | null>(null)
   const q = useDebounce(query).trim().toLowerCase()
 
   const { data, loading } = useFetch<ResourcesData>("/api/student/resources", {
@@ -282,19 +291,35 @@ export default function ResourcesPage() {
 
       <Dialog open={!!playing} onOpenChange={(o) => { if (!o) setPlaying(null) }}>
         <DialogContent className="sm:max-w-4xl p-0 overflow-hidden gap-0">
-          <DialogTitle className="px-5 pt-4 pb-3 text-base pr-12">{playing?.title}</DialogTitle>
+          <DialogTitle className="px-5 pt-4 pb-3 text-base pr-12">
+            {playing?.entry.title}
+            {playing && playing.title !== playing.entry.title && (
+              <span className="text-muted-foreground font-normal"> · {playing.title}</span>
+            )}
+          </DialogTitle>
           {playing && (
             <div className="bg-black aspect-video">
               {playing.kind === "embed" ? (
-                <EmbeddedVideo url={playing.url} autoPlay className="size-full" />
+                <EmbeddedVideo key={playing.url} url={playing.url} autoPlay className="size-full" />
               ) : (
-                <ProtectedVideo src={playing.url} controls autoPlay playsInline className="size-full" />
+                <ProtectedVideo key={playing.url} src={playing.url} controls autoPlay playsInline className="size-full" />
               )}
             </div>
           )}
-          {playing?.description && (
-            <p className="px-5 py-3 text-sm text-muted-foreground whitespace-pre-line">{playing.description}</p>
+          {playing?.entry.description && (
+            <p className="px-5 pt-3 text-sm text-muted-foreground whitespace-pre-line">{playing.entry.description}</p>
           )}
+          {playing && playing.entry.attachments.length > 0 && (
+            <div className="px-5 py-3">
+              <Attachments
+                entry={playing.entry}
+                current={playing.url}
+                onPlay={setPlaying}
+                includeMain={playing.entry.kind === "embed" || playing.entry.kind === "video"}
+              />
+            </div>
+          )}
+          {playing && !playing.entry.attachments.length && <div className="h-2" />}
         </DialogContent>
       </Dialog>
     </div>
@@ -355,19 +380,77 @@ function FolderBanner({ folder, count, onBack }: { folder: FolderKey | "ALL"; co
   )
 }
 
-function EntryGrid({ entries, showFolder, onPlay }: { entries: Entry[]; showFolder: boolean; onPlay: (e: Entry) => void }) {
+/** The entry's main video, ready for the player. */
+function mainVideo(e: Entry): Playing {
+  return { entry: e, url: e.url, kind: e.kind === "embed" ? "embed" : "video", title: e.title }
+}
+
+function isVideoAttachment(a: StudentResourceAttachment) {
+  return a.mimeType?.startsWith("video/") ?? /\.(mp4|webm|mov|m4v)$/i.test(a.fileName ?? a.url)
+}
+
+/**
+ * The extra files on a card (e.g. the answers to an exam video): videos play
+ * in the page's player, other files open in a new tab.
+ */
+function Attachments({ entry, current, onPlay, includeMain = false }: {
+  entry: Entry
+  current?: string
+  onPlay: (p: Playing) => void
+  /** In the player: list the main video too, to go back to it. */
+  includeMain?: boolean
+}) {
+  const chip = "inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors"
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="flex items-center gap-1 text-[0.6875rem] font-bold uppercase tracking-wide text-muted-foreground">
+        <Paperclip className="size-3" /> Also with this
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {includeMain && (
+          <button type="button" onClick={() => onPlay(mainVideo(entry))}
+            className={cn(chip, current === entry.url ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted")}>
+            <Play className="size-3 shrink-0" /> <span className="truncate">{entry.title}</span>
+          </button>
+        )}
+        {entry.attachments.map((a, i) => {
+          const type = TYPE_LOOK[typeFromMime(a.mimeType)]
+          if (isVideoAttachment(a)) {
+            return (
+              <button key={`${a.url}-${i}`} type="button"
+                onClick={() => onPlay({ entry, url: a.url, kind: "video", title: a.title })}
+                className={cn(chip, current === a.url ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted")}>
+                <Play className="size-3 shrink-0" /> <span className="truncate">{a.title}</span>
+              </button>
+            )
+          }
+          const Icon = type.icon
+          return (
+            <a key={`${a.url}-${i}`} href={mediaSrc(a.url)} target="_blank" rel="noopener noreferrer"
+              className={cn(chip, "hover:bg-muted")}>
+              <Icon className="size-3 shrink-0" /> <span className="truncate">{a.title}</span>
+              {a.fileSize ? <span className="text-muted-foreground shrink-0">{formatBytes(a.fileSize)}</span> : null}
+            </a>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function EntryGrid({ entries, showFolder, onPlay }: { entries: Entry[]; showFolder: boolean; onPlay: (p: Playing) => void }) {
   const videos = entries.filter((e) => e.kind === "embed" || e.kind === "video")
   const others = entries.filter((e) => e.kind !== "embed" && e.kind !== "video")
   return (
     <div className="flex flex-col gap-5">
       {videos.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {videos.map((e) => <VideoCard key={e.key} entry={e} showFolder={showFolder} onPlay={() => onPlay(e)} />)}
+          {videos.map((e) => <VideoCard key={e.key} entry={e} showFolder={showFolder} onPlay={onPlay} />)}
         </div>
       )}
       {others.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2">
-          {others.map((e) => <FileCard key={e.key} entry={e} showFolder={showFolder} />)}
+          {others.map((e) => <FileCard key={e.key} entry={e} showFolder={showFolder} onPlay={onPlay} />)}
         </div>
       )}
     </div>
@@ -386,11 +469,11 @@ function Tags({ entry, showFolder }: { entry: Entry; showFolder: boolean }) {
   )
 }
 
-function VideoCard({ entry, showFolder, onPlay }: { entry: Entry; showFolder: boolean; onPlay: () => void }) {
+function VideoCard({ entry, showFolder, onPlay }: { entry: Entry; showFolder: boolean; onPlay: (p: Playing) => void }) {
   const thumb = youtubeThumbnail(entry.url)
   return (
-    <button type="button" onClick={onPlay} className="group text-left">
-      <Card className="overflow-hidden p-0 gap-0 shadow-sm transition-all group-hover:shadow-lg group-hover:-translate-y-0.5 h-full">
+    <Card className="group overflow-hidden p-0 gap-0 shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 h-full">
+      <button type="button" onClick={() => onPlay(mainVideo(entry))} className="text-left flex flex-col">
         <div className="relative aspect-video bg-gradient-to-br from-slate-800 to-slate-950">
           {thumb ? (
             // eslint-disable-next-line @next/next/no-img-element -- YouTube's own still
@@ -410,20 +493,25 @@ function VideoCard({ entry, showFolder, onPlay }: { entry: Entry; showFolder: bo
             <p className="text-xs text-muted-foreground line-clamp-2">{entry.subtitle ?? entry.description}</p>
           )}
         </CardContent>
-      </Card>
-    </button>
+      </button>
+      {entry.attachments.length > 0 && (
+        <div className="px-4 pb-4 -mt-1">
+          <Attachments entry={entry} onPlay={onPlay} />
+        </div>
+      )}
+    </Card>
   )
 }
 
-function FileCard({ entry, showFolder }: { entry: Entry; showFolder: boolean }) {
+function FileCard({ entry, showFolder, onPlay }: { entry: Entry; showFolder: boolean; onPlay: (p: Playing) => void }) {
   const type = TYPE_LOOK[entry.fileType]
   const folder = FOLDER_LOOK[entry.folder]
   const Icon = entry.kind === "link" ? Link2 : type.icon
   const href = entry.viewInLesson ?? (entry.kind === "link" ? entry.url : mediaSrc(entry.url))
   const details = [entry.subtitle ?? entry.description, entry.fileSize ? formatBytes(entry.fileSize) : null].filter(Boolean).join(" · ")
   return (
-    <a href={href} target={entry.viewInLesson ? undefined : "_blank"} rel="noopener noreferrer" className="group">
-      <Card className="shadow-sm transition-all group-hover:shadow-md group-hover:border-primary h-full">
+    <Card className="group shadow-sm transition-all hover:shadow-md hover:border-primary h-full p-0 gap-0">
+      <a href={href} target={entry.viewInLesson ? undefined : "_blank"} rel="noopener noreferrer">
         <CardContent className="p-4 flex items-center gap-4">
           <div className={cn("rounded-xl p-3 shrink-0 transition-transform group-hover:scale-105", folder.soft)}>
             <Icon className="size-6" />
@@ -437,8 +525,13 @@ function FileCard({ entry, showFolder }: { entry: Entry; showFolder: boolean }) 
             {entry.viewInLesson ? <Eye className="size-4" /> : entry.kind === "link" ? <ExternalLink className="size-4" /> : <Download className="size-4" />}
           </span>
         </CardContent>
-      </Card>
-    </a>
+      </a>
+      {entry.attachments.length > 0 && (
+        <div className="px-4 pb-4 -mt-1">
+          <Attachments entry={entry} onPlay={onPlay} />
+        </div>
+      )}
+    </Card>
   )
 }
 

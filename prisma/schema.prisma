@@ -1063,6 +1063,9 @@ model StudentResource {
   fileName    String?
   fileSize    Int?
   mimeType    String?
+  // More files that go with this one, e.g. the answers to an exam video:
+  // [{ url, title, fileName, fileSize, mimeType }] — see lib/student-resources.ts.
+  attachments Json                  @default("[]")
   // Shown only to students on a course of this level. Null = every student.
   level       CourseLevel?
   addedById   String?

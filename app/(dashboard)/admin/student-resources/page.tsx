@@ -10,7 +10,7 @@
 import { useState } from "react"
 import {
   FolderOpen, Plus, Loader2, Pencil, Trash2, PlayCircle, GraduationCap, Presentation,
-  PencilLine, Link2, FileText, ExternalLink, Upload,
+  PencilLine, Link2, FileText, ExternalLink, Upload, Paperclip, X,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { toast } from "sonner"
@@ -32,8 +32,8 @@ import { cn } from "@/lib/utils"
 import { mediaSrc } from "@/lib/protected-media"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
 import {
-  FOLDER_INFO, STUDENT_RESOURCE_FOLDERS, youtubeThumbnail,
-  type StudentResourceFolder, type StudentResourceItem,
+  FOLDER_INFO, MAX_RESOURCE_ATTACHMENTS, STUDENT_RESOURCE_FOLDERS, youtubeThumbnail,
+  type StudentResourceAttachment, type StudentResourceFolder, type StudentResourceItem,
 } from "@/lib/student-resources"
 
 const FOLDER_LOOK: Record<StudentResourceFolder, { icon: LucideIcon; gradient: string; soft: string }> = {
@@ -59,6 +59,10 @@ type Draft = {
   source: "file" | "link"
   link: string
   file: UploadedFile | null
+  /** Further files kept with this one, e.g. the answers to an exam video. */
+  attachments: StudentResourceAttachment[]
+  /** Bumped after each extra upload, to give the next one a fresh drop zone. */
+  attachKey: number
   /** What is saved now, when editing — kept unless replaced. */
   existing: StudentResourceItem | null
 }
@@ -67,7 +71,7 @@ function newDraft(folder: StudentResourceFolder): Draft {
   return {
     id: null, folder, title: "", description: "", level: "ALL",
     source: folder === "VIDEO_LESSONS" || folder === "LINKS" ? "link" : "file",
-    link: "", file: null, existing: null,
+    link: "", file: null, attachments: [], attachKey: 0, existing: null,
   }
 }
 
@@ -75,7 +79,8 @@ function editDraft(item: StudentResourceItem): Draft {
   return {
     id: item.id, folder: item.folder, title: item.title, description: item.description ?? "",
     level: item.level ?? "ALL", source: item.isLink ? "link" : "file",
-    link: item.isLink ? item.url : "", file: null, existing: item,
+    link: item.isLink ? item.url : "", file: null,
+    attachments: item.attachments ?? [], attachKey: 0, existing: item,
   }
 }
 
@@ -97,6 +102,7 @@ export default function AdminStudentResourcesPage() {
       title: draft.title,
       description: draft.description,
       level: draft.level === "ALL" ? null : draft.level,
+      attachments: draft.attachments.map((a) => ({ ...a, title: a.title.trim() })),
     }
     if (draft.source === "link") {
       if (draft.link.trim() && draft.link.trim() !== draft.existing?.url) body.link = draft.link
@@ -207,6 +213,14 @@ export default function AdminStudentResourcesPage() {
                     </div>
                     <p className="font-semibold text-sm leading-snug truncate">{item.title}</p>
                     <p className="text-xs text-muted-foreground truncate">{item.description || item.fileName || item.url}</p>
+                    {item.attachments.length > 0 && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 min-w-0">
+                        <Paperclip className="size-3 shrink-0" />
+                        <span className="truncate">
+                          {item.attachments.length} extra file{item.attachments.length !== 1 ? "s" : ""}: {item.attachments.map((a) => a.title).join(", ")}
+                        </span>
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0">
                     <Button asChild size="icon" variant="ghost" className="size-8" title="Open">
@@ -320,6 +334,60 @@ export default function AdminStudentResourcesPage() {
                       <p className="text-xs text-muted-foreground">Keeping {draft.existing.fileName ?? "the current file"} unless you upload another.</p>
                     )}
                   </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label className="flex items-center gap-1.5">
+                  <Paperclip className="size-4" /> Extra files <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <p className="text-xs text-muted-foreground -mt-1">
+                  Anything that goes with it, such as the answers to an exam video. Students see these on the same card.
+                </p>
+                {draft.attachments.map((a, i) => (
+                  <div key={`${a.url}-${i}`} className="flex items-center gap-2 rounded-lg border px-2 py-1.5">
+                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                    <Input
+                      value={a.title}
+                      maxLength={200}
+                      aria-label="Name students see"
+                      placeholder="e.g. Answers"
+                      className="h-8 text-sm"
+                      onChange={(e) => setDraft({
+                        ...draft,
+                        attachments: draft.attachments.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)),
+                      })}
+                    />
+                    <span className="hidden sm:block max-w-32 truncate text-xs text-muted-foreground" title={a.fileName ?? undefined}>
+                      {a.fileName}
+                    </span>
+                    <Button
+                      type="button" size="icon" variant="ghost" className="size-8 shrink-0 text-destructive"
+                      title="Remove this file"
+                      onClick={() => setDraft({ ...draft, attachments: draft.attachments.filter((_, j) => j !== i) })}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+                {draft.attachments.length < MAX_RESOURCE_ATTACHMENTS && (
+                  <FileUpload
+                    key={draft.attachKey}
+                    accept={ACCEPT}
+                    label={draft.attachments.length ? "Add another file" : "Add a file, e.g. the answers"}
+                    onUploaded={(file) => setDraft((d) => d && ({
+                      ...d,
+                      attachKey: d.attachKey + 1,
+                      attachments: [...d.attachments, {
+                        url: file.fileUrl,
+                        title: file.fileName.replace(/\.[^.]+$/, ""),
+                        fileName: file.fileName,
+                        fileSize: file.fileSize,
+                        mimeType: file.mimeType,
+                      }],
+                    }))}
+                    onRemove={() => {}}
+                  />
                 )}
               </div>
             </div>

@@ -23,6 +23,42 @@ export function isStudentResourceFolder(value: unknown): value is StudentResourc
   return STUDENT_RESOURCE_FOLDERS.includes(value as StudentResourceFolder)
 }
 
+/** A further file kept with a resource, e.g. the answers to an exam video. */
+export type StudentResourceAttachment = {
+  url: string
+  /** What students see it called, e.g. "Answers". */
+  title: string
+  fileName: string | null
+  fileSize: number | null
+  mimeType: string | null
+}
+
+/** Most extra files one resource can hold. */
+export const MAX_RESOURCE_ATTACHMENTS = 10
+
+/** The attachments column as stored, cleaned up; anything malformed is dropped. */
+export function readAttachments(value: unknown): StudentResourceAttachment[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((a): StudentResourceAttachment[] => {
+    if (!a || typeof a !== "object") return []
+    const r = a as Record<string, unknown>
+    if (typeof r.url !== "string") return []
+    let url: URL
+    try { url = new URL(r.url) } catch { return [] }
+    if (url.protocol !== "https:") return []
+    const fileName = typeof r.fileName === "string" ? r.fileName.slice(0, 300) : null
+    const title = (typeof r.title === "string" ? r.title.trim().slice(0, 200) : "")
+      || fileName?.replace(/\.[^.]+$/, "") || "File"
+    return [{
+      url: url.toString(),
+      title,
+      fileName,
+      fileSize: typeof r.fileSize === "number" && Number.isFinite(r.fileSize) ? Math.round(r.fileSize) : null,
+      mimeType: typeof r.mimeType === "string" ? r.mimeType.slice(0, 200) : null,
+    }]
+  }).slice(0, MAX_RESOURCE_ATTACHMENTS)
+}
+
 /** One item as the API returns it. */
 export type StudentResourceItem = {
   id: string
@@ -34,6 +70,7 @@ export type StudentResourceItem = {
   fileName: string | null
   fileSize: number | null
   mimeType: string | null
+  attachments: StudentResourceAttachment[]
   level: CourseLevel | null
   createdAt: string
 }

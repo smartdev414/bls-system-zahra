@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { useFetch } from "@/hooks/use-fetch"
 import { toast } from "sonner"
@@ -197,11 +196,11 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
 
         <div className="flex flex-1 min-h-0">
           {/* Left panel: groups list */}
-          <div className="w-56 border-r flex flex-col shrink-0">
+          <div className="w-56 border-r flex flex-col shrink-0 min-h-0">
             <div className="px-3 py-2 border-b">
               <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">Groups</p>
             </div>
-            <ScrollArea className="flex-1">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
               {groupsLoading ? (
                 <div className="flex justify-center py-6">
                   <Loader2 className="size-5 animate-spin text-primary" />
@@ -260,7 +259,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
               )}
-            </ScrollArea>
+            </div>
 
             {/* Create group */}
             {canEditGroups && <div className="border-t p-2">
@@ -295,7 +294,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {/* Right panel: group members */}
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
             {!currentGroup ? (
               <div className="flex flex-col items-center justify-center flex-1 gap-2 text-center px-6">
                 <div className="rounded-full bg-muted p-4">
@@ -317,7 +316,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                 <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                   {/* Current members */}
                   {currentGroup.members.length > 0 && (
-                    <div className="shrink-0 max-h-48 overflow-y-auto border-b">
+                    <div className="shrink-0 max-h-[30%] overflow-y-auto overscroll-contain border-b">
                       <div className="px-4 py-1.5 bg-muted/30">
                         <p className="text-[0.625rem] font-bold uppercase tracking-wider text-muted-foreground">Members</p>
                       </div>
@@ -334,7 +333,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="size-6 opacity-0 group-hover/member:opacity-100 text-destructive hover:text-destructive"
+                              className="size-6 shrink-0 opacity-100 md:opacity-0 md:group-hover/member:opacity-100 text-destructive hover:text-destructive"
                               disabled={busy}
                               onClick={() => removeMember(member.id)}
                             >
@@ -359,7 +358,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                         />
                       </div>
                     </div>
-                    <ScrollArea className="flex-1">
+                    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
                       {filteredNonMembers.length === 0 ? (
                         <p className="text-xs text-muted-foreground text-center py-6">
                           {nonMembers.length === 0 ? "All students are already in this group." : "No students match your search."}
@@ -377,7 +376,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-6 text-[0.625rem] px-2 gap-1 opacity-0 group-hover/add:opacity-100"
+                              className="h-6 text-[0.625rem] px-2 gap-1 shrink-0"
                               disabled={busy}
                               onClick={() => addMember(student.id)}
                             >
@@ -386,7 +385,7 @@ export function ManageGroupsModal({ onClose }: { onClose: () => void }) {
                           </div>
                         ))
                       )}
-                    </ScrollArea>
+                    </div>
                   </div>}
                 </div>
               </>

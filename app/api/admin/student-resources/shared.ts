@@ -1,7 +1,8 @@
 import type { StudentResource } from "@/app/generated/prisma/client"
 import { parseLevel } from "@/lib/levels"
 import {
-  isStudentResourceFolder, normalizeResourceLink, type StudentResourceItem,
+  isStudentResourceFolder, normalizeResourceLink, readAttachments, MAX_RESOURCE_ATTACHMENTS,
+  type StudentResourceAttachment, type StudentResourceItem,
 } from "@/lib/student-resources"
 
 export function toItem(r: StudentResource): StudentResourceItem {
@@ -15,6 +16,7 @@ export function toItem(r: StudentResource): StudentResourceItem {
     fileName: r.fileName,
     fileSize: r.fileSize,
     mimeType: r.mimeType,
+    attachments: readAttachments(r.attachments),
     level: r.level,
     createdAt: r.createdAt.toISOString(),
   }
@@ -27,6 +29,7 @@ type Body = {
   level?: unknown
   link?: unknown
   file?: { fileUrl?: unknown; fileName?: unknown; fileSize?: unknown; mimeType?: unknown } | null
+  attachments?: unknown
 }
 
 export type ResourceInput = {
@@ -39,6 +42,7 @@ export type ResourceInput = {
   fileName: string | null
   fileSize: number | null
   mimeType: string | null
+  attachments: StudentResourceAttachment[]
 }
 
 /**
@@ -65,6 +69,16 @@ export function parseResourceBody(body: Body, partial: boolean): { data: Partial
     const level = parseLevel(body.level)
     if (level === undefined) return { error: "Unknown level" }
     data.level = level
+  }
+
+  if (body.attachments !== undefined) {
+    if (!Array.isArray(body.attachments)) return { error: "Unknown extra files" }
+    if (body.attachments.length > MAX_RESOURCE_ATTACHMENTS) {
+      return { error: `Up to ${MAX_RESOURCE_ATTACHMENTS} extra files per resource` }
+    }
+    const attachments = readAttachments(body.attachments)
+    if (attachments.length !== body.attachments.length) return { error: "An extra file didn't finish uploading. Try again." }
+    data.attachments = attachments
   }
 
   if (typeof body.link === "string" && body.link.trim()) {
