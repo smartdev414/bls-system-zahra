@@ -185,7 +185,7 @@ export async function uploadFileInParts({
 
   const { key, uploadId } = await postAction<{ key: string; uploadId: string }>(
     endpoint,
-    { action: "create", fileName: file.name, contentType },
+    { action: "create", fileName: file.name, contentType, fileSize: file.size },
     ctl.signal,
   )
 

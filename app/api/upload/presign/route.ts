@@ -4,24 +4,8 @@ import { getPresignedUploadUrl, publicUrl } from "@/lib/s3"
 import { randomUUID } from "crypto"
 import { withAudit } from "@/lib/audit"
 import { sanitizeUploadFileName, uniqueUploadKey } from "@/lib/upload-filename"
+import { ALLOWED_UPLOAD_TYPES } from "@/lib/upload-types"
 
-// Allowed MIME types and their S3 folder prefix
-// Images are NOT listed here — they go through /api/upload/image for WebP conversion
-const ALLOWED: Record<string, { prefix: string; assetType: string }> = {
-  "video/mp4":        { prefix: "videos",    assetType: "VIDEO" },
-  "video/webm":       { prefix: "videos",    assetType: "VIDEO" },
-  "video/quicktime":  { prefix: "videos",    assetType: "VIDEO" },
-  "application/pdf":  { prefix: "documents", assetType: "PDF" },
-  "audio/mpeg":       { prefix: "audio",     assetType: "AUDIO" },
-  "audio/wav":        { prefix: "audio",     assetType: "AUDIO" },
-  "text/vtt":         { prefix: "subtitles", assetType: "SUBTITLE" },
-  "application/msword":                                                       { prefix: "documents", assetType: "DOCUMENT" },
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":  { prefix: "documents", assetType: "DOCUMENT" },
-  "application/vnd.ms-powerpoint":                                            { prefix: "documents", assetType: "DOCUMENT" },
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": { prefix: "documents", assetType: "DOCUMENT" },
-  "application/vnd.ms-excel":                                                 { prefix: "documents", assetType: "DOCUMENT" },
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":        { prefix: "documents", assetType: "DOCUMENT" },
-}
 
 async function handlePOST(req: NextRequest) {
   try {
@@ -41,12 +25,14 @@ async function handlePOST(req: NextRequest) {
       return NextResponse.json({ message: "fileName and contentType are required" }, { status: 400 })
     }
 
-    const allowed = ALLOWED[contentType]
+    const allowed = ALLOWED_UPLOAD_TYPES[contentType]
     if (!allowed) {
       return NextResponse.json({ message: `File type "${contentType}" is not supported` }, { status: 400 })
     }
 
-    // 500 MB cap
+    // 500 MB cap for a single PUT. Larger files (lesson videos) go through
+    // /api/upload/multipart — lib/upload-file.ts picks that path automatically.
+    // Browser recordings still come here; the background replacer assumes this cap.
     if (fileSize > 500 * 1024 * 1024) {
       return NextResponse.json({ message: "File too large (max 500 MB)" }, { status: 400 })
     }

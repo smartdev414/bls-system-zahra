@@ -2,11 +2,14 @@
 // screens that take several files at once (the resource library).
 //
 // Images go through the server for WebP conversion, PowerPoint is converted to a
-// PDF for the classroom, and everything else is a presigned S3 PUT.
+// PDF for the classroom, large files go up as an S3 multipart upload, and
+// everything else is a single presigned S3 PUT.
 // `convertPowerPoint: false` keeps a deck as it is, for files students just open.
 
 import type { UploadedFile } from "@/components/ui/file-upload"
 import { isPowerPointMime, uploadPowerPointFile } from "@/lib/upload-powerpoint"
+import { MULTIPART_THRESHOLD, uploadFileInParts } from "@/lib/multipart-upload"
+import { ALLOWED_UPLOAD_TYPES, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-types"
 
 export async function uploadFile(file: File, { convertPowerPoint = true } = {}): Promise<UploadedFile> {
   if (convertPowerPoint && isPowerPointMime(file.type)) {
@@ -36,6 +39,13 @@ export async function uploadFile(file: File, { convertPowerPoint = true } = {}):
     const json = await res.json() as { fileUrl: string; assetType: string }
     fileUrl = json.fileUrl
     assetType = json.assetType
+  } else if (file.size > MULTIPART_THRESHOLD) {
+    // Big files (lesson videos) go up in parallel parts straight to S3.
+    const allowed = ALLOWED_UPLOAD_TYPES[file.type]
+    if (!allowed) throw new Error(`File type "${file.type || "unknown"}" is not supported`)
+    if (file.size > MAX_UPLOAD_BYTES) throw new Error(`File too large (max ${MAX_UPLOAD_LABEL})`)
+    fileUrl = await uploadFileInParts({ endpoint: "/api/upload/multipart", file, contentType: file.type })
+    assetType = allowed.assetType
   } else {
     const presignRes = await fetch("/api/upload/presign", {
       method: "POST",
