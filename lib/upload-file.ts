@@ -8,10 +8,13 @@
 
 import type { UploadedFile } from "@/components/ui/file-upload"
 import { isPowerPointMime, uploadPowerPointFile } from "@/lib/upload-powerpoint"
-import { MULTIPART_THRESHOLD, uploadFileInParts } from "@/lib/multipart-upload"
+import { MULTIPART_THRESHOLD, uploadFileDirect, uploadFileInParts, type UploadProgress } from "@/lib/multipart-upload"
 import { ALLOWED_UPLOAD_TYPES, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-types"
 
-export async function uploadFile(file: File, { convertPowerPoint = true } = {}): Promise<UploadedFile> {
+export async function uploadFile(
+  file: File,
+  { convertPowerPoint = true, onProgress }: { convertPowerPoint?: boolean; onProgress?: (p: UploadProgress) => void } = {},
+): Promise<UploadedFile> {
   if (convertPowerPoint && isPowerPointMime(file.type)) {
     const result = await uploadPowerPointFile(file)
     return {
@@ -44,7 +47,7 @@ export async function uploadFile(file: File, { convertPowerPoint = true } = {}):
     const allowed = ALLOWED_UPLOAD_TYPES[file.type]
     if (!allowed) throw new Error(`File type "${file.type || "unknown"}" is not supported`)
     if (file.size > MAX_UPLOAD_BYTES) throw new Error(`File too large (max ${MAX_UPLOAD_LABEL})`)
-    fileUrl = await uploadFileInParts({ endpoint: "/api/upload/multipart", file, contentType: file.type })
+    fileUrl = await uploadFileInParts({ endpoint: "/api/upload/multipart", file, contentType: file.type, onProgress })
     assetType = allowed.assetType
   } else {
     const presignRes = await fetch("/api/upload/presign", {
@@ -59,8 +62,7 @@ export async function uploadFile(file: File, { convertPowerPoint = true } = {}):
     const { presignedUrl, fileUrl: url, assetType: at } = await presignRes.json() as {
       presignedUrl: string; fileUrl: string; assetType: string
     }
-    const uploadRes = await fetch(presignedUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file })
-    if (!uploadRes.ok) throw new Error("Upload to S3 failed")
+    await uploadFileDirect({ presignedUrl, file, contentType: file.type, onProgress })
     fileUrl = url
     assetType = at
   }

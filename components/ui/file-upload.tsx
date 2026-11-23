@@ -43,17 +43,21 @@ export function FileUpload({ accept, label = "Upload file", onUploaded, onRemove
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Percent sent, or null while there is nothing to measure (images, PowerPoint).
+  const [percent, setPercent] = useState<number | null>(null)
 
   async function handleFile(file: File) {
     setError(null)
     setUploading(true)
+    setPercent(null)
 
     try {
-      onUploaded(await uploadFile(file))
+      onUploaded(await uploadFile(file, { onProgress: (p) => setPercent(p.percent) }))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed")
     } finally {
       setUploading(false)
+      setPercent(null)
     }
   }
 
@@ -115,8 +119,18 @@ export function FileUpload({ accept, label = "Upload file", onUploaded, onRemove
         )}
         <div>
           <p className="text-sm font-semibold">
-            {uploading ? "Uploading…" : label}
+            {uploading ? (percent === null ? "Uploading…" : `Uploading… ${percent}%`) : label}
           </p>
+          {uploading && percent !== null && (
+            <div className="mx-auto mt-2 h-1.5 w-48 max-w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-primary transition-[width]" style={{ width: `${percent}%` }} />
+            </div>
+          )}
+          {uploading && (
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Large videos can take a while. Please keep this page open.
+            </p>
+          )}
           {!uploading && (
             <p className="text-xs text-muted-foreground mt-0.5">
               Drag & drop or click to browse
