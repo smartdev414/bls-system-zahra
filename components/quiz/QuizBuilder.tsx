@@ -77,6 +77,7 @@ export type QuestionDraft = {
   /** Changed since it was last saved (or never saved). */
   dirty?: boolean
   questionImageUploading?: boolean
+  questionImageProgress?: number
 }
 
 type Props = {
@@ -224,8 +225,11 @@ export function withSaved(draft: QuestionDraft, saved: SavedQuestion): QuestionD
 
 // Images are converted to WebP by the server; a video goes straight to storage
 // like a lesson video does, so a signed clip can be the question or an answer.
-export async function uploadMedia(file: File): Promise<{ url: string; mediaType: "image" | "video" }> {
-  const { fileUrl } = await uploadFile(file)
+export async function uploadMedia(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<{ url: string; mediaType: "image" | "video" }> {
+  const { fileUrl } = await uploadFile(file, { onProgress: onProgress && ((p) => onProgress(p.percent)) })
   return { url: fileUrl, mediaType: file.type.startsWith("video/") ? "video" : "image" }
 }
 
@@ -235,6 +239,7 @@ export function MediaUploadButton({
   mediaUrl,
   mediaType,
   uploading,
+  progress,
   onUpload,
   onRemove,
   size = "option",
@@ -244,6 +249,8 @@ export function MediaUploadButton({
   mediaUrl?: string
   mediaType?: "image" | "video"
   uploading?: boolean
+  /** Percent sent while uploading; a long video otherwise looks like a hang. */
+  progress?: number
   onUpload: (file: File) => void
   onRemove: () => void
   size?: "option" | "question"
@@ -310,14 +317,26 @@ export function MediaUploadButton({
     <label title={label} className={cn(
       "relative flex flex-col items-center justify-center rounded-lg border border-dashed cursor-pointer hover:bg-muted/50 transition-colors text-muted-foreground focus-within:ring-2 focus-within:ring-ring",
       size === "question" ? "w-full max-w-xs aspect-video gap-1.5" : "size-16 gap-1 shrink-0",
-      uploading && "opacity-50 pointer-events-none"
+      uploading && "pointer-events-none",
+      uploading && progress === undefined && "opacity-50"
     )}>
       {uploading
         ? <Loader2 className={cn("animate-spin", size === "question" ? "size-6" : "size-4")} />
         : acceptVideo || videoOnly
           ? <VideoIcon className={size === "question" ? "size-6" : "size-4"} />
           : <ImageIcon className={size === "question" ? "size-6" : "size-4"} />}
-      {size === "question" && <span className="text-xs">{videoOnly ? "Add video" : acceptVideo ? "Add image / video" : "Add image"}</span>}
+      {size === "question" && (
+        <span className="text-xs">
+          {uploading
+            ? progress === undefined ? "Uploading…" : `Uploading… ${progress}%`
+            : videoOnly ? "Add video" : acceptVideo ? "Add image / video" : "Add image"}
+        </span>
+      )}
+      {size === "question" && uploading && progress !== undefined && (
+        <span className="h-1.5 w-32 max-w-[80%] overflow-hidden rounded-full bg-muted-foreground/20">
+          <span className="block h-full bg-primary transition-[width]" style={{ width: `${progress}%` }} />
+        </span>
+      )}
       <input
         type="file"
         accept={accept}
@@ -485,13 +504,14 @@ function QuestionCard({
   }
 
   async function handleQuestionMedia(file: File) {
-    onPatch((cur) => ({ ...cur, questionImageUploading: true, error: null }))
+    onPatch((cur) => ({ ...cur, questionImageUploading: true, questionImageProgress: undefined, error: null }))
     try {
-      const { url, mediaType } = await uploadMedia(file)
-      onPatch((cur) => ({ ...cur, imageUrl: url, mediaType, questionImageUploading: false, dirty: true }))
+      const { url, mediaType } = await uploadMedia(file, (percent) =>
+        onPatch((cur) => (cur.questionImageProgress === percent ? cur : { ...cur, questionImageProgress: percent })))
+      onPatch((cur) => ({ ...cur, imageUrl: url, mediaType, questionImageUploading: false, questionImageProgress: undefined, dirty: true }))
     } catch (e) {
       const error = e instanceof Error ? e.message : "Upload failed"
-      onPatch((cur) => ({ ...cur, questionImageUploading: false, error }))
+      onPatch((cur) => ({ ...cur, questionImageUploading: false, questionImageProgress: undefined, error }))
     }
   }
 
@@ -691,6 +711,7 @@ function QuestionCard({
               mediaUrl={q.imageUrl}
               mediaType={q.mediaType}
               uploading={q.questionImageUploading}
+              progress={q.questionImageProgress}
               onUpload={handleQuestionMedia}
               onRemove={() => edit((cur) => ({ ...cur, imageUrl: undefined, mediaType: undefined }))}
               size="question"

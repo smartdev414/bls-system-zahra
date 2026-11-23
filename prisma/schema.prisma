@@ -645,7 +645,7 @@ model LessonAsset {
   description String?
   fileUrl     String
   fileName    String
-  fileSize    Int?
+  fileSize    Float? // bytes; double so videos over 2 GB fit (INT stops at 2 GiB)
   duration    Int?
   mimeType    String?
   order       Int       @default(0)
@@ -1024,7 +1024,7 @@ model LibraryFile {
   title                String
   fileUrl              String
   fileName             String
-  fileSize             Int?
+  fileSize             Float? // bytes; double so videos over 2 GB fit (INT stops at 2 GiB)
   mimeType             String?
   assetType            AssetType
   presentationUrl      String? // pre-converted PDF (PowerPoint uploads only)
@@ -1061,7 +1061,7 @@ model StudentResource {
   url         String
   isLink      Boolean               @default(false)
   fileName    String?
-  fileSize    Int?
+  fileSize    Float? // bytes; double so videos over 2 GB fit (INT stops at 2 GiB)
   mimeType    String?
   // More files that go with this one, e.g. the answers to an exam video:
   // [{ url, title, fileName, fileSize, mimeType }] — see lib/student-resources.ts.
@@ -1097,7 +1097,7 @@ model LiveSessionResource {
   title                String
   fileUrl              String // original file — used for student downloads
   fileName             String
-  fileSize             Int?
+  fileSize             Float? // bytes; double so videos over 2 GB fit (INT stops at 2 GiB)
   mimeType             String?
   presentationUrl      String? // pre-converted PDF for low-latency classroom use
   presentationMimeType String?
@@ -1122,7 +1122,7 @@ model ClassHandout {
   title     String
   fileUrl   String
   fileName  String
-  fileSize  Int?
+  fileSize  Float? // bytes; double so videos over 2 GB fit (INT stops at 2 GiB)
   mimeType  String?
   releaseAt DateTime
   createdAt DateTime @default(now())

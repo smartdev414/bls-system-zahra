@@ -20,8 +20,9 @@ export const ALLOWED_UPLOAD_TYPES: Record<string, { prefix: string; assetType: s
 }
 
 /**
- * Upload ceiling. Storage could take far more (multipart goes to 5 TB), but
- * `fileSize` columns are Postgres INT, which tops out just under 2 GiB.
+ * Upload ceiling. Files over 8 MB go up in parts straight to S3 (which takes
+ * up to 5 TB) and `fileSize` columns are double precision, so this is a sanity
+ * cap rather than a storage one — long signed videos can run well past 2 GB.
  */
-export const MAX_UPLOAD_BYTES = 2000 * 1024 * 1024
-export const MAX_UPLOAD_LABEL = "2 GB"
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024 * 1024
+export const MAX_UPLOAD_LABEL = "20 GB"

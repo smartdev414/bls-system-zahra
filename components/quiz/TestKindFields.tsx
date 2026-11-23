@@ -219,6 +219,7 @@ export function StoryVideoField({ value, onChange, label = "Story video", hint, 
   signed?: boolean
 }) {
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState<number | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -226,13 +227,15 @@ export function StoryVideoField({ value, onChange, label = "Story video", hint, 
 
   async function upload(file: File) {
     setUploading(true)
+    setProgress(undefined)
     setError(null)
     try {
-      onChange((await uploadMedia(file)).url)
+      onChange((await uploadMedia(file, setProgress)).url)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed")
     } finally {
       setUploading(false)
+      setProgress(undefined)
     }
   }
 
@@ -243,6 +246,7 @@ export function StoryVideoField({ value, onChange, label = "Story video", hint, 
         mediaUrl={value ?? undefined}
         mediaType="video"
         uploading={uploading}
+        progress={progress}
         onUpload={upload}
         onRemove={() => onChange(null)}
         size="question"
