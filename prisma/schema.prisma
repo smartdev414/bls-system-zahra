@@ -1147,6 +1147,11 @@ model Test {
   // STORY: whether students may pause, rewind and skip the story video. Off:
   // it just plays through, as on the old platform's assessments.
   storyControls  Boolean        @default(false)
+  // STORY: the story split into sections, as in the real exam — each with its
+  // own clip and questions numbered from 1 again. [{ id, videoUrl }] in order;
+  // a question belongs to one through QuizQuestion.section (the section's id).
+  // Empty: the questions are one list about the whole story.
+  storySections  Json           @default("[]")
   // FINGERSPELLING / VOCABULARY: seconds a student has for each sign. In these
   // tests a question is just a video and its word (QuizQuestion.question), with
   // no options.
@@ -1214,6 +1219,7 @@ model QuizQuestion {
   // REFLECTION: the heading the criterion sits under, e.g. "1.1 Initiate and
   // develop discourse". Criteria next to each other with the same heading are
   // shown as one section.
+  // STORY: the id of the story section it belongs to (Test.storySections).
   section            String?
   order              Int
 

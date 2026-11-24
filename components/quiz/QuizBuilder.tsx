@@ -95,6 +95,14 @@ type Props = {
   onAddFromDictionary?: () => void
   /** Offer written answers, which students mark themselves. Tests only. */
   selfMarked?: boolean
+  /**
+   * When these questions are only part of the test (one section of a story),
+   * the whole test's questions in their new order once these are reordered —
+   * the order is stored for the whole test.
+   */
+  orderAll?: (next: QuestionDraft[]) => QuestionDraft[]
+  /** The heading over the list; "Test Questions" by default. */
+  heading?: string
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -963,7 +971,7 @@ function QuestionCard({
 
 // ─── QuizBuilder ──────────────────────────────────────────────────────────────
 
-export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary, selfMarked }: Props) {
+export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary, selfMarked, orderAll, heading = "Test Questions" }: Props) {
   const [orderError, setOrderError] = useState<string | null>(null)
   // Where a sign chosen in the dictionary goes: a question's clip, or one of its answers.
   const [signTarget, setSignTarget] = useState<{ uid: string; option?: number | "model" } | null>(null)
@@ -1050,7 +1058,7 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary, 
 
     const next = [...questions]
     ;[next[from], next[to]] = [next[to], next[from]]
-    const orderedIds = next.flatMap((q) => (q.id ? [q.id] : []))
+    const orderedIds = (orderAll ? orderAll(next) : next).flatMap((q) => (q.id ? [q.id] : []))
     if (!testId || orderedIds.length < 2) return
     try {
       const res = await fetch(`/api/tests/${testId}/questions`, {
@@ -1069,7 +1077,7 @@ export function QuizBuilder({ testId, questions, onChange, onAddFromDictionary, 
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <FlaskConical className="size-4 text-primary" />
-        <h3 className="font-semibold text-sm">Test Questions</h3>
+        <h3 className="font-semibold text-sm">{heading}</h3>
         <Badge variant="outline" className="text-[0.625rem]">
           {questions.length} question{questions.length !== 1 ? "s" : ""}
         </Badge>

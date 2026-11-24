@@ -5,7 +5,7 @@ import { withAudit } from "@/lib/audit"
 import { tutorWrite } from "@/lib/tutor-access"
 import { courseTeachScope, requireCapability } from "@/lib/permissions"
 import { parseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PRESENTATION_MINUTES, isAssessment, isPresentation, isSignTest, parseTestKind, parseTestSettings } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PRESENTATION_MINUTES, isAssessment, isPresentation, isSignTest, parseStorySections, parseTestKind, parseTestSettings } from "@/lib/quiz"
 import { canEditTest, syncTestLessons, testEditScope } from "@/lib/tests"
 
 // GET /api/tests/[id] — the test with its questions (correct answers marked),
@@ -108,6 +108,7 @@ async function handlePUT(
       maxAttempts?: number | null
       answerSeconds?: number
       storyUrl?: string | null
+      storySections?: unknown
       answerMinutes?: number
       tutorMarks?: boolean
     }
@@ -134,6 +135,10 @@ async function handlePUT(
     const settings = parseTestSettings(body)
     if (typeof settings === "string") return NextResponse.json({ message: settings }, { status: 400 })
 
+    // Story sections: kept only on a story test.
+    const storySections = body.storySections === undefined ? undefined : parseStorySections(body.storySections)
+    if (typeof storySections === "string") return NextResponse.json({ message: storySections }, { status: 400 })
+
     const title = body.title?.trim()
     const description = body.description === undefined ? undefined : body.description?.trim() || null
 
@@ -151,6 +156,7 @@ async function handlePUT(
         }),
         // An assessment's story video is its synopsis, watched first.
         ...(testKind !== "STORY" && (!isAssessment(testKind) || isPresentation(testKind)) && { storyUrl: null }),
+        ...(testKind === "STORY" ? storySections && { storySections } : { storySections: [] }),
         // A presentation is always marked by a teacher.
         ...(isPresentation(testKind) && { tutorMarks: true }),
       },

@@ -1,0 +1,1 @@
+ALTER TABLE "Test" ADD COLUMN "storySections" JSONB NOT NULL DEFAULT '[]';

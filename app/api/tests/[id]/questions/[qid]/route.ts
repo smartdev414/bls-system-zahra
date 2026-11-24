@@ -66,7 +66,7 @@ async function handlePUT(
         questionsVideoUrl: isAssessment(existing.test.testKind) ? body.questionsVideoUrl ?? null : null,
         attachmentUrl: isPresentation(existing.test.testKind) ? body.attachmentUrl ?? null : null,
         locked: isReflection(existing.test.testKind) && body.locked === true,
-        section: isReflection(existing.test.testKind) ? body.section ?? null : null,
+        section: isReflection(existing.test.testKind) || existing.test.testKind === "STORY" ? body.section ?? null : null,
           options: {
             update: body.options.flatMap((opt, i) =>
               opt.id && kept.has(opt.id) ? [{ where: { id: opt.id }, data: optionData(opt, i) }] : []

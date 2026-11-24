@@ -32,6 +32,7 @@ async function handlePOST(
         testKind: source.testKind,
         storyUrl: source.storyUrl,
         storyControls: source.storyControls,
+        storySections: source.storySections ?? [],
         answerSeconds: source.answerSeconds,
         signPlays: source.signPlays,
         vocabularyMode: source.vocabularyMode,

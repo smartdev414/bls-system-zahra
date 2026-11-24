@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
 import {
-  DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, attemptsLeft, isAssessment, isSignTest, partsForStudent, questionsForStudent,
+  DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, attemptsLeft, isAssessment, isSignTest, inSectionOrder, partsForStudent, questionsForStudent, readStorySections,
   revealsAnswers, signQuestionsForStudent,
 } from "@/lib/quiz"
 import { highScores } from "@/lib/quiz-high-scores"
@@ -75,11 +75,15 @@ async function handleGET(
     // has submitted — they mark themselves against them.
     // An assessment a teacher marks shows its answer sheet once they have.
     const showModel = isAssessment(kind) && test.tutorMarks ? attempts.some((a) => a.selfMarked) : attempts.length > 0
+    // A story in sections is sat section by section, empty ones left out.
+    const sections = kind === "STORY"
+      ? readStorySections(test.storySections).filter((s) => fullQuestions.some((q) => q.section === s.id))
+      : []
     const questions = isSignTest(kind)
       ? signQuestionsForStudent({ testKind: kind, vocabularyMode: test.vocabularyMode }, fullQuestions, reveal, showModel)
       : isAssessment(kind)
       ? partsForStudent(fullQuestions, showModel)
-      : questionsForStudent(fullQuestions, reveal, showModel)
+      : questionsForStudent(inSectionOrder(fullQuestions, sections), reveal, showModel)
 
     const answersOf = (attemptId: string) => prisma.quizAttemptAnswer.findMany({
       where: { attemptId },
@@ -110,6 +114,7 @@ async function handleGET(
         signPlays: test.signPlays,
         storyUrl: kind === "STORY" || isAssessment(kind) ? test.storyUrl : null,
         storyControls: test.storyControls,
+        storySections: sections,
         vocabularyMode: test.vocabularyMode,
         answerMinutes: test.answerMinutes ?? DEFAULT_ANSWER_MINUTES,
         tutorMarks: test.tutorMarks,

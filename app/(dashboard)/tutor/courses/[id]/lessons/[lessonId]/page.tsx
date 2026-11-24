@@ -55,6 +55,8 @@ type LessonFull = {
     maxAttempts: number | null
     /** Story tests: the video the questions are about. */
     storyUrl: string | null
+    /** Story tests in sections: [{ id, videoUrl }]. */
+    storySections?: unknown
     /** Assessments: a teacher marks the filmed answers. */
     tutorMarks: boolean
     questions: ViewQuestion[]
@@ -193,7 +195,7 @@ export default function ViewLessonPage({
           </TabsContent>
 
           <TabsContent value="questions">
-            <TestQuestionsView kind={test.testKind} storyUrl={test.storyUrl} questions={test.questions} />
+            <TestQuestionsView kind={test.testKind} storyUrl={test.storyUrl} storySections={test.storySections} questions={test.questions} />
           </TabsContent>
         </Tabs>
       )}

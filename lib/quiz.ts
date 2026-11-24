@@ -32,7 +32,7 @@ export type TestKind = (typeof TEST_KINDS)[number]
 
 export const TEST_KIND_INFO: Record<TestKind, { label: string; hint: string }> = {
   STANDARD: { label: "Questions", hint: "Questions, each with or without a video." },
-  STORY: { label: "Story", hint: "One signed story, then questions about it." },
+  STORY: { label: "Story", hint: "A signed story, then questions about it — in sections, like the exam paper, if you like." },
   FINGERSPELLING: { label: "Fingerspelling", hint: "Students watch a word being spelled and type it." },
   VOCABULARY: { label: "Vocabulary", hint: "Students pick the word for a sign, or read a word and sign it." },
   ASSESSMENT: { label: "Assessment", hint: "A signed story in parts. Students watch each part's questions and the part, then film their answers." },
@@ -486,3 +486,66 @@ export function partsForStudent<
     ...(showModel && { modelAnswer: p.modelAnswer }),
   }))
 }
+
+// ─── Story sections ───────────────────────────────────────────────────────────
+
+/**
+ * A story test split into sections, as in the real exam: each section has its
+ * own clip (optional — without one the whole story stands for it) and its own
+ * questions, numbered from 1 again. Its number is its place in the list.
+ */
+export type StorySection = { id: string; videoUrl: string | null }
+
+export const MAX_STORY_SECTIONS = 20
+
+/** The sections stored on a test, whatever the JSON holds. */
+export function readStorySections(value: unknown): StorySection[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((s) => {
+    if (typeof s !== "object" || s === null) return []
+    const { id, videoUrl } = s as { id?: unknown; videoUrl?: unknown }
+    if (typeof id !== "string" || !id.trim()) return []
+    return [{ id, videoUrl: typeof videoUrl === "string" && videoUrl.trim() ? videoUrl.trim() : null }]
+  })
+}
+
+/** Reads sections sent by the editor, or a message for a 400. */
+export function parseStorySections(value: unknown): StorySection[] | string {
+  if (!Array.isArray(value)) return "Sections must be a list"
+  if (value.length > MAX_STORY_SECTIONS) return `A story can have up to ${MAX_STORY_SECTIONS} sections`
+  const sections = readStorySections(value)
+  if (sections.length !== value.length) return "Each section needs an id"
+  if (new Set(sections.map((s) => s.id)).size !== sections.length) return "Two sections have the same id"
+  return sections
+}
+
+/**
+ * The questions of a sectioned story in the order students meet them: section
+ * by section, then in their own order. Questions in no known section come last.
+ */
+export function inSectionOrder<Q extends { section?: string | null }>(questions: readonly Q[], sections: readonly StorySection[]): Q[] {
+  if (sections.length === 0) return [...questions]
+  const at = new Map(sections.map((s, i) => [s.id, i]))
+  const rank = (q: Q) => (q.section != null && at.has(q.section) ? at.get(q.section)! : sections.length)
+  return questions.map((q, i) => ({ q, i })).sort((a, b) => rank(a.q) - rank(b.q) || a.i - b.i).map((x) => x.q)
+}
+
+/**
+ * The questions grouped by section, for showing them as the exam paper does:
+ * "Section 2, Question 1". Empty sections are left out; questions in no known
+ * section make a last group with no section.
+ */
+export function storyGroups<Q extends { section?: string | null }>(questions: readonly Q[], sections: readonly StorySection[]) {
+  const groups: Array<{ section: StorySection | null; number: number; questions: Q[] }> = []
+  sections.forEach((s) => {
+    const qs = questions.filter((q) => q.section === s.id)
+    if (qs.length) groups.push({ section: s, number: groups.length + 1, questions: qs })
+  })
+  const known = new Set(sections.map((s) => s.id))
+  const rest = questions.filter((q) => !q.section || !known.has(q.section))
+  if (rest.length && groups.length) groups.push({ section: null, number: groups.length + 1, questions: rest })
+  return groups
+}
+
+/** "A", "B", "C"… for a story's answers, as on the exam paper. */
+export const optionLetter = (i: number) => String.fromCharCode(65 + i)

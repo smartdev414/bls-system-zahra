@@ -43,6 +43,10 @@ export function validateQuestion(body: QuestionBody, testKind?: string): string 
     if (!body.question?.trim()) return "Each sign needs its word"
     return null
   }
+  // A story's question may sit in one of its sections (Test.storySections).
+  if (testKind === "STORY") {
+    body.section = typeof body.section === "string" && body.section.trim() ? body.section.trim().slice(0, 100) : null
+  }
   // A self-reflection's criterion: its wording, nothing else. Students write
   // about it; nobody marks it.
   if (isReflection(testKind)) {

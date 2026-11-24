@@ -3,7 +3,10 @@
 import { Fragment } from "react"
 import { CheckCircle2, Circle, Lock } from "lucide-react"
 import { ProtectedVideo } from "@/components/ui/protected-video"
-import { isAssessment, isPresentation, isReflection, isSignTest, isVideoMedia, marksLabel, maxMarks } from "@/lib/quiz"
+import {
+  inSectionOrder, isAssessment, isPresentation, isReflection, isSignTest, isVideoMedia, marksLabel, maxMarks, optionLetter,
+  readStorySections, storyGroups,
+} from "@/lib/quiz"
 import { cn } from "@/lib/utils"
 import { TaskFileLink } from "@/components/quiz/TaskFile"
 
@@ -37,11 +40,18 @@ function Media({ url, type, alt, className }: { url: string; type: string | null
 }
 
 /** A test's questions with the correct answers marked — for staff, never students. */
-export function TestQuestionsView({ kind, storyUrl, questions }: {
+export function TestQuestionsView({ kind, storyUrl, storySections, questions: allQuestions }: {
   kind: string
   storyUrl: string | null
+  /** A story in sections (Test.storySections): its questions are shown section by section. */
+  storySections?: unknown
   questions: ViewQuestion[]
 }) {
+  const sections = kind === "STORY" ? readStorySections(storySections) : []
+  const groups = storyGroups(allQuestions, sections)
+  const questions = groups.length ? inSectionOrder(allQuestions, sections) : allQuestions
+  // Where each question sits in its section: "Section 2", question 1.
+  const place = new Map(groups.flatMap((g) => g.questions.map((q, n) => [q.id, { group: g, n, first: n === 0 }] as const)))
   const signTest = isSignTest(kind)
   const noun = signTest ? "sign" : isReflection(kind) ? "criterion" : isPresentation(kind) ? "task" : isAssessment(kind) ? "part" : "question"
 
@@ -129,9 +139,19 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
           <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
             {questions.length} question{questions.length !== 1 ? "s" : ""} · correct answers shown
           </p>
-          {questions.map((q, i) => (
+          {questions.map((q, i) => {
+            const at = place.get(q.id)
+            return (
             <div key={q.id} className="flex flex-col gap-2">
-              <p className="text-sm font-medium">{i + 1}. {q.question}{q.type === "WRITTEN" && ` (${marksLabel(maxMarks(q))})`}</p>
+              {at?.first && (
+                <div className="flex flex-col gap-2 border-t pt-4 first:border-t-0 first:pt-0">
+                  <p className="font-bold">{at.group.section ? `Section ${at.group.number}` : "Not in a section"}</p>
+                  {at.group.section?.videoUrl && (
+                    <ProtectedVideo src={at.group.section.videoUrl} playsInline controls className="rounded-lg max-h-60 border bg-black self-start" />
+                  )}
+                </div>
+              )}
+              <p className="text-sm font-medium">{at ? `Question ${at.n + 1}. ` : `${i + 1}. `}{q.question}{q.type === "WRITTEN" && ` (${marksLabel(maxMarks(q))})`}</p>
               {q.imageUrl && (
                 <Media url={q.imageUrl} type={q.mediaType} alt="question" className="rounded-lg max-h-48 border self-start" />
               )}
@@ -153,7 +173,7 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
                 "pl-6",
                 q.options.some((o) => o.imageUrl) ? "grid grid-cols-2 gap-2" : "flex flex-col gap-1.5"
               )}>
-                {q.options.map((opt) => (
+                {q.options.map((opt, n) => (
                   <div
                     key={opt.id}
                     className={cn(
@@ -162,6 +182,7 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
                       opt.isCorrect && "border-emerald-300 bg-emerald-50 text-emerald-800",
                     )}
                   >
+                    {at && !opt.imageUrl && <span className="text-xs font-bold">{optionLetter(n)}.</span>}
                     {opt.imageUrl && (
                       <Media url={opt.imageUrl} type={opt.mediaType} alt={opt.text} className="w-full aspect-video object-cover" />
                     )}
@@ -178,7 +199,8 @@ export function TestQuestionsView({ kind, storyUrl, questions }: {
                 ))}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

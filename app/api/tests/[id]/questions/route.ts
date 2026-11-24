@@ -56,7 +56,7 @@ async function handlePOST(
         questionsVideoUrl: isAssessment(test.testKind) ? body.questionsVideoUrl ?? null : null,
         attachmentUrl: isPresentation(test.testKind) ? body.attachmentUrl ?? null : null,
         locked: isReflection(test.testKind) && body.locked === true,
-        section: isReflection(test.testKind) ? body.section ?? null : null,
+        section: isReflection(test.testKind) || test.testKind === "STORY" ? body.section ?? null : null,
         order: (last._max.order ?? 0) + 1,
         options: {
           create: options.map((opt, i) => ({

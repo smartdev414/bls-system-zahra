@@ -26,6 +26,7 @@ import {
   AnswerMinutesField, AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker, TutorMarksField, VocabularyModeField,
 } from "@/components/quiz/TestKindFields"
 import { AssessmentPartsBuilder } from "@/components/quiz/AssessmentPartsBuilder"
+import { StorySectionsBuilder } from "@/components/quiz/StorySectionsBuilder"
 import { PresentationTaskBuilder } from "@/components/quiz/PresentationTaskBuilder"
 import { ReflectionCriteriaBuilder } from "@/components/quiz/ReflectionCriteriaBuilder"
 import { TestSettingsFields, testSettingsBody, type TestSettingsDraft } from "@/components/quiz/TestSettingsFields"
@@ -35,7 +36,7 @@ import { TestQuestionsView } from "@/components/tests/TestQuestionsView"
 import { useTutorAccess } from "@/components/tutor-access-provider"
 import { useTestsBase } from "@/hooks/use-tests-base"
 import { COURSE_LEVELS, levelColor, levelLabel, type CourseLevel } from "@/lib/levels"
-import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PART_MARKS, TEST_KIND_INFO, isAssessment, isPresentation, isReflection, isSignTest, picksWords, type TestKind, type VocabularyMode } from "@/lib/quiz"
+import { DEFAULT_ANSWER_MINUTES, DEFAULT_ANSWER_SECONDS, DEFAULT_PART_MARKS, TEST_KIND_INFO, inSectionOrder, isAssessment, isPresentation, isReflection, isSignTest, picksWords, readStorySections, type StorySection, type TestKind, type VocabularyMode } from "@/lib/quiz"
 import { VIEW_ONLY_MESSAGE } from "@/lib/tutor-areas"
 import { cn } from "@/lib/utils"
 
@@ -77,6 +78,7 @@ type TestFull = {
   testKind: TestKind
   storyUrl: string | null
   storyControls: boolean
+  storySections: unknown
   answerSeconds: number | null
   signPlays: number | null
   vocabularyMode: VocabularyMode
@@ -100,6 +102,7 @@ type Details = {
   vocabularyMode: VocabularyMode
   storyUrl: string | null
   storyControls: boolean
+  storySections: StorySection[]
   answerMinutes: number
   tutorMarks: boolean
 }
@@ -146,6 +149,7 @@ function detailsOf(test: TestFull): Details {
     vocabularyMode: test.vocabularyMode,
     storyUrl: test.storyUrl,
     storyControls: test.storyControls,
+    storySections: readStorySections(test.storySections),
     answerMinutes: test.answerMinutes ?? DEFAULT_ANSWER_MINUTES,
     tutorMarks: test.tutorMarks,
   }
@@ -266,9 +270,11 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
       )
       return
     }
-    if (kind === "STORY" && !details.storyUrl) {
+    // A story in sections may have a clip for each section instead of the whole story.
+    const sectioned = kind === "STORY" && details.storySections.length > 0
+    if (kind === "STORY" && !details.storyUrl && (!sectioned || details.storySections.some((s) => !s.videoUrl))) {
       setTab("questions")
-      setError("Add the story video, then save.")
+      setError(sectioned ? "Add a video to each section, or the whole story video, then save." : "Add the story video, then save.")
       return
     }
 
@@ -287,7 +293,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
           ...testSettingsBody(details.settings),
           ...(signTest && { answerSeconds: details.answerSeconds, signPlays: details.signPlays }),
           ...(kind === "VOCABULARY" && { vocabularyMode: details.vocabularyMode }),
-          ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls }),
+          ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls, storySections: details.storySections }),
           ...(assessment && {
             storyUrl: details.storyUrl, storyControls: details.storyControls,
             answerMinutes: details.answerMinutes, tutorMarks: details.tutorMarks,
@@ -299,9 +305,11 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
       if (!res.ok) throw new Error(d.message ?? "Could not save the test")
       setSaved(details)
 
+      const savedIds = new Map<string, string>()
       for (const q of pendingQuestions) {
         try {
           const result = await saveQuestionDraft(id, q)
+          savedIds.set(q.uid, result.id)
           setQuestions((current) => current.map((old) => (old.uid === q.uid ? withSaved(old, result) : old)))
         } catch (e) {
           const message = e instanceof Error ? e.message : "Could not save this question"
@@ -309,6 +317,18 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
           setTab("questions")
           throw new Error(`${itemName} ${questions.indexOf(q) + 1} could not be saved: ${message}`)
         }
+      }
+      // A story in sections: new questions are stored at the end, so the order
+      // is put right — section by section, as shown here.
+      if (sectioned) {
+        const orderedIds = inSectionOrder(questions, details.storySections)
+          .flatMap((q) => { const qid = q.id ?? savedIds.get(q.uid); return qid ? [qid] : [] })
+        const ordered = await fetch(`/api/tests/${id}/questions`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderedIds }),
+        })
+        if (!ordered.ok) throw new Error("The questions were saved, but not their order. Press Save again.")
       }
       // Blank questions nobody typed into are left out rather than kept as "unsaved".
       setQuestions((current) => current.filter((q) => q.id || !isBlankQuestion(q)))
@@ -517,7 +537,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
 
         <TabsContent value="questions" className="flex flex-col gap-6">
           {!canEdit ? (
-            <TestQuestionsView kind={test.testKind} storyUrl={test.storyUrl} questions={test.questions} />
+            <TestQuestionsView kind={test.testKind} storyUrl={test.storyUrl} storySections={test.storySections} questions={test.questions} />
           ) : (
             <>
               {takenSomewhere && (
@@ -532,7 +552,14 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
               {(kind === "STORY" || assessment) && (
                 <>
                   {kind === "STORY"
-                    ? <StoryVideoField value={details.storyUrl} onChange={(url) => patch({ storyUrl: url })} />
+                    ? <StoryVideoField
+                        label={details.storySections.length ? "Whole story video (optional)" : "Story video"}
+                        hint={details.storySections.length
+                          ? "Students can watch the whole story before section 1. Each section's own video is added below."
+                          : undefined}
+                        value={details.storyUrl}
+                        onChange={(url) => patch({ storyUrl: url })}
+                      />
                     : <StoryVideoField
                         label="Short synopsis (optional)"
                         hint="Students watch this before part 1."
@@ -586,6 +613,15 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                   onChange={(next) => { setQuestions(next); setError(null) }}
                   onAddFromDictionary={() => setPickingSigns(true)}
                   signOnly={kind === "VOCABULARY" && details.vocabularyMode === "SIGN_IT"}
+                />
+              ) : kind === "STORY" ? (
+                <StorySectionsBuilder
+                  testId={id}
+                  sections={details.storySections}
+                  onSectionsChange={(storySections) => patch({ storySections })}
+                  questions={questions}
+                  onQuestionsChange={(next) => { setQuestions(next); setError(null) }}
+                  onAddFromDictionary={() => setPickingSigns(true)}
                 />
               ) : (
                 <QuizBuilder

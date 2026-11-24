@@ -8,7 +8,7 @@ import { createNotification } from "@/lib/notifications"
 import { withAudit } from "@/lib/audit"
 import { isReleased } from "@/lib/lesson-release"
 import {
-  attemptScore, attemptsLeft, hasMultipleAnswers, isAssessment, isSignTest, partsForStudent, questionMarking, questionsForStudent,
+  attemptScore, attemptsLeft, hasMultipleAnswers, isAssessment, isSignTest, partsForStudent, questionMarking, questionsForStudent, inSectionOrder, readStorySections,
   revealsAnswers, sameWord, signQuestionsForStudent,
 } from "@/lib/quiz"
 import { isOwnAnswerVideo } from "@/lib/test-recordings"
@@ -211,7 +211,7 @@ async function handlePOST(
       ? signQuestionsForStudent({ testKind: kind, vocabularyMode: test.vocabularyMode }, fullQuestions, reveal, true)
       : isAssessment(kind)
       ? partsForStudent(fullQuestions, !test.tutorMarks || selfMarked)
-      : questionsForStudent(fullQuestions, reveal, true)
+      : questionsForStudent(kind === "STORY" ? inSectionOrder(fullQuestions, readStorySections(test.storySections)) : fullQuestions, reveal, true)
 
     return NextResponse.json({
       attempt, score, passed, correct, total, selfMarked,

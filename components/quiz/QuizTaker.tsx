@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   FlaskConical, CheckCircle2, XCircle, ChevronLeft,
@@ -12,7 +12,10 @@ import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import { ProtectedVideo } from "@/components/ui/protected-video"
 import { useFetch } from "@/hooks/use-fetch"
-import { attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks, type TestKind } from "@/lib/quiz"
+import {
+  attemptScore, chosenOptionIds, correctNeeded, isSelfMarked, isSignTest, isVideoMedia, marksLabel, maxMarks, optionLetter, storyGroups,
+  type StorySection, type TestKind,
+} from "@/lib/quiz"
 import { AttemptHistory, attemptsLeftText, type AttemptSummary } from "./AttemptHistory"
 import { PresentationTaker } from "./PresentationTaker"
 import { ReflectionTaker } from "./ReflectionTaker"
@@ -36,6 +39,8 @@ type Question = {
   videoControls?: boolean
   /** The question and answers appear only once the question's video has ended. */
   questionAfterVideo?: boolean
+  /** A story in sections: the id of the section it is in. */
+  section?: string | null
   /** More than one answer is correct: the student ticks every one. */
   multiple?: boolean
   /** WRITTEN: what it is worth; null = 3. */
@@ -67,6 +72,8 @@ type QuizData = {
     storyUrl: string | null
     /** Story tests: the student may pause, rewind and skip the story. */
     storyControls?: boolean
+    /** Story tests set out like the exam paper: sat section by section. */
+    storySections?: StorySection[]
   }
   /** Newest first. */
   attempts: AttemptSummary[]
@@ -212,8 +219,10 @@ function optionsLayout(q: Question, gridGap: string, listGap: string) {
 
 // ─── Review — one attempt's answers, question by question ─────────────────────
 
-function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
+function Review({ questions, answers, answersRevealed, onBack, onRetry, sections = [] }: {
   questions: Question[]
+  /** A story in sections: shown section by section, numbered as on the paper. */
+  sections?: StorySection[]
   answers: AttemptAnswer[]
   /** False while the test can still be retaken: only the student's own answers are marked. */
   answersRevealed: boolean
@@ -221,6 +230,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
   onRetry?: () => void
 }) {
   const [wrongOnly, setWrongOnly] = useState(false)
+  const place = new Map(storyGroups(questions, sections).flatMap((g) => g.questions.map((q, n) => [q.id, { group: g, n }] as const)))
   const isRight = (q: Question) => !!answers.find((a) => a.questionId === q.id)?.isCorrect
   const right = questions.filter(isRight).length
   const wrong = questions.length - right
@@ -262,14 +272,20 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
       {questions.map((q, i) => {
         const answer = answers.find((a) => a.questionId === q.id)
         if (wrongOnly && answer?.isCorrect) return null
+        const at = place.get(q.id)
+        // A section's heading over its first question still shown.
+        const shown = (other: Question) => !wrongOnly || !answers.find((a) => a.questionId === other.id)?.isCorrect
+        const heading = at && at.group.questions.find(shown) === q
         return (
-          <div key={q.id} className="rounded-xl border p-4 flex flex-col gap-3">
+          <Fragment key={q.id}>
+          {heading && <h4 className="font-bold pt-2">{at.group.section ? `Section ${at.group.number}` : "More questions"}</h4>}
+          <div className="rounded-xl border p-4 flex flex-col gap-3">
             <div className="flex items-start gap-2">
               {answer?.isCorrect
                 ? <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
                 : <XCircle className={cn("size-4 shrink-0 mt-0.5", answer?.marks ? "text-amber-500" : "text-rose-500")} />}
               <div className="flex flex-col gap-2 flex-1">
-                <p className="text-sm font-medium">{i + 1}. {questionText(q)}</p>
+                <p className="text-sm font-medium">{at ? `Question ${at.n + 1}.` : `${i + 1}.`} {questionText(q)}</p>
                 <QuestionMedia question={q} className="max-h-48 self-start" />
                 {isSelfMarked(q.type) && <div className="self-start"><MarksBadge question={q} answer={answer} /></div>}
                 {!isSelfMarked(q.type) && chosenOptionIds(answer).length === 0 && <p className="text-xs text-rose-600">Not answered</p>}
@@ -280,7 +296,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
               "sm:pl-6",
               optionsLayout(q, "gap-2", "gap-1.5")
             )}>
-              {q.options.map((opt) => {
+              {q.options.map((opt, n) => {
                 const isSelected = chosenOptionIds(answer).includes(opt.id)
                 // Without the answer key, the student's own right answer is the only one known to be correct.
                 const isCorrect = opt.isCorrect ?? (isSelected && !!answer?.isCorrect)
@@ -316,6 +332,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
                         : isSelected
                           ? <XCircle className="size-3.5 shrink-0 text-rose-500" />
                           : <Circle className="size-3.5 shrink-0" />)}
+                      {at && !opt.imageUrl && <span className="text-xs font-bold">{optionLetter(n)}.</span>}
                       {opt.text && <span className="text-xs">{opt.text}</span>}
                       {!opt.imageUrl && isCorrect && <span className="ml-auto text-[0.625rem] font-semibold uppercase tracking-wide text-emerald-600">Correct</span>}
                       {!opt.imageUrl && isSelected && !isCorrect && <span className="ml-auto text-[0.625rem] font-semibold uppercase tracking-wide text-rose-600">Your answer</span>}
@@ -325,6 +342,7 @@ function Review({ questions, answers, answersRevealed, onBack, onRetry }: {
               })}
             </div>}
           </div>
+          </Fragment>
         )
       })}
 
@@ -360,6 +378,8 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Result | null>(null)
   const [storyOpen, setStoryOpen] = useState(false)
+  // Bumped to play a section's video again from the start.
+  const [replay, setReplay] = useState(0)
   // Questions whose video has played to the end, for those shown after it.
   const [watched, setWatched] = useState<Set<string>>(() => new Set())
   const topRef = useRef<HTMLDivElement>(null)
@@ -453,6 +473,11 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   const firstUnanswered = questions.findIndex((q) => !isAnswered(q))
   const hasMarks = questions.some((q) => isSelfMarked(q.type))
   const pending = data.pendingAttempt
+  // A story set out like the exam paper is sat a section at a time; currentIndex
+  // is then the section.
+  const groups = settings.kind === "STORY" ? storyGroups(questions, settings.storySections ?? []) : []
+  const sectioned = groups.length > 0
+  const sectionOf = (index: number) => Math.max(0, groups.findIndex((g) => g.questions.includes(questions[index])))
 
   function start() {
     setSelected({})
@@ -467,14 +492,15 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
 
   // Pick the test up where it was left.
   function resume() {
-    setCurrentIndex(firstUnanswered >= 0 ? firstUnanswered : 0)
+    const at = firstUnanswered >= 0 ? firstUnanswered : 0
+    setCurrentIndex(sectioned ? sectionOf(at) : at)
     setError(null)
     setConfirming(false)
     setView("taking")
   }
 
   function go(index: number) {
-    setCurrentIndex(Math.min(Math.max(index, 0), questions.length - 1))
+    setCurrentIndex(Math.min(Math.max(index, 0), (sectioned ? groups.length : questions.length) - 1))
     setConfirming(false)
     // On a phone the next question would otherwise open scrolled to its answers.
     topRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
@@ -636,6 +662,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         questions={result.questions}
         answers={result.answers}
         answersRevealed={result.answersRevealed}
+        sections={settings.storySections}
         onBack={() => setView("result")}
         onRetry={!result.passed && result.attemptsLeft !== 0 ? start : undefined}
       />
@@ -648,6 +675,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         questions={questions}
         answers={bestAttempt.answers}
         answersRevealed={data.answersRevealed}
+        sections={settings.storySections}
         onBack={() => setView("start")}
         onRetry={!hasPassed && canAttempt && enrollmentId ? start : undefined}
       />
@@ -656,85 +684,24 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
 
   // ── Quiz taking ───────────────────────────────────────────────────────────
   if (view === "taking") {
-    const q = questions[currentIndex]
-    // Watch first, then answer: such a question waits until its video has
-    // played through, unless it was answered already (e.g. coming back to it).
-    const waitingForVideo = !!q?.questionAfterVideo && isVideoMedia(q.imageUrl, q.mediaType) &&
-      !watched.has(q.id) && !isAnswered(q)
+    const group = sectioned ? groups[Math.min(currentIndex, groups.length - 1)] : null
+    const q = group ? undefined : questions[currentIndex]
     const progress = Math.round((answered / questions.length) * 100)
-    const isLast = currentIndex === questions.length - 1
-    const allAnswered = answered === questions.length
-    const limited = settings.maxAttempts !== null
+    const isLast = group ? group === groups[groups.length - 1] : currentIndex === questions.length - 1
+    const sectionVideo = group?.section?.videoUrl
 
-    return (
-      <div ref={topRef} className="flex flex-col gap-5 py-2 scroll-mt-24">
-        {/* Progress */}
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>Question {currentIndex + 1} of {questions.length}</span>
-            <span className="flex items-center gap-3">
-              <span>{answered} answered</span>
-              <button
-                type="button"
-                onClick={() => setView("start")}
-                className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
-                title="Your answers are kept, so you can carry on later"
-              >
-                <LogOut className="size-3" /> Finish later
-              </button>
-            </span>
-          </div>
-          <Progress value={progress} className="h-1.5" />
-        </div>
-
-        {/* Every question at a glance — jump to any of them, in any order */}
-        {questions.length > 1 && (
-          <nav aria-label="Questions" className="flex flex-wrap gap-1.5">
-            {questions.map((question, i) => {
-              const isCurrent = i === currentIndex
-              const done = isAnswered(question)
-              return (
-                <button
-                  key={question.id}
-                  type="button"
-                  onClick={() => go(i)}
-                  aria-current={isCurrent ? "step" : undefined}
-                  aria-label={`Question ${i + 1}, ${done ? "answered" : "not answered"}`}
-                  className={cn(
-                    "size-8 rounded-lg border text-xs font-semibold transition-colors",
-                    done ? "bg-primary/10 border-primary/30 text-primary" : "bg-background text-muted-foreground hover:bg-muted",
-                    isCurrent && "ring-2 ring-primary ring-offset-1"
-                  )}
-                >
-                  {i + 1}
-                </button>
-              )
-            })}
-          </nav>
-        )}
-
-        {/* The story stays to hand while its questions are answered */}
-        {settings.storyUrl && (
-          <div className="flex flex-col gap-2">
-            <Button
-              type="button" variant="outline" size="sm" className="self-start"
-              aria-expanded={storyOpen}
-              onClick={() => setStoryOpen((open) => !open)}
-            >
-              <BookOpen className="size-4 mr-1.5" /> {storyOpen ? "Hide the story" : "Watch the story again"}
-            </Button>
-            {storyOpen && (
-              <StoryVideo src={settings.storyUrl} controls={settings.storyControls !== false} autoPlay className="w-full max-h-80 rounded-xl border bg-black" />
-            )}
-          </div>
-        )}
-
-        {/* Question */}
-        {q && (
-          <div className="rounded-xl border bg-muted/20 p-4 sm:p-5 flex flex-col gap-4">
+    // One question: its video, the question, and its answers. In a section the
+    // answers are lettered A, B, C, D as on the exam paper.
+    const questionCard = (q: Question, label: string, letters: boolean) => {
+      // Watch first, then answer: such a question waits until its video has
+      // played through, unless it was answered already (e.g. coming back to it).
+      const waitingForVideo = !!q.questionAfterVideo && isVideoMedia(q.imageUrl, q.mediaType) &&
+        !watched.has(q.id) && !isAnswered(q)
+      return (
+          <div key={q.id} className="rounded-xl border bg-muted/20 p-4 sm:p-5 flex flex-col gap-4">
             <div>
               <p id={`question-${q.id}`} className="font-semibold text-base leading-snug">
-                {currentIndex + 1}. {waitingForVideo ? "Watch the video — the question and answers appear when it ends." : questionPrompt(q)}
+                {label} {waitingForVideo ? "Watch the video — the question and answers appear when it ends." : questionPrompt(q)}
               </p>
               {q.multiple && !waitingForVideo && (
                 <p className="text-sm text-primary font-medium mt-1">More than one answer is correct — tick them all.</p>
@@ -900,6 +867,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                           ? <Check className="size-3 text-primary" strokeWidth={3} />
                           : <div className="size-2 rounded-full bg-primary" />)}
                       </div>
+                      {letters && <span className="font-bold">{optionLetter(n)}.</span>}
                       {opt.text}
                     </button>
                   )
@@ -907,7 +875,125 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
               </div>
             )}
           </div>
+      )
+    }
+    const allAnswered = answered === questions.length
+    const limited = settings.maxAttempts !== null
+
+    return (
+      <div ref={topRef} className="flex flex-col gap-5 py-2 scroll-mt-24">
+        {/* Progress */}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>{group ? `Section ${group.number} of ${groups.length}` : `Question ${currentIndex + 1} of ${questions.length}`}</span>
+            <span className="flex items-center gap-3">
+              <span>{answered} answered</span>
+              <button
+                type="button"
+                onClick={() => setView("start")}
+                className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
+                title="Your answers are kept, so you can carry on later"
+              >
+                <LogOut className="size-3" /> Finish later
+              </button>
+            </span>
+          </div>
+          <Progress value={progress} className="h-1.5" />
+        </div>
+
+        {/* Every section at a glance — go back to any of them to change an answer */}
+        {group && groups.length > 1 && (
+          <nav aria-label="Sections" className="flex flex-wrap gap-1.5">
+            {groups.map((g, i) => {
+              const isCurrent = g === group
+              const done = g.questions.every(isAnswered)
+              return (
+                <button
+                  key={g.section?.id ?? "rest"}
+                  type="button"
+                  onClick={() => go(i)}
+                  aria-current={isCurrent ? "step" : undefined}
+                  aria-label={`Section ${g.number}, ${done ? "answered" : "not finished"}`}
+                  className={cn(
+                    "h-8 rounded-lg border px-3 text-xs font-semibold transition-colors",
+                    done ? "bg-primary/10 border-primary/30 text-primary" : "bg-background text-muted-foreground hover:bg-muted",
+                    isCurrent && "ring-2 ring-primary ring-offset-1"
+                  )}
+                >
+                  Section {g.number}
+                </button>
+              )
+            })}
+          </nav>
         )}
+
+        {/* Every question at a glance — jump to any of them, in any order */}
+        {!group && questions.length > 1 && (
+          <nav aria-label="Questions" className="flex flex-wrap gap-1.5">
+            {questions.map((question, i) => {
+              const isCurrent = i === currentIndex
+              const done = isAnswered(question)
+              return (
+                <button
+                  key={question.id}
+                  type="button"
+                  onClick={() => go(i)}
+                  aria-current={isCurrent ? "step" : undefined}
+                  aria-label={`Question ${i + 1}, ${done ? "answered" : "not answered"}`}
+                  className={cn(
+                    "size-8 rounded-lg border text-xs font-semibold transition-colors",
+                    done ? "bg-primary/10 border-primary/30 text-primary" : "bg-background text-muted-foreground hover:bg-muted",
+                    isCurrent && "ring-2 ring-primary ring-offset-1"
+                  )}
+                >
+                  {i + 1}
+                </button>
+              )
+            })}
+          </nav>
+        )}
+
+        {/* A section: its heading and its video, which can be watched again */}
+        {group && (
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xl font-bold">{group.section ? `Section ${group.number}` : "More questions"}</h3>
+            {sectionVideo && (
+              <>
+                <StoryVideo
+                  key={`${group.number}-${replay}`}
+                  src={sectionVideo}
+                  controls={settings.storyControls !== false}
+                  autoPlay
+                  className="w-full max-h-96 rounded-xl border bg-black"
+                />
+                <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setReplay((n) => n + 1)}>
+                  <RotateCcw className="size-4 mr-1.5" /> Watch section {group.number} again
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* The story stays to hand while its questions are answered */}
+        {settings.storyUrl && !sectionVideo && (
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button" variant="outline" size="sm" className="self-start"
+              aria-expanded={storyOpen}
+              onClick={() => setStoryOpen((open) => !open)}
+            >
+              <BookOpen className="size-4 mr-1.5" /> {storyOpen ? "Hide the story" : "Watch the story again"}
+            </Button>
+            {storyOpen && (
+              <StoryVideo src={settings.storyUrl} controls={settings.storyControls !== false} autoPlay className="w-full max-h-80 rounded-xl border bg-black" />
+            )}
+          </div>
+        )}
+
+        {/* Question — or, in a section, each of its questions */}
+        {group
+          ? group.questions.map((question, n) => questionCard(question, `Question ${n + 1}.`, true))
+          : q && questionCard(q, `${currentIndex + 1}.`, false)}
 
         {error && (
           <p role="alert" className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
@@ -923,7 +1009,13 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
                 ? "1 question still needs an answer"
                 : `${questions.length - answered} questions still need an answer`} before you can submit.
             </span>
-            {firstUnanswered !== currentIndex && (
+            {group ? (
+              groups[sectionOf(firstUnanswered)] !== group && (
+                <Button size="sm" variant="outline" className="bg-background" onClick={() => go(sectionOf(firstUnanswered))}>
+                  Go to section {groups[sectionOf(firstUnanswered)].number}
+                </Button>
+              )
+            ) : firstUnanswered !== currentIndex && (
               <Button size="sm" variant="outline" className="bg-background" onClick={() => go(firstUnanswered)}>
                 Go to question {firstUnanswered + 1}
               </Button>
@@ -954,13 +1046,13 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         ) : (
           <div className="flex items-center justify-between gap-2">
             <Button variant="outline" onClick={() => go(currentIndex - 1)} disabled={currentIndex === 0}>
-              <ChevronLeft className="size-4 mr-1" /> Previous
+              <ChevronLeft className="size-4 mr-1" /> {group ? "Previous section" : "Previous"}
             </Button>
 
             <div className="flex items-center gap-2">
               {!isLast && (
                 <Button variant={allAnswered ? "outline" : "default"} onClick={() => go(currentIndex + 1)}>
-                  {q && isAnswered(q) ? "Next" : "Skip"} <ChevronRight className="size-4 ml-1" />
+                  {group ? "Next section" : q && isAnswered(q) ? "Next" : "Skip"} <ChevronRight className="size-4 ml-1" />
                 </Button>
               )}
               {/* Offered as soon as everything is answered, wherever the student is */}
@@ -1004,8 +1096,12 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
           </div>
         ) : (
           <p className="text-sm text-muted-foreground max-w-sm">
-            {settings.storyUrl && "Watch the story first — you can watch it again while you answer. "}
-            Answer every question, then submit. You can skip a question and come back to it, and change any answer before you submit.
+            {sectioned
+              ? `The test is in ${groups.length} sections. In each one, watch the video, then answer its questions. You can go back to an earlier section, watch it again and change your answers before you submit.`
+              : <>
+                  {settings.storyUrl && "Watch the story first — you can watch it again while you answer. "}
+                  Answer every question, then submit. You can skip a question and come back to it, and change any answer before you submit.
+                </>}
           </p>
         )}
       </div>
