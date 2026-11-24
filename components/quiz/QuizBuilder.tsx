@@ -180,11 +180,19 @@ export function questionProblem(q: QuestionDraft, testKind?: string): string | n
   if (!q.question.trim() && !isVideoMedia(q.imageUrl, q.mediaType)) return "Type the question, or add a video of you signing it"
   if (q.type === "WRITTEN") return q.modelAnswer?.trim() ? null : "Type the model answer"
   if (q.type === "SIGN") return q.answerVideoUrl ? null : "Add the video of the sign done right"
-  if (q.options.some((o) => !o.text.trim() && !o.imageUrl)) return "Each answer needs text, an image or a video"
-  if (!q.options.some((o) => o.isCorrect)) return "Choose which answer is correct"
-  if (q.options.every((o) => o.isCorrect)) return "At least one answer must be wrong"
   if (q.questionImageUploading || q.options.some((o) => o.uploading)) return "Wait for the upload to finish"
+  // Answers left empty are dropped when it is saved, so four boxes never force four answers.
+  const answers = filledOptions(q)
+  if (answers.length < 2) return "Give at least two answers"
+  if (!answers.some((o) => o.isCorrect)) return "Tick the correct answer"
+  if (answers.every((o) => o.isCorrect)) return "At least one answer must be wrong"
   return null
+}
+
+/** The answers that have something in them — the ones that are saved. True / false keeps both. */
+function filledOptions(q: QuestionDraft): QuizOptionDraft[] {
+  if (q.type === "TRUE_FALSE") return q.options
+  return q.options.filter((o) => o.text.trim() || o.imageUrl || o.uploading)
 }
 
 type SavedQuestion = { id: string; options: Array<{ id: string }> }
@@ -211,7 +219,7 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
       attachmentUrl: q.attachmentUrl ?? null,
       locked: !!q.locked,
       section: q.section ?? null,
-      options: q.options.map((o) => ({
+      options: filledOptions(q).map((o) => ({
         id: o.id, text: o.text, imageUrl: o.imageUrl ?? null, mediaType: o.mediaType ?? null, isCorrect: o.isCorrect,
       })),
     }),
@@ -223,10 +231,12 @@ export async function saveQuestionDraft(testId: string, q: QuestionDraft): Promi
 
 /** The draft once saved. Options come back in the order they were sent — their ids are kept for the next edit. */
 export function withSaved(draft: QuestionDraft, saved: SavedQuestion): QuestionDraft {
+  // Empty answers were not sent, so they are not there any more.
+  const kept = isSelfMarked(draft.type) || filledOptions(draft).length !== saved.options.length ? draft.options : filledOptions(draft)
   return {
     ...draft,
     id: saved.id,
-    options: draft.options.map((o, i) => ({ ...o, id: saved.options[i]?.id ?? o.id })),
+    options: kept.map((o, i) => ({ ...o, id: saved.options[i]?.id ?? o.id })),
     isSaving: false, isOpen: false, dirty: false, error: null,
   }
 }
@@ -590,6 +600,8 @@ function QuestionCard({
   const hasVideo = questionVideo || q.options.some((o) => isVideoMedia(o.imageUrl, o.mediaType))
   // On a test that is not created yet everything is saved together, so there is no per-question state to show.
   const status = !testId ? null : q.id && !q.dirty ? "saved" : q.id ? "changed" : "new"
+  // What it still needs before it can be saved, shown even when it is closed.
+  const unfinished = isBlankQuestion(q) ? null : questionProblem(q)
 
   return (
     <div className={cn(
@@ -619,7 +631,10 @@ function QuestionCard({
           <p className={cn("text-sm font-medium truncate", !q.question.trim() && "text-muted-foreground")}>
             {index + 1}. {q.question.trim() || "New question"}
           </p>
-          {!q.isOpen && (
+          {!q.isOpen && unfinished && status !== "saved" && (
+            <p className="text-xs text-amber-700 truncate">Still to do: {unfinished}</p>
+          )}
+          {!q.isOpen && !(unfinished && status !== "saved") && (
             <p className="text-xs text-muted-foreground truncate">
               {q.type === "WRITTEN"
                 ? `Written answer · ${marksLabel(maxMarks(q))}${q.modelAnswer?.trim() ? ` · Model answer: ${q.modelAnswer.trim()}` : " · No model answer yet"}`
@@ -639,8 +654,8 @@ function QuestionCard({
             </Badge>
           )}
           {status && status !== "saved" && (
-            <Badge variant="outline" className="text-[0.625rem] text-amber-700 border-amber-200 bg-amber-50">
-              {status === "new" ? "Not saved" : "Unsaved changes"}
+            <Badge variant="outline" className="text-[0.625rem] text-amber-700 border-amber-200 bg-amber-50" title={unfinished ?? undefined}>
+              {unfinished ? "Not finished" : status === "new" ? "Not saved" : "Unsaved changes"}
             </Badge>
           )}
           <Button type="button" variant="ghost" size="icon" className="size-8"

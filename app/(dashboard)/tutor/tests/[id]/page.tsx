@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useState } from "react"
+import { use, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -155,6 +155,44 @@ function detailsOf(test: TestFull): Details {
   }
 }
 
+// ─── Unsaved work, kept on the device ─────────────────────────────────────────
+// Whatever has not reached the server yet — unfinished questions above all — is
+// kept in this browser, so leaving the page (to try the test, or to see to the
+// children) never loses it. It comes back the next time the test is opened.
+
+type EditorDraft = { savedAt: string; details: Details; questions: QuestionDraft[] }
+
+const editorDraftKey = (testId: string) => `test-editor-draft:${testId}`
+
+function readEditorDraft(testId: string): EditorDraft | null {
+  try {
+    const raw = localStorage.getItem(editorDraftKey(testId))
+    const draft = raw ? JSON.parse(raw) as EditorDraft : null
+    return draft && draft.details && Array.isArray(draft.questions) ? draft : null
+  } catch {
+    return null
+  }
+}
+
+function writeEditorDraft(testId: string, draft: EditorDraft | null) {
+  try {
+    if (draft) localStorage.setItem(editorDraftKey(testId), JSON.stringify(draft))
+    else localStorage.removeItem(editorDraftKey(testId))
+  } catch {
+    // Storage full or blocked: the page still works, it just cannot keep a copy.
+  }
+}
+
+/** A question as it is kept: nothing half-way (an upload, a save) survives a reload. */
+function storable(q: QuestionDraft): QuestionDraft {
+  return {
+    ...q,
+    isSaving: false, error: null, questionImageUploading: false, questionImageProgress: undefined,
+    answerVideoUploading: false, attachmentUploading: false,
+    options: q.options.map((o) => ({ ...o, uploading: false, uploadId: undefined })),
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 // One test in the bank. Whoever may change it builds it here — questions,
@@ -180,6 +218,9 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
   const [placing, setPlacing] = useState(false)
   const [pickingSigns, setPickingSigns] = useState(false)
   const [addingSigns, setAddingSigns] = useState(false)
+  // When unsaved work from last time was brought back.
+  const [restoredAt, setRestoredAt] = useState<string | null>(null)
+  const saveRef = useRef<((o?: { quiet?: boolean }) => Promise<void>) | null>(null)
 
   async function load() {
     try {
@@ -201,9 +242,17 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
   useEffect(() => {
     void load().then((t) => {
       if (!t) return
-      setDetails(detailsOf(t))
       setSaved(detailsOf(t))
-      setQuestions(t.questions.map(toDraft))
+      // Work not saved last time comes back where it was left.
+      const draft = readEditorDraft(id)
+      if (draft) {
+        setDetails({ ...detailsOf(t), ...draft.details })
+        setQuestions(draft.questions.map(storable))
+        setRestoredAt(draft.savedAt)
+      } else {
+        setDetails(detailsOf(t))
+        setQuestions(t.questions.map(toDraft))
+      }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
@@ -211,6 +260,25 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
   const detailsChanged = !!details && !!saved && JSON.stringify(details) !== JSON.stringify(saved)
   const pendingQuestions = questions.filter((q) => !isBlankQuestion(q) && (!q.id || q.dirty))
   const unsaved = detailsChanged || pendingQuestions.length > 0
+
+  // Unsaved work is kept on the device as it is typed; once all of it is
+  // saved, the copy goes.
+  useEffect(() => {
+    if (!details || !saved || !canEdit) return
+    if (unsaved) writeEditorDraft(id, { savedAt: new Date().toISOString(), details, questions: questions.map(storable) })
+    else writeEditorDraft(id, null)
+  }, [id, details, saved, questions, unsaved, canEdit])
+
+  // Saved by itself a few seconds after each change: finished questions go to
+  // the server, unfinished ones wait (on the device) until they are finished.
+  useEffect(() => {
+    if (!canEdit || !unsaved || saving) return
+    const timer = setTimeout(() => { void saveRef.current?.({ quiet: true }) }, 3000)
+    return () => clearTimeout(timer)
+  }, [details, questions, unsaved, saving, canEdit])
+
+  // The automatic save calls the latest save() (declared below, once loaded).
+  useEffect(() => { saveRef.current = save })
 
   // Leaving with changes not saved asks first.
   useEffect(() => {
@@ -250,99 +318,140 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
   const patch = (change: Partial<Details>) => { setDetails((d) => (d ? { ...d, ...change } : d)); setError(null) }
 
   // ── Save ────────────────────────────────────────────────────────────────────
-  async function save() {
-    if (!details) return
+  // What a question is called in messages: "Section 2, question 1" in a story
+  // set out in sections, as the teacher sees it; otherwise "Question 5".
+  function nameOf(q: QuestionDraft) {
+    if (kind === "STORY" && details && details.storySections.length > 0) {
+      const at = details.storySections.findIndex((s) => s.id === q.section)
+      if (at >= 0) {
+        const n = questions.filter((o) => o.section === q.section).indexOf(q)
+        return `Section ${at + 1}, question ${n + 1}`
+      }
+    }
+    return `${itemName} ${questions.indexOf(q) + 1}`
+  }
+
+  // Saves everything that is ready, and never throws the rest away: a question
+  // that is not finished stays here (and on this device, see the draft below)
+  // to finish later. `quiet` is the automatic save while the teacher works —
+  // no messages, and nothing they have open is closed.
+  async function save({ quiet = false }: { quiet?: boolean } = {}) {
+    if (!details || saving) return
     if (!details.title.trim()) {
+      if (quiet) return
       setTab("settings")
       setError("Give the test a title.")
       return
     }
     const unfinished = pendingQuestions.filter((q) => questionProblem(q, kind))
-    if (unfinished.length > 0) {
-      const ids = new Set(unfinished.map((q) => q.uid))
-      setQuestions((current) => current.map((q) => (
-        ids.has(q.uid) ? { ...q, isOpen: true, error: questionProblem(q, kind) } : q
-      )))
-      const numbers = questions.flatMap((q, i) => (ids.has(q.uid) ? [i + 1] : []))
-      setTab("questions")
-      setError(
-        `${numbers.length > 1 ? itemsName : itemName} ${numbers.join(", ")} ${numbers.length > 1 ? "are" : "is"} not finished. Complete or delete ${numbers.length > 1 ? "them" : "it"}, then save.`
-      )
-      return
-    }
-    // A story in sections may have a clip for each section instead of the whole story.
+    const ready = pendingQuestions.filter((q) => !questionProblem(q, kind))
+    if (quiet && !detailsChanged && ready.length === 0) return
     const sectioned = kind === "STORY" && details.storySections.length > 0
-    if (kind === "STORY" && !details.storyUrl && (!sectioned || details.storySections.some((s) => !s.videoUrl))) {
-      setTab("questions")
-      setError(sectioned ? "Add a video to each section, or the whole story video, then save." : "Add the story video, then save.")
-      return
-    }
 
     setSaving(true)
-    setError(null)
+    if (!quiet) setError(null)
+    const failed: string[] = []
     try {
       // The kind first: questions are checked against it.
-      const res = await fetch(`/api/tests/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: details.title.trim(),
-          description: details.description,
-          level: details.level || null,
-          testKind: kind,
-          ...testSettingsBody(details.settings),
-          ...(signTest && { answerSeconds: details.answerSeconds, signPlays: details.signPlays }),
-          ...(kind === "VOCABULARY" && { vocabularyMode: details.vocabularyMode }),
-          ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls, storySections: details.storySections }),
-          ...(assessment && {
-            storyUrl: details.storyUrl, storyControls: details.storyControls,
-            answerMinutes: details.answerMinutes, tutorMarks: details.tutorMarks,
+      if (detailsChanged || !quiet) {
+        const res = await fetch(`/api/tests/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: details.title.trim(),
+            description: details.description,
+            level: details.level || null,
+            testKind: kind,
+            ...testSettingsBody(details.settings),
+            ...(signTest && { answerSeconds: details.answerSeconds, signPlays: details.signPlays }),
+            ...(kind === "VOCABULARY" && { vocabularyMode: details.vocabularyMode }),
+            ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls, storySections: details.storySections }),
+            ...(assessment && {
+              storyUrl: details.storyUrl, storyControls: details.storyControls,
+              answerMinutes: details.answerMinutes, tutorMarks: details.tutorMarks,
+            }),
+            ...(presentation && { answerMinutes: details.answerMinutes }),
           }),
-          ...(presentation && { answerMinutes: details.answerMinutes }),
-        }),
-      })
-      const d = await res.json().catch(() => ({})) as { message?: string }
-      if (!res.ok) throw new Error(d.message ?? "Could not save the test")
-      setSaved(details)
+        })
+        const d = await res.json().catch(() => ({})) as { message?: string }
+        if (!res.ok) throw new Error(d.message ?? "Could not save the test")
+        setSaved(details)
+      }
 
       const savedIds = new Map<string, string>()
-      for (const q of pendingQuestions) {
+      for (const q of ready) {
         try {
           const result = await saveQuestionDraft(id, q)
           savedIds.set(q.uid, result.id)
-          setQuestions((current) => current.map((old) => (old.uid === q.uid ? withSaved(old, result) : old)))
+          setQuestions((current) => current.map((old) => {
+            if (old.uid !== q.uid) return old
+            const done = withSaved(old, result)
+            // Changed again while it was being saved: still to save.
+            return { ...done, isOpen: quiet ? old.isOpen : done.isOpen, dirty: old !== q }
+          }))
         } catch (e) {
           const message = e instanceof Error ? e.message : "Could not save this question"
           setQuestions((current) => current.map((old) => (old.uid === q.uid ? { ...old, isOpen: true, error: message } : old)))
-          setTab("questions")
-          throw new Error(`${itemName} ${questions.indexOf(q) + 1} could not be saved: ${message}`)
+          failed.push(`${nameOf(q)}: ${message}`)
         }
       }
       // A story in sections: new questions are stored at the end, so the order
       // is put right — section by section, as shown here.
-      if (sectioned) {
+      if (sectioned && savedIds.size > 0) {
         const orderedIds = inSectionOrder(questions, details.storySections)
           .flatMap((q) => { const qid = q.id ?? savedIds.get(q.uid); return qid ? [qid] : [] })
-        const ordered = await fetch(`/api/tests/${id}/questions`, {
+        await fetch(`/api/tests/${id}/questions`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderedIds }),
-        })
-        if (!ordered.ok) throw new Error("The questions were saved, but not their order. Press Save again.")
+        }).catch(() => null)
       }
-      // Blank questions nobody typed into are left out rather than kept as "unsaved".
-      setQuestions((current) => current.filter((q) => q.id || !isBlankQuestion(q)))
+      if (!quiet) {
+        // Blank questions nobody typed into are left out rather than kept as "unsaved".
+        setQuestions((current) => current.filter((q) => q.id || !isBlankQuestion(q)))
+        // Unfinished ones are opened, each saying what it still needs.
+        const open = new Map(unfinished.map((q) => [q.uid, questionProblem(q, kind)]))
+        if (open.size) setQuestions((current) => current.map((q) => (open.has(q.uid) ? { ...q, isOpen: true, error: open.get(q.uid)! } : q)))
+      }
+      if (failed.length) throw new Error(`Not everything could be saved. ${failed.join(". ")}`)
+      if (quiet) return
+
+      const notes: string[] = []
+      if (unfinished.length) {
+        notes.push(unfinished.length === 1
+          ? `${nameOf(unfinished[0])} is not finished yet (${questionProblem(unfinished[0], kind)}). It is kept here for you to finish later.`
+          : `${unfinished.length} questions are not finished yet: ${unfinished.map(nameOf).join("; ")}. They are kept here for you to finish later.`)
+      }
+      if (kind === "STORY" && !details.storyUrl && (!sectioned || details.storySections.some((s) => !s.videoUrl))) {
+        notes.push(sectioned ? "Some sections have no video yet." : "The story video is not added yet.")
+      }
       // Words kept without a video are not given to students yet.
       const unfilmed = signTest ? questions.filter((q) => !q.imageUrl && q.question.trim()).length : 0
-      toast.success(unfilmed
-        ? `Test saved. ${unfilmed} word${unfilmed > 1 ? "s" : ""} still need${unfilmed > 1 ? "" : "s"} a video — students get ${unfilmed > 1 ? "them" : "it"} once filmed.`
-        : "Test saved")
+      if (unfilmed) notes.push(`${unfilmed} word${unfilmed > 1 ? "s" : ""} still need${unfilmed > 1 ? "" : "s"} a video — students get ${unfilmed > 1 ? "them" : "it"} once filmed.`)
+      if (notes.length) {
+        setTab("questions")
+        toast.warning(`Saved. ${notes.join(" ")}`, { duration: 10000 })
+      } else {
+        toast.success("Test saved")
+      }
       void load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong")
     } finally {
       setSaving(false)
     }
+  }
+
+  // Throws away what was brought back from last time, back to what is saved.
+  async function discardRestored() {
+    writeEditorDraft(id, null)
+    setRestoredAt(null)
+    const t = await load()
+    if (!t) return
+    setDetails(detailsOf(t))
+    setSaved(detailsOf(t))
+    setQuestions(t.questions.map(toDraft))
+    setError(null)
   }
 
   async function addSigns(signs: DictionarySign[]) {
@@ -485,7 +594,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
         {canChange && (
           <div className="flex items-center gap-2">
             {canEdit ? (
-              <Button onClick={save} disabled={saving || !unsaved}>
+              <Button onClick={() => void save()} disabled={saving || !unsaved}>
                 {saving ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Save className="size-4 mr-1.5" />}
                 {saving ? "Saving…" : unsaved ? "Save changes" : "Saved"}
               </Button>
@@ -524,6 +633,29 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
 
       {error && (
         <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">{error}</p>
+      )}
+
+      {restoredAt && canEdit && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          <span className="flex items-start gap-2">
+            <Info className="size-4 shrink-0 mt-0.5" />
+            Your work from {new Date(restoredAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} has been brought back, just as you left it.
+          </span>
+          <span className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setRestoredAt(null)}>OK</Button>
+            <Button size="sm" variant="outline" className="bg-background" onClick={() => { if (confirm("Throw away the work that was brought back? This cannot be undone.")) void discardRestored() }}>
+              Throw it away
+            </Button>
+          </span>
+        </div>
+      )}
+
+      {canEdit && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          {saving ? "Saving…" : unsaved
+            ? "Your changes save by themselves. Unfinished questions are kept on this device until you finish them — you can leave and come back."
+            : "All changes saved. You can come back and change this test at any time."}
+        </p>
       )}
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -633,7 +765,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                 />
               )}
               {pendingQuestions.length > 0 && (
-                <Button className="self-start" onClick={save} disabled={saving}>
+                <Button className="self-start" onClick={() => void save()} disabled={saving}>
                   <Save className="size-4 mr-1.5" /> {saving ? "Saving…" : "Save changes"}
                 </Button>
               )}
