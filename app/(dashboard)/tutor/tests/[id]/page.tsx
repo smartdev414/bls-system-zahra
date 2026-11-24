@@ -23,7 +23,7 @@ import {
 } from "@/components/quiz/QuizBuilder"
 import { SignListBuilder } from "@/components/quiz/SignListBuilder"
 import {
-  AnswerMinutesField, AnswerSecondsField, SignPlaysField, StoryVideoField, TestKindPicker, TutorMarksField, VocabularyModeField,
+  AnswerMinutesField, AnswerSecondsField, SignPlaysField, StoryPlaysField, StoryVideoField, TestKindPicker, TutorMarksField, VocabularyModeField,
 } from "@/components/quiz/TestKindFields"
 import { AssessmentPartsBuilder } from "@/components/quiz/AssessmentPartsBuilder"
 import { StorySectionsBuilder } from "@/components/quiz/StorySectionsBuilder"
@@ -79,6 +79,7 @@ type TestFull = {
   storyUrl: string | null
   storyControls: boolean
   storySections: unknown
+  storyPlays: number | null
   answerSeconds: number | null
   signPlays: number | null
   vocabularyMode: VocabularyMode
@@ -103,6 +104,7 @@ type Details = {
   storyUrl: string | null
   storyControls: boolean
   storySections: StorySection[]
+  storyPlays: number | null
   answerMinutes: number
   tutorMarks: boolean
 }
@@ -150,6 +152,7 @@ function detailsOf(test: TestFull): Details {
     storyUrl: test.storyUrl,
     storyControls: test.storyControls,
     storySections: readStorySections(test.storySections),
+    storyPlays: test.storyPlays ?? null,
     answerMinutes: test.answerMinutes ?? DEFAULT_ANSWER_MINUTES,
     tutorMarks: test.tutorMarks,
   }
@@ -365,7 +368,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
             ...testSettingsBody(details.settings),
             ...(signTest && { answerSeconds: details.answerSeconds, signPlays: details.signPlays }),
             ...(kind === "VOCABULARY" && { vocabularyMode: details.vocabularyMode }),
-            ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls, storySections: details.storySections }),
+            ...(kind === "STORY" && { storyUrl: details.storyUrl, storyControls: details.storyControls, storySections: details.storySections, storyPlays: details.storyPlays }),
             ...(assessment && {
               storyUrl: details.storyUrl, storyControls: details.storyControls,
               answerMinutes: details.answerMinutes, tutorMarks: details.tutorMarks,
@@ -698,7 +701,10 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                         value={details.storyUrl}
                         onChange={(url) => patch({ storyUrl: url })}
                       />}
-                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                  {kind === "STORY" && (
+                    <StoryPlaysField value={details.storyPlays} onChange={(storyPlays) => patch({ storyPlays })} />
+                  )}
+                  {(kind !== "STORY" || details.storyPlays === null) && <label className="flex cursor-pointer items-start gap-2 text-sm">
                     <Checkbox
                       className="mt-0.5"
                       checked={details.storyControls}
@@ -712,7 +718,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
                           : "Pause, rewind and skip. Untick to have it just play through, like an assessment."}
                       </span>
                     </span>
-                  </label>
+                  </label>}
                 </>
               )}
               {addingSigns && (

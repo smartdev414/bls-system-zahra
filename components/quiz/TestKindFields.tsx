@@ -306,3 +306,43 @@ export function StoryVideoField({ value, onChange, label = "Story video", hint, 
     </div>
   )
 }
+
+/**
+ * Story tests: how many times students may watch each video — a section's, or
+ * the whole story. Once or twice is like the real exam: the video just plays,
+ * with no pausing or rewinding, and cannot be started again once used up.
+ */
+export function StoryPlaysField({ value, onChange }: { value: number | null; onChange: (plays: number | null) => void }) {
+  const choices: Array<{ value: number | null; label: string }> = [
+    { value: 1, label: "Once" },
+    { value: 2, label: "Twice" },
+    { value: null, label: "As often as they like" },
+  ]
+  return (
+    <div className="flex flex-col gap-1.5 sm:max-w-md">
+      <Label>Students can watch each video</Label>
+      <div role="radiogroup" aria-label="Students can watch each video" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
+        {choices.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            role="radio"
+            aria-checked={value === c.value}
+            onClick={() => onChange(c.value)}
+            className={cn(
+              "rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+              value === c.value ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {value === null
+          ? "Students see a \"Watch again\" button and can watch each video as many times as they want."
+          : `Like the real exam: each video plays ${value === 1 ? "once" : "twice"}, with no pausing or rewinding, and then it is gone.`}
+      </p>
+    </div>
+  )
+}

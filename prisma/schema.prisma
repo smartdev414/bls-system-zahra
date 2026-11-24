@@ -1152,6 +1152,9 @@ model Test {
   // a question belongs to one through QuizQuestion.section (the section's id).
   // Empty: the questions are one list about the whole story.
   storySections  Json           @default("[]")
+  // STORY: how many times students may watch each video (a section's, or the
+  // whole story) — 1 or 2, as in the real exam. Null: as often as they like.
+  storyPlays     Int?
   // FINGERSPELLING / VOCABULARY: seconds a student has for each sign. In these
   // tests a question is just a video and its word (QuizQuestion.question), with
   // no options.

@@ -109,6 +109,7 @@ async function handlePUT(
       answerSeconds?: number
       storyUrl?: string | null
       storySections?: unknown
+      storyPlays?: number | null
       answerMinutes?: number
       tutorMarks?: boolean
     }
@@ -139,6 +140,11 @@ async function handlePUT(
     const storySections = body.storySections === undefined ? undefined : parseStorySections(body.storySections)
     if (typeof storySections === "string") return NextResponse.json({ message: storySections }, { status: 400 })
 
+    // How often each story video may be watched: once, twice, or any number of times.
+    if (body.storyPlays !== undefined && body.storyPlays !== null && body.storyPlays !== 1 && body.storyPlays !== 2) {
+      return NextResponse.json({ message: "Each video can be watched once, twice, or as often as students like" }, { status: 400 })
+    }
+
     const title = body.title?.trim()
     const description = body.description === undefined ? undefined : body.description?.trim() || null
 
@@ -157,6 +163,7 @@ async function handlePUT(
         // An assessment's story video is its synopsis, watched first.
         ...(testKind !== "STORY" && (!isAssessment(testKind) || isPresentation(testKind)) && { storyUrl: null }),
         ...(testKind === "STORY" ? storySections && { storySections } : { storySections: [] }),
+        ...(testKind === "STORY" ? body.storyPlays !== undefined && { storyPlays: body.storyPlays } : { storyPlays: null }),
         // A presentation is always marked by a teacher.
         ...(isPresentation(testKind) && { tutorMarks: true }),
       },

@@ -74,6 +74,8 @@ type QuizData = {
     storyControls?: boolean
     /** Story tests set out like the exam paper: sat section by section. */
     storySections?: StorySection[]
+    /** Story tests: how many times each video may be watched; null = as often as they like. */
+    storyPlays?: number | null
   }
   /** Newest first. */
   attempts: AttemptSummary[]
@@ -117,7 +119,11 @@ type Props = {
  * The options ticked on each question — one, or several where more than one is
  * correct — and the written answers and recordings made so far.
  */
-type Draft = { selected: Record<string, string[]>; texts: Record<string, string>; videos: Record<string, string>; currentIndex: number }
+type Draft = {
+  selected: Record<string, string[]>; texts: Record<string, string>; videos: Record<string, string>; currentIndex: number
+  /** Story tests watched a limited number of times: how often each video (a section's id, or "story") has been started. */
+  plays?: Record<string, number>
+}
 
 const stringsOnly = (value: unknown): Record<string, string> =>
   typeof value === "object" && value !== null
@@ -138,7 +144,10 @@ function readDraft(key: string): Draft | null {
         q, (Array.isArray(ids) ? ids : [ids]).filter((id): id is string => typeof id === "string"),
       ])
     )
-    return { selected, texts: stringsOnly(draft.texts), videos: stringsOnly(draft.videos), currentIndex: Number(draft.currentIndex) || 0 }
+    const plays = typeof draft.plays === "object" && draft.plays !== null
+      ? Object.fromEntries(Object.entries(draft.plays).filter((e): e is [string, number] => typeof e[1] === "number"))
+      : {}
+    return { selected, texts: stringsOnly(draft.texts), videos: stringsOnly(draft.videos), currentIndex: Number(draft.currentIndex) || 0, plays }
   } catch {
     return null
   }
@@ -179,11 +188,16 @@ function QuestionMedia({ question, className, controls = true, onEnded }: {
 // A story without controls plays straight through: it starts by itself, muted
 // (browsers only start silent video unasked — a signed story needs no sound),
 // and a tap can start it where the browser wouldn't, but never pause it.
-function StoryVideo({ src, controls, autoPlay, className }: { src: string; controls: boolean; autoPlay?: boolean; className?: string }) {
+function StoryVideo({ src, controls, autoPlay, className, onPlay, onEnded }: {
+  src: string; controls: boolean; autoPlay?: boolean; className?: string
+  onPlay?: () => void; onEnded?: () => void
+}) {
   return (
     <ProtectedVideo
       src={src}
       playsInline
+      onPlay={onPlay}
+      onEnded={onEnded}
       controls={controls}
       autoPlay={autoPlay || !controls}
       muted={!controls}
@@ -380,14 +394,19 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   const [storyOpen, setStoryOpen] = useState(false)
   // Bumped to play a section's video again from the start.
   const [replay, setReplay] = useState(0)
+  // A story watched a limited number of times: how often each video has been
+  // started (kept with the answers, so a reload or going back does not give
+  // more), and which one is playing now.
+  const [plays, setPlays] = useState<Record<string, number>>(stored?.plays ?? {})
+  const [playing, setPlaying] = useState<string | null>(null)
   // Questions whose video has played to the end, for those shown after it.
   const [watched, setWatched] = useState<Set<string>>(() => new Set())
   const topRef = useRef<HTMLDivElement>(null)
   useTopOnNewScreen(view)
 
   useEffect(() => {
-    if (view === "taking") writeDraft(storageKey, { selected: rawSelected, texts, videos, currentIndex })
-  }, [view, storageKey, rawSelected, texts, videos, currentIndex])
+    if (view === "taking") writeDraft(storageKey, { selected: rawSelected, texts, videos, currentIndex, plays })
+  }, [view, storageKey, rawSelected, texts, videos, currentIndex, plays])
 
   if (!data) {
     return loading
@@ -478,8 +497,81 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   const groups = settings.kind === "STORY" ? storyGroups(questions, settings.storySections ?? []) : []
   const sectioned = groups.length > 0
   const sectionOf = (index: number) => Math.max(0, groups.findIndex((g) => g.questions.includes(questions[index])))
+  // How many times each story video may be watched; null = as often as they like.
+  const playLimit = settings.kind === "STORY" ? settings.storyPlays ?? null : null
+
+  /**
+   * A story video — a section's ("key" is its id) or the whole story ("story").
+   * Unlimited: it can be watched again and again. Limited: it plays through
+   * with no controls, and once its plays are used up it is gone.
+   */
+  function storyPlayer(key: string, src: string, name: string) {
+    if (playLimit === null) {
+      return (
+        <>
+          <StoryVideo
+            key={`${key}-${replay}`}
+            src={src}
+            controls={settings.storyControls !== false}
+            autoPlay
+            className="w-full max-h-96 rounded-xl border bg-black"
+          />
+          <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setReplay((n) => n + 1)}>
+            <RotateCcw className="size-4 mr-1.5" /> Watch {name} again
+          </Button>
+        </>
+      )
+    }
+    const used = plays[key] ?? 0
+    const left = playLimit - used
+    const count = (n: number) => (n === 1 ? "once" : n === 2 ? "twice" : `${n} times`)
+    if (playing === key || used === 0) {
+      return (
+        <>
+          <StoryVideo
+            key={`${key}-${replay}`}
+            src={src}
+            controls={false}
+            autoPlay
+            // Started without the button (the first time): that is a play.
+            onPlay={() => {
+              if (playing === key) return
+              setPlays((p) => ({ ...p, [key]: (p[key] ?? 0) + 1 }))
+              setPlaying(key)
+            }}
+            onEnded={() => setPlaying(null)}
+            className="w-full max-h-96 rounded-xl border bg-black"
+          />
+          <p className="text-xs text-muted-foreground">
+            You can watch {name} {count(playLimit)}{playLimit > 1 && used > 0 ? ` — this is time ${used} of ${playLimit}` : ""}.
+          </p>
+        </>
+      )
+    }
+    if (left > 0) {
+      return (
+        <Button
+          type="button" variant="outline" className="self-start"
+          onClick={() => {
+            setPlays((p) => ({ ...p, [key]: (p[key] ?? 0) + 1 }))
+            setPlaying(key)
+            setReplay((n) => n + 1)
+          }}
+        >
+          <RotateCcw className="size-4 mr-1.5" /> Watch {name} again ({left === 1 ? "last time" : `${left} times left`})
+        </Button>
+      )
+    }
+    return (
+      <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+        You have watched {name} {count(playLimit)}. Answer the questions below.
+      </p>
+    )
+  }
 
   function start() {
+    setPlays({})
+    setPlaying(null)
     setSelected({})
     setTexts({})
     setVideos({})
@@ -502,6 +594,8 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
   function go(index: number) {
     setCurrentIndex(Math.min(Math.max(index, 0), (sectioned ? groups.length : questions.length) - 1))
     setConfirming(false)
+    // A video left part-way stops; its play is used.
+    setPlaying(null)
     // On a phone the next question would otherwise open scrolled to its answers.
     topRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
   }
@@ -541,6 +635,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
       setSelected({})
       setTexts({})
       setVideos({})
+      setPlays({})
       setConfirming(false)
       writeDraft(storageKey, null)
       if (body.passed) onCompleted()
@@ -957,25 +1052,17 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         {group && (
           <div className="flex flex-col gap-2">
             <h3 className="text-xl font-bold">{group.section ? `Section ${group.number}` : "More questions"}</h3>
-            {sectionVideo && (
-              <>
-                <StoryVideo
-                  key={`${group.number}-${replay}`}
-                  src={sectionVideo}
-                  controls={settings.storyControls !== false}
-                  autoPlay
-                  className="w-full max-h-96 rounded-xl border bg-black"
-                />
-                <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setReplay((n) => n + 1)}>
-                  <RotateCcw className="size-4 mr-1.5" /> Watch section {group.number} again
-                </Button>
-              </>
-            )}
+            {sectionVideo && group.section && storyPlayer(group.section.id, sectionVideo, `section ${group.number}`)}
           </div>
         )}
 
+        {/* Watched a limited number of times, the story is not tucked away behind a button */}
+        {settings.storyUrl && !sectionVideo && playLimit !== null && (
+          <div className="flex flex-col gap-2">{storyPlayer("story", settings.storyUrl, "the story")}</div>
+        )}
+
         {/* The story stays to hand while its questions are answered */}
-        {settings.storyUrl && !sectionVideo && (
+        {settings.storyUrl && !sectionVideo && playLimit === null && (
           <div className="flex flex-col gap-2">
             <Button
               type="button" variant="outline" size="sm" className="self-start"
@@ -1097,7 +1184,7 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         ) : (
           <p className="text-sm text-muted-foreground max-w-sm">
             {sectioned
-              ? `The test is in ${groups.length} sections. In each one, watch the video, then answer its questions. You can go back to an earlier section, watch it again and change your answers before you submit.`
+              ? `The test is in ${groups.length} sections. In each one, watch the video, then answer its questions. You can go back to an earlier section${playLimit === null ? ", watch it again" : ""} and change your answers before you submit.`
               : <>
                   {settings.storyUrl && "Watch the story first — you can watch it again while you answer. "}
                   Answer every question, then submit. You can skip a question and come back to it, and change any answer before you submit.
@@ -1106,8 +1193,14 @@ export function QuizTaker({ lessonId, enrollmentId, onCompleted, nextHref }: Pro
         )}
       </div>
 
-      {settings.storyUrl && (
+      {/* Watched a limited number of times, the story only plays once the test has started. */}
+      {settings.storyUrl && playLimit === null && (
         <StoryVideo src={settings.storyUrl} controls={settings.storyControls !== false} className="w-full max-h-96 rounded-xl border bg-black" />
+      )}
+      {playLimit !== null && !bestAttempt && (
+        <p className="text-sm text-center font-medium">
+          Each video can be watched {playLimit === 1 ? "once" : "twice"} — it plays when you start, so be ready.
+        </p>
       )}
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">

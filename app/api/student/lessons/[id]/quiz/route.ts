@@ -115,6 +115,7 @@ async function handleGET(
         storyUrl: kind === "STORY" || isAssessment(kind) ? test.storyUrl : null,
         storyControls: test.storyControls,
         storySections: sections,
+        storyPlays: kind === "STORY" ? test.storyPlays : null,
         vocabularyMode: test.vocabularyMode,
         answerMinutes: test.answerMinutes ?? DEFAULT_ANSWER_MINUTES,
         tutorMarks: test.tutorMarks,
